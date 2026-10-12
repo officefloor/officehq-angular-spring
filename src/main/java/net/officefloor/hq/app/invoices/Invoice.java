@@ -176,6 +176,10 @@ public class Invoice {
     @Column(name = "approved_on")
     private LocalDate approvedOn;
 
+    /** How many approvals the invoice has at its approved total; 0 while it has not been approved. */
+    @Column(name = "approvals")
+    private int approvals;
+
     /** Whether the invoice repeats every period: once sent, it can generate the next period's draft (see {@link #nextPeriod}). */
     @Column(name = "recurring")
     private boolean recurring;
@@ -1234,7 +1238,8 @@ public class Invoice {
      * it was approved at and no more than {@link #APPROVAL_DAYS} days have passed since it was approved.
      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
-     * (overCreditLimit).
+     * (overCreditLimit). A draft whose grand total is more than twice the approval limit needs
+     * {@link #approvalsRequired two approvals} of that same total.
      */
     public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit) {
         if (isCreditNote()) {
@@ -1248,11 +1253,42 @@ public class Invoice {
         if (!highRisk && !overCreditLimit && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
             return Approval.NOT_NEEDED;
         }
+        return approvalsAt(total, today) < approvalsRequired(taxRate) ? Approval.NEEDS_APPROVAL : Approval.APPROVED;
+    }
+
+    /** The approvals a draft needs: two when its grand total is more than twice the approval limit, else one. */
+    public int approvalsRequired(BigDecimal taxRate) {
+        BigDecimal limit = approvalLimit();
+        return limit != null && total(taxRate).compareTo(limit.multiply(BigDecimal.valueOf(2))) > 0 ? 2 : 1;
+    }
+
+    /**
+     * The approvals that still stand for the grand total as of today: those given at exactly that total,
+     * unless more than {@link #APPROVAL_DAYS} days have passed since the last of them; else none.
+     */
+    private int approvalsAt(BigDecimal total, LocalDate today) {
         if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {
-            return Approval.NEEDS_APPROVAL;
+            return 0;
         }
         boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(APPROVAL_DAYS));
-        return lapsed ? Approval.NEEDS_APPROVAL : Approval.APPROVED;
+        return lapsed ? 0 : approvals;
+    }
+
+    /** The approvals the invoice still needs before it is sent, given its approval: none unless it needs approval. */
+    public int approvalsNeeded(Approval approval, BigDecimal taxRate, LocalDate today) {
+        if (approval != Approval.NEEDS_APPROVAL) {
+            return 0;
+        }
+        return Math.max(1, approvalsRequired(taxRate) - approvalsAt(total(taxRate), today));
+    }
+
+    /** The approvals that stand for the grand total as of today (see {@link #approvalsNeeded}). */
+    public int approvalsGiven(BigDecimal taxRate, LocalDate today) {
+        return approvalsAt(total(taxRate), today);
+    }
+
+    public int getApprovals() {
+        return approvals;
     }
 
     public BigDecimal getApprovedTotal() {
@@ -1263,8 +1299,12 @@ public class Invoice {
         return approvedOn;
     }
 
-    /** Approves the invoice at the grand total on the day. */
+    /**
+     * Approves the invoice at the grand total on the day: one more approval when the approvals given still
+     * stand for that total, else its first.
+     */
     public void approve(BigDecimal total, LocalDate on) {
+        this.approvals = approvalsAt(total, on) + 1;
         this.approvedTotal = total;
         this.approvedOn = on;
     }

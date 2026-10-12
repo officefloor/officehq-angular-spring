@@ -790,7 +790,7 @@ function problemWith(line: NewLine): string {
         @if (inv.creditOf === null) {
           <p>
             Approval:
-            <span data-testid="invoice-approval">{{ approvalLabel(inv.approval) }}</span>
+            <span data-testid="invoice-approval">{{ approvalLabel(inv) }}</span>
           </p>
         }
         @if (inv.status === 'DRAFT' && inv.creditOf === null) {
@@ -1693,10 +1693,13 @@ export class InvoicePanel {
     });
   }
 
-  protected approvalLabel(approval: InvoiceDetail['approval']): string {
-    switch (approval) {
+  protected approvalLabel(inv: InvoiceDetail): string {
+    switch (inv.approval) {
       case 'NEEDS_APPROVAL':
-        return 'Needs approval';
+        if (inv.approvals > 0) {
+          return inv.approvalsNeeded === 1 ? 'Needs 1 more approval' : `Needs ${inv.approvalsNeeded} more approvals`;
+        }
+        return inv.approvalsNeeded > 1 ? `Needs ${inv.approvalsNeeded} approvals` : 'Needs approval';
       case 'APPROVED':
         return 'Approved';
       default:

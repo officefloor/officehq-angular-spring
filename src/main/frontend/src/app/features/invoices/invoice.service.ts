@@ -234,6 +234,11 @@ export interface InvoiceDetail {
   approvedTotal: string | null;
   // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after 30 days.
   approvedOn: string | null;
+  // How many approvals it still needs before it is sent (0 when none): a draft whose grand total is
+  // more than twice the approval limit needs two approvals of that same total.
+  approvalsNeeded: number;
+  // How many approvals it has at its grand total.
+  approvals: number;
   // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
   // that makes (signed); once settled in cash, the cash rounding it was settled with.
   cashDue: string;

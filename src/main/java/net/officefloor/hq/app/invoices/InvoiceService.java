@@ -1146,8 +1146,8 @@ public class InvoiceService {
     /**
      * Approves a draft whose grand total is over the workspace's approval limit, whose discount takes
      * off more than a fifth of the subtotal, or that would take its client over its credit limit, keeping that total and the day,
-     * and records it in the audit; empty if no such invoice. An invoice that needs no approval, or is
-     * already approved at its total, is refused.
+     * and records it in the audit; empty if no such invoice. A draft more than twice over the limit needs a
+     * second approval of the same total. An invoice that needs no approval, or is already approved at its total, is refused.
      */
     @Transactional
     public Optional<Invoice> approve(Long invoiceId) {

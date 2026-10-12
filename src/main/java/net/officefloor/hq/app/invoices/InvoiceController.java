@@ -162,7 +162,8 @@ public class InvoiceController {
      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
-     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
+     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not);
+     * {@code approvalsNeeded} is how many approvals it still needs before it is sent (0 when none) and {@code approvals} how many it has at its total.
      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
      * {@code recurUntil} is the last day it bills for when recurring (null for no end).
      * {@code claimFrom} is the id of the invoice it was claimed from as its next progress claim (null when it was not).
@@ -181,6 +182,7 @@ public class InvoiceController {
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+            int approvalsNeeded, int approvals,
             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
             List<MilestoneView> milestones, String milestonesPct, Long claimFrom) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
@@ -223,6 +225,7 @@ public class InvoiceController {
                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
                     i.getSupplyRegion(), approval,
                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
+                    i.approvalsNeeded(approval, taxRate, today), i.approvalsGiven(taxRate, today),
                     i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getDisputedOn(), i.getDisputeResolvedOn(),
                     i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
                     i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
