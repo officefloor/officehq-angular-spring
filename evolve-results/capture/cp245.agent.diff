@@ -1,0 +1,53 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index b198b6d..470197a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1793,6 +1793,11 @@ public class Invoice {
+         }
+     }
+ 
++    /** The day this invoice's final notice (its third reminder) went out; null when it has not. */
++    public LocalDate finalNoticeOn() {
++        return reminderOn(DunningLevel.FINAL);
++    }
++
+     /** The day the reminder of the given dunning level went out; null when it has not. */
+     private LocalDate reminderOn(DunningLevel level) {
+         int n = level.reminders() - 1;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 36d2f9f..f0ae1fc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -626,10 +626,12 @@ public class InvoiceService {
+ 
+     /**
+      * Shortens the due date of an invoice sent to a slow payer: a MEDIUM-risk client's is at most 21 days
+-     * after the issue date and a HIGH-risk client's at most 7; an earlier due date is kept.
++     * after the issue date and a HIGH-risk client's at most 7, as is that of a client any of whose invoices had its
++     * final notice in the last 90 days, however that invoice ended; an earlier due date is kept.
+      */
+     private LocalDate cappedForRisk(Long clientId, LocalDate issued, LocalDate due) {
+-        LocalDate cap = switch (riskOf(clientId).band()) {
++        RiskBand band = recentFinalNotice(clientId, issued) ? RiskBand.HIGH : riskOf(clientId).band();
++        LocalDate cap = switch (band) {
+             case HIGH -> holidays.after(issued, 7);
+             case MEDIUM -> holidays.after(issued, 21);
+             default -> null;
+@@ -637,6 +639,17 @@ public class InvoiceService {
+         return cap != null && due.isAfter(cap) ? cap : due;
+     }
+ 
++    /** How many days after a final notice its client still gets only a HIGH-risk client's terms. */
++    private static final int RECENT_FINAL_NOTICE_DAYS = 90;
++
++    /** Whether any of the client's invoices, whatever became of it, had its final notice in the 90 days up to the day. */
++    private boolean recentFinalNotice(Long clientId, LocalDate on) {
++        LocalDate since = on.minusDays(RECENT_FINAL_NOTICE_DAYS);
++        return invoices.findByClientIdOrderByIdAsc(clientId).stream()
++                .map(Invoice::finalNoticeOn)
++                .anyMatch(d -> d != null && !d.isBefore(since) && !d.isAfter(on));
++    }
++
+     /** A new invoice is due on the last day of the month after the month it is issued in. */
+     static LocalDate dueDateFor(LocalDate issued) {
+         LocalDate nextMonth = issued.plusMonths(1);
