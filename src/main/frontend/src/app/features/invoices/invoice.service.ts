@@ -225,7 +225,8 @@ export interface InvoiceDetail {
   // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
   withholdingPct: string;
   // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
-  // over the workspace's approval limit, or its discount takes off more than a fifth of the subtotal,
+  // over the workspace's approval limit, its discount takes off more than a fifth of the subtotal, or its
+  // client is a HIGH payment risk,
   // and it has not been approved at exactly its total within the last 30 days. Credit notes never need approval.
   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
   // The grand total it was approved at; null when it was not approved.

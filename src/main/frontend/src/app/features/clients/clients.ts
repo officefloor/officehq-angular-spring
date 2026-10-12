@@ -94,6 +94,10 @@ function validTaxNumber(taxNumber: string): boolean {
                 overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue, c.currency) }}</span>,
                 credit <span data-testid="client-credit">{{ money(balanceOf(c.id).credit, c.currency) }}</span>
               </span>
+              <span>
+                Payment risk <span data-testid="client-risk-score">{{ c.riskScore ?? '-' }}</span>
+                <span data-testid="client-risk-band">{{ c.riskBand }}</span>
+              </span>
               @if (c.creditLimit !== null) {
                 <span>
                   Available <span data-testid="client-available">{{ money(availableOf(c), c.currency) }}</span>

@@ -170,7 +170,7 @@ public class InvoiceController {
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
             boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn, String poNumber) {
-        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+        static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
             LocalDate paidOn = i.paidOn(payments, taxRate);
@@ -212,7 +212,7 @@ public class InvoiceController {
                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
                     i.chargedSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
-                    i.getSupplyRegion(), i.approval(taxRate, today),
+                    i.getSupplyRegion(), approval,
                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
                     i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn(), i.getPoNumber());
         }
@@ -471,7 +471,7 @@ public class InvoiceController {
     }
 
     private InvoiceDetail detail(Invoice i) {
-        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date());
+        return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i));
     }
 
     @GetMapping("/api/clients/{clientId}/invoices")

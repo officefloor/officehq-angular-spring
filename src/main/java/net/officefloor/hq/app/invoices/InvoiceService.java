@@ -862,11 +862,13 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
                         + ") is already past; set a later due date before sending the invoice.");
             }
-            if (invoice.approval(taxRate.percent(), today.date()) == Invoice.Approval.NEEDS_APPROVAL) {
+            if (approval(invoice) == Invoice.Approval.NEEDS_APPROVAL) {
                 throw new InvoiceRejectedException(
                         invoice.discountIsLarge()
                                 ? "The discount is more than 20% of the subtotal; approve the invoice before sending it."
-                                : "The grand total is over the approval limit; approve the invoice before sending it.");
+                                : riskOf(invoice.getClientId()).band() == RiskBand.HIGH
+                                        ? "The client pays slowly (HIGH payment risk); approve the invoice before sending it."
+                                        : "The grand total is over the approval limit; approve the invoice before sending it.");
             }
             String overLimit = creditLimitRefusal(invoice);
             if (overLimit != null) {
@@ -892,11 +894,11 @@ public class InvoiceService {
             }
             BigDecimal rate = taxRate.percent();
             LocalDate on = today.date();
-            Invoice.Approval approval = invoice.approval(rate, on);
+            Invoice.Approval approval = approval(invoice);
             if (approval != Invoice.Approval.NEEDS_APPROVAL) {
                 throw new InvoiceRejectedException(approval == Invoice.Approval.APPROVED
                         ? "This invoice is already approved."
-                        : "This invoice is within the approval limit and its discount is not over 20%, so it needs no approval.");
+                        : "This invoice is within the approval limit, its discount is not over 20% and its client is not a HIGH payment risk, so it needs no approval.");
             }
             BigDecimal total = invoice.total(rate);
             invoice.approve(total, on);
@@ -920,7 +922,7 @@ public class InvoiceService {
         loadForClient(clientId).stream()
                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
                         && !invoice.dueDatePassedBy(today.date())
-                        && invoice.approval(taxRate.percent(), today.date()) != Invoice.Approval.NEEDS_APPROVAL)
+                        && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL)
                 .forEach(invoice -> {
                     if (!invoice.isCreditNote()) {
                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
@@ -1952,6 +1954,56 @@ public class InvoiceService {
     @Transactional(readOnly = true)
     public boolean onHold(Long clientId) {
         return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c)).orElse(false);
+    }
+
+    /** How quickly a client pays: LOW under 15 days, MEDIUM under 30, HIGH from 30. */
+    public enum RiskBand {
+        LOW, MEDIUM, HIGH
+    }
+
+    /** A client's payment risk: its score in days to one decimal (null when nothing is paid in full) and its band. */
+    public record Risk(BigDecimal score, RiskBand band) {
+    }
+
+    /** The weight each next payment's days count in the payment risk score. */
+    private static final BigDecimal RISK_WEIGHT = new BigDecimal("0.3");
+
+    /**
+     * The client's payment risk: the days from issue to payment of each of its invoices paid in full (see
+     * {@link Invoice#paidOn}), oldest payment first, averaged with an exponential weight of 0.3 (the first
+     * as it is, then 0.3 of each next and 0.7 of the average so far), rounded half up to one decimal. Part-paid
+     * invoices, credit notes and invoices cleared without a payment do not count; with none the score is null
+     * and the band LOW.
+     */
+    @Transactional(readOnly = true)
+    public Risk riskOf(Long clientId) {
+        List<Invoice> list = loadForClient(clientId).stream()
+                .filter(i -> !i.isCreditNote() && i.getIssueDate() != null).toList();
+        Map<Long, LocalDate> paidOn = paidOn(list);
+        List<Invoice> paid = list.stream().filter(i -> paidOn.containsKey(i.getId()))
+                .sorted(Comparator.comparing((Invoice i) -> paidOn.get(i.getId())).thenComparing(Invoice::getId))
+                .toList();
+        BigDecimal average = null;
+        for (Invoice i : paid) {
+            BigDecimal days = BigDecimal.valueOf(java.time.temporal.ChronoUnit.DAYS.between(i.getIssueDate(), paidOn.get(i.getId())));
+            average = average == null ? days
+                    : RISK_WEIGHT.multiply(days).add(BigDecimal.ONE.subtract(RISK_WEIGHT).multiply(average));
+        }
+        if (average == null) {
+            return new Risk(null, RiskBand.LOW);
+        }
+        BigDecimal score = average.setScale(1, RoundingMode.HALF_UP);
+        RiskBand band = score.compareTo(BigDecimal.valueOf(15)) < 0 ? RiskBand.LOW
+                : score.compareTo(BigDecimal.valueOf(30)) < 0 ? RiskBand.MEDIUM : RiskBand.HIGH;
+        return new Risk(score, band);
+    }
+
+    /** Whether the invoice needs approval before it is sent (see {@link Invoice#approval}), as of today. */
+    @Transactional(readOnly = true)
+    public Invoice.Approval approval(Invoice invoice) {
+        boolean highRisk = invoice.isDraft() && !invoice.isCreditNote()
+                && riskOf(invoice.getClientId()).band() == RiskBand.HIGH;
+        return invoice.approval(taxRate.percent(), today.date(), highRisk);
     }
 
     /** Whether the client's balance is over its credit limit; false if no such client or it has no limit. */
