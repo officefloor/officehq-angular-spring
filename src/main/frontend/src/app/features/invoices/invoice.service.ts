@@ -13,6 +13,8 @@ import { Currency } from './invoice-format';
 // credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice with nothing due
 // but retention still held back is RETENTION_HELD instead of PAID. A sent invoice written off as a bad
 // debt is WRITTEN_OFF for good: it owes nothing, earns no more interest and takes no payments.
+// A sent invoice in dispute is DISPUTED until the dispute is resolved: it earns no interest, is not
+// overdue and takes no payments.
 export type InvoiceStatus =
   | 'DRAFT'
   | 'SENT'
@@ -24,7 +26,8 @@ export type InvoiceStatus =
   | 'CREDIT_NOTE'
   | 'CREDITED'
   | 'RETENTION_HELD'
-  | 'WRITTEN_OFF';
+  | 'WRITTEN_OFF'
+  | 'DISPUTED';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
@@ -196,6 +199,10 @@ export interface InvoiceDetail {
   // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
   // owed then, late charges and retention included, is in `writtenOff`.
   writtenOffOn: string | null;
+  // The day (yyyy-mm-dd) it was last disputed, null when never, and the day that dispute was resolved,
+  // null while it is open.
+  disputedOn: string | null;
+  disputeResolvedOn: string | null;
   // Whether it is reverse charged: its client is registered (a valid tax number whose two letters are
   // their region's code) outside the workspace's home region and accounts for the tax itself, so no line is taxed.
   reverseCharge: boolean;
@@ -396,6 +403,17 @@ export class InvoiceService {
   // invoice or one with nothing owed.
   writeOff(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/write-off`, null);
+  }
+
+  // Puts a sent invoice that still has something due in dispute. Refused (409) on a draft, an invoice
+  // with nothing due or one already in dispute.
+  dispute(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/dispute`, null);
+  }
+
+  // Ends the dispute on an invoice; interest runs again from today on what is still owed.
+  resolveDispute(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/resolve-dispute`, null);
   }
 
   // Waives the late interest still unpaid on an overdue invoice; interest starts again

@@ -717,6 +717,19 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
         }
 
+        @if (inv.status === 'DISPUTED') {
+          <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
+            Resolve dispute
+          </button>
+        } @else if (inv.creditOf === null) {
+          <button type="button" data-testid="invoice-dispute" [disabled]="disputing()" (click)="dispute(inv.id)">
+            Dispute
+          </button>
+        }
+        @if (disputeError()) {
+          <p role="alert" data-testid="invoice-dispute-error">{{ disputeError() }}</p>
+        }
+
         @if (inv.creditOf === null) {
           <p>
             Approval:
@@ -960,6 +973,8 @@ export class InvoicePanel {
   protected readonly waiveError = signal('');
   protected readonly writingOff = signal(false);
   protected readonly writeOffError = signal('');
+  protected readonly disputing = signal(false);
+  protected readonly disputeError = signal('');
   protected readonly approving = signal(false);
   protected readonly approveError = signal('');
   protected readonly sending = signal(false);
@@ -1065,6 +1080,7 @@ export class InvoicePanel {
       this.waiveError.set('');
       this.skipError.set('');
       this.writeOffError.set('');
+      this.disputeError.set('');
       this.sendError.set('');
       this.approveError.set('');
       this.voidError.set('');
@@ -1448,6 +1464,40 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The invoice could not be written off.',
         );
         this.writingOff.set(false);
+      },
+    });
+  }
+
+  protected dispute(invoiceId: number): void {
+    this.disputing.set(true);
+    this.disputeError.set('');
+    this.service.dispute(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.disputing.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The invoice could not be disputed.');
+        this.disputing.set(false);
+      },
+    });
+  }
+
+  protected resolveDispute(invoiceId: number): void {
+    this.disputing.set(true);
+    this.disputeError.set('');
+    this.service.resolveDispute(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.disputing.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The dispute could not be resolved.');
+        this.disputing.set(false);
       },
     });
   }

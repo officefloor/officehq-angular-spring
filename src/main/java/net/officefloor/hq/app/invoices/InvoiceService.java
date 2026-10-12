@@ -667,6 +667,63 @@ public class InvoiceService {
     }
 
     /**
+     * Puts a sent invoice that still has something due in dispute today, and records it with the amount
+     * due in the audit; empty if no such invoice. While in dispute it earns no interest (what was charged
+     * before stays), is not overdue and takes no payments. A draft, a void or written-off invoice, a credit
+     * note, one already in dispute or one with nothing due is refused.
+     */
+    @Transactional
+    public Optional<Invoice> dispute(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isDraft()) {
+                throw new InvoiceRejectedException("A draft cannot be disputed; only a sent invoice can.");
+            }
+            if (invoice.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice cannot be disputed.");
+            }
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be disputed.");
+            }
+            if (invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("A written-off invoice cannot be disputed.");
+            }
+            if (invoice.isDisputed()) {
+                throw new InvoiceRejectedException("This invoice is already in dispute.");
+            }
+            BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
+            BigDecimal due = invoice.amountDue(paid, taxRate.percent());
+            if (due.signum() <= 0) {
+                throw new InvoiceRejectedException("There is nothing due on this invoice to dispute.");
+            }
+            invoice.dispute(today.date());
+            invoices.saveAndFlush(invoice);
+            withInterest(List.of(invoice));
+            audit.record("INVOICE_DISPUTED id=" + invoice.getId() + " amount=" + due.toPlainString());
+        });
+        return found;
+    }
+
+    /**
+     * Resolves the dispute on an invoice today, and records it in the audit; empty if no such invoice.
+     * Interest runs again from today on what is still owed. Refused when it is not in dispute.
+     */
+    @Transactional
+    public Optional<Invoice> resolveDispute(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (!invoice.isDisputed()) {
+                throw new InvoiceRejectedException("This invoice is not in dispute.");
+            }
+            invoice.resolveDispute(today.date());
+            invoices.saveAndFlush(invoice);
+            withInterest(List.of(invoice));
+            audit.record("DISPUTE_RESOLVED id=" + invoice.getId());
+        });
+        return found;
+    }
+
+    /**
      * Puts a single price for the unit type on the client's rate card: replaces the price of its entry in force
      * today (its date, increment, minimum units and tax rate are kept), or adds an entry that has always applied
      * when none is; empty if no such client. The price has already been checked. The lines of the client's drafts
@@ -1296,6 +1353,9 @@ public class InvoiceService {
             if (invoice.isWrittenOff()) {
                 throw new InvoiceRejectedException("A written-off invoice takes no more payments.");
             }
+            if (invoice.isDisputed()) {
+                throw new InvoiceRejectedException("The invoice is in dispute: resolve the dispute before recording a payment.");
+            }
             boolean cash = method == PaymentMethod.CASH;
             if (cash && paidIn != null && paidIn != invoice.currency()) {
                 throw new InvoiceRejectedException("Cash is paid only in the client's own currency ("
@@ -1446,6 +1506,9 @@ public class InvoiceService {
                 if (invoice.isCreditNote()) {
                     throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
                 }
+                if (invoice.isDisputed()) {
+                    throw new InvoiceRejectedException(number + " is in dispute and takes no payments.");
+                }
                 if (quoted.amount() == null) {
                     named.add(invoice.getId());
                     continue;
@@ -1489,13 +1552,13 @@ public class InvoiceService {
     }
 
     /**
-     * The sent invoices among these (not drafts, void invoices or credit notes) in the payment order:
+     * The sent invoices among these (not drafts, void invoices, credit notes or invoices in dispute) in the payment order:
      * the overdue ones first, earliest due date first, then the rest from the largest amount due to the
      * smallest; lower id first on a tie. Fills in what each has due.
      */
     private List<Invoice> inPaymentOrder(List<Invoice> candidates, Map<Long, BigDecimal> dues) {
         List<Invoice> unordered = candidates.stream()
-                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
+                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote() && !i.isDisputed())
                 .toList();
         Map<Long, BigDecimal> paid = paid(unordered);
         LocalDate now = today.date();
@@ -1623,6 +1686,9 @@ public class InvoiceService {
             }
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
+            }
+            if (invoice.isDisputed()) {
+                throw new InvoiceRejectedException(number + " is in dispute and takes no payments.");
             }
             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());

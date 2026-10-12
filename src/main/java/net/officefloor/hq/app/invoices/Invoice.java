@@ -139,6 +139,14 @@ public class Invoice {
     @Column(name = "written_off_on")
     private LocalDate writtenOffOn;
 
+    /** The day the client disputed the invoice; null when it has never been disputed. */
+    @Column(name = "disputed_on")
+    private LocalDate disputedOn;
+
+    /** The day the dispute was resolved; null while it is open or when there has been none. */
+    @Column(name = "dispute_resolved_on")
+    private LocalDate disputeResolvedOn;
+
     /** How many monthly instalments the invoice is spread over; null when it has no plan. */
     @Column(name = "instalments")
     private Integer instalments;
@@ -845,6 +853,35 @@ public class Invoice {
         this.interestWaivedOn = on;
     }
 
+    /** The day the client disputed the invoice; null when it has never been disputed. */
+    public LocalDate getDisputedOn() {
+        return disputedOn;
+    }
+
+    /** The day the dispute was resolved; null while it is open or when there has been none. */
+    public LocalDate getDisputeResolvedOn() {
+        return disputeResolvedOn;
+    }
+
+    /**
+     * Whether the invoice is in dispute: it earns no interest, is not overdue and takes no payments
+     * until the dispute is resolved.
+     */
+    public boolean isDisputed() {
+        return disputedOn != null && disputeResolvedOn == null;
+    }
+
+    /** Puts the invoice in dispute from the given day. */
+    public void dispute(LocalDate on) {
+        this.disputedOn = on;
+        this.disputeResolvedOn = null;
+    }
+
+    /** Resolves the dispute on the given day; interest runs again from then. */
+    public void resolveDispute(LocalDate on) {
+        this.disputeResolvedOn = on;
+    }
+
     /** The day the invoice was written off as a bad debt; null when it was not. */
     public LocalDate getWrittenOffOn() {
         return writtenOffOn;
@@ -1161,7 +1198,7 @@ public class Invoice {
         for (Part part : inOrder) {
             if (waiveOn != null && part.on().isAfter(waiveOn)) {
                 if (owed.signum() > 0) {
-                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                    BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
                 }
@@ -1171,7 +1208,7 @@ public class Invoice {
                 waiveOn = null;
             }
             if (part.on().isAfter(from) && owed.signum() > 0) {
-                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
+                BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
                 from = part.on();
@@ -1188,7 +1225,7 @@ public class Invoice {
         }
         if (waiveOn != null) {
             if (owed.signum() > 0) {
-                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
             }
@@ -1196,7 +1233,7 @@ public class Invoice {
             interestWaived = unpaidInterest;
         }
         if (owed.signum() > 0) {
-            charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+            charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
         }
         this.lateInterest = charged.subtract(interestWaived);
         this.lateWaived = interestWaived;
@@ -1257,7 +1294,7 @@ public class Invoice {
         for (Part part : toRetention) {
             if (waiveOn != null && part.on().isAfter(waiveOn)) {
                 if (owed.signum() > 0) {
-                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                    BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
                 }
@@ -1267,7 +1304,7 @@ public class Invoice {
                 waiveOn = null;
             }
             if (part.on().isAfter(from) && owed.signum() > 0) {
-                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
+                BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
                 from = part.on();
@@ -1280,7 +1317,7 @@ public class Invoice {
         }
         if (waiveOn != null) {
             if (owed.signum() > 0) {
-                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
+                BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
                 charged = charged.add(earned);
                 unpaidInterest = unpaidInterest.add(earned);
             }
@@ -1288,7 +1325,7 @@ public class Invoice {
             waived = unpaidInterest;
         }
         if (owed.signum() > 0) {
-            charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+            charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
         }
         this.retentionInterest = charged.subtract(waived);
         this.lateInterest = this.lateInterest.add(retentionInterest);
@@ -1351,7 +1388,7 @@ public class Invoice {
             for (int j = 0; j < left.length; j++) {
                 Part part = inOrder.get(j);
                 if (late && part.on().isAfter(from) && owed.signum() > 0) {
-                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
+                    BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
                     from = part.on();
@@ -1364,13 +1401,27 @@ public class Invoice {
                 left[j] = left[j].subtract(toInterest);
             }
             if (late && owed.signum() > 0) {
-                charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
+                charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
             }
             charges.add(charged.setScale(scale(), RoundingMode.HALF_UP));
             total = total.add(charged);
         }
         this.instalmentInterest = charges;
         this.lateInterest = total;
+    }
+
+    /**
+     * The days from one day to another that earn interest: those spent in dispute (from the day it was
+     * disputed up to the day it was resolved, or for good while it is still open) earn none.
+     */
+    private long interestDays(LocalDate from, LocalDate to) {
+        long days = ChronoUnit.DAYS.between(from, to);
+        if (disputedOn == null || days <= 0) {
+            return days;
+        }
+        LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
+        LocalDate end = disputeResolvedOn == null || to.isBefore(disputeResolvedOn) ? to : disputeResolvedOn;
+        return days - Math.max(0, ChronoUnit.DAYS.between(start, end));
     }
 
     /** The interest the balance earns over the days at the daily growth factor, rounded half up to the cent. */
@@ -1878,6 +1929,9 @@ public class Invoice {
         }
         if (isWrittenOff()) {
             return InvoiceStatus.WRITTEN_OFF;
+        }
+        if (isDisputed()) {
+            return InvoiceStatus.DISPUTED;
         }
         BigDecimal amountDue = amountDue(paid, taxRate);
         boolean due = amountDue.signum() > 0;

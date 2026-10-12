@@ -17,7 +17,9 @@ package net.officefloor.hq.app.invoices;
  * paid; that follows from its retention and payments and is never stored.
  * A sent invoice written off as a bad debt is written off for good: it owes nothing, earns no more
  * interest and takes no payments; that follows from the day it was written off.
+ * A sent invoice in dispute is disputed until the dispute is resolved: it earns no interest, is not
+ * overdue and takes no payments; that follows from the days it was disputed and resolved.
  */
 public enum InvoiceStatus {
-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD, WRITTEN_OFF
+    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD, WRITTEN_OFF, DISPUTED
 }
