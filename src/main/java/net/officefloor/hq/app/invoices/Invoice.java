@@ -967,6 +967,22 @@ public class Invoice {
         return isInvoiceDisputed() || hasDisputedMilestones();
     }
 
+    /**
+     * The day its oldest open dispute was raised (the invoice itself, wholly or over particular lines, or a
+     * reached milestone); null when none is open.
+     */
+    public LocalDate oldestOpenDisputeOn() {
+        LocalDate oldest = isInvoiceDisputed() ? disputedOn : null;
+        if (isBilledByMilestones()) {
+            for (Milestone m : milestones) {
+                if (m.isReached() && m.isDisputed() && (oldest == null || m.getDisputedOn().isBefore(oldest))) {
+                    oldest = m.getDisputedOn();
+                }
+            }
+        }
+        return oldest;
+    }
+
     /** Whether the invoice itself (wholly or over particular lines) is in an open dispute. */
     private boolean isInvoiceDisputed() {
         return disputedOn != null && disputeResolvedOn == null;

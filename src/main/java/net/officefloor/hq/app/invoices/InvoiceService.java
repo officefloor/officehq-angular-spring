@@ -2105,7 +2105,7 @@ public class InvoiceService {
         if (client.isEmpty()) {
             return Optional.empty();
         }
-        if (client.get().isOnHold()) {
+        if (client.get().isOnHold() || longDispute(clientId)) {
             throw new InvoiceRejectedException("The client is on hold: lift the hold before applying their credit.");
         }
         Map<String, Long> drafts = holdersByReference(clientId);
@@ -2423,12 +2423,28 @@ public class InvoiceService {
 
     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
     /**
-     * Whether the client is on hold: put on hold by hand, or its balance less what is in dispute is over its credit limit; false
-     * if no such client.
+     * Whether the client is on hold: put on hold by hand, its balance less what is in dispute is over its credit limit,
+     * or it has a long dispute (see {@link #longDispute}); false if no such client.
      */
     @Transactional(readOnly = true)
     public boolean onHold(Long clientId) {
-        return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c)).orElse(false);
+        return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c) || longDispute(c.getId())).orElse(false);
+    }
+
+    /** How many days a dispute may stay open before its client is put on hold. */
+    private static final int LONG_DISPUTE_DAYS = 30;
+
+    /**
+     * Whether any of the client's disputes (a whole invoice, some lines or a milestone) has been open for more
+     * than 30 days today: the client is then on hold until that dispute is resolved.
+     */
+    @Transactional(readOnly = true)
+    public boolean longDispute(Long clientId) {
+        LocalDate limit = today.date().minusDays(LONG_DISPUTE_DAYS);
+        return invoices.findByClientIdOrderByIdAsc(clientId).stream()
+                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
+                .map(Invoice::oldestOpenDisputeOn)
+                .anyMatch(on -> on != null && on.isBefore(limit));
     }
 
     /** The client's yearly percentage rise of its typed recurring prices; zero when none or no such client. */
