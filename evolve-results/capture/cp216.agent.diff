@@ -1,0 +1,82 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 84fea6a..afcc171 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -6,7 +6,7 @@ import { Currency } from './invoice-format';
+ // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
+ // nothing is due, or PAID_LATE when the payment that cleared it (payments in date order) came after
+ // its due date; it is OVERDUE while something is still due more than its client's grace period
+-// (graceDays, a week unless set otherwise) after its due date, part paid or not.
++// (graceDays, a week unless set otherwise; none for a HIGH payment risk client) after its due date, part paid or not.
+ // The server works this out from its payments and today's date. A VOID invoice was voided while sent
+ // and unpaid: it no longer counts towards the balance, takes no payments and cannot be changed.
+ // A credit note is a DRAFT until it is issued, then CREDIT_NOTE for good; a sent invoice whose issued
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index cfbe303..dcd0131 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -528,6 +528,13 @@ public class Invoice {
+     @Transient
+     private boolean highRiskClient;
+ 
++    /**
++     * Whether the grace period is dropped because the client is a HIGH payment risk on its other invoices
++     * (see {@link #dropGrace}); not stored, worked out again each time the invoice is read.
++     */
++    @Transient
++    private boolean graceDropped;
++
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -1507,6 +1514,11 @@ public class Invoice {
+         this.highRiskClient = highRisk;
+     }
+ 
++    /** Drops the grace period (or gives it back): a HIGH payment risk client's invoices are overdue the day after they fall due. */
++    public void dropGrace(boolean dropped) {
++        this.graceDropped = dropped;
++    }
++
+     /**
+      * The total a draft is judged and approved on at the tax rate: the grand total.
+      */
+@@ -2279,9 +2291,12 @@ public class Invoice {
+ 
+     /**
+      * Days past its due date this invoice is given before it becomes overdue: its client's grace
+-     * period, else their region's, else the standard week.
++     * period, else their region's, else the standard week; none for a HIGH payment risk client (see {@link #dropGrace}).
+      */
+     public int graceDays() {
++        if (graceDropped) {
++            return 0;
++        }
+         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 60fe3a7..7bb1dcc 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -151,6 +151,7 @@ public class InvoiceService {
+             i.withholdEarlyPay(band != RiskBand.LOW);
+             i.halveApprovalLimit(band == RiskBand.MEDIUM);
+             i.markHighRisk(band == RiskBand.HIGH);
++            i.dropGrace(band == RiskBand.HIGH);
+             if (band == RiskBand.HIGH) {
+                 i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index 562fe20..c62c239 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -5,7 +5,7 @@ package net.officefloor.hq.app.invoices;
+  * part paid while some of it has been paid and some is still due, and paid once nothing is due, or
+  * paid late when the payment that cleared it (taking payments in date order) came after its due date;
+  * those follow from its payments and are never stored. A sent invoice with something still due
+- * more than its client's grace period (a week unless set otherwise) after its due date is overdue, part paid or not; that follows from the date and is never stored.
++ * more than its client's grace period (a week unless set otherwise; none for a HIGH payment risk client) after its due date is overdue, part paid or not; that follows from the date and is never stored.
+  * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
+  * payments or changes.
+  * A credit note is a draft until it is issued, when it becomes CREDIT_NOTE for good. A sent invoice
