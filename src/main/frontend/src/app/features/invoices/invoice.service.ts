@@ -236,7 +236,7 @@ export interface InvoiceDetail {
   // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after its client's tier's days (90 KEY, 7 NEW, else 30).
   approvedOn: string | null;
   // How many approvals it still needs before it is sent (0 when none): a draft whose grand total is
-  // more than twice the approval limit needs two approvals of that same total.
+  // more than one and a half times the approval limit, or of a HIGH payment risk client, needs two approvals of that same total.
   approvalsNeeded: number;
   // How many approvals it has at its grand total.
   approvals: number;

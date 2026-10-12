@@ -141,6 +141,7 @@ public class InvoiceService {
             RiskBand band = riskOf(others, paidOn).band();
             i.withholdEarlyPay(band != RiskBand.LOW);
             i.halveApprovalLimit(band == RiskBand.MEDIUM);
+            i.markHighRisk(band == RiskBand.HIGH);
             if (band == RiskBand.HIGH) {
                 i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
             }
@@ -1178,7 +1179,7 @@ public class InvoiceService {
     /**
      * Approves a draft whose grand total is over the workspace's approval limit, whose discount takes
      * off more than a fifth of the subtotal, or that would take its client over its credit limit, keeping that total and the day,
-     * and records it in the audit; empty if no such invoice. A draft more than twice over the limit needs a
+     * and records it in the audit; empty if no such invoice. A draft more than one and a half times the limit, or of a HIGH payment risk client, needs a
      * second approval of the same total. An invoice that needs no approval, or is already approved at its total, is refused.
      */
     @Transactional
@@ -2519,6 +2520,7 @@ public class InvoiceService {
         RiskBand band = riskOf(invoice.getClientId()).band();
         invoice.halveApprovalLimit(band == RiskBand.MEDIUM);
         boolean highRisk = invoice.isDraft() && !invoice.isCreditNote() && band == RiskBand.HIGH;
+        invoice.markHighRisk(highRisk);
         boolean overCreditLimit = invoice.isDraft() && !invoice.isCreditNote() && wouldGoOverLimit(invoice);
         return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit);
     }

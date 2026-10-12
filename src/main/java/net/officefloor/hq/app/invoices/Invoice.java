@@ -511,6 +511,13 @@ public class Invoice {
     @Transient
     private boolean approvalLimitHalved;
 
+    /**
+     * Whether the client is a HIGH payment risk, so the draft needs two approvals whatever its size (see
+     * {@link #markHighRisk}); not stored, worked out again each time the invoice is read.
+     */
+    @Transient
+    private boolean highRiskClient;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -1325,6 +1332,11 @@ public class Invoice {
         this.approvalLimitHalved = halved;
     }
 
+    /** Marks the client as a HIGH payment risk (or not): every draft of such a client needs two approvals. */
+    public void markHighRisk(boolean highRisk) {
+        this.highRiskClient = highRisk;
+    }
+
     /**
      * The total a draft is judged and approved on at the tax rate: the plan total (with its interest and plan fee)
      * when it has an instalment plan, else the grand total.
@@ -1346,8 +1358,8 @@ public class Invoice {
      * it was approved at and no more than {@link #approvalDays} days have passed since it was approved.
      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
-     * (overCreditLimit). A draft whose grand total is more than twice the approval limit needs
-     * {@link #approvalsRequired two approvals} of that same total.
+     * (overCreditLimit). A draft whose grand total is more than one and a half times the approval limit, or
+     * of a HIGH payment risk client, needs {@link #approvalsRequired two approvals} of that same total.
      */
     public Approval approval(BigDecimal taxRate, LocalDate today, boolean highRisk, boolean overCreditLimit) {
         if (isCreditNote()) {
@@ -1364,10 +1376,16 @@ public class Invoice {
         return approvalsAt(total, today) < approvalsRequired(taxRate) ? Approval.NEEDS_APPROVAL : Approval.APPROVED;
     }
 
-    /** The approvals a draft needs: two when its grand total is more than twice the approval limit, else one. */
+    /**
+     * The approvals a draft needs: two when its client is a HIGH payment risk or its grand total is more than
+     * one and a half times the approval limit, else one.
+     */
     public int approvalsRequired(BigDecimal taxRate) {
+        if (highRiskClient) {
+            return 2;
+        }
         BigDecimal limit = approvalLimit();
-        return limit != null && approvalTotal(taxRate).compareTo(limit.multiply(BigDecimal.valueOf(2))) > 0 ? 2 : 1;
+        return limit != null && approvalTotal(taxRate).compareTo(limit.multiply(new BigDecimal("1.5"))) > 0 ? 2 : 1;
     }
 
     /**
