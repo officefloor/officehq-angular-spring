@@ -145,10 +145,11 @@ public class InvoiceService {
                 paidOn.put(i.getId(), on);
             }
         });
+        Map<Long, LocalDate> riskOn = withFinalNoticesUnpaid(all, paidOn);
         list.forEach(i -> {
             List<Invoice> others = all.stream()
                     .filter(o -> o.getClientId().equals(i.getClientId()) && !o.getId().equals(i.getId())).toList();
-            RiskBand band = riskOf(others, paidOn).band();
+            RiskBand band = riskOf(others, riskOn).band();
             i.withholdEarlyPay(band != RiskBand.LOW);
             i.halveApprovalLimit(band == RiskBand.MEDIUM);
             i.markHighRisk(band == RiskBand.HIGH);
@@ -3011,13 +3012,35 @@ public class InvoiceService {
      * see {@link Invoice#paidOn}, less its due date; 0 when paid by the due date), oldest payment first, averaged
      * with an exponential weight of 0.5 (the first as it is, then 0.5 of each next and 0.5 of the average so far),
      * rounded half up to one decimal. An invoice
-     * written off by hand counts as paid in full on the day it was written off. Part-paid invoices, credit notes and invoices cleared without a payment do not count; with none the score is null
+     * written off by hand counts as paid in full on the day it was written off, and an invoice still overdue after its
+     * final notice as paid today (see {@link #withFinalNoticesUnpaid}). Part-paid invoices, credit notes and invoices cleared without a payment do not count; with none the score is null
      * and the band LOW.
      */
     @Transactional(readOnly = true)
     public Risk riskOf(Long clientId) {
         List<Invoice> list = loadForClient(clientId);
-        return riskOf(list, paidOn(list));
+        return riskOf(list, withFinalNoticesUnpaid(list, paidOn(list)));
+    }
+
+    /**
+     * The paid dates the payment risk is judged on: each fully paid invoice's paid date, and today for each sent
+     * invoice still overdue today after its final notice went out, as if paid today with its days late so far.
+     */
+    private Map<Long, LocalDate> withFinalNoticesUnpaid(List<Invoice> list, Map<Long, LocalDate> paidOn) {
+        List<Invoice> chased = list.stream()
+                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote() && !paidOn.containsKey(i.getId())
+                        && i.getReminders().size() >= DunningLevel.FINAL.reminders())
+                .toList();
+        if (chased.isEmpty()) {
+            return paidOn;
+        }
+        Map<Long, LocalDate> riskOn = new HashMap<>(paidOn);
+        Map<Long, BigDecimal> paid = paid(chased);
+        BigDecimal rate = taxRate.percent();
+        LocalDate now = today.date();
+        chased.stream().filter(i -> i.statusWhenPaid(paid.get(i.getId()), rate, now) == InvoiceStatus.OVERDUE)
+                .forEach(i -> riskOn.put(i.getId(), now));
+        return riskOn;
     }
 
     /** The payment risk the invoices give (see {@link #riskOf(Long)}), each paid in full on its date in paidOn. */
@@ -3052,7 +3075,7 @@ public class InvoiceService {
     private RiskBand bandOfOthers(Invoice invoice) {
         List<Invoice> others = loadForClient(invoice.getClientId()).stream()
                 .filter(o -> !o.getId().equals(invoice.getId())).toList();
-        return riskOf(others, paidOn(others)).band();
+        return riskOf(others, withFinalNoticesUnpaid(others, paidOn(others))).band();
     }
 
     /** Whether the invoice needs approval before it is sent (see {@link Invoice#approval}), as of today. */
