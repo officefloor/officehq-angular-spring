@@ -1013,6 +1013,8 @@ export class InvoicePanel {
   readonly split = output<InvoiceSummary[]>();
   // A new draft copied from this invoice, to be listed and opened.
   readonly duplicated = output<InvoiceDetail>();
+  // The next period was generated: the new invoice, sent at once when nothing stopped it.
+  readonly generated = output<InvoiceDetail>();
   // A new draft credit note against this invoice, to be listed and opened.
   readonly credited = output<InvoiceDetail>();
   // A credit note was issued against the invoice (this invoice's new detail), so the client's invoices
@@ -1777,7 +1779,7 @@ export class InvoicePanel {
     this.service.generate(invoiceId).subscribe({
       next: (detail) => {
         this.generating.set(false);
-        this.duplicated.emit(detail);
+        this.generated.emit(detail);
       },
       error: (e: HttpErrorResponse) => {
         const detail: unknown = e.error?.detail;

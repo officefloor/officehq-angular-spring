@@ -207,7 +207,8 @@ public class InvoiceService {
      * Generates the next period's draft of a sent recurring invoice (see {@link Invoice#nextPeriod}), issued today and
      * due as any new invoice is, and records it in the audit; empty if no such invoice. A draft, an invoice that is
      * not recurring or has no line with a service period, one that has already generated its next period, one whose next
-     * period would start after its end date, or one for a client on hold is refused.
+     * period would start after its end date, or one for a client on hold is refused. The draft is sent at once, as
+     * {@link #send} would, when nothing stops it: no approval, deposit or more than the client's credit limit needed.
      */
     @Transactional
     public Optional<Invoice> generateNext(Long invoiceId) {
@@ -238,6 +239,9 @@ public class InvoiceService {
             // Read again how far through the bands a copied tiered line's units reach.
             entityManager.refresh(next);
             audit.record("INVOICE_GENERATED from=" + original.number() + " to=" + next.number());
+            if (sendable(next) && creditLimitRefusal(next) == null) {
+                markSent(next);
+            }
             return next;
         });
     }
@@ -1077,11 +1081,7 @@ public class InvoiceService {
             return;
         }
         loadForClient(clientId).stream()
-                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
-                        && !invoice.dueDatePassedBy(today.date())
-                        && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL
-                        && milestoneRefusal(invoice) == null
-                        && (invoice.isCreditNote() || depositRefusal(invoice) == null))
+                .filter(this::sendable)
                 .forEach(invoice -> {
                     if (!invoice.isCreditNote()) {
                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
@@ -1093,6 +1093,19 @@ public class InvoiceService {
                         issue(invoice);
                     }
                 });
+    }
+
+    /**
+     * Whether nothing but the client's credit limit stops the draft being sent as {@link #send} would: it has
+     * lines, its due date set by hand is not past, it needs no approval, its milestones allow it and any
+     * deposit it needs is held. The client's hold is checked by the caller.
+     */
+    private boolean sendable(Invoice invoice) {
+        return invoice.isDraft() && !invoice.getLines().isEmpty()
+                && !invoice.dueDatePassedBy(today.date())
+                && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL
+                && milestoneRefusal(invoice) == null
+                && (invoice.isCreditNote() || depositRefusal(invoice) == null);
     }
 
     /**

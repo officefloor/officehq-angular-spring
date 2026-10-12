@@ -525,7 +525,7 @@ export class InvoiceService {
 
   // Generates the next period's draft of a sent recurring invoice: its lines with a service period moved
   // to the calendar month after the latest period end, with its percentage discount and surcharge,
-  // issued today and due as any new invoice. Answers the new draft.
+  // issued today and due as any new invoice, and sent at once when nothing stops it. Answers the new invoice.
   generate(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/generate`, null);
   }

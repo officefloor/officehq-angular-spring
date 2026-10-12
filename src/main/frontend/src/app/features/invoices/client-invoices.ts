@@ -101,6 +101,7 @@ import { Currency, money, statusLabel } from './invoice-format';
         (changed)="totalChanged($event)"
         (split)="splitRecorded($event)"
         (duplicated)="duplicated($event)"
+        (generated)="generated($event)"
         (credited)="duplicated($event)"
         (creditIssued)="creditIssued()"
       />
@@ -224,6 +225,14 @@ export class ClientInvoices {
       list.some((i) => i.id === id) ? list.map((i) => (i.id === id ? { ...i, ...row } : i)) : [...list, row],
     );
     this.selectedId.set(id);
+  }
+
+  // The next period was generated: list it and open it; when it was sent at once the client's balance moved.
+  protected generated(detail: InvoiceDetail): void {
+    this.duplicated(detail);
+    if (detail.status !== 'DRAFT') {
+      this.changed.emit();
+    }
   }
 
   // A credit note was issued against the open invoice: list it with the invoices' new statuses.
