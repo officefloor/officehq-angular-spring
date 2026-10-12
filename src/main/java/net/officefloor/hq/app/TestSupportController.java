@@ -56,7 +56,7 @@ public class TestSupportController {
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold");
     private static final Set<String> INVOICE_FIELDS =
             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "lineItems");
-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
+    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
@@ -457,8 +457,17 @@ public class TestSupportController {
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 Object[] price = linePrice(invoiceId, line);
+                LocalDate[] period = {
+                        line.get("periodStart") == null ? null : date(line.get("periodStart"), "invoices[].lineItems[].periodStart"),
+                        line.get("periodEnd") == null ? null : date(line.get("periodEnd"), "invoices[].lineItems[].periodEnd")};
+                if ((period[0] == null) != (period[1] == null)) {
+                    throw refuse("invoices[].lineItems[].periodStart and periodEnd must be given together");
+                }
+                if (period[0] != null && period[1].isBefore(period[0])) {
+                    throw refuse("invoices[].lineItems[].periodEnd must not be before periodStart");
+                }
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         price[0], price[1],
@@ -469,7 +478,8 @@ public class TestSupportController {
                         line.get("unitType") == null ? null : line.get("unitType").toString(),
                         lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"),
                         flag(line.get("overtime"), "invoices[].lineItems[].overtime"),
-                        price[2], price[3]);
+                        price[2], price[3],
+                        period[0], period[1]);
             }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
@@ -793,7 +803,7 @@ public class TestSupportController {
                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
                     }
                     row.put("lineItems", jdbc.queryForList(
-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
                                 Map<String, Object> line = new LinkedHashMap<>();
                                 line.put("id", l.get("ID"));
@@ -811,6 +821,10 @@ public class TestSupportController {
                                 }
                                 if (l.get("CREDIT_OF_LINE") != null) {
                                     line.put("creditOfLine", l.get("CREDIT_OF_LINE"));
+                                }
+                                if (l.get("PERIOD_START") != null) {
+                                    line.put("periodStart", l.get("PERIOD_START").toString());
+                                    line.put("periodEnd", l.get("PERIOD_END").toString());
                                 }
                                 return line;
                             }).toList());

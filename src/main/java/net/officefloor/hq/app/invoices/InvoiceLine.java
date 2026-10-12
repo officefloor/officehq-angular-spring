@@ -11,7 +11,9 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import net.officefloor.hq.app.clients.RateTiers;
 
 /**
@@ -107,6 +109,17 @@ public class InvoiceLine {
     @Column(name = "rate_priced")
     private boolean ratePriced;
 
+    /**
+     * The first day of the service period the line is billed for; null for none. With a period the line's quantity times unit price is
+     * the price of a whole month, charged by calendar month for the days of the period (both ends included).
+     */
+    @Column(name = "period_start")
+    private LocalDate periodStart;
+
+    /** The last day of the line's service period, never before its first; null for none. */
+    @Column(name = "period_end")
+    private LocalDate periodEnd;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -145,6 +158,8 @@ public class InvoiceLine {
     public InvoiceLine copy() {
         InvoiceLine copy = new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
         copy.ratePriced = ratePriced;
+        copy.periodStart = periodStart;
+        copy.periodEnd = periodEnd;
         return copy;
     }
 
@@ -170,6 +185,38 @@ public class InvoiceLine {
         this.taxExempt = taxExempt;
         this.discountPct = discountPct;
         this.taxRate = taxRate;
+    }
+
+    /** Sets the line's service period (both null for none); it has already been checked. */
+    void setPeriod(LocalDate periodStart, LocalDate periodEnd) {
+        this.periodStart = periodStart;
+        this.periodEnd = periodEnd;
+    }
+
+    public LocalDate getPeriodStart() {
+        return periodStart;
+    }
+
+    public LocalDate getPeriodEnd() {
+        return periodEnd;
+    }
+
+    /**
+     * The share of a whole month the line's service period comes to: for each calendar month it touches, the days of the period in
+     * that month over the days in that month, added up exactly; null when the line has no period.
+     */
+    private BigDecimal periodMonths() {
+        if (periodStart == null || periodEnd == null) {
+            return null;
+        }
+        BigDecimal months = BigDecimal.ZERO;
+        for (LocalDate from = periodStart; !from.isAfter(periodEnd); from = from.withDayOfMonth(1).plusMonths(1)) {
+            LocalDate monthEnd = from.withDayOfMonth(from.lengthOfMonth());
+            LocalDate to = periodEnd.isBefore(monthEnd) ? periodEnd : monthEnd;
+            months = months.add(BigDecimal.valueOf(to.getDayOfMonth() - from.getDayOfMonth() + 1)
+                    .divide(BigDecimal.valueOf(from.lengthOfMonth()), MathContext.DECIMAL128));
+        }
+        return months;
     }
 
     /** Whether the line's price comes from its client's rate card. */
@@ -310,9 +357,14 @@ public class InvoiceLine {
                 bands = new RateTiers(bands.bands().stream()
                         .map(b -> new RateTiers.Band(b.units(), charged(b.unitPrice()))).toList());
             }
-            return bands.charge(before, billedQty(), scale);
+            BigDecimal months = periodMonths();
+            return months == null ? bands.charge(before, billedQty(), scale)
+                    : bands.charge(before, billedQty(), 10).multiply(months).setScale(scale, RoundingMode.HALF_UP);
         }
-        return billedQty().multiply(chargedUnitPrice()).setScale(scale, RoundingMode.HALF_UP);
+        BigDecimal monthly = billedQty().multiply(chargedUnitPrice());
+        BigDecimal months = periodMonths();
+        // A service period is charged its share of the monthly price, rounded only once.
+        return (months == null ? monthly : monthly.multiply(months)).setScale(scale, RoundingMode.HALF_UP);
     }
 
     /** The line's discount: its percentage of the gross amount, rounded down to the given number of decimals. */

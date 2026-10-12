@@ -90,10 +90,13 @@ public class InvoiceController {
      * price given, rounded half up to the cent; {@code basePrice} is the price given, before overtime.
      * {@code billedQty} (without trailing zeros) is the quantity the line is priced on: its quantity rounded up to the next
      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
+     * {@code periodStart} and {@code periodEnd} are the line's service period (null for none): its quantity times unit price is
+     * then a month's price, and its amounts are for the days of the period, month by month.
      */
     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
-            Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice) {
+            Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice,
+            LocalDate periodStart, LocalDate periodEnd) {
         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitType(), l.chargedUnitPrice().setScale(2).toPlainString(),
@@ -103,7 +106,7 @@ public class InvoiceController {
                     l.isTaxExempt(),
                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
-                    l.getUnitPrice().setScale(2).toPlainString());
+                    l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd());
         }
     }
 
@@ -260,7 +263,20 @@ public class InvoiceController {
             @DecimalMin(value = "0", message = "The line tax rate must be from 0 to 100 percent.")
             @DecimalMax(value = "100", message = "The line tax rate must be from 0 to 100 percent.")
             @Digits(integer = 3, fraction = 2, message = "The line tax rate can have at most two decimals.")
-            BigDecimal taxRate) {
+            BigDecimal taxRate,
+            // The service period the line is billed for, both ends included; none when both are left out.
+            LocalDate periodStart,
+            LocalDate periodEnd) {
+
+        @AssertTrue(message = "Enter both the start and the end of the service period, or neither.")
+        public boolean isPeriodComplete() {
+            return (periodStart == null) == (periodEnd == null);
+        }
+
+        @AssertTrue(message = "The service period cannot end before it starts.")
+        public boolean isPeriodInOrder() {
+            return periodStart == null || periodEnd == null || !periodEnd.isBefore(periodStart);
+        }
     }
 
     /**
@@ -518,7 +534,8 @@ public class InvoiceController {
     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
         return invoices.addLine(id, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
                 Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
-                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
+                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate(),
+                body.periodStart(), body.periodEnd())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
@@ -528,7 +545,8 @@ public class InvoiceController {
             @Valid @RequestBody NewLine body) {
         return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
                 Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
-                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
+                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate(),
+                body.periodStart(), body.periodEnd())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
     }

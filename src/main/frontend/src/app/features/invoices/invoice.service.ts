@@ -78,6 +78,10 @@ export interface InvoiceLineView {
   // tiered, each band's price) is 1.5 times `basePrice`, the price it was given, rounded half up to the cent.
   overtime: boolean;
   basePrice: string;
+  // The service period the line is billed for (yyyy-mm-dd, both ends included), null for none: its
+  // quantity x unit price is then a month's price, charged for the period's days month by month.
+  periodStart: string | null;
+  periodEnd: string | null;
 }
 
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
@@ -267,6 +271,8 @@ export interface NewLine {
   taxExempt: boolean;
   discountPct?: string;
   taxRate?: string;
+  periodStart?: string;
+  periodEnd?: string;
 }
 
 // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on

@@ -192,6 +192,11 @@ function problemWith(line: NewLine): string {
       problems.push('The line discount can have at most two decimals.');
     }
   }
+  if ((line.periodStart === undefined) !== (line.periodEnd === undefined)) {
+    problems.push('Enter both the start and the end of the service period, or neither.');
+  } else if (line.periodStart && line.periodEnd && line.periodEnd < line.periodStart) {
+    problems.push('The service period cannot end before it starts.');
+  }
   if (line.taxRate !== undefined) {
     if (!/^-?\d+(\.\d+)?$/.test(line.taxRate)) {
       problems.push('The line tax rate must be a number, like 5 or 12.5.');
@@ -253,6 +258,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Billed qty</th>
               <th scope="col">Unit type</th>
               <th scope="col">Unit price</th>
+              <th scope="col">Service period</th>
               <th scope="col">Line discount</th>
               <th scope="col">Amount</th>
               <th scope="col">Discount share</th>
@@ -271,6 +277,7 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-billed-qty">{{ l.billedQty }}</td>
                 <td data-testid="line-unit-type">{{ l.unitType ?? '' }}</td>
                 <td data-testid="line-unit-price">{{ l.tiered ? 'Tiered from ' + amount(l.unitPrice) : amount(l.unitPrice) }}</td>
+                <td data-testid="line-period">{{ l.periodStart ? l.periodStart + ' to ' + l.periodEnd : '' }}</td>
                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
@@ -792,6 +799,20 @@ function problemWith(line: NewLine): string {
             inputmode="decimal"
             formControlName="unitPrice"
           />
+          <label for="line-period-start">Service period start (optional, prices a monthly unit price by the day)</label>
+          <input
+            id="line-period-start"
+            type="date"
+            data-testid="line-form-period-start"
+            formControlName="periodStart"
+          />
+          <label for="line-period-end">Service period end (optional)</label>
+          <input
+            id="line-period-end"
+            type="date"
+            data-testid="line-form-period-end"
+            formControlName="periodEnd"
+          />
           <label for="line-discount-pct">Line discount (%, optional)</label>
           <input
             id="line-discount-pct"
@@ -950,6 +971,8 @@ export class InvoicePanel {
     taxExempt: new FormControl(false, { nonNullable: true }),
     discountPct: new FormControl('', { nonNullable: true }),
     taxRate: new FormControl('', { nonNullable: true }),
+    periodStart: new FormControl('', { nonNullable: true }),
+    periodEnd: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly discountForm = new FormGroup({
@@ -1037,6 +1060,8 @@ export class InvoicePanel {
       taxExempt: line.taxExempt,
       discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
       taxRate: line.taxRate ?? '',
+      periodStart: line.periodStart ?? '',
+      periodEnd: line.periodEnd ?? '',
     });
     this.editingLineId.set(line.id);
     this.error.set('');
@@ -1071,6 +1096,12 @@ export class InvoicePanel {
     const taxRate = raw.taxRate.trim().replace(/%$/, '').trim();
     if (taxRate) {
       line.taxRate = taxRate;
+    }
+    if (raw.periodStart) {
+      line.periodStart = raw.periodStart;
+    }
+    if (raw.periodEnd) {
+      line.periodEnd = raw.periodEnd;
     }
     const problem = problemWith(line);
     if (problem) {
