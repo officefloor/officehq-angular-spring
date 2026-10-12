@@ -241,7 +241,7 @@ public class InvoiceController {
                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
                     i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
                     i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
-                    i.getAdjustmentOf(), i.getAdjusted().toPlainString(), i.dunningLevel(status, today), i.getReminders());
+                    i.getAdjustmentOf(), i.getAdjusted().toPlainString(), i.dunningLevel(status, i.overdueAmount(paid, taxRate, today), today), i.getReminders());
         }
     }
 

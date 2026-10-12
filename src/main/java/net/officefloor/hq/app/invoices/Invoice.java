@@ -429,6 +429,13 @@ public class Invoice {
     private String withholdingThresholdUsd;
 
     /**
+     * The workspace's dunning minimum in US dollars, as stored (the {@code dunning_minimum} setting); null when none
+     * is set.
+     */
+    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'dunning_minimum')")
+    private String dunningMinimumUsd;
+
+    /**
      * The approval limit in US dollars, as stored: the client's tier's ({@code approval_limit_<tier>} setting)
      * when its tier has one, else the workspace's ({@code approval_limit} setting); null when neither is set.
      */
@@ -1139,10 +1146,11 @@ public class Invoice {
      * The dunning level of the invoice at the given status on the given day: NONE unless it is overdue and at least
      * 7 days past its due date; REMINDER_1 from 7 days; REMINDER_2 from 21 days once the first reminder went out at
      * least 14 days before; FINAL from 45 days once the second went out; COLLECTIONS from 60 days once the final
-     * notice went out.
+     * notice went out. NONE too, however late, while less than the dunning minimum is overdue (see
+     * {@link #dunningMinimum}).
      */
-    public DunningLevel dunningLevel(InvoiceStatus status, LocalDate today) {
-        if (status != InvoiceStatus.OVERDUE || dueDate == null) {
+    public DunningLevel dunningLevel(InvoiceStatus status, BigDecimal overdueAmount, LocalDate today) {
+        if (status != InvoiceStatus.OVERDUE || dueDate == null || overdueAmount.compareTo(dunningMinimum(today)) < 0) {
             return DunningLevel.NONE;
         }
         long overdue = ChronoUnit.DAYS.between(dueDate, today);
@@ -1160,6 +1168,17 @@ public class Invoice {
             return DunningLevel.FINAL;
         }
         return DunningLevel.COLLECTIONS;
+    }
+
+    /**
+     * The least that must be overdue for the invoice to be chased: the workspace's dunning minimum in US dollars
+     * converted at the day's rate, rounded down to the step; 0 when none is set.
+     */
+    public BigDecimal dunningMinimum(LocalDate today) {
+        if (dunningMinimumUsd == null) {
+            return zero();
+        }
+        return currency().divideDownToStep(new BigDecimal(dunningMinimumUsd.trim()), usdPerOn(today));
     }
 
     /** A reminder fee charged on the invoice: the fee, in its currency, charged the day the reminder went out. */

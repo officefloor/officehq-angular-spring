@@ -1121,7 +1121,7 @@ public class InvoiceService {
     /**
      * Sends today the reminder for the dunning level an invoice has reached, charging the level's reminder fee (see
      * {@link Invoice#reminderFee}), and records both in the audit; empty if
-     * no such invoice. Refused when the invoice is at NONE or the reminder for its level has already gone out.
+     * no such invoice. Refused when the invoice is at NONE (too little overdue included) or the reminder for its level has already gone out.
      */
     @Transactional
     public Optional<Invoice> remind(Long invoiceId) {
@@ -1129,9 +1129,9 @@ public class InvoiceService {
         found.ifPresent(invoice -> {
             LocalDate now = today.date();
             List<Invoice> one = List.of(invoice);
-            InvoiceStatus status = invoice.statusWhenPaid(paid(one).get(invoice.getId()),
-                    paidOn(one).get(invoice.getId()), taxRate.percent(), now);
-            DunningLevel level = invoice.dunningLevel(status, now);
+            BigDecimal paid = paid(one).get(invoice.getId());
+            InvoiceStatus status = invoice.statusWhenPaid(paid, paidOn(one).get(invoice.getId()), taxRate.percent(), now);
+            DunningLevel level = invoice.dunningLevel(status, invoice.overdueAmount(paid, taxRate.percent(), now), now);
             if (level == DunningLevel.NONE) {
                 throw new InvoiceRejectedException("This invoice is not far enough overdue to be chased.");
             }

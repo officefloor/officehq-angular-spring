@@ -42,7 +42,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays", "reminderFees");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays", "reminderFees", "dunningMinimum");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -51,6 +51,8 @@ public class TestSupportController {
     private static final String INTEREST_THRESHOLD = "interest_threshold";
     /** The setting holding the workspace's withholding threshold in US dollars (see Invoice#withholding). */
     private static final String WITHHOLDING_THRESHOLD = "withholding_threshold";
+    /** The setting holding the workspace's dunning minimum in US dollars (see Invoice#dunningMinimum). */
+    private static final String DUNNING_MINIMUM = "dunning_minimum";
     /** The setting holding the workspace's approval limit in US dollars (see Invoice#approval). */
     private static final String APPROVAL_LIMIT = "approval_limit";
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
@@ -177,6 +179,11 @@ public class TestSupportController {
                 BigDecimal threshold = money(values.get("interestThreshold"), "settings.interestThreshold");
                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                         INTEREST_THRESHOLD, threshold.toPlainString());
+            }
+            if (values.get("dunningMinimum") != null) {
+                BigDecimal minimum = money(values.get("dunningMinimum"), "settings.dunningMinimum");
+                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                        DUNNING_MINIMUM, minimum.toPlainString());
             }
             if (values.get("withholdingThreshold") != null) {
                 BigDecimal threshold = money(values.get("withholdingThreshold"), "settings.withholdingThreshold");
@@ -719,6 +726,11 @@ public class TestSupportController {
                 String.class, INTEREST_THRESHOLD);
         if (!interestThreshold.isEmpty()) {
             settings.put("interestThreshold", new BigDecimal(interestThreshold.get(0)));
+        }
+        List<String> dunningMinimum = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                String.class, DUNNING_MINIMUM);
+        if (!dunningMinimum.isEmpty()) {
+            settings.put("dunningMinimum", new BigDecimal(dunningMinimum.get(0)));
         }
         List<String> withholdingThreshold = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
                 String.class, WITHHOLDING_THRESHOLD);
