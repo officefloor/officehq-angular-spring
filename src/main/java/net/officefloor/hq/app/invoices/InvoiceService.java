@@ -140,6 +140,7 @@ public class InvoiceService {
                     .filter(o -> o.getClientId().equals(i.getClientId()) && !o.getId().equals(i.getId())).toList();
             RiskBand band = riskOf(others, paidOn).band();
             i.withholdEarlyPay(band != RiskBand.LOW);
+            i.halveApprovalLimit(band == RiskBand.MEDIUM);
             if (band == RiskBand.HIGH) {
                 i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
             }
@@ -2465,8 +2466,9 @@ public class InvoiceService {
     /** Whether the invoice needs approval before it is sent (see {@link Invoice#approval}), as of today. */
     @Transactional(readOnly = true)
     public Invoice.Approval approval(Invoice invoice) {
-        boolean highRisk = invoice.isDraft() && !invoice.isCreditNote()
-                && riskOf(invoice.getClientId()).band() == RiskBand.HIGH;
+        RiskBand band = riskOf(invoice.getClientId()).band();
+        invoice.halveApprovalLimit(band == RiskBand.MEDIUM);
+        boolean highRisk = invoice.isDraft() && !invoice.isCreditNote() && band == RiskBand.HIGH;
         boolean overCreditLimit = invoice.isDraft() && !invoice.isCreditNote() && wouldGoOverLimit(invoice);
         return invoice.approval(taxRate.percent(), today.date(), highRisk, overCreditLimit);
     }

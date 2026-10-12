@@ -504,6 +504,13 @@ public class Invoice {
     @Transient
     private boolean earlyPayWithheld;
 
+    /**
+     * Whether the approval limit is halved because the client is a MEDIUM payment risk (see
+     * {@link #halveApprovalLimit}); not stored, worked out again each time the invoice is read.
+     */
+    @Transient
+    private boolean approvalLimitHalved;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -1261,13 +1268,23 @@ public class Invoice {
 
     /**
      * The grand total above which a draft needs approval: the approval limit (the client tier's, else the workspace's) in US dollars
-     * converted at the issue date's rate, rounded down to the step; null when none is set.
+     * converted at the issue date's rate, rounded down to the step; null when none is set. A MEDIUM payment risk
+     * client's limit is halved in US dollars before it is converted.
      */
     private BigDecimal approvalLimit() {
         if (approvalLimitUsd == null) {
             return null;
         }
-        return currency().divideDownToStep(new BigDecimal(approvalLimitUsd.trim()), usdPerOn(issueDate));
+        BigDecimal usd = new BigDecimal(approvalLimitUsd.trim());
+        if (approvalLimitHalved) {
+            usd = usd.divide(BigDecimal.valueOf(2));
+        }
+        return currency().divideDownToStep(usd, usdPerOn(issueDate));
+    }
+
+    /** Halves the approval limit (or restores it): a MEDIUM payment risk client has half the limit. */
+    public void halveApprovalLimit(boolean halved) {
+        this.approvalLimitHalved = halved;
     }
 
     /**
