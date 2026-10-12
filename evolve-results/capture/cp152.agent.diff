@@ -1,0 +1,214 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index d69304a..cd37599 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -859,7 +859,7 @@ function problemWith(line: NewLine): string {
+               inputmode="decimal"
+               formControlName="cap"
+             />
+-            <label for="discount-reason">reason (needed over 20% of the subtotal)</label>
++            <label for="discount-reason">reason (optional)</label>
+             <input
+               id="discount-reason"
+               data-testid="discount-form-reason"
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d36723a..d3793ac 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -209,8 +209,8 @@ export interface InvoiceDetail {
+   // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
+   withholdingPct: string;
+   // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
+-  // over the workspace's approval limit and above the total it was approved at, if any. Credit notes
+-  // never need approval.
++  // over the workspace's approval limit, or its discount takes off more than a fifth of the subtotal,
++  // and it has not been approved at its total. Credit notes never need approval.
+   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
+   // The grand total it was approved at; null when it was not approved.
+   approvedTotal: string | null;
+@@ -270,7 +270,7 @@ export interface NewLine {
+ }
+ 
+ // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on
+-// what a percentage takes off and an optional reason, needed when it takes off more than a fifth of the subtotal.
++// what a percentage takes off and an optional reason.
+ export type NewDiscount = ({ discountPct: string } | { discountAmount: string }) & { discountCap?: string; discountReason?: string };
+ 
+ // What a client still owes across its sent invoices (drafts do not count), after discounts, tax and
+@@ -373,7 +373,8 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, { amount });
+   }
+ 
+-  // Approves a draft whose grand total is over the workspace's approval limit. Refused (409) when it
++  // Approves a draft whose grand total is over the workspace's approval limit, or whose discount is
++  // more than a fifth of the subtotal. Refused (409) when it
+   // needs no approval.
+   approve(invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/approve`, null);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 21baa71..6efa099 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -699,16 +699,11 @@ public class Invoice {
+         this.discountReason = discountReason == null || discountReason.isBlank() ? null : discountReason.strip();
+     }
+ 
+-    /** Whether the discount takes off more than a fifth of the subtotal, after any cap, and so needs a reason. */
+-    public boolean discountNeedsReason() {
++    /** Whether the discount takes off more than a fifth of the subtotal, after any cap, and so needs approval. */
++    public boolean discountIsLarge() {
+         return discount().multiply(BigDecimal.valueOf(5)).compareTo(subtotal()) > 0;
+     }
+ 
+-    /** Whether the discount needs a reason but has none. */
+-    public boolean discountLacksReason() {
+-        return discountNeedsReason() && discountReason == null;
+-    }
+-
+     /** Sets the percentage taken off the subtotal, clearing any fixed amount; it has already been checked. */
+     public void setDiscountPct(BigDecimal discountPct) {
+         this.discountPct = discountPct;
+@@ -1018,8 +1013,10 @@ public class Invoice {
+ 
+     /**
+      * The invoice's approval at the tax rate: a credit note, or an invoice whose grand total (before any
+-     * withholding) is not over the approval limit, needs none; otherwise it is approved while its grand
+-     * total is not above the total it was approved at. Once sent, an invoice is as it was approved.
++     * withholding) is not over the approval limit and whose discount takes off no more than a fifth of the
++     * subtotal, needs none; otherwise it is approved while its grand total is not above the total it was
++     * approved at (and, for a large discount, not below it either, so a bigger discount needs approval
++     * again). Once sent, an invoice is as it was approved.
+      */
+     public Approval approval(BigDecimal taxRate) {
+         if (isCreditNote()) {
+@@ -1030,10 +1027,15 @@ public class Invoice {
+         }
+         BigDecimal limit = approvalLimit();
+         BigDecimal total = total(taxRate);
+-        if (limit == null || total.compareTo(limit) <= 0) {
++        boolean largeDiscount = discountIsLarge();
++        if (!largeDiscount && (limit == null || total.compareTo(limit) <= 0)) {
+             return Approval.NOT_NEEDED;
+         }
+-        return approvedTotal != null && total.compareTo(approvedTotal) <= 0 ? Approval.APPROVED : Approval.NEEDS_APPROVAL;
++        if (approvedTotal == null) {
++            return Approval.NEEDS_APPROVAL;
++        }
++        int againstApproved = total.compareTo(approvedTotal);
++        return againstApproved <= 0 && (!largeDiscount || againstApproved == 0) ? Approval.APPROVED : Approval.NEEDS_APPROVAL;
+     }
+ 
+     public BigDecimal getApprovedTotal() {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 60b4933..8209fc0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -209,7 +209,7 @@ public class InvoiceController {
+      * A discount to give: a percentage from 0 to 100 with at most two decimals, or a fixed amount
+      * of money, not negative and to the cent. Exactly one of them. Optionally a cap, money not
+      * negative and to the cent, that everything taken off, line discounts included, never comes to more than.
+-     * Optionally a reason, needed when the discount takes off more than a fifth of the subtotal.
++     * Optionally a reason.
+      */
+     public record NewDiscount(
+             @DecimalMin(value = "0", message = "The discount must be from 0 to 100 percent.")
+@@ -652,7 +652,7 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
+     }
+ 
+-    /** Approves a draft whose grand total is over the workspace's approval limit. */
++    /** Approves a draft whose grand total is over the workspace's approval limit, or whose discount is more than a fifth. */
+     @PostMapping("/api/invoices/{id}/approve")
+     public InvoiceDetail approve(@PathVariable Long id) {
+         return invoices.approve(id)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 6d30447..afd8aaf 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -313,8 +313,7 @@ public class InvoiceService {
+     /**
+      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
+      * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
+-     * over the subtotal is refused, as is a discount taking off more than a fifth of the subtotal
+-     * (after the cap) without a reason. A sent invoice with no payments goes back to draft; one with a
++     * over the subtotal is refused; the reason is optional. A sent invoice with no payments goes back to draft; one with a
+      * payment refuses it.
+      */
+     @Transactional
+@@ -339,10 +338,6 @@ public class InvoiceService {
+             }
+             invoice.setDiscountCap(discountCap);
+             invoice.setDiscountReason(discountReason);
+-            if (invoice.discountLacksReason()) {
+-                throw new InvoiceRejectedException(
+-                        "A discount of more than 20% of the subtotal needs a reason.");
+-            }
+             invoices.saveAndFlush(invoice);
+             if (reopened) {
+                 audit.record("INVOICE_REOPENED id=" + invoice.getId());
+@@ -717,8 +712,7 @@ public class InvoiceService {
+     /**
+      * Sends a draft invoice, issuing it today and making it due on the client's terms (or keeping a due
+      * date set by hand), and records it in the audit; empty if no such invoice. An invoice already
+-     * sent, with no lines, whose discount needs a reason but has none, or whose due date set by hand is
+-     * before today, is refused.
++     * sent, with no lines, whose due date set by hand is before today, or that needs approval, is refused.
+      */
+     @Transactional
+     public Optional<Invoice> send(Long invoiceId) {
+@@ -741,17 +735,15 @@ public class InvoiceService {
+                 issue(invoice);
+                 return;
+             }
+-            if (invoice.discountLacksReason()) {
+-                throw new InvoiceRejectedException(
+-                        "The discount is more than 20% of the subtotal; give it a reason before sending the invoice.");
+-            }
+             if (invoice.dueDatePassedBy(today.date())) {
+                 throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
+                         + ") is already past; set a later due date before sending the invoice.");
+             }
+             if (invoice.approval(taxRate.percent()) == Invoice.Approval.NEEDS_APPROVAL) {
+                 throw new InvoiceRejectedException(
+-                        "The grand total is over the approval limit; approve the invoice before sending it.");
++                        invoice.discountIsLarge()
++                                ? "The discount is more than 20% of the subtotal; approve the invoice before sending it."
++                                : "The grand total is over the approval limit; approve the invoice before sending it.");
+             }
+             markSent(invoice);
+         });
+@@ -759,7 +751,8 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * Approves a draft whose grand total is over the workspace's approval limit, keeping that total,
++     * Approves a draft whose grand total is over the workspace's approval limit, or whose discount takes
++     * off more than a fifth of the subtotal, keeping that total,
+      * and records it in the audit; empty if no such invoice. An invoice that needs no approval, or is
+      * already approved at its total, is refused.
+      */
+@@ -774,7 +767,7 @@ public class InvoiceService {
+             if (invoice.approval(rate) != Invoice.Approval.NEEDS_APPROVAL) {
+                 throw new InvoiceRejectedException(invoice.approval(rate) == Invoice.Approval.APPROVED
+                         ? "This invoice is already approved."
+-                        : "This invoice is within the approval limit, so it needs no approval.");
++                        : "This invoice is within the approval limit and its discount is not over 20%, so it needs no approval.");
+             }
+             BigDecimal total = invoice.total(rate);
+             invoice.approve(total);
+@@ -786,13 +779,13 @@ public class InvoiceService {
+ 
+     /**
+      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
+-     * would; drafts with no lines, whose discount needs a reason but has none, whose due date set by
++     * would; drafts with no lines, whose due date set by
+      * hand is already past, or that need approval, stay drafts.
+      */
+     @Transactional
+     public void sendAllDrafts(Long clientId) {
+         loadForClient(clientId).stream()
+-                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason()
++                .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
+                         && !invoice.dueDatePassedBy(today.date())
+                         && invoice.approval(taxRate.percent()) != Invoice.Approval.NEEDS_APPROVAL)
+                 .forEach(invoice -> {
