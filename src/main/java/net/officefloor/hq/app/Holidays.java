@@ -2,6 +2,7 @@ package net.officefloor.hq.app;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -12,7 +13,8 @@ import org.springframework.stereotype.Service;
 /**
  * The workspace's holiday calendar: the {@code holidays} setting marks that it keeps one (possibly
  * empty), the dates being the rows of the {@code holiday} table. With a calendar, days in payment
- * terms are business days, Monday to Friday and not a holiday; without one they are calendar days
+ * terms are business days, Monday to Friday and not a holiday; a holiday on a Saturday is observed on
+ * the Friday before it and one on a Sunday on the Monday after it. Without one they are calendar days
  * (invoices read the calendar themselves, see Invoice).
  */
 @Service
@@ -56,13 +58,24 @@ public class Holidays {
         if (holidays == null) {
             return from.plusDays(days);
         }
+        Set<LocalDate> observed = new HashSet<>();
+        holidays.forEach(holiday -> observed.add(observed(holiday)));
         LocalDate day = from;
         for (int left = days; left > 0;) {
             day = day.plusDays(1);
-            if (day.getDayOfWeek() != DayOfWeek.SATURDAY && day.getDayOfWeek() != DayOfWeek.SUNDAY && !holidays.contains(day)) {
+            if (day.getDayOfWeek() != DayOfWeek.SATURDAY && day.getDayOfWeek() != DayOfWeek.SUNDAY && !observed.contains(day)) {
                 left--;
             }
         }
         return day;
+    }
+
+    /** The weekday a holiday is observed on: the Friday before a Saturday, the Monday after a Sunday. */
+    public static LocalDate observed(LocalDate holiday) {
+        return switch (holiday.getDayOfWeek()) {
+            case SATURDAY -> holiday.minusDays(1);
+            case SUNDAY -> holiday.plusDays(1);
+            default -> holiday;
+        };
     }
 }
