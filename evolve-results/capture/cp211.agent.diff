@@ -1,0 +1,112 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 24b0b48..3d8fe79 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -701,7 +701,8 @@ public class Invoice {
+     /**
+      * The corrected replacement of this rebilled invoice: a draft for the same client, issued and due on the given dates,
+      * with copies of its lines, its percentage discount, surcharge and purchase order number, worked out afresh. It
+-     * remembers which invoice it replaces.
++     * remembers which invoice it replaces. It carries on what was going on with this invoice: an open dispute (from the
++     * same day, over the same lines), its milestones (with the days they were reached and disputed) and its recurring plan.
+      */
+     public Invoice rebill(LocalDate issueDate, LocalDate dueDate) {
+         Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+@@ -710,10 +711,43 @@ public class Invoice {
+         next.surchargePct = surchargePct;
+         next.poNumber = poNumber;
+         next.replaces = id;
+-        lines.forEach(line -> next.addLine(line.copy()));
++        boolean disputed = isInvoiceDisputed();
++        lines.forEach(line -> {
++            InvoiceLine copy = line.copy();
++            copy.setDisputed(disputed && line.isDisputed());
++            next.addLine(copy);
++        });
++        if (disputed) {
++            next.disputedOn = disputedOn;
++        }
++        milestones.forEach(m -> next.addMilestone(m.carryOver()));
++        next.recurring = recurring;
++        next.recurringSince = recurringSince;
++        next.recurUntil = recurUntil;
+         return next;
+     }
+ 
++    /**
++     * Takes the rebilled invoice's open states off it, now its replacement carries them: its dispute (its milestones'
++     * included) is resolved on the day and it stops recurring.
++     */
++    public void handOver(LocalDate on) {
++        if (isDisputed()) {
++            resolveDispute(on);
++        }
++        this.recurring = false;
++    }
++
++    /**
++     * Approves the draft at the grand total on the day with as many approvals as it needs: a replacement for no more than
++     * what the invoice it replaces was sent for is approved already.
++     */
++    public void approveInFull(BigDecimal total, LocalDate on, BigDecimal taxRate) {
++        this.approvals = approvalsRequired(taxRate);
++        this.approvedTotal = total;
++        this.approvedOn = on;
++    }
++
+     /**
+      * A draft credit note for exactly what this sent invoice is worth, issued on the given date: a credit copy of each
+      * of its lines, with its grand total and tax at the tax rate (those it was sent with, when kept) as its own.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 30b5ef9..c86649d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -238,7 +238,9 @@ public class InvoiceService {
+      * Rebills the sent invoice, answering it; empty if no such invoice. A credit note dated today credits every line for
+      * exactly what the invoice is worth (what it was sent for) and is issued as any credit note is, after every payment
+      * made to the invoice has come off it; then a draft replacing it (see {@link Invoice#rebill}), issued today and due
+-     * as any new invoice is, gets those payments held for it as credit, used on it first when it is sent. Records
++     * as any new invoice is, gets those payments held for it as credit, used on it first when it is sent. The draft takes
++     * over the invoice's open dispute, milestones and recurring plan (the invoice's dispute closes and it stops recurring),
++     * and is approved already when its grand total is no more than the invoice was sent for. Records
+      * INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
+      * refused.
+      */
+@@ -278,9 +280,18 @@ public class InvoiceService {
+             issue(note);
+             invoice.markRebilled(on);
+             invoices.saveAndFlush(invoice);
++            BigDecimal sentFor = invoice.total(rate);
+             Invoice next = invoices.saveAndFlush(invoice.rebill(on, dueDateFor(invoice.getClientId(), on)));
++            invoice.handOver(on);
++            invoices.saveAndFlush(invoice);
+             // Read again how far through the bands a copied tiered line's units reach.
+             entityManager.refresh(next);
++            if (approval(next) == Invoice.Approval.NEEDS_APPROVAL) {
++                if (next.total(rate).compareTo(sentFor) <= 0) {
++                    next.approveInFull(next.approvalTotal(rate), on, rate);
++                    invoices.saveAndFlush(next);
++                }
++            }
+             paidBy.forEach(p -> {
+                 p.holdFor(next.getId());
+                 payments.saveAndFlush(p);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Milestone.java b/src/main/java/net/officefloor/hq/app/invoices/Milestone.java
+index 02d79d5..f7a425e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Milestone.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Milestone.java
+@@ -102,6 +102,14 @@ public class Milestone {
+         this.disputedOn = null;
+     }
+ 
++    /** A copy of the milestone for the invoice replacing its own: the day it was reached and disputed carry over. */
++    public Milestone carryOver() {
++        Milestone copy = new Milestone(description, pct);
++        copy.reachedOn = reachedOn;
++        copy.disputedOn = disputedOn;
++        return copy;
++    }
++
+     /** Marks the milestone reached on the day. */
+     public void reach(LocalDate on) {
+         this.reachedOn = on;
