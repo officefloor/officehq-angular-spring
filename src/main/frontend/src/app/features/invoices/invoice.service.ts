@@ -15,7 +15,8 @@ import { Currency } from './invoice-format';
 // A sent invoice in dispute is DISPUTED until the dispute is resolved: it earns no interest, is not
 // overdue and takes no payments. A sent invoice billed by milestones with nothing owed now but
 // milestones still to be reached is AWAITING_MILESTONE. An overdue invoice with a promise to pay is
-// PROMISED until the promise's date, unless payments since reach the amount promised.
+// PROMISED until the promise's date, unless payments since (to it or its adjustment notes) reach the amount
+// promised; its overdue debit notes are PROMISED while the promise holds.
 export type InvoiceStatus =
   | 'DRAFT'
   | 'SENT'

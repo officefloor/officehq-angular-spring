@@ -126,6 +126,9 @@ public class InvoiceService {
         BigDecimal rate = taxRate.percent();
         BigDecimal annual = lateInterestRate.percent();
         LocalDate now = today.date();
+        // An invoice's promise to pay covers its adjustment notes too.
+        all.forEach(i -> i.coverNotesByPromise(all.stream().filter(o -> i.getId().equals(o.getAdjustmentOf()))
+                .map(Invoice::getId).collect(java.util.stream.Collectors.toSet())));
         all.forEach(i -> {
             // Loaded with its lines only: read its milestones and reminders now, while the session is open.
             Hibernate.initialize(i.getMilestones());
@@ -141,6 +144,10 @@ public class InvoiceService {
             i.accrueLateInterest(found, rate, annual, now);
             i.notePromisePayments(found);
         });
+        // A debit note is held off while the promise to pay on the invoice it adjusts holds.
+        all.forEach(i -> i.holdByInvoicePromise(isDebitNote(i) && all.stream()
+                .filter(o -> o.getId().equals(i.getAdjustmentOf())).findFirst()
+                .map(o -> o.isPromiseHeld(now)).orElse(false)));
         judgeWithholdingTogether(all, rate);
         Map<Long, LocalDate> paidOn = new HashMap<>();
         all.forEach(i -> {
@@ -2258,6 +2265,9 @@ public class InvoiceService {
                 return;
             }
             BigDecimal promiseWaivedBefore = invoice.getPromiseWaived();
+            // A payment on a debit note counts towards the promise to pay on the invoice it adjusts.
+            Optional<Invoice> promisor = isDebitNote(invoice) ? load(invoice.getAdjustmentOf()) : Optional.empty();
+            BigDecimal promisorWaivedBefore = promisor.map(Invoice::getPromiseWaived).orElse(BigDecimal.ZERO);
             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
             // Only what is left once the conversion fee and card surcharge are taken out pays the invoice.
             BigDecimal surcharge = surchargeOf(received, invoice.currency(), method, date);
@@ -2361,6 +2371,7 @@ public class InvoiceService {
             });
             recordCreditHeld(payment);
             recordPromiseKept(invoice, promiseWaivedBefore);
+            promisor.ifPresent(o -> recordPromiseKept(o, promisorWaivedBefore));
         });
         return found;
     }

@@ -351,10 +351,20 @@ public class Invoice {
     @Column(name = "promised_on")
     private LocalDate promisedOn;
 
-    /** What has been paid to this invoice from the day the last promise was made up to the day it was due by (payments not reversed). */
-    /** What has been paid to this invoice from the day the last promise was made up to its date; worked out by {@link #notePromisePayments}. */
+    /**
+     * What has been paid to this invoice and its adjustment notes from the day the last promise was made up to its
+     * date; worked out by {@link #notePromisePayments}.
+     */
     @Transient
     private BigDecimal paidUnderPromise = BigDecimal.ZERO;
+
+    /** The ids of the adjustment notes issued against this invoice, which its promise to pay covers too. Not stored. */
+    @Transient
+    private Set<Long> promiseNotes = Set.of();
+
+    /** Whether this adjustment note is held off by the promise to pay on the invoice it adjusts. Not stored. */
+    @Transient
+    private boolean heldByInvoicePromise;
 
     @Formula("(SELECT MAX(COALESCE(a.applied_date, p.payment_date)) FROM payment_allocation a, payment p WHERE a.invoice_id = id AND p.id = a.payment_id AND p.reversed = FALSE)")
     private LocalDate lastPaidOn;
@@ -1344,9 +1354,24 @@ public class Invoice {
         this.paidUnderPromise = BigDecimal.ZERO;
     }
 
+    /** Tells the invoice the ids of the adjustment notes issued against it, which its promise to pay covers too. */
+    public void coverNotesByPromise(Set<Long> noteIds) {
+        this.promiseNotes = noteIds == null ? Set.of() : Set.copyOf(noteIds);
+    }
+
+    /** Tells this adjustment note whether the promise to pay on the invoice it adjusts holds it off too. */
+    public void holdByInvoicePromise(boolean held) {
+        this.heldByInvoicePromise = held;
+    }
+
+    /** Whether a payment allocated to the invoice with the id counts towards this invoice's promise to pay. */
+    private boolean countsForPromise(Long invoiceId) {
+        return invoiceId.equals(id) || promiseNotes.contains(invoiceId);
+    }
+
     /**
-     * Works out from the payments (any invoice's) what was paid to this invoice from the day the last promise
-     * was made up to its date, taking each part on the day it was applied; reversed payments do not count.
+     * Works out from the payments (any invoice's) what was paid to this invoice and its adjustment notes from the day
+     * the last promise was made up to its date, taking each part on the day it was applied; reversed payments do not count.
      */
     public void notePromisePayments(List<Payment> payments) {
         paidUnderPromise = BigDecimal.ZERO;
@@ -1354,7 +1379,7 @@ public class Invoice {
             return;
         }
         paidUnderPromise = payments.stream().filter(p -> !p.isReversed())
-                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                .flatMap(p -> p.getAllocations().stream().filter(a -> countsForPromise(a.getInvoiceId()))
                         .filter(a -> {
                             LocalDate on = a.getDate() == null ? p.getDate() : a.getDate();
                             return !on.isBefore(promisedOn) && !on.isAfter(promiseDate);
@@ -1367,9 +1392,12 @@ public class Invoice {
         return paidUnderPromise != null && paidUnderPromise.compareTo(promiseAmount) >= 0;
     }
 
-    /** Whether a promise to pay holds the invoice off on the given day: made, not yet due and not yet paid. */
+    /**
+     * Whether a promise to pay holds the invoice off on the given day: made, not yet due and not yet paid; an
+     * adjustment note is held off too while the promise on the invoice it adjusts is.
+     */
     public boolean isPromiseHeld(LocalDate today) {
-        return promiseAmount != null && promiseDate != null && !today.isAfter(promiseDate) && !promisePaid();
+        return heldByInvoicePromise || promiseAmount != null && promiseDate != null && !today.isAfter(promiseDate) && !promisePaid();
     }
 
     /** Whether the last promise to pay was broken by the given day: its date passed without the amount being paid. */
@@ -1684,7 +1712,8 @@ public class Invoice {
 
     /**
      * The day the last promise to pay was kept by the given day: the day payments (those not reversed) to this invoice
-     * from the day it was made reached the amount promised, no later than its date; null when it has not been kept.
+     * and its adjustment notes from the day it was made reached the amount promised, no later than its date; null when
+     * it has not been kept.
      */
     private LocalDate promiseKeptOn(List<Payment> payments, LocalDate today) {
         if (promiseAmount == null || promiseDate == null || promisedOn == null) {
@@ -1692,7 +1721,7 @@ public class Invoice {
         }
         LocalDate until = promiseDate.isBefore(today) ? promiseDate : today;
         List<Map.Entry<LocalDate, BigDecimal>> paid = payments.stream().filter(p -> !p.isReversed())
-                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                .flatMap(p -> p.getAllocations().stream().filter(a -> countsForPromise(a.getInvoiceId()))
                         .map(a -> Map.entry(a.getDate() == null ? p.getDate() : a.getDate(), a.getAmount())))
                 .filter(e -> !e.getKey().isBefore(promisedOn) && !e.getKey().isAfter(until))
                 .sorted(Map.Entry.comparingByKey()).toList();
