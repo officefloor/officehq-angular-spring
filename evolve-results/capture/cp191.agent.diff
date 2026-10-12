@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 4176037..940fc66 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -229,11 +229,11 @@ export interface InvoiceDetail {
+   // Whether a draft must be approved before it is sent: its grand total (before any withholding), or its
+   // plan total (with interest and plan fee) when it has an instalment plan, is over the workspace's approval limit, its discount takes off more than a fifth of the subtotal, or its
+   // client is a HIGH payment risk, or sending it would take the client over its credit limit,
+-  // and it has not been approved at exactly its total within the last 30 days. Credit notes never need approval.
++  // and it has not been approved at exactly its total within as many days as its client's tier allows (90 KEY, 7 NEW, else 30). Credit notes never need approval.
+   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
+   // The grand total (or plan total, for a draft with a plan) it was approved at; null when it was not approved.
+   approvedTotal: string | null;
+-  // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after 30 days.
++  // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after its client's tier's days (90 KEY, 7 NEW, else 30).
+   approvedOn: string | null;
+   // How many approvals it still needs before it is sent (0 when none): a draft whose grand total is
+   // more than twice the approval limit needs two approvals of that same total.
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientTier.java b/src/main/java/net/officefloor/hq/app/clients/ClientTier.java
+index 31483bc..46cbfff 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientTier.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientTier.java
+@@ -2,10 +2,21 @@ package net.officefloor.hq.app.clients;
+ 
+ /**
+  * A client's tier: a tier the workspace gives its own approval limit (in US dollars) uses it instead of the
+- * workspace's approval limit.
++ * workspace's approval limit. An approval given for a client's invoice lasts as many days as its tier allows.
+  */
+ public enum ClientTier {
+-    STANDARD, KEY, NEW;
++    STANDARD(30), KEY(90), NEW(7);
++
++    private final int approvalDays;
++
++    ClientTier(int approvalDays) {
++        this.approvalDays = approvalDays;
++    }
++
++    /** The number of days an approval stays good after the day it was given. */
++    public int approvalDays() {
++        return approvalDays;
++    }
+ 
+     /** The tier of the given name; STANDARD when null or blank, null when no tier has it. */
+     public static ClientTier orStandard(String name) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 49c057d..35e5754 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -30,6 +30,7 @@ import java.util.Objects;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
++import net.officefloor.hq.app.clients.ClientTier;
+ import net.officefloor.hq.app.clients.Currency;
+ import net.officefloor.hq.app.clients.TaxNumber;
+ 
+@@ -393,6 +394,10 @@ public class Invoice {
+             + " (SELECT s.setting_value FROM app_setting s WHERE s.name = 'approval_limit')))")
+     private String approvalLimitUsd;
+ 
++    /** The tier of the invoice's client, as stored; read from the client. */
++    @Formula("(SELECT c.tier FROM client c WHERE c.id = client_id)")
++    private String clientTier;
++
+     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
+     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
+     private BigDecimal clientInterestRate;
+@@ -1273,14 +1278,17 @@ public class Invoice {
+         return hasPlan() ? planTotal(taxRate) : total(taxRate);
+     }
+ 
+-    /** The number of days an approval stays good after the day it was given. */
+-    public static final int APPROVAL_DAYS = 30;
++    /** The number of days an approval stays good after the day it was given: as many as the client's tier allows. */
++    public int approvalDays() {
++        ClientTier tier = ClientTier.orStandard(clientTier);
++        return (tier == null ? ClientTier.STANDARD : tier).approvalDays();
++    }
+ 
+     /**
+      * The invoice's approval at the tax rate as of today, judged on its {@link #approvalTotal}: a credit note, or an invoice whose grand total
+      * (before any withholding) is not over the approval limit and whose discount takes off no more than a
+      * fifth of the subtotal, needs none; otherwise it is approved while its grand total is exactly the total
+-     * it was approved at and no more than {@link #APPROVAL_DAYS} days have passed since it was approved.
++     * it was approved at and no more than {@link #approvalDays} days have passed since it was approved.
+      * Once sent, an invoice is as it was approved. Every draft of a client with a HIGH payment risk (highRisk)
+      * needs approval, whatever its size, as does every draft that would take its client over its credit limit
+      * (overCreditLimit). A draft whose grand total is more than twice the approval limit needs
+@@ -1309,13 +1317,13 @@ public class Invoice {
+ 
+     /**
+      * The approvals that still stand for the grand total as of today: those given at exactly that total,
+-     * unless more than {@link #APPROVAL_DAYS} days have passed since the last of them; else none.
++     * unless more than {@link #approvalDays} days have passed since the last of them; else none.
+      */
+     private int approvalsAt(BigDecimal total, LocalDate today) {
+         if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {
+             return 0;
+         }
+-        boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(APPROVAL_DAYS));
++        boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(approvalDays()));
+         return lapsed ? 0 : approvals;
+     }
+ 
