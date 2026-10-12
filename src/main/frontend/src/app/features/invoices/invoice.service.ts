@@ -252,8 +252,9 @@ export interface InvoiceDetail {
 }
 
 // One milestone: its percentage of what the client pays (without trailing zeros), the day it was
-// reached (yyyy-mm-dd; null while pending), its amount and what has been paid off it, decimal strings to
-// the cent (reached milestones are paid in order), and its status.
+// reached and the day it falls due (the client's terms after it, else 14 days; yyyy-mm-dd, null while
+// pending), its amount, what has been paid off it, its late interest and what of that is unpaid, decimal
+// strings to the cent (reached milestones are paid in due-date order, amount then interest), and its status.
 export type MilestoneStatus = 'PENDING' | 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
 
 export interface MilestoneView {
@@ -261,8 +262,11 @@ export interface MilestoneView {
   description: string;
   pct: string;
   reachedOn: string | null;
+  dueDate: string | null;
   amount: string;
   paid: string;
+  lateInterest: string;
+  interestUnpaid: string;
   status: MilestoneStatus;
 }
 

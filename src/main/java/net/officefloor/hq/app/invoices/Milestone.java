@@ -12,7 +12,7 @@ import java.time.LocalDate;
 /**
  * One milestone of an invoice billed by milestones: a description and the percentage (over 0, up to two
  * decimals) of what the client pays that it is worth. Once the invoice is sent it is owed only from the
- * day it is reached.
+ * day it is reached, and falls due the client's payment terms after that day (see {@link Invoice#milestoneDueDate}).
  */
 @Entity
 @Table(name = "invoice_milestone")
@@ -23,8 +23,17 @@ public class Milestone {
         PENDING, PAID, PART_PAID, OVERDUE, DUE
     }
 
-    /** A milestone's amount, what has been paid off it and its status on a day. */
-    public record Progress(Milestone milestone, BigDecimal amount, BigDecimal paid, Status status) {
+    /**
+     * A milestone's amount, what has been paid off it, the day it falls due (null while pending), the late
+     * interest it has been charged and what of it is still unpaid, and its status on a day.
+     */
+    public record Progress(Milestone milestone, BigDecimal amount, BigDecimal paid, LocalDate dueDate,
+            BigDecimal lateInterest, BigDecimal interestUnpaid, Status status) {
+
+        /** All still owed on a reached milestone: what is unpaid of its amount and of its late interest. */
+        public BigDecimal owed() {
+            return status == Status.PENDING ? BigDecimal.ZERO : amount.subtract(paid).add(interestUnpaid);
+        }
     }
 
     @Id

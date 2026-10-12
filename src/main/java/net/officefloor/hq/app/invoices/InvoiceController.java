@@ -370,14 +370,16 @@ public class InvoiceController {
 
     /**
      * One milestone of an invoice: its id, description, percentage (without trailing zeros), the day it was
-     * reached (null while pending), its amount and what has been paid off it, decimal strings to the cent; and its status.
+     * reached and the day it falls due (null while pending), its amount, what has been paid off it, the late interest
+     * it has been charged and what of that is unpaid, decimal strings to the cent; and its status.
      */
-    public record MilestoneView(Long id, String description, String pct, LocalDate reachedOn, String amount,
-            String paid, Milestone.Status status) {
+    public record MilestoneView(Long id, String description, String pct, LocalDate reachedOn, LocalDate dueDate,
+            String amount, String paid, String lateInterest, String interestUnpaid, Milestone.Status status) {
         static MilestoneView of(Milestone.Progress p) {
             Milestone m = p.milestone();
             return new MilestoneView(m.getId(), m.getDescription(), m.getPct().stripTrailingZeros().toPlainString(),
-                    m.getReachedOn(), p.amount().toPlainString(), p.paid().toPlainString(), p.status());
+                    m.getReachedOn(), p.dueDate(), p.amount().toPlainString(), p.paid().toPlainString(),
+                    p.lateInterest().toPlainString(), p.interestUnpaid().toPlainString(), p.status());
         }
     }
 

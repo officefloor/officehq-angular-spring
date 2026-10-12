@@ -392,7 +392,9 @@ function problemWith(line: NewLine): string {
                 <th scope="col">Share</th>
                 <th scope="col">Amount</th>
                 <th scope="col">Reached</th>
+                <th scope="col">Due</th>
                 <th scope="col">Paid</th>
+                <th scope="col">Late interest</th>
                 <th scope="col">Status</th>
                 <th scope="col">Actions</th>
               </tr>
@@ -404,7 +406,9 @@ function problemWith(line: NewLine): string {
                   <td data-testid="milestone-pct">{{ m.pct }}%</td>
                   <td data-testid="milestone-amount">{{ amount(m.amount) }}</td>
                   <td data-testid="milestone-reached-on">{{ m.reachedOn ?? '' }}</td>
+                  <td data-testid="milestone-due">{{ m.dueDate ?? '' }}</td>
                   <td data-testid="milestone-paid">{{ amount(m.paid) }}</td>
+                  <td data-testid="milestone-interest">{{ amount(m.lateInterest) }}</td>
                   <td data-testid="milestone-status">{{ milestoneStatusLabel(m.status) }}</td>
                   <td>
                     @if (m.reachedOn === null && inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF') {

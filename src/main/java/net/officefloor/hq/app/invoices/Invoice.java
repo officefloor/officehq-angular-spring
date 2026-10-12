@@ -335,6 +335,13 @@ public class Invoice {
     private Integer clientGraceDays;
 
     /**
+     * The client's payment terms in days: their own, else their region's; read from the client and the
+     * workspace's regional terms, null when neither is set.
+     */
+    @Formula("(SELECT COALESCE(c.terms_days, (SELECT CAST(s.setting_value AS INT) FROM app_setting s WHERE s.name = 'region_terms_days_' || c.region)) FROM client c WHERE c.id = client_id)")
+    private Integer clientTermsDays;
+
+    /**
      * The workspace's late-interest threshold in US dollars, as stored (the {@code interest_threshold}
      * setting); null when none is set.
      */
@@ -454,6 +461,13 @@ public class Invoice {
      */
     @Transient
     private List<BigDecimal> instalmentInterest = List.of();
+
+    /**
+     * The late interest each reached milestone has been charged (see {@link #accrueLateInterest}), by the
+     * milestone's id; empty when none is. Not stored, worked out again each time the invoice is read.
+     */
+    @Transient
+    private Map<Long, BigDecimal> milestoneInterest = Map.of();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
@@ -1034,6 +1048,15 @@ public class Invoice {
         this.lateInterest = BigDecimal.ZERO;
         this.lateWaived = BigDecimal.ZERO;
         this.instalmentInterest = List.of();
+        this.milestoneInterest = Map.of();
+        if (status == InvoiceStatus.SENT && !isCreditNote() && isBilledByMilestones()) {
+            accrueMilestoneInterest(payments, taxRate, annualRate, today);
+            if (getLateInterest().compareTo(interestThreshold()) < 0) {
+                this.lateInterest = BigDecimal.ZERO;
+                this.milestoneInterest = Map.of();
+            }
+            return;
+        }
         if (status == InvoiceStatus.SENT && !isCreditNote() && hasPlan()) {
             accrueInstalmentInterest(payments, taxRate, annualRate, today);
             if (getLateInterest().compareTo(interestThreshold()) < 0) {
@@ -1252,18 +1275,78 @@ public class Invoice {
             // The interest dropped by paying the plan off counts as paid with the payment that settled it.
             inOrder.add(new Part(inOrder.get(inOrder.size() - 1).on(), Long.MAX_VALUE, getInterestSaved()));
         }
-        BigDecimal[] left = inOrder.stream().map(Part::amount).toArray(BigDecimal[]::new);
+        List<Instalment> schedule = schedule(taxRate);
+        List<BigDecimal> charges = chargesInOrder(schedule.stream().map(Instalment::dueDate).toList(),
+                schedule.stream().map(Instalment::payment).toList(), inOrder.stream().map(Part::on).toList(),
+                inOrder.stream().map(Part::amount).toList(), annualRate, today);
+        BigDecimal total = charges.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        charges = charges.stream().map(c -> c.setScale(scale(), RoundingMode.HALF_UP)).toList();
+        this.instalmentInterest = charges;
+        this.lateInterest = total;
+    }
+
+    /**
+     * Works out the late interest each reached milestone has been charged by the given day, at the annual
+     * rate (a percentage), by the same rule as a plan's instalments (see {@link #accrueInstalmentInterest}):
+     * each reached milestone falls due on its own (see {@link #milestoneDueDate}), and payments (those not
+     * reversed, with what credit notes took off counting from the start) pay the reached milestones in
+     * due-date order (then id), each milestone's amount and then its interest earned so far. A milestone
+     * still not paid off more than {@link #graceDays()} days after its due date earns interest from the end
+     * of its own grace period on what is still unpaid of it.
+     */
+    private void accrueMilestoneInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+            LocalDate today) {
+        if (annualRate == null || annualRate.signum() <= 0) {
+            return;
+        }
+        record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+        }
+        List<Part> inOrder = new ArrayList<>();
+        if (getCredited().signum() > 0) {
+            inOrder.add(new Part(LocalDate.MIN, Long.MIN_VALUE, getCredited()));
+        }
+        payments.stream().filter(p -> !p.isReversed())
+                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
+                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                .filter(p -> !p.on().isAfter(today))
+                .forEach(inOrder::add);
+        inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
+        List<BigDecimal> amounts = milestoneAmounts(taxRate);
+        List<Integer> order = reachedInDueOrder();
+        List<BigDecimal> charges = chargesInOrder(order.stream().map(k -> milestoneDueDate(milestones.get(k))).toList(),
+                order.stream().map(amounts::get).toList(), inOrder.stream().map(Part::on).toList(),
+                inOrder.stream().map(Part::amount).toList(), annualRate, today);
+        Map<Long, BigDecimal> byMilestone = new TreeMap<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (int n = 0; n < order.size(); n++) {
+            byMilestone.put(milestones.get(order.get(n)).getId(), charges.get(n).setScale(scale(), RoundingMode.HALF_UP));
+            total = total.add(charges.get(n));
+        }
+        this.milestoneInterest = byMilestone;
+        this.lateInterest = total;
+    }
+
+    /**
+     * The late interest each of a run of amounts falling due on the given days has been charged by the given
+     * day, at the annual rate (a percentage), in their order, not yet rounded. The parts paid (on the given
+     * days, in that order) pay each amount itself and then its interest earned so far, earliest first. An
+     * amount still not paid off more than {@link #graceDays()} days after its due date earns interest from
+     * the end of its grace period, compounded daily at rate / 360 (Actual/360), on what is still unpaid of it,
+     * with each payment after its grace period ending a period.
+     */
+    private List<BigDecimal> chargesInOrder(List<LocalDate> dues, List<BigDecimal> amounts, List<LocalDate> paidOn,
+            List<BigDecimal> paidAmounts, BigDecimal annualRate, LocalDate today) {
+        BigDecimal[] left = paidAmounts.toArray(BigDecimal[]::new);
         BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
         List<BigDecimal> charges = new ArrayList<>();
-        BigDecimal total = BigDecimal.ZERO;
-        for (Instalment instalment : schedule(taxRate)) {
-            LocalDate due = instalment.dueDate();
-            BigDecimal owed = instalment.payment();
+        for (int k = 0; k < dues.size(); k++) {
+            LocalDate due = dues.get(k);
+            BigDecimal owed = amounts.get(k);
             boolean late = false;
             if (due != null && today.isAfter(due.plusDays(graceDays()))) {
                 BigDecimal paidInGrace = BigDecimal.ZERO;
                 for (int j = 0; j < left.length; j++) {
-                    if (!inOrder.get(j).on().isAfter(due.plusDays(graceDays()))) {
+                    if (!paidOn.get(j).isAfter(due.plusDays(graceDays()))) {
                         paidInGrace = paidInGrace.add(left[j]);
                     }
                 }
@@ -1273,12 +1356,12 @@ public class Invoice {
             BigDecimal unpaidInterest = BigDecimal.ZERO;
             LocalDate from = due == null ? null : due.plusDays(graceDays());
             for (int j = 0; j < left.length; j++) {
-                Part part = inOrder.get(j);
-                if (late && part.on().isAfter(from) && owed.signum() > 0) {
-                    BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
+                LocalDate on = paidOn.get(j);
+                if (late && on.isAfter(from) && owed.signum() > 0) {
+                    BigDecimal earned = interestOn(owed, daily, interestDays(from, on));
                     charged = charged.add(earned);
                     unpaidInterest = unpaidInterest.add(earned);
-                    from = part.on();
+                    from = on;
                 }
                 BigDecimal toOwed = left[j].min(owed).max(BigDecimal.ZERO);
                 owed = owed.subtract(toOwed);
@@ -1290,11 +1373,9 @@ public class Invoice {
             if (late && owed.signum() > 0) {
                 charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
             }
-            charges.add(charged.setScale(scale(), RoundingMode.HALF_UP));
-            total = total.add(charged);
+            charges.add(charged);
         }
-        this.instalmentInterest = charges;
-        this.lateInterest = total;
+        return charges;
     }
 
     /**
@@ -1681,11 +1762,17 @@ public class Invoice {
 
     /**
      * What is overdue at the tax rate once the given amount has been paid, on the given day: for a plan,
-     * only what is unpaid on its overdue instalments, their late interest included; otherwise all that is due when it is overdue.
+     * only what is unpaid on its overdue instalments, their late interest included; billed by milestones,
+     * only what is unpaid on its overdue milestones, their late interest included; otherwise all that is due when it is overdue.
      */
     public BigDecimal overdueAmount(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         if (statusWhenPaid(paid, taxRate, today) != InvoiceStatus.OVERDUE) {
             return zero();
+        }
+        if (isBilledByMilestones()) {
+            return milestoneProgress(paid, taxRate, today).stream()
+                    .filter(p -> p.status() == Milestone.Status.OVERDUE).map(Milestone.Progress::owed)
+                    .reduce(zero(), BigDecimal::add);
         }
         if (!hasPlan()) {
             return amountDue(paid, taxRate).subtract(disputedAmount(paid, taxRate));
@@ -1697,9 +1784,18 @@ public class Invoice {
 
     /**
      * The due date as listed once the given amount has been paid: for a plan, the due date of its
-     * next unpaid instalment (its own due date once all are paid); otherwise its own due date.
+     * next unpaid instalment (its own due date once all are paid); billed by milestones, the due date of
+     * the next reached milestone (in due-date order) with something owing (its own due date when none has);
+     * otherwise its own due date.
      */
     public LocalDate listedDueDate(BigDecimal paid, BigDecimal taxRate) {
+        if (isBilledByMilestones()) {
+            return milestoneProgress(paid, taxRate, LocalDate.MIN).stream()
+                    .filter(p -> p.dueDate() != null && p.owed().signum() > 0)
+                    .sorted(Comparator.comparing(Milestone.Progress::dueDate)
+                            .thenComparing(p -> p.milestone().getId()))
+                    .map(Milestone.Progress::dueDate).findFirst().orElse(dueDate);
+        }
         if (!hasPlan() || status != InvoiceStatus.SENT) {
             return dueDate;
         }
@@ -1798,38 +1894,78 @@ public class Invoice {
         return sum;
     }
 
+    /** The standard days after it is reached a milestone falls due when the client has no payment terms. */
+    public static final int MILESTONE_TERMS_DAYS = 14;
+
     /**
-     * Each milestone with its amount at the tax rate, what is paid off it once the given amount has been
-     * paid, and its status on the day: a milestone not reached (or on a draft) is pending; payments pay
-     * the reached milestones in order, each paid off before the next; a reached one is due on the
-     * invoice's due date, and overdue more than the grace period after it.
+     * The day a reached milestone falls due: the client's payment terms (their own, else their region's)
+     * after the day it was reached, or {@link #MILESTONE_TERMS_DAYS} days when they have none; null while
+     * it is pending.
+     */
+    public LocalDate milestoneDueDate(Milestone milestone) {
+        if (!milestone.isReached()) {
+            return null;
+        }
+        return milestone.getReachedOn().plusDays(clientTermsDays == null ? MILESTONE_TERMS_DAYS : clientTermsDays);
+    }
+
+    /** The indexes of the reached milestones, in the order they are paid: by due date, then id. */
+    private List<Integer> reachedInDueOrder() {
+        List<Integer> order = new ArrayList<>();
+        for (int k = 0; k < milestones.size(); k++) {
+            if (milestones.get(k).isReached()) {
+                order.add(k);
+            }
+        }
+        order.sort(Comparator.comparing((Integer k) -> milestoneDueDate(milestones.get(k)))
+                .thenComparing(k -> milestones.get(k).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
+        return order;
+    }
+
+    /**
+     * Each milestone with its amount at the tax rate, its due date (see {@link #milestoneDueDate}), what is
+     * paid off it and of its late interest once the given amount has been paid, and its status on the day: a
+     * milestone not reached (or on a draft) is pending; payments (with anything written off and what credit
+     * notes took off) pay the reached milestones in due-date order (then id), each milestone's amount and
+     * then its late interest, each paid off before the next; a reached one not paid off more than
+     * {@link #graceDays()} days after its own due date is overdue. In the order of the milestones.
      */
     public List<Milestone.Progress> milestoneProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         List<BigDecimal> amounts = milestoneAmounts(taxRate);
         BigDecimal left = paid.add(writtenOff(paid, taxRate)).add(getCredited());
-        List<Milestone.Progress> progress = new ArrayList<>();
+        Milestone.Progress[] progress = new Milestone.Progress[milestones.size()];
         for (int k = 0; k < milestones.size(); k++) {
             Milestone m = milestones.get(k);
-            BigDecimal amount = amounts.get(k);
             if (status != InvoiceStatus.SENT || !m.isReached()) {
-                progress.add(new Milestone.Progress(m, amount, zero(), Milestone.Status.PENDING));
-                continue;
+                progress[k] = new Milestone.Progress(m, amounts.get(k), zero(), null, zero(), zero(),
+                        Milestone.Status.PENDING);
             }
-            BigDecimal part = left.min(amount).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
-            left = left.subtract(part);
-            Milestone.Status st;
-            if (part.compareTo(amount) >= 0) {
-                st = Milestone.Status.PAID;
-            } else if (dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
-                st = Milestone.Status.OVERDUE;
-            } else if (part.signum() > 0) {
-                st = Milestone.Status.PART_PAID;
-            } else {
-                st = Milestone.Status.DUE;
-            }
-            progress.add(new Milestone.Progress(m, amount, part, st));
         }
-        return progress;
+        if (status == InvoiceStatus.SENT) {
+            for (int k : reachedInDueOrder()) {
+                Milestone m = milestones.get(k);
+                BigDecimal amount = amounts.get(k);
+                LocalDate due = milestoneDueDate(m);
+                BigDecimal part = left.min(amount).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+                left = left.subtract(part);
+                BigDecimal interest = milestoneInterest.getOrDefault(m.getId(), zero());
+                BigDecimal toInterest = left.min(interest).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+                left = left.subtract(toInterest);
+                BigDecimal interestUnpaid = interest.subtract(toInterest);
+                Milestone.Status st;
+                if (part.compareTo(amount) >= 0 && interestUnpaid.signum() <= 0) {
+                    st = Milestone.Status.PAID;
+                } else if (today.isAfter(due.plusDays(graceDays()))) {
+                    st = Milestone.Status.OVERDUE;
+                } else if (part.signum() > 0) {
+                    st = Milestone.Status.PART_PAID;
+                } else {
+                    st = Milestone.Status.DUE;
+                }
+                progress[k] = new Milestone.Progress(m, amount, part, due, interest, interestUnpaid, st);
+            }
+        }
+        return List.of(progress);
     }
 
     public List<InvoiceLine> getLines() {
@@ -1942,7 +2078,8 @@ public class Invoice {
      * The status on the given day once the given amount has been paid against the grand total at the
      * tax rate: a sent invoice with something still due more than {@link #graceDays()} days after its
      * due date is overdue, part paid or not. An invoice spread over instalments is instead overdue when any
-     * of its instalments is (see {@link #instalmentProgress}).
+     * of its instalments is (see {@link #instalmentProgress}), and one billed by milestones when any of its
+     * milestones is (see {@link #milestoneProgress}).
      */
     public InvoiceStatus statusWhenPaid(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
         return statusWhenPaid(paid, null, taxRate, today);
@@ -1971,6 +2108,11 @@ public class Invoice {
                     .anyMatch(p -> p.status() == Instalment.Status.OVERDUE)) {
                 return InvoiceStatus.OVERDUE;
             }
+        } else if (isBilledByMilestones()) {
+            if (restDue && milestoneProgress(paid, taxRate, today).stream()
+                    .anyMatch(p -> p.status() == Milestone.Status.OVERDUE)) {
+                return InvoiceStatus.OVERDUE;
+            }
         } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
             return InvoiceStatus.OVERDUE;
         }
@@ -1984,7 +2126,10 @@ public class Invoice {
             return InvoiceStatus.PART_PAID;
         }
         List<Instalment> schedule = schedule(taxRate);
-        LocalDate finalDue = hasPlan() ? schedule.get(schedule.size() - 1).dueDate() : dueDate;
+        LocalDate finalDue = hasPlan() ? schedule.get(schedule.size() - 1).dueDate()
+                : isBilledByMilestones() ? milestones.stream().map(this::milestoneDueDate).filter(Objects::nonNull)
+                        .max(Comparator.naturalOrder()).orElse(dueDate)
+                : dueDate;
         return paidOn != null && finalDue != null && paidOn.isAfter(finalDue) ? InvoiceStatus.PAID_LATE
                 : InvoiceStatus.PAID;
     }
