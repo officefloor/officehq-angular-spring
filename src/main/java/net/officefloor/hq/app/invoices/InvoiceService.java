@@ -318,6 +318,69 @@ public class InvoiceService {
     }
 
     /**
+     * Brings the sent invoice up to date, answering it; empty if no such invoice. Today's grand total and tax become what
+     * it was sent with (see {@link Invoice#keepSentFigures}), so it owes what today's rules give, recorded as
+     * INVOICE_UPDATED in the audit. Refused for a draft, a credit note, a void, written-off or rebilled invoice, when
+     * today's grand total is no different from what it was sent for, when it would be less than what has been paid on it,
+     * and when the increase would take the client's balance (less what is in dispute, plus its approved drafts) over its
+     * credit limit.
+     */
+    @Transactional
+    public Optional<Invoice> updateSentFigures(Long invoiceId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be updated.");
+            }
+            if (invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a sent invoice can be updated.");
+            }
+            if (invoice.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice cannot be updated.");
+            }
+            if (invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("A written-off invoice cannot be updated.");
+            }
+            if (invoice.getRebilledOn() != null) {
+                throw new InvoiceRejectedException("A rebilled invoice cannot be updated.");
+            }
+            BigDecimal rate = taxRate.percent();
+            BigDecimal from = invoice.total(rate);
+            BigDecimal to = invoice.currentTotal(rate).setScale(from.scale(), RoundingMode.HALF_UP);
+            BigDecimal increase = to.subtract(from);
+            if (increase.signum() == 0) {
+                throw new InvoiceRejectedException("The invoice's total today is what it was sent for; there is nothing to update.");
+            }
+            BigDecimal paidOn = paid(List.of(invoice)).get(invoice.getId());
+            if (to.compareTo(paidOn) < 0) {
+                throw new InvoiceRejectedException("Today's total (" + to.toPlainString() + ") is less than the "
+                        + paidOn.toPlainString() + " already paid on the invoice, so it cannot be updated.");
+            }
+            if (increase.signum() > 0) {
+                Client client = clients.findById(invoice.getClientId()).orElse(null);
+                if (client != null && client.getCreditLimit() != null) {
+                    BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
+                            .add(increase);
+                    BigDecimal limit = creditLimitOf(client);
+                    if (after.compareTo(limit) > 0) {
+                        Currency currency = client.getCurrency();
+                        throw new InvoiceRejectedException("Updating this invoice would take " + client.getName()
+                                + "'s balance (less what is in dispute, plus its approved drafts) to " + currency.format(after)
+                                + ", over its " + currency.format(limit) + " credit limit.");
+                    }
+                }
+            }
+            invoice.keepSentFigures(rate);
+            invoices.saveAndFlush(invoice);
+            audit.record("INVOICE_UPDATED id=" + invoice.getId() + " from=" + from.toPlainString()
+                    + " to=" + to.toPlainString());
+            entityManager.refresh(invoice);
+            withInterest(List.of(invoice));
+        });
+        return found;
+    }
+
+    /**
      * Marks the invoice as recurring, or not; empty if no such invoice. A credit note is refused. The invoice
      * is otherwise unchanged, so a sent one stays sent.
      */

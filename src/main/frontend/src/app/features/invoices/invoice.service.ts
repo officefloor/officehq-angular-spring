@@ -526,6 +526,12 @@ export class InvoiceService {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/rebill`, null);
   }
 
+  // Brings a sent invoice up to date: today's grand total and tax become what it was sent with, so it owes what
+  // today's rules give. Answers the invoice.
+  updateSentFigures(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/update`, null);
+  }
+
   // Marks an invoice as recurring, or not; answers the invoice.
   setRecurring(invoiceId: number, recurring: boolean): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/recurring`, { recurring });

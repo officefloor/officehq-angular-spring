@@ -786,6 +786,15 @@ function problemWith(line: NewLine): string {
           }
         }
 
+        @if (inv.creditOf === null && inv.sentTotal !== null) {
+          <button type="button" data-testid="invoice-update" [disabled]="updating()" (click)="updateSentFigures(inv.id)">
+            Update to today's total
+          </button>
+          @if (updateError()) {
+            <p role="alert" data-testid="invoice-update-error">{{ updateError() }}</p>
+          }
+        }
+
         @if (inv.creditOf === null) {
           <button type="button" data-testid="invoice-rebill" [disabled]="rebilling()" (click)="rebill(inv.id)">
             Rebill
@@ -1009,6 +1018,8 @@ export class InvoicePanel {
   protected readonly claimError = signal('');
   protected readonly rebilling = signal(false);
   protected readonly rebillError = signal('');
+  protected readonly updating = signal(false);
+  protected readonly updateError = signal('');
   protected readonly recurUntilForm = new FormGroup({
     recurUntil: new FormControl('', { nonNullable: true }),
   });
@@ -1119,6 +1130,7 @@ export class InvoicePanel {
       this.generateError.set('');
       this.claimError.set('');
       this.rebillError.set('');
+      this.updateError.set('');
       this.creditError.set('');
       this.reverseError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
@@ -1808,6 +1820,25 @@ export class InvoicePanel {
         const detail: unknown = e.error?.detail;
         this.rebillError.set(typeof detail === 'string' && detail ? detail : 'The invoice could not be rebilled.');
         this.rebilling.set(false);
+      },
+    });
+  }
+
+  // Brings the sent invoice up to date: today's grand total and tax become its sent figures, so what the client
+  // owes changed.
+  protected updateSentFigures(invoiceId: number): void {
+    this.updating.set(true);
+    this.updateError.set('');
+    this.service.updateSentFigures(invoiceId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.updating.set(false);
+        this.changed.emit(detail);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.updateError.set(typeof detail === 'string' && detail ? detail : 'The invoice could not be updated.');
+        this.updating.set(false);
       },
     });
   }

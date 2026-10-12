@@ -754,6 +754,14 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
+    /** Brings a sent invoice up to date: today's grand total and tax become what it was sent with; answers the invoice. */
+    @PostMapping("/api/invoices/{id}/update")
+    public InvoiceDetail updateSentFigures(@PathVariable Long id) {
+        return invoices.updateSentFigures(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
     /** Generates the next period's draft of a sent recurring invoice; answers the new draft. */
     @PostMapping("/api/invoices/{id}/generate")
     @ResponseStatus(HttpStatus.CREATED)
