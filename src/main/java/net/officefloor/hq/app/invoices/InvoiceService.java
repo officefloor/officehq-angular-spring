@@ -1460,6 +1460,7 @@ public class InvoiceService {
         LocalDate issued = today.date();
         repriceFromRates(invoice, null, issued);
         invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
+        invoice.keepSentFigures(taxRate.percent());
         invoices.saveAndFlush(invoice);
         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
                 + " total=" + invoice.total(taxRate.percent()).toPlainString());

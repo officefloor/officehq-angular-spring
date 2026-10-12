@@ -174,6 +174,8 @@ public class InvoiceController {
      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
      * {@code poNumber} is the client's purchase order number (null when none).
+     * {@code sentTotal} is the grand total it was sent with, which it is worth (null for a draft, or when not kept), and
+     * {@code currentTotal} the grand total today's prices, rates and client details would give, only when that differs (else null).
      * {@code milestones} are the milestones it is billed by (empty when it is billed whole), each with its
      * amount and status (see {@link Invoice#milestoneProgress}); {@code milestonesPct} is what their percentages add up to.
      */
@@ -188,7 +190,7 @@ public class InvoiceController {
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
             int approvalsNeeded, int approvals,
             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
-            List<MilestoneView> milestones, String milestonesPct, Long claimFrom) {
+            List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -233,7 +235,10 @@ public class InvoiceController {
                     i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getRecurringSince(), i.getDisputedOn(), i.getDisputeResolvedOn(),
                     i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
                     i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
-                    i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom());
+                    i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom(),
+                    i.hasSentFigures() ? i.total(taxRate).toPlainString() : null,
+                    i.hasSentFigures() && i.currentTotal(taxRate).compareTo(i.total(taxRate)) != 0
+                            ? i.currentTotal(taxRate).toPlainString() : null);
         }
     }
 

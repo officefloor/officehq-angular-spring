@@ -255,6 +255,12 @@ export interface InvoiceDetail {
   recurUntil: string | null;
   // The day a recurring invoice's plan began (yyyy-mm-dd), moved on a year at each yearly price rise; null for none.
   recurringSince: string | null;
+  // The grand total a sent invoice was sent with, which it is worth whatever today's rules say; null for
+  // a draft (or a sent invoice whose figures were not kept).
+  sentTotal: string | null;
+  // The grand total today's prices, rates and client details would give a sent invoice, only when that
+  // differs from its sent total; otherwise null.
+  currentTotal: string | null;
   // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
   claimFrom: number | null;
   // The client's purchase order number for the invoice; null when none was given.

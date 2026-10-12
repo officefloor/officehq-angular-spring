@@ -378,6 +378,18 @@ function problemWith(line: NewLine): string {
               <th scope="row" colspan="11">Total</th>
               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
             </tr>
+            @if (inv.sentTotal !== null) {
+              <tr>
+                <th scope="row" colspan="11">Sent total</th>
+                <td data-testid="invoice-sent-total">{{ amount(inv.sentTotal) }}</td>
+              </tr>
+            }
+            @if (inv.currentTotal !== null) {
+              <tr>
+                <th scope="row" colspan="11">Current total (at today's prices and rates)</th>
+                <td data-testid="invoice-current-total">{{ amount(inv.currentTotal) }}</td>
+              </tr>
+            }
             @if (+inv.withholdingPct > 0) {
               <tr>
                 <th scope="row" colspan="11">Withheld by the client for its tax office</th>

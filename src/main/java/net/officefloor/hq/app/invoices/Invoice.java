@@ -173,6 +173,16 @@ public class Invoice {
     @Column(name = "approved_total")
     private BigDecimal approvedTotal;
 
+    /**
+     * The grand total and tax the invoice was sent with: once sent, it is worth exactly that. Null for a
+     * draft, or for a sent invoice whose figures were not kept (worth what its lines work out to).
+     */
+    @Column(name = "sent_total")
+    private BigDecimal sentTotal;
+
+    @Column(name = "sent_tax")
+    private BigDecimal sentTax;
+
     /** The day the invoice was approved; null while it has not been, or for an approval given before the day was kept. */
     @Column(name = "approved_on")
     private LocalDate approvedOn;
@@ -2345,6 +2355,8 @@ public class Invoice {
     /** Puts a sent invoice back to draft, so it has to be sent again. */
     public void reopen() {
         this.status = InvoiceStatus.DRAFT;
+        this.sentTotal = null;
+        this.sentTax = null;
     }
 
     /** The standard days past its due date an invoice is given before it becomes overdue: a week's grace. */
@@ -2980,6 +2992,11 @@ public class Invoice {
      * invoice tax is the total over the rates. It is what the line taxes add up to.
      */
     public BigDecimal tax(BigDecimal taxRate) {
+        return hasSentFigures() ? sentTax.setScale(scale(), RoundingMode.HALF_UP) : currentTax(taxRate);
+    }
+
+    /** As {@link #tax}, but always worked out with today's rules, even when the invoice was sent with other figures. */
+    public BigDecimal currentTax(BigDecimal taxRate) {
         if (clientPricesIncludeTax) {
             return isReverseCharge() ? zero() : inclusiveTax(taxRate);
         }
@@ -3162,6 +3179,11 @@ public class Invoice {
      * it when the client's prices include tax (taken out even when reverse charged).
      */
     public BigDecimal beforeTax(BigDecimal taxRate) {
+        return hasSentFigures() ? total(taxRate).subtract(tax(taxRate)) : currentBeforeTax(taxRate);
+    }
+
+    /** As {@link #beforeTax}, but always worked out with today's rules. */
+    private BigDecimal currentBeforeTax(BigDecimal taxRate) {
         BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
         return clientPricesIncludeTax ? amount.subtract(inclusiveTax(taxRate)) : amount;
     }
@@ -3172,10 +3194,39 @@ public class Invoice {
      * client whose prices include tax pays only the amount before tax.
      */
     public BigDecimal total(BigDecimal taxRate) {
+        return hasSentFigures() ? sentTotal.setScale(scale(), RoundingMode.HALF_UP) : currentTotal(taxRate);
+    }
+
+    /**
+     * As {@link #total}, but always worked out with today's prices, rates and client details, even when the
+     * invoice was sent with other figures.
+     */
+    public BigDecimal currentTotal(BigDecimal taxRate) {
         BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
         if (clientPricesIncludeTax) {
-            return isReverseCharge() ? beforeTax(taxRate) : amount;
+            return isReverseCharge() ? currentBeforeTax(taxRate) : amount;
         }
-        return amount.add(tax(taxRate));
+        return amount.add(currentTax(taxRate));
+    }
+
+    /** Whether the invoice is sent (not a draft) with the grand total and tax it was sent with kept. */
+    public boolean hasSentFigures() {
+        return status != InvoiceStatus.DRAFT && sentTotal != null && sentTax != null;
+    }
+
+    /** The grand total the invoice was sent with; null for a draft or when it was not kept. */
+    public BigDecimal getSentTotal() {
+        return sentTotal;
+    }
+
+    /** The tax the invoice was sent with; null for a draft or when it was not kept. */
+    public BigDecimal getSentTax() {
+        return sentTax;
+    }
+
+    /** Keeps the grand total and tax the invoice works out to now at the tax rate as what it was sent with. */
+    public void keepSentFigures(BigDecimal taxRate) {
+        this.sentTotal = currentTotal(taxRate);
+        this.sentTax = currentTax(taxRate);
     }
 }
