@@ -1,0 +1,341 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index cdef91a..96654f3 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -1,4 +1,5 @@
+ import { HttpErrorResponse } from '@angular/common/http';
++import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+ import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+ import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
+ import { PaymentForm } from './payment-form';
+@@ -109,7 +110,6 @@ import { Currency, money, statusLabel } from './invoice-format';
+       <app-payment-form
+         [clientId]="clientId()"
+         [currency]="currency()"
+-        (split)="splitRecorded($event)"
+         (deposited)="splitRecorded($event)"
+       />
+     }
+@@ -144,6 +144,15 @@ export class ClientInvoices {
+   protected readonly money = money;
+ 
+   constructor() {
++    // A payment spread over the client's invoices: show their new statuses, even when an invoice was
++    // opened (closing the payment form) before it was answered.
++    this.service.splitRecorded
++      .pipe(takeUntilDestroyed())
++      .subscribe(({ clientId, invoices }) => {
++        if (clientId === untracked(this.clientId)) {
++          this.splitRecorded(invoices);
++        }
++      });
+     effect((onCleanup) => {
+       const id = this.clientId();
+       this.invoices.set([]);
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 79180ef..ad4da4c 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -1,6 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+-import { Observable, ReplaySubject, of, switchMap, tap } from 'rxjs';
++import { Observable, ReplaySubject, Subject, of, switchMap, tap } from 'rxjs';
+ import { Currency } from './invoice-format';
+ 
+ // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
+@@ -102,8 +102,9 @@ export interface InvoiceLineView {
+ // part applied to this invoice) in the client's currency. `surcharge` is the part of the amount that
+ // was the card surcharge, in the client's currency ("0.00" unless paid by card), and `fxFee` the part
+ // that was the conversion fee ("0.00" unless paid in another currency). `remittance` is the client's
+-// remittance text (null when none); `matchedInvoice` is the number of the invoice whose purchase order
+-// it matched and `matchScore` the similarity to three decimals (both null when none).
++// remittance text (null when none); `matchedInvoice` is the numbers of the invoices whose purchase
++// orders its semicolon-separated parts matched and `matchScore` their similarities to three decimals, each
++// comma separated in the order of the parts (both null when none).
+ export interface InvoicePaymentView {
+   id: number;
+   amount: string;
+@@ -350,6 +351,10 @@ export class InvoiceService {
+   // Completes once the latest payment spread over a client's invoices has been answered, so an
+   // invoice opened meanwhile is read with it.
+   private paymentSettled: Observable<unknown> = of(null);
++  private readonly splitPayments = new Subject<{ clientId: number; invoices: InvoiceSummary[] }>();
++  // Each payment spread over a client's invoices once recorded, with the client's invoices' new
++  // statuses: heard even when the form it was recorded in has gone (an invoice was opened meanwhile).
++  readonly splitRecorded = this.splitPayments.asObservable();
+ 
+   forClient(clientId: number): Observable<InvoiceSummary[]> {
+     return this.paymentSettled.pipe(
+@@ -581,7 +586,16 @@ export class InvoiceService {
+     };
+     return this.http
+       .post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment)
+-      .pipe(tap({ next: done, error: done, unsubscribe: done }));
++      .pipe(
++        tap({
++          next: (invoices) => {
++            done();
++            this.splitPayments.next({ clientId, invoices });
++          },
++          error: done,
++          unsubscribe: done,
++        }),
++      );
+   }
+ 
+   // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 73c1b15..9e810d5 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -118,6 +118,7 @@ public class TestSupportController {
+         jdbc.execute("DELETE FROM volume_discount");
+         jdbc.execute("DELETE FROM tax_rate_change");
+         jdbc.execute("DELETE FROM payment_allocation");
++        jdbc.execute("DELETE FROM payment_match");
+         jdbc.execute("DELETE FROM client_rate");
+         jdbc.execute("DELETE FROM price_list_rate");
+         for (String table : List.of("payment", "invoice_milestone", "invoice_line", "invoice", "client")) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index abda4df..5b9b83b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -15,6 +15,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.TreeMap;
++import java.util.stream.Collectors;
+ import java.util.stream.IntStream;
+ import net.officefloor.hq.app.TaxRate;
+ import net.officefloor.hq.app.Today;
+@@ -65,8 +66,9 @@ public class InvoiceController {
+      * reference it quoted in groups of four (null when none). {@code surcharge} is the part of it that
+      * was the card surcharge, in the client's currency ("0.00" unless paid by card), and {@code fxFee} the
+      * part that was the conversion fee ("0.00" unless paid in another currency). {@code remittance} is the
+-     * remittance text (null when none), {@code matchedInvoice} the number of the invoice whose purchase order
+-     * number it matched and {@code matchScore} the similarity to three decimals (both null when none).
++     * remittance text (null when none), {@code matchedInvoice} the numbers of the invoices whose purchase order
++     * numbers its parts matched and {@code matchScore} their similarities to three decimals, each comma separated
++     * in the order of the parts (both null when none).
+      */
+     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
+             String reference, PaymentMethod method, String surcharge, String fxFee, String remittance, String matchedInvoice,
+@@ -76,8 +78,11 @@ public class InvoiceController {
+                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
+                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
+                     p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString(),
+-                    p.getRemittance(), p.getMatchedInvoice() == null ? null : InvoiceNumber.of(p.getMatchedInvoice()),
+-                    p.getMatchScore() == null ? null : p.getMatchScore().setScale(3).toPlainString());
++                    p.getRemittance(),
++                    p.getMatches().isEmpty() ? null : p.getMatches().stream()
++                            .map(m -> InvoiceNumber.of(m.getInvoiceId())).collect(Collectors.joining(", ")),
++                    p.getMatches().isEmpty() ? null : p.getMatches().stream()
++                            .map(m -> m.getScore().setScale(3).toPlainString()).collect(Collectors.joining(", ")));
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index b3d3e25..bc97478 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1810,10 +1810,10 @@ public class InvoiceService {
+      * each be more than zero and together no more than the payment; each must be no more than its
+      * invoice has due and at least its minimum part payment (both checked with the other parts).
+      * The payment keeps the reference of the first invoice it reaches.
+-     * With no reference, remittance text (null or blank when none) first pays the open invoice whose
+-     * purchase order number is most like it: a Jaro-Winkler similarity (see {@link RemittanceMatch}) of at least
+-     * 0.85, the earlier due date then the lower id on a tie, among invoices that take payments and have something
+-     * due. The rest goes in the same order.
++     * With no reference, remittance text (null or blank when none) first pays, for each of its parts separated
++     * by semicolons in turn, the open invoice not matched by an earlier part whose purchase order number is
++     * most like it: a Jaro-Winkler similarity (see {@link RemittanceMatch}) of at least 0.85,
++     * the earlier due date then the lower id on a tie, among invoices that take payments and have something due. The rest goes in the same order.
+      */
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+@@ -1878,27 +1878,37 @@ public class InvoiceService {
+         }
+         Map<Long, BigDecimal> dues = new HashMap<>();
+         List<Invoice> sent = inPaymentOrder(candidates, dues);
+-        Invoice matched = null;
+-        double score = 0;
++        // Each part of the remittance (separated by semicolons) in turn matches an invoice not matched by an earlier part.
++        List<Invoice> matched = new ArrayList<>();
++        List<Double> scores = new ArrayList<>();
+         if (references.isEmpty() && remittance != null && !remittance.isBlank()) {
+-            for (Invoice invoice : sent) {
+-                if (dues.get(invoice.getId()).signum() <= 0 || invoice.getPoNumber() == null) {
++            for (String part : remittance.split(";")) {
++                if (part.isBlank()) {
+                     continue;
+                 }
+-                double similarity = RemittanceMatch.similarity(remittance.trim(), invoice.getPoNumber());
+-                if (similarity < RemittanceMatch.THRESHOLD) {
+-                    continue;
++                Invoice best = null;
++                double score = 0;
++                for (Invoice invoice : sent) {
++                    if (dues.get(invoice.getId()).signum() <= 0 || invoice.getPoNumber() == null || matched.contains(invoice)) {
++                        continue;
++                    }
++                    double similarity = RemittanceMatch.similarity(part.trim(), invoice.getPoNumber());
++                    if (similarity < RemittanceMatch.THRESHOLD) {
++                        continue;
++                    }
++                    if (best == null || similarity > score || (similarity == score && earlierMatch(invoice, best))) {
++                        best = invoice;
++                        score = similarity;
++                    }
+                 }
+-                if (matched == null || similarity > score || (similarity == score && earlierMatch(invoice, matched))) {
+-                    matched = invoice;
+-                    score = similarity;
++                if (best != null) {
++                    matched.add(best);
++                    scores.add(score);
+                 }
+             }
+-            if (matched != null) {
+-                List<Invoice> reordered = new ArrayList<>();
+-                reordered.add(matched);
+-                Long matchedId = matched.getId();
+-                sent.stream().filter(i -> !i.getId().equals(matchedId)).forEach(reordered::add);
++            if (!matched.isEmpty()) {
++                List<Invoice> reordered = new ArrayList<>(matched);
++                sent.stream().filter(i -> !matched.contains(i)).forEach(reordered::add);
+                 sent = reordered;
+             }
+         }
+@@ -1939,8 +1949,8 @@ public class InvoiceService {
+         Payment payment = recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee,
+                         stated)
+                 .remitted(remittance);
+-        if (matched != null) {
+-            payment.matched(matched.getId(), score);
++        for (int i = 0; i < matched.size(); i++) {
++            payment.matched(matched.get(i).getId(), scores.get(i));
+         }
+         return payments.saveAndFlush(payment);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index dca156a..3eadf9a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -6,10 +6,12 @@ import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+ import jakarta.persistence.Enumerated;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
++import jakarta.persistence.OrderColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+@@ -40,13 +42,11 @@ public class Payment {
+     /** The remittance text the client wrote on the payment, or null when none was. */
+     private String remittance;
+ 
+-    /** The invoice whose purchase order number the remittance matched; null when none did. */
+-    @Column(name = "matched_invoice")
+-    private Long matchedInvoice;
+-
+-    /** How closely the remittance matched that invoice's purchase order number (Jaro-Winkler); null when none did. */
+-    @Column(name = "match_score")
+-    private BigDecimal matchScore;
++    /** The invoices whose purchase order numbers the parts of the remittance matched, in order; empty when none did. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "payment_match", joinColumns = @JoinColumn(name = "payment_id"))
++    @OrderColumn(name = "position")
++    private List<PaymentMatch> matches = new ArrayList<>();
+ 
+     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
+     private boolean reversed;
+@@ -161,10 +161,9 @@ public class Payment {
+         return this;
+     }
+ 
+-    /** Notes the invoice the remittance matched and the similarity, rounded half up to three decimals. */
++    /** Notes the next invoice a part of the remittance matched and the similarity, rounded half up to three decimals. */
+     public Payment matched(Long invoiceId, double score) {
+-        this.matchedInvoice = invoiceId;
+-        this.matchScore = BigDecimal.valueOf(score).setScale(3, java.math.RoundingMode.HALF_UP);
++        matches.add(new PaymentMatch(invoiceId, BigDecimal.valueOf(score).setScale(3, java.math.RoundingMode.HALF_UP)));
+         return this;
+     }
+ 
+@@ -172,12 +171,8 @@ public class Payment {
+         return remittance;
+     }
+ 
+-    public Long getMatchedInvoice() {
+-        return matchedInvoice;
+-    }
+-
+-    public BigDecimal getMatchScore() {
+-        return matchScore;
++    public List<PaymentMatch> getMatches() {
++        return matches;
+     }
+ 
+     /** Notes how the payment was made (null for a bank transfer). */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/PaymentMatch.java b/src/main/java/net/officefloor/hq/app/invoices/PaymentMatch.java
+new file mode 100644
+index 0000000..3bf4641
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/PaymentMatch.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app.invoices;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++
++/** An invoice whose purchase order number one part of a payment's remittance matched, and how closely. */
++@Embeddable
++public class PaymentMatch {
++
++    @Column(name = "invoice_id")
++    private Long invoiceId;
++
++    /** The Jaro-Winkler similarity, to three decimals. */
++    private BigDecimal score;
++
++    protected PaymentMatch() {
++    }
++
++    public PaymentMatch(Long invoiceId, BigDecimal score) {
++        this.invoiceId = invoiceId;
++        this.score = score;
++    }
++
++    public Long getInvoiceId() {
++        return invoiceId;
++    }
++
++    public BigDecimal getScore() {
++        return score;
++    }
++}
+diff --git a/src/main/resources/db/migration/V82__payment_matches.sql b/src/main/resources/db/migration/V82__payment_matches.sql
+new file mode 100644
+index 0000000..1d75d56
+--- /dev/null
++++ b/src/main/resources/db/migration/V82__payment_matches.sql
+@@ -0,0 +1,13 @@
++-- Each part of a payment's remittance (separated by semicolons) may match an invoice's purchase order number:
++-- the invoices matched, in the order of the parts, and how closely (Jaro-Winkler).
++CREATE TABLE payment_match (
++    payment_id BIGINT       NOT NULL REFERENCES payment (id) ON DELETE CASCADE,
++    position   INT          NOT NULL,
++    invoice_id BIGINT       NOT NULL REFERENCES invoice (id) ON DELETE CASCADE,
++    score      DECIMAL(4, 3) NOT NULL,
++    PRIMARY KEY (payment_id, position)
++);
++INSERT INTO payment_match (payment_id, position, invoice_id, score)
++    SELECT id, 0, matched_invoice, match_score FROM payment WHERE matched_invoice IS NOT NULL;
++ALTER TABLE payment DROP COLUMN matched_invoice;
++ALTER TABLE payment DROP COLUMN match_score;
