@@ -1,0 +1,175 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index a14765b..9a07341 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -20,6 +20,7 @@ import net.officefloor.hq.app.invoices.Invoice;
+ import net.officefloor.hq.app.invoices.InvoiceRepository;
+ import net.officefloor.hq.app.invoices.PaymentMethod;
+ import net.officefloor.hq.app.invoices.PaymentRepository;
++import net.officefloor.hq.app.invoices.RemittanceMatch;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.jdbc.core.JdbcTemplate;
+@@ -643,6 +644,7 @@ public class TestSupportController {
+                         cents(allocation.get("amount"), "payments[].allocations[].amount"),
+                         allocation.get("date") == null ? null : date(allocation.get("date"), "payments[].allocations[].date"));
+             }
++            matchRemittance(paymentId, id(row.get("clientId")), row.get("remittance"));
+         }
+         // An issued credit note keeps its grand total, which comes off what its original owes, in the
+         // order they were issued; any rest is the client's credit.
+@@ -668,6 +670,47 @@ public class TestSupportController {
+         }
+     }
+ 
++    /**
++     * Matches a seeded payment's remittance, part by part (separated by semicolons), to the purchase order numbers of
++     * the client's invoices, as when a payment is recorded: each part to the closest invoice not matched by an earlier
++     * part, preferring on a tie an invoice the payment was allocated to, then an invoice over an adjustment note, then
++     * the lower id.
++     */
++    private void matchRemittance(Long paymentId, Long clientId, Object remittance) {
++        if (remittance == null || remittance.toString().isBlank()) {
++            return;
++        }
++        List<Map<String, Object>> candidates = jdbc.queryForList(
++                "SELECT i.id, i.po_number, i.adjustment_of, (SELECT COUNT(*) FROM payment_allocation a WHERE a.payment_id = ? AND a.invoice_id = i.id) AS allocated "
++                        + "FROM invoice i WHERE i.client_id = ? AND i.po_number IS NOT NULL AND i.status NOT IN ('DRAFT', 'VOID', 'CREDIT_NOTE') "
++                        + "ORDER BY allocated DESC, CASE WHEN i.adjustment_of IS NULL THEN 0 ELSE 1 END, i.id",
++                paymentId, clientId);
++        List<Object> matched = new ArrayList<>();
++        int position = 0;
++        for (String part : remittance.toString().split(";")) {
++            if (part.isBlank()) {
++                continue;
++            }
++            Map<String, Object> best = null;
++            double score = 0;
++            for (Map<String, Object> candidate : candidates) {
++                if (matched.contains(candidate.get("ID"))) {
++                    continue;
++                }
++                double similarity = RemittanceMatch.similarity(part.trim(), candidate.get("PO_NUMBER").toString());
++                if (similarity >= RemittanceMatch.THRESHOLD && (best == null || similarity > score)) {
++                    best = candidate;
++                    score = similarity;
++                }
++            }
++            if (best != null) {
++                matched.add(best.get("ID"));
++                jdbc.update("INSERT INTO payment_match (payment_id, position, invoice_id, score) VALUES (?, ?, ?, ?)",
++                        paymentId, position++, best.get("ID"), BigDecimal.valueOf(score).setScale(3, java.math.RoundingMode.HALF_UP));
++            }
++        }
++    }
++
+     /**
+      * Read back what is stored, in the same shape and with the same field names the fixtures use,
+      * so earlier checkpoints' test data can be replayed and checked (AGENTS.md §4.3, §4.4).
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index c336448..832e5d9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -850,11 +850,12 @@ public class Invoice {
+     /**
+      * A new, empty draft debit note adjusting this sent invoice, issued on the given date and due on the date given: same
+      * client, billed on this invoice's terms (its percentage discount and its surcharge percentage), priced and taxed as of
+-     * this invoice's issue date in its region.
++     * this invoice's issue date in its region, and carrying its purchase order number.
+      */
+     public Invoice debitNote(LocalDate issueDate, LocalDate dueDate) {
+         Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+         note.adjustmentOf = id;
++        note.poNumber = poNumber;
+         note.supplyRegion = supplyRegion;
+         note.creditedIssueDate = this.issueDate;
+         note.discountPct = discountPct;
+@@ -869,6 +870,7 @@ public class Invoice {
+     public Invoice adjustmentCreditNote(LocalDate issueDate) {
+         Invoice note = creditNote(issueDate);
+         note.adjustmentOf = id;
++        note.poNumber = poNumber;
+         note.discountPct = discountPct;
+         return note;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 001edd5..f00b90d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -924,13 +924,20 @@ public class InvoiceService {
+         return found;
+     }
+ 
+-    /** Sets the client's purchase order number on an invoice (blank for none); empty if no such invoice. */
++    /**
++     * Sets the client's purchase order number on an invoice (blank for none), and on its adjustment notes, which carry
++     * their invoice's; empty if no such invoice.
++     */
+     @Transactional
+     public Optional<Invoice> setPoNumber(Long invoiceId, String poNumber) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             invoice.setPoNumber(poNumber);
+             invoices.saveAndFlush(invoice);
++            loadForClient(invoice.getClientId()).stream().filter(n -> invoiceId.equals(n.getAdjustmentOf())).forEach(n -> {
++                n.setPoNumber(poNumber);
++                invoices.saveAndFlush(n);
++            });
+         });
+         return found;
+     }
+@@ -2305,8 +2312,17 @@ public class InvoiceService {
+                 }
+             }
+             if (!matched.isEmpty()) {
+-                List<Invoice> reordered = new ArrayList<>(matched);
+-                sent.stream().filter(i -> !matched.contains(i)).forEach(reordered::add);
++                // Each matched invoice is paid first, straight followed by its debit adjustment notes, oldest first.
++                List<Invoice> first = new ArrayList<>();
++                for (Invoice invoice : matched) {
++                    if (!first.contains(invoice)) {
++                        first.add(invoice);
++                    }
++                    sent.stream().filter(i -> isDebitNote(i) && invoice.getId().equals(i.getAdjustmentOf()) && !first.contains(i))
++                            .sorted(oldestFirst()).forEach(first::add);
++                }
++                List<Invoice> reordered = new ArrayList<>(first);
++                sent.stream().filter(i -> !first.contains(i)).forEach(reordered::add);
+                 sent = reordered;
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java b/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java
+index 5ea1a62..2ff5017 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java
+@@ -3,10 +3,10 @@ package net.officefloor.hq.app.invoices;
+ import java.util.Locale;
+ 
+ /** How alike a payment's remittance text is to an invoice's purchase order number. */
+-final class RemittanceMatch {
++public final class RemittanceMatch {
+ 
+     /** The least similarity that counts as a match. */
+-    static final double THRESHOLD = 0.90;
++    public static final double THRESHOLD = 0.90;
+ 
+     private RemittanceMatch() {
+     }
+@@ -16,7 +16,7 @@ final class RemittanceMatch {
+      * half the longer length less one, transpositions are halved, and a common prefix of up to four
+      * characters is boosted by 0.1.
+      */
+-    static double similarity(String first, String second) {
++    public static double similarity(String first, String second) {
+         String a = first.toLowerCase(Locale.ROOT);
+         String b = second.toLowerCase(Locale.ROOT);
+         if (a.isEmpty() || b.isEmpty()) {
+diff --git a/src/main/resources/db/migration/V94__adjustment_po_number.sql b/src/main/resources/db/migration/V94__adjustment_po_number.sql
+new file mode 100644
+index 0000000..a884b24
+--- /dev/null
++++ b/src/main/resources/db/migration/V94__adjustment_po_number.sql
+@@ -0,0 +1,3 @@
++-- An adjustment note carries the purchase order number of the invoice it adjusts.
++UPDATE invoice n SET po_number = (SELECT i.po_number FROM invoice i WHERE i.id = n.adjustment_of)
++    WHERE n.adjustment_of IS NOT NULL AND n.po_number IS NULL;
