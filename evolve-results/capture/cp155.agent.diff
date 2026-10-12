@@ -1,0 +1,414 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index cd37599..1199412 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -192,6 +192,11 @@ function problemWith(line: NewLine): string {
+       problems.push('The line discount can have at most two decimals.');
+     }
+   }
++  if ((line.periodStart === undefined) !== (line.periodEnd === undefined)) {
++    problems.push('Enter both the start and the end of the service period, or neither.');
++  } else if (line.periodStart && line.periodEnd && line.periodEnd < line.periodStart) {
++    problems.push('The service period cannot end before it starts.');
++  }
+   if (line.taxRate !== undefined) {
+     if (!/^-?\d+(\.\d+)?$/.test(line.taxRate)) {
+       problems.push('The line tax rate must be a number, like 5 or 12.5.');
+@@ -253,6 +258,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Billed qty</th>
+               <th scope="col">Unit type</th>
+               <th scope="col">Unit price</th>
++              <th scope="col">Service period</th>
+               <th scope="col">Line discount</th>
+               <th scope="col">Amount</th>
+               <th scope="col">Discount share</th>
+@@ -271,6 +277,7 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-billed-qty">{{ l.billedQty }}</td>
+                 <td data-testid="line-unit-type">{{ l.unitType ?? '' }}</td>
+                 <td data-testid="line-unit-price">{{ l.tiered ? 'Tiered from ' + amount(l.unitPrice) : amount(l.unitPrice) }}</td>
++                <td data-testid="line-period">{{ l.periodStart ? l.periodStart + ' to ' + l.periodEnd : '' }}</td>
+                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
+                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
+@@ -792,6 +799,20 @@ function problemWith(line: NewLine): string {
+             inputmode="decimal"
+             formControlName="unitPrice"
+           />
++          <label for="line-period-start">Service period start (optional, prices a monthly unit price by the day)</label>
++          <input
++            id="line-period-start"
++            type="date"
++            data-testid="line-form-period-start"
++            formControlName="periodStart"
++          />
++          <label for="line-period-end">Service period end (optional)</label>
++          <input
++            id="line-period-end"
++            type="date"
++            data-testid="line-form-period-end"
++            formControlName="periodEnd"
++          />
+           <label for="line-discount-pct">Line discount (%, optional)</label>
+           <input
+             id="line-discount-pct"
+@@ -950,6 +971,8 @@ export class InvoicePanel {
+     taxExempt: new FormControl(false, { nonNullable: true }),
+     discountPct: new FormControl('', { nonNullable: true }),
+     taxRate: new FormControl('', { nonNullable: true }),
++    periodStart: new FormControl('', { nonNullable: true }),
++    periodEnd: new FormControl('', { nonNullable: true }),
+   });
+ 
+   protected readonly discountForm = new FormGroup({
+@@ -1037,6 +1060,8 @@ export class InvoicePanel {
+       taxExempt: line.taxExempt,
+       discountPct: Number(line.discountPct) === 0 ? '' : line.discountPct,
+       taxRate: line.taxRate ?? '',
++      periodStart: line.periodStart ?? '',
++      periodEnd: line.periodEnd ?? '',
+     });
+     this.editingLineId.set(line.id);
+     this.error.set('');
+@@ -1072,6 +1097,12 @@ export class InvoicePanel {
+     if (taxRate) {
+       line.taxRate = taxRate;
+     }
++    if (raw.periodStart) {
++      line.periodStart = raw.periodStart;
++    }
++    if (raw.periodEnd) {
++      line.periodEnd = raw.periodEnd;
++    }
+     const problem = problemWith(line);
+     if (problem) {
+       this.form.markAllAsTouched();
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d3793ac..3843145 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -78,6 +78,10 @@ export interface InvoiceLineView {
+   // tiered, each band's price) is 1.5 times `basePrice`, the price it was given, rounded half up to the cent.
+   overtime: boolean;
+   basePrice: string;
++  // The service period the line is billed for (yyyy-mm-dd, both ends included), null for none: its
++  // quantity x unit price is then a month's price, charged for the period's days month by month.
++  periodStart: string | null;
++  periodEnd: string | null;
+ }
+ 
+ // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
+@@ -267,6 +271,8 @@ export interface NewLine {
+   taxExempt: boolean;
+   discountPct?: string;
+   taxRate?: string;
++  periodStart?: string;
++  periodEnd?: string;
+ }
+ 
+ // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e7e8913..d817814 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -56,7 +56,7 @@ public class TestSupportController {
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "lineItems");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+@@ -457,8 +457,17 @@ public class TestSupportController {
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
++                LocalDate[] period = {
++                        line.get("periodStart") == null ? null : date(line.get("periodStart"), "invoices[].lineItems[].periodStart"),
++                        line.get("periodEnd") == null ? null : date(line.get("periodEnd"), "invoices[].lineItems[].periodEnd")};
++                if ((period[0] == null) != (period[1] == null)) {
++                    throw refuse("invoices[].lineItems[].periodStart and periodEnd must be given together");
++                }
++                if (period[0] != null && period[1].isBefore(period[0])) {
++                    throw refuse("invoices[].lineItems[].periodEnd must not be before periodStart");
++                }
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                         price[0], price[1],
+@@ -469,7 +478,8 @@ public class TestSupportController {
+                         line.get("unitType") == null ? null : line.get("unitType").toString(),
+                         lineRate(invoiceId, line, "increment"), lineRate(invoiceId, line, "min_units"),
+                         flag(line.get("overtime"), "invoices[].lineItems[].overtime"),
+-                        price[2], price[3]);
++                        price[2], price[3],
++                        period[0], period[1]);
+             }
+         }
+         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
+@@ -793,7 +803,7 @@ public class TestSupportController {
+                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
+                     }
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+@@ -812,6 +822,10 @@ public class TestSupportController {
+                                 if (l.get("CREDIT_OF_LINE") != null) {
+                                     line.put("creditOfLine", l.get("CREDIT_OF_LINE"));
+                                 }
++                                if (l.get("PERIOD_START") != null) {
++                                    line.put("periodStart", l.get("PERIOD_START").toString());
++                                    line.put("periodEnd", l.get("PERIOD_END").toString());
++                                }
+                                 return line;
+                             }).toList());
+                     return row;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 6efa099..8f32dc0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -2031,18 +2031,20 @@ public class Invoice {
+      */
+     public boolean updateLine(Long lineId, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
+             String tiers, BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
+-            BigDecimal taxRate) {
++            BigDecimal taxRate, LocalDate periodStart, LocalDate periodEnd) {
+         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
+         if (line == null) {
+             return false;
+         }
+         InvoiceLine was = line.copy();
+         line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
++        line.setPeriod(periodStart, periodEnd);
+         // Changing a tiered line reprices the others of its unit type, so the subtotal is worked out with it changed.
+         BigDecimal left = discountableSubtotal();
+         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
+             line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(), was.getMinUnits(), was.isOvertime(),
+                     was.isTaxExempt(), was.getDiscountPct(), was.getTaxRate());
++            line.setPeriod(was.getPeriodStart(), was.getPeriodEnd());
+             throw new InvoiceRejectedException("This line cannot be changed: the "
+                     + currency().format(left) + " subtotal would be less than the "
+                     + currency().format(discountAmount) + " discount.");
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 8209fc0..70dceb3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -90,10 +90,13 @@ public class InvoiceController {
+      * price given, rounded half up to the cent; {@code basePrice} is the price given, before overtime.
+      * {@code billedQty} (without trailing zeros) is the quantity the line is priced on: its quantity rounded up to the next
+      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
++     * {@code periodStart} and {@code periodEnd} are the line's service period (null for none): its quantity times unit price is
++     * then a month's price, and its amounts are for the days of the period, month by month.
+      */
+     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
+             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
+-            Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice) {
++            Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice,
++            LocalDate periodStart, LocalDate periodEnd) {
+         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+                     l.getUnitType(), l.chargedUnitPrice().setScale(2).toPlainString(),
+@@ -103,7 +106,7 @@ public class InvoiceController {
+                     l.isTaxExempt(),
+                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
+                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
+-                    l.getUnitPrice().setScale(2).toPlainString());
++                    l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd());
+         }
+     }
+ 
+@@ -260,7 +263,20 @@ public class InvoiceController {
+             @DecimalMin(value = "0", message = "The line tax rate must be from 0 to 100 percent.")
+             @DecimalMax(value = "100", message = "The line tax rate must be from 0 to 100 percent.")
+             @Digits(integer = 3, fraction = 2, message = "The line tax rate can have at most two decimals.")
+-            BigDecimal taxRate) {
++            BigDecimal taxRate,
++            // The service period the line is billed for, both ends included; none when both are left out.
++            LocalDate periodStart,
++            LocalDate periodEnd) {
++
++        @AssertTrue(message = "Enter both the start and the end of the service period, or neither.")
++        public boolean isPeriodComplete() {
++            return (periodStart == null) == (periodEnd == null);
++        }
++
++        @AssertTrue(message = "The service period cannot end before it starts.")
++        public boolean isPeriodInOrder() {
++            return periodStart == null || periodEnd == null || !periodEnd.isBefore(periodStart);
++        }
+     }
+ 
+     /**
+@@ -518,7 +534,8 @@ public class InvoiceController {
+     public InvoiceDetail addLine(@PathVariable Long id, @Valid @RequestBody NewLine body) {
+         return invoices.addLine(id, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
+                 Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
+-                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
++                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate(),
++                body.periodStart(), body.periodEnd())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+@@ -528,7 +545,8 @@ public class InvoiceController {
+             @Valid @RequestBody NewLine body) {
+         return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
+                 Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
+-                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate())
++                body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate(),
++                body.periodStart(), body.periodEnd())
+                 .map(this::detail)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index cae2bc6..3a0ec46 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -11,7 +11,9 @@ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ import org.hibernate.annotations.Formula;
+ import java.math.BigDecimal;
++import java.math.MathContext;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import net.officefloor.hq.app.clients.RateTiers;
+ 
+ /**
+@@ -107,6 +109,17 @@ public class InvoiceLine {
+     @Column(name = "rate_priced")
+     private boolean ratePriced;
+ 
++    /**
++     * The first day of the service period the line is billed for; null for none. With a period the line's quantity times unit price is
++     * the price of a whole month, charged by calendar month for the days of the period (both ends included).
++     */
++    @Column(name = "period_start")
++    private LocalDate periodStart;
++
++    /** The last day of the line's service period, never before its first; null for none. */
++    @Column(name = "period_end")
++    private LocalDate periodEnd;
++
+     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
+     @ManyToOne(fetch = FetchType.LAZY)
+     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
+@@ -145,6 +158,8 @@ public class InvoiceLine {
+     public InvoiceLine copy() {
+         InvoiceLine copy = new InvoiceLine(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
+         copy.ratePriced = ratePriced;
++        copy.periodStart = periodStart;
++        copy.periodEnd = periodEnd;
+         return copy;
+     }
+ 
+@@ -172,6 +187,38 @@ public class InvoiceLine {
+         this.taxRate = taxRate;
+     }
+ 
++    /** Sets the line's service period (both null for none); it has already been checked. */
++    void setPeriod(LocalDate periodStart, LocalDate periodEnd) {
++        this.periodStart = periodStart;
++        this.periodEnd = periodEnd;
++    }
++
++    public LocalDate getPeriodStart() {
++        return periodStart;
++    }
++
++    public LocalDate getPeriodEnd() {
++        return periodEnd;
++    }
++
++    /**
++     * The share of a whole month the line's service period comes to: for each calendar month it touches, the days of the period in
++     * that month over the days in that month, added up exactly; null when the line has no period.
++     */
++    private BigDecimal periodMonths() {
++        if (periodStart == null || periodEnd == null) {
++            return null;
++        }
++        BigDecimal months = BigDecimal.ZERO;
++        for (LocalDate from = periodStart; !from.isAfter(periodEnd); from = from.withDayOfMonth(1).plusMonths(1)) {
++            LocalDate monthEnd = from.withDayOfMonth(from.lengthOfMonth());
++            LocalDate to = periodEnd.isBefore(monthEnd) ? periodEnd : monthEnd;
++            months = months.add(BigDecimal.valueOf(to.getDayOfMonth() - from.getDayOfMonth() + 1)
++                    .divide(BigDecimal.valueOf(from.lengthOfMonth()), MathContext.DECIMAL128));
++        }
++        return months;
++    }
++
+     /** Whether the line's price comes from its client's rate card. */
+     public boolean isCardPriced() {
+         return cardPriced;
+@@ -310,9 +357,14 @@ public class InvoiceLine {
+                 bands = new RateTiers(bands.bands().stream()
+                         .map(b -> new RateTiers.Band(b.units(), charged(b.unitPrice()))).toList());
+             }
+-            return bands.charge(before, billedQty(), scale);
++            BigDecimal months = periodMonths();
++            return months == null ? bands.charge(before, billedQty(), scale)
++                    : bands.charge(before, billedQty(), 10).multiply(months).setScale(scale, RoundingMode.HALF_UP);
+         }
+-        return billedQty().multiply(chargedUnitPrice()).setScale(scale, RoundingMode.HALF_UP);
++        BigDecimal monthly = billedQty().multiply(chargedUnitPrice());
++        BigDecimal months = periodMonths();
++        // A service period is charged its share of the monthly price, rounded only once.
++        return (months == null ? monthly : monthly.multiply(months)).setScale(scale, RoundingMode.HALF_UP);
+     }
+ 
+     /** The line's discount: its percentage of the gross amount, rounded down to the given number of decimals. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index cb0e045..0b669ef 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -241,7 +241,8 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, String unitType,
+-            BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate,
++            LocalDate periodStart, LocalDate periodEnd) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+             LinePrice price = linePrice(invoice, unitType, unitPrice);
+@@ -249,6 +250,7 @@ public class InvoiceService {
+             InvoiceLine line = new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
+                     discountPct, taxRate);
+             line.setCardPriced(price.fromCard());
++            line.setPeriod(periodStart, periodEnd);
+             invoice.addLine(line);
+             invoices.saveAndFlush(invoice);
+             if (reopened) {
+@@ -289,7 +291,8 @@ public class InvoiceService {
+      */
+     @Transactional
+     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
+-            String unitType, BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate) {
++            String unitType, BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate,
++            LocalDate periodStart, LocalDate periodEnd) {
+         Optional<Invoice> found = load(invoiceId);
+         if (found.isEmpty()) {
+             return found;
+@@ -301,7 +304,7 @@ public class InvoiceService {
+         LinePrice price = linePrice(invoice, unitType, unitPrice);
+         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
+         invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
+-                discountPct, taxRate);
++                discountPct, taxRate, periodStart, periodEnd);
+         invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).forEach(l -> l.setCardPriced(price.fromCard()));
+         invoices.saveAndFlush(invoice);
+         if (reopened) {
+diff --git a/src/main/resources/db/migration/V68__line_service_period.sql b/src/main/resources/db/migration/V68__line_service_period.sql
+new file mode 100644
+index 0000000..01b5ab6
+--- /dev/null
++++ b/src/main/resources/db/migration/V68__line_service_period.sql
+@@ -0,0 +1,4 @@
++-- The service period a line is billed for, both ends included; null for none. Its quantity times unit price is then the
++-- price of a whole month, prorated by calendar month over the period.
++ALTER TABLE invoice_line ADD COLUMN period_start DATE;
++ALTER TABLE invoice_line ADD COLUMN period_end DATE;
