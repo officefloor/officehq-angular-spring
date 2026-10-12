@@ -1,0 +1,109 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 1912833..e286a6e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -185,7 +185,8 @@ export interface InvoiceDetail {
+   // The currency the client is billed in: every amount is in it (whole yen for a yen client).
+   currency: Currency;
+   // The early-payment discount it was settled with ("0.00" when none was taken), and what would
+-  // settle it today while its early-payment window is open (null otherwise).
++  // settle it today while its early-payment window is open and its client is a LOW payment risk on its
++  // other invoices (null otherwise).
+   earlyDiscount: string;
+   settleAmount: string | null;
+   // The late interest charged on it so far ("0.00" when none): part of `amountDue`.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 99f8873..b04691e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -492,6 +492,13 @@ public class Invoice {
+     @Transient
+     private Map<Long, BigDecimal> milestoneInterest = Map.of();
+ 
++    /**
++     * Whether the early-payment discount is withheld because the client is not a LOW payment risk on its
++     * other invoices (see {@link #withholdEarlyPay}); not stored, worked out again each time the invoice is read.
++     */
++    @Transient
++    private boolean earlyPayWithheld;
++
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -1623,11 +1630,11 @@ public class Invoice {
+ 
+     /**
+      * The early-payment discount on offer: the client's early-payment percentage of the amount before
+-     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, or an invoice
+-     * spread over instalments.
++     * tax (the subtotal less the discount), rounded down to the cent; nothing for a credit note, an invoice
++     * spread over instalments, or one whose client is not a LOW payment risk (see {@link #withholdEarlyPay}).
+      */
+     public BigDecimal earlyDiscount(BigDecimal taxRate) {
+-        if (isCreditNote() || hasPlan() || earlyPayDays == null
++        if (earlyPayWithheld || isCreditNote() || hasPlan() || earlyPayDays == null
+                 || earlyPayPct == null || earlyPayPct.signum() <= 0) {
+             return zero();
+         }
+@@ -1655,6 +1662,11 @@ public class Invoice {
+         return due.subtract(earlyDiscount(taxRate)).max(zero());
+     }
+ 
++    /** Withholds the early-payment discount (or offers it again): only a LOW payment risk client gets it. */
++    public void withholdEarlyPay(boolean withheld) {
++        this.earlyPayWithheld = withheld;
++    }
++
+     /** The early discount the invoice was settled with, to the cent; 0 when none was taken. */
+     public BigDecimal getEarlyDiscountTaken() {
+         return (earlyDiscount == null ? BigDecimal.ZERO : earlyDiscount).setScale(scale(), RoundingMode.HALF_UP);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 31fa3b7..cb03ca0 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -146,7 +146,7 @@ public class InvoiceController {
+      * is the due date as listed: for a plan, its next unpaid instalment's. {@code currency} is the
+      * currency its client is billed in, which every amount is in (whole yen for a yen client).
+      * {@code earlyDiscount} is the early-payment discount it was settled with (0 when none), and
+-     * {@code settleAmount} what would settle it today while its early-payment window is open (null otherwise).
++     * {@code settleAmount} what would settle it today while its early-payment window is open and its client is a LOW payment risk (null otherwise).
+      * {@code lateInterest} is the late interest charged on it so far, part of the amount due;
+      * {@code lateWaived} is the late interest written off by waiving it (0 when none was). {@code payoff} is what would pay off its
+      * plan today (null without a plan or once it is paid off), and {@code interestSaved} the interest
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 0c8c224..b981fe4 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -138,7 +138,9 @@ public class InvoiceService {
+         list.forEach(i -> {
+             List<Invoice> others = all.stream()
+                     .filter(o -> o.getClientId().equals(i.getClientId()) && !o.getId().equals(i.getId())).toList();
+-            if (riskOf(others, paidOn).band() == RiskBand.HIGH) {
++            RiskBand band = riskOf(others, paidOn).band();
++            i.withholdEarlyPay(band != RiskBand.LOW);
++            if (band == RiskBand.HIGH) {
+                 i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
+             }
+         });
+@@ -1446,6 +1448,7 @@ public class InvoiceService {
+         }
+         usable.addAll(others);
+         BigDecimal early = BigDecimal.ZERO;
++        invoice.withholdEarlyPay(bandOfOthers(invoice) != RiskBand.LOW);
+         BigDecimal settle = invoice.settleAmount(paidSoFar, taxRate.percent(), now);
+         if (settle != null && usable.stream().map(Payment::credit).filter(c -> c.signum() > 0)
+                 .reduce(BigDecimal.ZERO, BigDecimal::add).compareTo(settle) >= 0) {
+@@ -2426,6 +2429,13 @@ public class InvoiceService {
+         return new Risk(score, band);
+     }
+ 
++    /** The payment risk band the client's invoices other than this one give (see {@link #riskOf(Long)}). */
++    private RiskBand bandOfOthers(Invoice invoice) {
++        List<Invoice> others = loadForClient(invoice.getClientId()).stream()
++                .filter(o -> !o.getId().equals(invoice.getId())).toList();
++        return riskOf(others, paidOn(others)).band();
++    }
++
+     /** Whether the invoice needs approval before it is sent (see {@link Invoice#approval}), as of today. */
+     @Transactional(readOnly = true)
+     public Invoice.Approval approval(Invoice invoice) {
