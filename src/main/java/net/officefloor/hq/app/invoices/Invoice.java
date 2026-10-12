@@ -485,6 +485,13 @@ public class Invoice {
     @Column(name = "cash_rounding")
     private BigDecimal cashRounding = BigDecimal.ZERO;
 
+    /**
+     * The part of what this adjustment credit note takes off that it keeps back as a minimum charge (see
+     * {@link #keepMinimum}); 0 for any other invoice.
+     */
+    @Column(name = "minimum_kept")
+    private BigDecimal minimumKept = BigDecimal.ZERO;
+
     /** An issued credit note's grand total, kept when it is issued; null until then. */
     @Column(name = "credit_total")
     private BigDecimal creditTotal;
@@ -3172,7 +3179,7 @@ public class Invoice {
         for (int i = 0; i < lines.size(); i++) {
             taxes.add(lines.get(i).amount(scale()).subtract(shares.get(i)).multiply(rates.get(i)).movePointLeft(2));
         }
-        taxes.add(surcharge().add(minimumCharge()).multiply(rates.get(lines.size())).movePointLeft(2));
+        taxes.add(surcharge().add(chargedMinimum()).multiply(rates.get(lines.size())).movePointLeft(2));
         return taxes;
     }
 
@@ -3359,14 +3366,15 @@ public class Invoice {
     /** As {@link #tax}, but always worked out with today's rules, even when the invoice was sent with other figures. */
     public BigDecimal currentTax(BigDecimal taxRate) {
         if (clientPricesIncludeTax) {
-            return isReverseCharge() ? zero() : inclusiveTax(taxRate);
+            return isReverseCharge() ? zero() : inclusiveTax(taxRate).subtract(keptTax(taxRate));
         }
         List<BigDecimal> exact = exactLineTaxes(taxRate);
         BigDecimal tax = zero();
         for (List<Integer> group : byRate(taxRate, true).values()) {
             tax = tax.add(roundTax(group.stream().map(exact::get).toList()));
         }
-        return tax;
+        // The minimum charge kept back is not credited, nor is its tax.
+        return isReverseCharge() ? tax : tax.subtract(keptTax(taxRate));
     }
 
     /**
@@ -3425,7 +3433,7 @@ public class Invoice {
         for (int i = 0; i < lines.size(); i++) {
             amounts.add(lines.get(i).amount(scale()).subtract(shares.get(i)));
         }
-        amounts.add(surcharge().add(minimumCharge()));
+        amounts.add(surcharge().add(chargedMinimum()));
         return amounts;
     }
 
@@ -3527,15 +3535,88 @@ public class Invoice {
      * The minimum charge: what the subtotal less the discount plus the surcharge falls short of the client's own
      * minimum charge (in its currency), or else the workspace's minimum charge, converted from US dollars at the
      * pricing date's rate (see {@link #pricingDate}) and rounded down to the step. Nothing when no minimum is set (or the client's is 0), for a
-     * credit note, or for an invoice with no lines.
+     * credit note, or for an invoice with no lines; on an adjustment credit note, the part it keeps back (see {@link #keepMinimum}),
+     * which does not come off and is taxed at the standard rate on its own.
      */
     public BigDecimal minimumCharge() {
-        if ((clientMinimumCharge == null && minimumChargeUsd == null) || isCreditNote() || isAdjustment() || lines.isEmpty()) {
+        if (isKeepingMinimum()) {
+            return getMinimumKept();
+        }
+        if (isCreditNote() || isAdjustment() || lines.isEmpty()) {
             return zero();
         }
-        BigDecimal minimum = clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)
+        BigDecimal minimum = minimum();
+        return minimum == null ? zero() : minimum.subtract(discounted().add(surcharge())).max(zero());
+    }
+
+    /** The minimum charge added to the amount: none on an adjustment credit note, which keeps its own back instead. */
+    private BigDecimal chargedMinimum() {
+        return isKeepingMinimum() ? zero() : minimumCharge();
+    }
+
+    /**
+     * The least the invoice is charged: the client's own minimum charge (in its currency), or else the workspace's,
+     * converted from US dollars at the pricing date's rate (see {@link #pricingDate}) and rounded down to the step; null
+     * when no minimum is set.
+     */
+    public BigDecimal minimum() {
+        if (clientMinimumCharge == null && minimumChargeUsd == null) {
+            return null;
+        }
+        return clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)
                 : currency().divideDownToStep(new BigDecimal(minimumChargeUsd.trim()), usdPerOn(pricingDate()));
-        return minimum.subtract(discounted().add(surcharge())).max(zero());
+    }
+
+    /** The minimum charge kept back, which does not come off: 0 when none is. */
+    private BigDecimal getMinimumKeptOff() {
+        return isKeepingMinimum() ? getMinimumKept() : zero();
+    }
+
+    /** Whether this is an adjustment credit note keeping back part of what it takes off as a minimum charge. */
+    private boolean isKeepingMinimum() {
+        return isCreditNote() && isAdjustment() && minimumKept != null && minimumKept.signum() > 0;
+    }
+
+    /** The part this adjustment credit note keeps back as a minimum charge, to the cent; 0 for any other invoice. */
+    public BigDecimal getMinimumKept() {
+        return (minimumKept == null ? BigDecimal.ZERO : minimumKept).setScale(scale(), RoundingMode.HALF_UP);
+    }
+
+    /** Sets the part this adjustment credit note keeps back as a minimum charge (as stored, for test data). */
+    public void setMinimumKept(BigDecimal minimumKept) {
+        this.minimumKept = minimumKept == null ? BigDecimal.ZERO : minimumKept;
+    }
+
+    /**
+     * What the invoice is charged for its lines after the discount, with the surcharge, as adjusted by the given
+     * adjustment notes issued against it: a debit note's adds, a credit note's (less what it kept back) comes off.
+     */
+    public BigDecimal chargedAsAdjusted(List<Invoice> notes) {
+        BigDecimal charged = discounted().add(surcharge());
+        for (Invoice note : notes) {
+            BigDecimal amount = note.discounted().add(note.surcharge());
+            charged = note.isCreditNote() ? charged.subtract(amount).add(note.getMinimumKept()) : charged.add(amount);
+        }
+        return charged;
+    }
+
+    /**
+     * Keeps back on this draft adjustment credit note the part of what it takes off that would leave its invoice, as
+     * charged with its earlier notes (see {@link #chargedAsAdjusted}), below the given minimum charge (null for none):
+     * at most all of it.
+     */
+    public void keepMinimum(BigDecimal charged, BigDecimal minimum) {
+        BigDecimal credited = discounted().add(surcharge());
+        BigDecimal kept = minimum == null ? zero() : minimum.subtract(charged.subtract(credited)).max(zero()).min(credited.max(zero()));
+        this.minimumKept = kept;
+    }
+
+    /** The tax on the minimum charge kept back: at the standard rate on its own, rounded half up to the cent. */
+    private BigDecimal keptTax(BigDecimal taxRate) {
+        if (!isKeepingMinimum()) {
+            return zero();
+        }
+        return getMinimumKept().multiply(taxRate).movePointLeft(2).setScale(scale(), RoundingMode.HALF_UP);
     }
 
     /**
@@ -3548,7 +3629,7 @@ public class Invoice {
 
     /** As {@link #beforeTax}, but always worked out with today's rules. */
     private BigDecimal currentBeforeTax(BigDecimal taxRate) {
-        BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
+        BigDecimal amount = discounted().add(surcharge()).add(chargedMinimum()).subtract(getMinimumKeptOff());
         return clientPricesIncludeTax ? amount.subtract(inclusiveTax(taxRate)) : amount;
     }
 
@@ -3566,9 +3647,9 @@ public class Invoice {
      * invoice was sent with other figures.
      */
     public BigDecimal currentTotal(BigDecimal taxRate) {
-        BigDecimal amount = discounted().add(surcharge()).add(minimumCharge());
+        BigDecimal amount = discounted().add(surcharge()).add(chargedMinimum()).subtract(getMinimumKeptOff());
         if (clientPricesIncludeTax) {
-            return isReverseCharge() ? currentBeforeTax(taxRate) : amount;
+            return isReverseCharge() ? currentBeforeTax(taxRate) : amount.subtract(keptTax(taxRate));
         }
         return amount.add(currentTax(taxRate));
     }

@@ -866,13 +866,18 @@ public class InvoiceService {
     /**
      * Takes the credited line off the sent invoice on a credit note adjusting it, dated today and taxed as the invoice
      * is, with no charges, issued as any credit note is (see {@link #issue}): it comes off what the invoice owes and any
-     * rest is held as credit.
+     * rest is held as credit. The part that would leave the invoice (with its earlier notes) below its minimum charge is
+     * kept back on the note as a minimum charge (see {@link Invoice#keepMinimum}), and only the rest is credited.
      */
     private void issueAdjustmentCredit(Invoice invoice, InvoiceLine credit) {
         Invoice note = invoice.adjustmentCreditNote(today.date());
         note.addLine(credit);
         Invoice draft = invoices.saveAndFlush(note);
         entityManager.refresh(draft);
+        // What would take the invoice (with its earlier notes) below its minimum charge is kept back on the note.
+        List<Invoice> earlier = notesOf(invoice, invoices.findByClientIdOrderByIdAsc(invoice.getClientId()));
+        draft.keepMinimum(invoice.chargedAsAdjusted(earlier), invoice.minimum());
+        invoices.saveAndFlush(draft);
         String refusal = creditNoteRefusal(draft, false);
         if (refusal != null) {
             throw new InvoiceRejectedException(refusal);
