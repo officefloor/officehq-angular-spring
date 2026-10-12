@@ -1,0 +1,440 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 1199412..42e7e45 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -227,7 +227,8 @@ function problemWith(line: NewLine): string {
+ // client); the server refuses to void a draft or one with a recorded
+ // payment, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
+ // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
+-// be duplicated into a new draft for the same client, which then opens. A draft's due date can be set
++// be duplicated into a new draft for the same client, which then opens. An invoice can be marked as
++// recurring; a sent recurring invoice generates the next period's draft once, which then opens. A draft's due date can be set
+ // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
+ // server refuses to send it once that date is past. A draft can hold back retention, a percentage of
+ // the amount before tax, the subtotal less the discount (0 to 20); while held it is not part of the amount due, and once nothing else is due
+@@ -749,6 +750,28 @@ function problemWith(line: NewLine): string {
+           }
+         }
+ 
++        @if (inv.creditOf === null) {
++          <label>
++            <input
++              type="checkbox"
++              data-testid="invoice-recurring"
++              [checked]="inv.recurring"
++              [disabled]="savingRecurring()"
++              (change)="setRecurring(inv.id, $any($event.target).checked)"
++            />
++            Recurring
++          </label>
++          @if (recurringError()) {
++            <p role="alert" data-testid="invoice-recurring-error">{{ recurringError() }}</p>
++          }
++          <button type="button" data-testid="invoice-generate" [disabled]="generating()" (click)="generate(inv.id)">
++            Generate next period
++          </button>
++          @if (generateError()) {
++            <p role="alert" data-testid="invoice-generate-error">{{ generateError() }}</p>
++          }
++        }
++
+         <button
+           type="button"
+           data-testid="invoice-duplicate"
+@@ -943,6 +966,12 @@ export class InvoicePanel {
+   protected readonly sendError = signal('');
+   protected readonly duplicating = signal(false);
+   protected readonly duplicateError = signal('');
++  protected readonly savingRecurring = signal(false);
++  protected readonly recurringError = signal('');
++  protected readonly generating = signal(false);
++  protected readonly generateError = signal('');
++  // An invoice to generate the next period of once its recurring box has been saved; null for none.
++  private generateAfterSave: number | null = null;
+   protected readonly crediting = signal(false);
+   protected readonly creditError = signal('');
+   protected readonly voiding = signal(false);
+@@ -1040,6 +1069,8 @@ export class InvoicePanel {
+       this.approveError.set('');
+       this.voidError.set('');
+       this.duplicateError.set('');
++      this.recurringError.set('');
++      this.generateError.set('');
+       this.creditError.set('');
+       this.reverseError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+@@ -1494,6 +1525,59 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected setRecurring(invoiceId: number, recurring: boolean): void {
++    this.savingRecurring.set(true);
++    this.recurringError.set('');
++    this.service.setRecurring(invoiceId, recurring).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.savingRecurring.set(false);
++        this.generateWaiting();
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.recurringError.set(
++          typeof detail === 'string' && detail ? detail : 'The invoice could not be marked as recurring.',
++        );
++        this.savingRecurring.set(false);
++        this.generateWaiting();
++      },
++    });
++  }
++
++  // Generates the next period as asked while the recurring box was being saved.
++  private generateWaiting(): void {
++    const id = this.generateAfterSave;
++    this.generateAfterSave = null;
++    if (id !== null) {
++      this.generate(id);
++    }
++  }
++
++  // Generates the next period's draft, which the list then shows and opens (as a duplicate is).
++  protected generate(invoiceId: number): void {
++    this.generating.set(true);
++    this.generateError.set('');
++    if (this.savingRecurring()) {
++      this.generateAfterSave = invoiceId;
++      return;
++    }
++    this.service.generate(invoiceId).subscribe({
++      next: (detail) => {
++        this.generating.set(false);
++        this.duplicated.emit(detail);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.generateError.set(
++          typeof detail === 'string' && detail ? detail : 'The next period could not be generated.',
++        );
++        this.generating.set(false);
++      },
++    });
++  }
++
+   protected creditNote(invoiceId: number): void {
+     this.crediting.set(true);
+     this.creditError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d4b992a..f8313d7 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -227,6 +227,10 @@ export interface InvoiceDetail {
+   // The region where the work is done (the place of supply), taxed and reverse charged as for it
+   // instead of the client's region; null for the client's region.
+   supplyRegion: string | null;
++  // Whether the invoice repeats every period: once sent, it can generate the next period's draft.
++  recurring: boolean;
++  // The id of the recurring invoice this draft was generated from as its next period; null when it was not.
++  recurringFrom: number | null;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+@@ -431,6 +435,18 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/duplicate`, null);
+   }
+ 
++  // Marks an invoice as recurring, or not; answers the invoice.
++  setRecurring(invoiceId: number, recurring: boolean): Observable<InvoiceDetail> {
++    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/recurring`, { recurring });
++  }
++
++  // Generates the next period's draft of a sent recurring invoice: its lines with a service period moved
++  // to the calendar month after the latest period end, with its percentage discount and surcharge,
++  // issued today and due as any new invoice. Answers the new draft.
++  generate(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/generate`, null);
++  }
++
+   // Starts an empty draft credit note against a sent invoice, numbered CN-; answers the new draft.
+   creditNote(invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/credit-note`, null);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index d3c8502..c6a6747 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -55,7 +55,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -425,7 +425,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -454,7 +454,9 @@ public class TestSupportController {
+                             : row.get("supplyRegion").toString(),
+                     money(row.get("planFee"), "invoices[].planFee"),
+                     row.get("approvedTotal") == null ? null : money(row.get("approvedTotal"), "invoices[].approvedTotal"),
+-                    row.get("approvedOn") == null ? null : date(row.get("approvedOn"), "invoices[].approvedOn"));
++                    row.get("approvedOn") == null ? null : date(row.get("approvedOn"), "invoices[].approvedOn"),
++                    flag(row.get("recurring"), "invoices[].recurring"),
++                    row.get("recurringFrom") == null ? null : id(row.get("recurringFrom")));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -750,7 +752,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -794,6 +796,10 @@ public class TestSupportController {
+                         row.put("approvedOn", r.get("APPROVED_ON").toString());
+                     }
+                     row.put("surchargePct", r.get("SURCHARGE_PCT"));
++                    row.put("recurring", r.get("RECURRING"));
++                    if (r.get("RECURRING_FROM") != null) {
++                        row.put("recurringFrom", r.get("RECURRING_FROM"));
++                    }
+                     if (r.get("SKIPPED_INSTALMENT") != null) {
+                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 5a3b8e1..d47b11d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -177,6 +177,14 @@ public class Invoice {
+     @Column(name = "approved_on")
+     private LocalDate approvedOn;
+ 
++    /** Whether the invoice repeats every period: once sent, it can generate the next period's draft (see {@link #nextPeriod}). */
++    @Column(name = "recurring")
++    private boolean recurring;
++
++    /** The id of the recurring invoice this draft was generated from as its next period; null when it was not. */
++    @Column(name = "recurring_from")
++    private Long recurringFrom;
++
+     /**
+      * The number of the instalment the client skipped: it pays only its interest and the instalments
+      * after it are worked out again (see {@link #schedule}); null when none was.
+@@ -512,6 +520,51 @@ public class Invoice {
+         return copy;
+     }
+ 
++    /**
++     * The next period's draft of this recurring invoice for the same client, issued and due on the given dates: a copy of
++     * each line with a service period, moved to the whole calendar month after the latest period end on the invoice (lines
++     * without a period are one-off charges and are not copied), with this invoice's percentage discount and surcharge.
++     * The draft is recurring too and remembers it was generated from this invoice.
++     */
++    public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate) {
++        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        next.supplyRegion = supplyRegion;
++        next.discountPct = discountPct;
++        next.surchargePct = surchargePct;
++        next.recurring = true;
++        next.recurringFrom = id;
++        LocalDate start = latestPeriodEnd().plusMonths(1).withDayOfMonth(1);
++        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
++        for (InvoiceLine line : lines) {
++            if (line.hasPeriod()) {
++                InvoiceLine copy = line.copy();
++                copy.setPeriod(start, end);
++                next.addLine(copy);
++            }
++        }
++        return next;
++    }
++
++    /** The latest service period end of the invoice's lines; null when no line has a period. */
++    public LocalDate latestPeriodEnd() {
++        return lines.stream().filter(InvoiceLine::hasPeriod).map(InvoiceLine::getPeriodEnd)
++                .max(LocalDate::compareTo).orElse(null);
++    }
++
++    /** Whether the invoice repeats every period. */
++    public boolean isRecurring() {
++        return recurring;
++    }
++
++    public void setRecurring(boolean recurring) {
++        this.recurring = recurring;
++    }
++
++    /** The id of the recurring invoice this draft was generated from; null when it was not. */
++    public Long getRecurringFrom() {
++        return recurringFrom;
++    }
++
+     /**
+      * A new, empty draft credit note for the sent invoice, issued on the given date: same client, no
+      * discount, taxed as the original's lines are.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 6e673ab..d25cf22 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -150,6 +150,7 @@ public class InvoiceController {
+      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
+      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
+      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
++     * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -160,7 +161,8 @@ public class InvoiceController {
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+-            String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn) {
++            String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
++            boolean recurring, Long recurringFrom) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -204,7 +206,8 @@ public class InvoiceController {
+                     i.chargedSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
+                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
+                     i.getSupplyRegion(), i.approval(taxRate, today),
+-                    i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn());
++                    i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
++                    i.isRecurring(), i.getRecurringFrom());
+         }
+     }
+ 
+@@ -650,6 +653,26 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Whether the invoice repeats every period. */
++    public record NewRecurring(@NotNull(message = "Say whether the invoice is recurring.") Boolean recurring) {
++    }
++
++    @PutMapping("/api/invoices/{id}/recurring")
++    public InvoiceDetail setRecurring(@PathVariable Long id, @Valid @RequestBody NewRecurring body) {
++        return invoices.setRecurring(id, body.recurring())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
++    /** Generates the next period's draft of a sent recurring invoice; answers the new draft. */
++    @PostMapping("/api/invoices/{id}/generate")
++    @ResponseStatus(HttpStatus.CREATED)
++    public InvoiceDetail generate(@PathVariable Long id) {
++        return invoices.generateNext(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Starts a draft credit note against a sent invoice; answers the new draft. */
+     @PostMapping("/api/invoices/{id}/credit-note")
+     @ResponseStatus(HttpStatus.CREATED)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 3a0ec46..49e3090 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -193,6 +193,11 @@ public class InvoiceLine {
+         this.periodEnd = periodEnd;
+     }
+ 
++    /** Whether the line is billed for a service period. */
++    public boolean hasPeriod() {
++        return periodStart != null && periodEnd != null;
++    }
++
+     public LocalDate getPeriodStart() {
+         return periodStart;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
+index 8487064..b6d18f5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
+@@ -15,4 +15,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+ 
+     @EntityGraph(attributePaths = "lines")
+     Optional<Invoice> findWithLinesById(Long id);
++
++    /** Whether a draft has been generated from the recurring invoice as its next period. */
++    boolean existsByRecurringFrom(Long recurringFrom);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 3181a57..884aa7e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -167,6 +167,55 @@ public class InvoiceService {
+         });
+     }
+ 
++    /**
++     * Marks the invoice as recurring, or not; empty if no such invoice. A credit note is refused. The invoice
++     * is otherwise unchanged, so a sent one stays sent.
++     */
++    @Transactional
++    public Optional<Invoice> setRecurring(Long invoiceId, boolean recurring) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be recurring.");
++            }
++            invoice.setRecurring(recurring);
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
++
++    /**
++     * Generates the next period's draft of a sent recurring invoice (see {@link Invoice#nextPeriod}), issued today and
++     * due as any new invoice is, and records it in the audit; empty if no such invoice. A draft, an invoice that is
++     * not recurring or has no line with a service period, or one that has already generated its next period is refused.
++     */
++    @Transactional
++    public Optional<Invoice> generateNext(Long invoiceId) {
++        return load(invoiceId).map(original -> {
++            if (original.isDraft()) {
++                throw new InvoiceRejectedException("Only a sent invoice can generate its next period.");
++            }
++            if (!original.isRecurring() || original.isCreditNote()) {
++                throw new InvoiceRejectedException("The invoice is not recurring.");
++            }
++            if (original.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice cannot generate its next period.");
++            }
++            if (original.latestPeriodEnd() == null) {
++                throw new InvoiceRejectedException("The invoice has no line with a service period to repeat.");
++            }
++            if (invoices.existsByRecurringFrom(original.getId())) {
++                throw new InvoiceRejectedException("The invoice has already generated its next period.");
++            }
++            LocalDate issued = today.date();
++            Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued)));
++            // Read again how far through the bands a copied tiered line's units reach.
++            entityManager.refresh(next);
++            audit.record("INVOICE_GENERATED from=" + original.number() + " to=" + next.number());
++            return next;
++        });
++    }
++
+     /**
+      * A new, empty draft credit note against the sent invoice, issued today; empty if no such invoice.
+      * A draft, a void invoice or a credit note is refused.
+diff --git a/src/main/resources/db/migration/V70__invoice_recurring.sql b/src/main/resources/db/migration/V70__invoice_recurring.sql
+new file mode 100644
+index 0000000..8ca0cbd
+--- /dev/null
++++ b/src/main/resources/db/migration/V70__invoice_recurring.sql
+@@ -0,0 +1,4 @@
++-- Whether the invoice repeats every period: a sent recurring invoice can generate the next period's draft.
++ALTER TABLE invoice ADD COLUMN recurring BOOLEAN NOT NULL DEFAULT FALSE;
++-- The id of the recurring invoice this draft was generated from as its next period; null when it was not.
++ALTER TABLE invoice ADD COLUMN recurring_from BIGINT;
