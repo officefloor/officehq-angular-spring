@@ -87,6 +87,12 @@ function validTaxNumber(taxNumber: string): boolean {
                 overdue <span data-testid="client-overdue">{{ money(balanceOf(c.id).overdue, c.currency) }}</span>,
                 credit <span data-testid="client-credit">{{ money(balanceOf(c.id).credit, c.currency) }}</span>
               </span>
+              @if (c.creditLimit !== null) {
+                <span>
+                  Available <span data-testid="client-available">{{ money(availableOf(c), c.currency) }}</span>
+                  of {{ money(String(c.creditLimit), c.currency) }}
+                </span>
+              }
             </button>
           </li>
         } @empty {
@@ -160,6 +166,16 @@ function validTaxNumber(taxNumber: string): boolean {
           min="0"
           step="0.01"
           formControlName="minimumCharge"
+        />
+        <label for="client-credit-limit">Credit limit in the client's currency (optional, no limit if left out)</label>
+        <input
+          id="client-credit-limit"
+          data-testid="client-form-credit-limit"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="0.01"
+          formControlName="creditLimit"
         />
         <label for="client-rate-discount">Discount on rates % (optional)</label>
         <input
@@ -288,6 +304,7 @@ export class Clients {
   // What each client owes, by client id; a client not listed owes nothing.
   protected readonly balances = signal<Map<number, ClientBalance>>(new Map());
   protected readonly money = money;
+  protected readonly String = String;
   protected readonly currencies = CURRENCIES;
   protected readonly saving = signal(false);
   protected readonly error = signal('');
@@ -316,6 +333,7 @@ export class Clients {
     retentionPct: new FormControl<number | null>(null),
     withholdingPct: new FormControl<number | null>(null),
     minimumCharge: new FormControl<number | null>(null),
+    creditLimit: new FormControl<number | null>(null),
     rateDiscountPct: new FormControl<number | null>(null),
     graceDays: new FormControl<number | null>(null),
     interestRate: new FormControl<number | null>(null),
@@ -338,6 +356,12 @@ export class Clients {
     return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0', credit: '0' };
   }
 
+  // What the client can still be invoiced under its credit limit: the limit less its balance.
+  protected availableOf(client: Client): string {
+    const cents = Math.round(Number(client.creditLimit) * 100) - Math.round(Number(this.balanceOf(client.id).balance) * 100);
+    return String(cents / 100);
+  }
+
   // Fetches what every client owes again, after a payment or other change to an invoice.
   protected loadBalances(): void {
     this.invoiceService
@@ -358,6 +382,8 @@ export class Clients {
     const withholdingPct = withholding === null || (withholding as unknown) === '' ? null : Number(withholding);
     const minimum = this.form.controls.minimumCharge.value;
     const minimumCharge = minimum === null || (minimum as unknown) === '' ? null : Number(minimum);
+    const limit = this.form.controls.creditLimit.value;
+    const creditLimit = limit === null || (limit as unknown) === '' ? null : Number(limit);
     const rateDiscount = this.form.controls.rateDiscountPct.value;
     const rateDiscountPct = rateDiscount === null || (rateDiscount as unknown) === '' ? null : Number(rateDiscount);
     const grace = this.form.controls.graceDays.value;
@@ -382,6 +408,7 @@ export class Clients {
       retentionPct,
       withholdingPct,
       minimumCharge,
+      creditLimit,
       rateDiscountPct,
       graceDays,
       interestRate,
@@ -404,6 +431,7 @@ export class Clients {
       retentionPct,
       withholdingPct,
       minimumCharge,
+      creditLimit,
       rateDiscountPct,
       graceDays,
       interestRate,
@@ -432,6 +460,7 @@ export class Clients {
       retentionPct: retentionPct ?? 0,
       withholdingPct: withholdingPct ?? 0,
       minimumCharge,
+      creditLimit,
       rateDiscountPct: rateDiscountPct ?? 0,
       graceDays,
       interestRate,
@@ -496,6 +525,7 @@ export class Clients {
     retentionPct: number | null,
     withholdingPct: number | null,
     minimumCharge: number | null,
+    creditLimit: number | null,
     rateDiscountPct: number | null,
     graceDays: number | null,
     interestRate: number | null,
@@ -543,6 +573,13 @@ export class Clients {
         problems.push('The minimum charge cannot be negative.');
       } else if (Math.abs(Math.round(minimumCharge * 100) - minimumCharge * 100) > 1e-6) {
         problems.push('The minimum charge can have at most two decimals.');
+      }
+    }
+    if (creditLimit !== null) {
+      if (!(Number.isFinite(creditLimit) && creditLimit >= 0)) {
+        problems.push('The credit limit cannot be negative.');
+      } else if (Math.abs(Math.round(creditLimit * 100) - creditLimit * 100) > 1e-6) {
+        problems.push('The credit limit can have at most two decimals.');
       }
     }
     if (rateDiscountPct !== null) {

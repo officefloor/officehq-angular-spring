@@ -111,6 +111,13 @@ public class Client {
     private BigDecimal minimumCharge;
 
     /**
+     * The most the client may owe, in its currency: an invoice that would take its balance over it is not
+     * sent; null for no limit.
+     */
+    @Column(name = "credit_limit")
+    private BigDecimal creditLimit;
+
+    /**
      * The percentage (0 to 100, 0 for none) taken off every price the client's lines take from its rate card or the
      * price list (see {@link RateDiscount}).
      */
@@ -137,8 +144,9 @@ public class Client {
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, BigDecimal retentionPct,
             Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
-            BigDecimal rateDiscountPct, LocalDate taxExemptUntil) {
+            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit) {
         this.name = name;
+        this.creditLimit = creditLimit;
         this.taxExemptUntil = taxExemptUntil;
         this.email = email;
         this.termsDays = termsDays;
@@ -216,6 +224,10 @@ public class Client {
 
     public BigDecimal getMinimumCharge() {
         return minimumCharge;
+    }
+
+    public BigDecimal getCreditLimit() {
+        return creditLimit;
     }
 
     public Integer getGraceDays() {

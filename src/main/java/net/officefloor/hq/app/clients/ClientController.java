@@ -30,13 +30,13 @@ public class ClientController {
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
-            LocalDate taxExemptUntil) {
+            LocalDate taxExemptUntil, BigDecimal creditLimit) {
         static ClientView of(Client c) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
-                    c.getRateDiscountPct(), c.getTaxExemptUntil());
+                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit());
         }
     }
 
@@ -115,7 +115,11 @@ public class ClientController {
             @Digits(integer = 3, fraction = 2, message = "The rate discount can have at most two decimals.")
             BigDecimal rateDiscountPct,
             /** The last issue date the tax exemption covers; it does not end when left out. Only for an exempt client. */
-            LocalDate taxExemptUntil) {
+            LocalDate taxExemptUntil,
+            /** The most the client may owe in its currency; no limit when left out. */
+            @DecimalMin(value = "0", message = "The credit limit cannot be negative.")
+            @Digits(integer = 17, fraction = 2, message = "The credit limit can have at most two decimals.")
+            BigDecimal creditLimit) {
 
         @AssertTrue(message = "Only a tax-exempt client can have an exemption end date: tick tax exempt or clear the date.")
         public boolean isTaxExemptUntilExempt() {
@@ -156,6 +160,6 @@ public class ClientController {
         return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
                 body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
-                body.rateDiscountPct(), body.taxExemptUntil()));
+                body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit()));
     }
 }

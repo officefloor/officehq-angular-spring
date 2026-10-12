@@ -745,6 +745,10 @@ public class InvoiceService {
                                 ? "The discount is more than 20% of the subtotal; approve the invoice before sending it."
                                 : "The grand total is over the approval limit; approve the invoice before sending it.");
             }
+            String overLimit = creditLimitRefusal(invoice);
+            if (overLimit != null) {
+                throw new InvoiceRejectedException(overLimit);
+            }
             markSent(invoice);
         });
         return found;
@@ -780,7 +784,8 @@ public class InvoiceService {
     /**
      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
      * would; drafts with no lines, whose due date set by
-     * hand is already past, or that need approval, stay drafts.
+     * hand is already past, that need approval, or that would take the client over its credit limit
+     * (judged on its balance after the drafts sent before them), stay drafts.
      */
     @Transactional
     public void sendAllDrafts(Long clientId) {
@@ -792,11 +797,51 @@ public class InvoiceService {
                     if (!invoice.isCreditNote()) {
                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
                         entityManager.refresh(invoice);
-                        markSent(invoice);
+                        if (creditLimitRefusal(invoice) == null) {
+                            markSent(invoice);
+                        }
                     } else if (creditNoteRefusal(invoice) == null) {
                         issue(invoice);
                     }
                 });
+    }
+
+    /**
+     * What the client owes: what is still due on its sent invoices (late interest included, withholding
+     * left out) plus the retention held on them, less its unused credit. Void invoices and credit notes
+     * do not count (a credit note comes off its original).
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal balance(Long clientId) {
+        BigDecimal rate = taxRate.percent();
+        List<Invoice> sent = loadForClient(clientId).stream()
+                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote()).toList();
+        Map<Long, BigDecimal> paid = paid(sent);
+        BigDecimal owed = BigDecimal.ZERO.setScale(2);
+        for (Invoice i : sent) {
+            owed = owed.add(i.amountDue(paid.get(i.getId()), rate)).add(i.retentionHeld(rate));
+        }
+        return owed.subtract(credits().getOrDefault(clientId, BigDecimal.ZERO)).setScale(2);
+    }
+
+    /**
+     * Why sending the draft would take its client over its credit limit, or null when it would not or the
+     * client has no limit: the client's balance plus what the invoice adds to it (its grand total, priced
+     * as it would be sent, less the withholding) must not be over the limit.
+     */
+    private String creditLimitRefusal(Invoice invoice) {
+        Client client = clients.findById(invoice.getClientId()).orElse(null);
+        if (client == null || client.getCreditLimit() == null) {
+            return null;
+        }
+        repriceFromRates(invoice, null, today.date());
+        BigDecimal after = balance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
+        if (after.compareTo(client.getCreditLimit()) <= 0) {
+            return null;
+        }
+        Currency currency = client.getCurrency();
+        return "Sending this invoice would take " + client.getName() + "'s balance to " + currency.format(after)
+                + ", over its " + currency.format(client.getCreditLimit()) + " credit limit.";
     }
 
     /**
