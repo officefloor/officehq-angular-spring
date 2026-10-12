@@ -105,7 +105,8 @@ function validTaxNumber(taxNumber: string): boolean {
               type="button"
               data-testid="client-hold"
               [attr.aria-label]="(c.onHold ? 'Lift the hold on ' : 'Put on hold ') + c.name"
-              [disabled]="holding()"
+              [disabled]="holding() || c.overLimit"
+              [attr.title]="c.overLimit ? 'On hold until the balance is back within the credit limit' : null"
               (click)="$event.stopPropagation(); toggleHold(c.id)"
             >
               {{ c.onHold ? 'Lift hold' : 'Hold' }}
@@ -307,7 +308,7 @@ function validTaxNumber(taxNumber: string): boolean {
         [currency]="client.currency"
         [openInvoice]="openInvoice()"
         [picked]="picked()"
-        (changed)="loadBalances()"
+        (changed)="loadBalances(); loadClients()"
       />
     }
   `,
@@ -365,8 +366,13 @@ export class Clients {
   });
 
   constructor() {
-    this.service.list().subscribe((list) => this.clients.set(list));
+    this.loadClients();
     this.loadBalances();
+  }
+
+  // Fetches the clients again: a change to an invoice can put a client on hold or take it off.
+  protected loadClients(): void {
+    this.service.list().subscribe((list) => this.clients.set(list));
   }
 
   protected balanceOf(clientId: number): ClientBalance {

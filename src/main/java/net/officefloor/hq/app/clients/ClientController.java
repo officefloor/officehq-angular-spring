@@ -14,6 +14,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.invoices.InvoiceService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,13 +33,14 @@ public class ClientController {
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             BigDecimal retentionPct, Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
-            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold) {
-        static ClientView of(Client c) {
+            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit) {
+        /** The client, on hold when held by hand or while over its credit limit (overLimit). */
+        static ClientView of(Client c, boolean overLimit) {
             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
                     c.getRetentionPct(), c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
-                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold());
+                    c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit, overLimit);
         }
     }
 
@@ -147,28 +149,42 @@ public class ClientController {
 
     private final ClientService clients;
 
-    public ClientController(ClientService clients) {
+    private final InvoiceService invoices;
+
+    public ClientController(ClientService clients, InvoiceService invoices) {
         this.clients = clients;
+        this.invoices = invoices;
+    }
+
+    private ClientView view(Client c) {
+        return ClientView.of(c, invoices.overLimit(c.getId()));
     }
 
     @GetMapping
     public List<ClientView> list() {
-        return clients.list().stream().map(ClientView::of).toList();
+        return clients.list().stream().map(this::view).toList();
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ClientView add(@Valid @RequestBody NewClient body) {
-        return ClientView.of(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+        return view(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
                 body.retentionPct(), body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
                 body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit()));
     }
 
-    /** Puts the client on hold, or lifts the hold when it is on hold; answers the client. */
+    /**
+     * Puts the client on hold, or lifts the hold when it is on hold; answers the client. A client over its
+     * credit limit is on hold until its balance is back within it, so its hold cannot be lifted.
+     */
     @PostMapping("/{id}/hold")
     public ClientView toggleHold(@PathVariable Long id) {
-        return clients.toggleHold(id).map(ClientView::of)
+        if (invoices.overLimit(id)) {
+            throw new ClientRejectedException(
+                    "The client owes more than its credit limit, so it stays on hold until its balance is back within it.");
+        }
+        return clients.toggleHold(id).map(this::view)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client."));
     }
 }

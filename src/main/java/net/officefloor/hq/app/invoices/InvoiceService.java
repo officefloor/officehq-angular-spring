@@ -1377,7 +1377,7 @@ public class InvoiceService {
                         + invoice.currency().format(invoice.currency().cashStep()) + " coins.");
             }
             if (onHold(invoice.getClientId())) {
-                holdAsCredit(invoice.getClientId(), paidAmount, paidIn, date, method);
+                payOverdueThenHold(invoice.getClientId(), paidAmount, paidIn, date, method).remitted(remittance);
                 return;
             }
             BigDecimal received = converted(paidAmount, paidIn, invoice.currency(), date);
@@ -1490,7 +1490,7 @@ public class InvoiceService {
     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
             List<QuotedReference> references, PaymentMethod method, String remittance) {
         if (onHold(clientId)) {
-            return holdAsCredit(clientId, paidAmount, paidIn, date, method).remitted(remittance);
+            return payments.saveAndFlush(payOverdueThenHold(clientId, paidAmount, paidIn, date, method).remitted(remittance));
         }
         Currency currency = currencyOf(clientId);
         BigDecimal received = converted(paidAmount, paidIn, currency, date);
@@ -1945,13 +1945,68 @@ public class InvoiceService {
     }
 
     /** Records in the audit what a payment just recorded holds on the client's account as credit, if anything. */
-    /** Whether the client is on hold; false if no such client. */
-    private boolean onHold(Long clientId) {
-        return clients.findById(clientId).map(Client::isOnHold).orElse(false);
+    /**
+     * Whether the client is on hold: put on hold by hand, or its balance is over its credit limit; false
+     * if no such client.
+     */
+    @Transactional(readOnly = true)
+    public boolean onHold(Long clientId) {
+        return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c)).orElse(false);
+    }
+
+    /** Whether the client's balance is over its credit limit; false if no such client or it has no limit. */
+    @Transactional(readOnly = true)
+    public boolean overLimit(Long clientId) {
+        return clients.findById(clientId).map(this::overLimit).orElse(false);
+    }
+
+    private boolean overLimit(Client client) {
+        return client.getCreditLimit() != null && balance(client.getId()).compareTo(client.getCreditLimit()) > 0;
     }
 
     /**
-     * Records a payment from a client on hold: it pays no invoice, whatever invoice is open or referenced,
+     * Records a payment from a client on hold, whatever invoice is open or referenced: it pays the client's
+     * overdue invoices (not in dispute), oldest due date first (lower id first on the same date), each paid
+     * off before the next, and only what is left is held on the client's account as credit. A date after
+     * today is refused.
+     */
+    private Payment payOverdueThenHold(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+            PaymentMethod method) {
+        Map<Long, BigDecimal> dues = new HashMap<>();
+        LocalDate now = today.date();
+        List<Invoice> overdue = inPaymentOrder(loadForClient(clientId), dues).stream()
+                .filter(i -> dues.get(i.getId()).signum() > 0
+                        && i.statusWhenPaid(paid(List.of(i)).get(i.getId()), taxRate.percent(), now) == InvoiceStatus.OVERDUE
+                        && (i.getIssueDate() == null || !date.isBefore(i.getIssueDate())))
+                .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Invoice::getId))
+                .toList();
+        if (overdue.isEmpty()) {
+            return holdAsCredit(clientId, paidAmount, paidIn, date, method);
+        }
+        Currency currency = currencyOf(clientId);
+        BigDecimal received = converted(paidAmount, paidIn, currency, date);
+        BigDecimal surcharge = surchargeOf(received, currency, method, date);
+        BigDecimal fee = feeOf(received, paidIn, currency);
+        BigDecimal left = received.subtract(surcharge).subtract(fee);
+        List<PaymentAllocation> parts = new ArrayList<>();
+        for (Invoice invoice : overdue) {
+            if (left.signum() <= 0) {
+                break;
+            }
+            BigDecimal part = left.min(dues.get(invoice.getId()));
+            parts.add(new PaymentAllocation(invoice.getId(), part));
+            left = left.subtract(part);
+        }
+        if (parts.isEmpty()) {
+            return holdAsCredit(clientId, paidAmount, paidIn, date, method);
+        }
+        return recordSpread(clientId, received.subtract(surcharge).subtract(fee), paidAmount, paidIn, date, null, parts,
+                method, surcharge, fee, Set.of());
+    }
+
+    /**
+     * Records a payment from a client on hold that has no overdue invoice to pay: it pays no invoice,
      * and the whole of it is held on the client's account as credit, recorded in the audit. A date after
      * today is refused.
      */

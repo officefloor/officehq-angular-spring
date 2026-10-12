@@ -51,12 +51,14 @@ export interface Client {
   // first eight. With a valid one whose two letters are its region (outside the workspace's home region) its invoices are
   // reverse charged; null for no number.
   taxNumber: string | null;
-  // Whether the client is on hold: their invoices are not sent, their credit is not applied, and their
-  // payments pay no invoice but are all held as credit.
+  // Whether the client is on hold, by hand or while over its credit limit: their invoices are not sent,
+  // their credit is not applied, and their payments pay only their overdue invoices, the rest held as credit.
   onHold: boolean;
+  // Whether the client's balance is over its credit limit: it stays on hold until it is back within it.
+  overLimit: boolean;
 }
 
-export type NewClient = Omit<Client, 'id' | 'onHold'>;
+export type NewClient = Omit<Client, 'id' | 'onHold' | 'overLimit'>;
 
 // The clients REST API.
 @Injectable({ providedIn: 'root' })
