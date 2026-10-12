@@ -151,6 +151,7 @@ public class InvoiceService {
             i.withholdEarlyPay(band != RiskBand.LOW);
             i.halveApprovalLimit(band == RiskBand.MEDIUM);
             i.markHighRisk(band == RiskBand.HIGH);
+            i.dropGrace(band == RiskBand.HIGH);
             if (band == RiskBand.HIGH) {
                 i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
             }

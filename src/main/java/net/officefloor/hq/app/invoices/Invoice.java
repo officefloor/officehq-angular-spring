@@ -528,6 +528,13 @@ public class Invoice {
     @Transient
     private boolean highRiskClient;
 
+    /**
+     * Whether the grace period is dropped because the client is a HIGH payment risk on its other invoices
+     * (see {@link #dropGrace}); not stored, worked out again each time the invoice is read.
+     */
+    @Transient
+    private boolean graceDropped;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
@@ -1507,6 +1514,11 @@ public class Invoice {
         this.highRiskClient = highRisk;
     }
 
+    /** Drops the grace period (or gives it back): a HIGH payment risk client's invoices are overdue the day after they fall due. */
+    public void dropGrace(boolean dropped) {
+        this.graceDropped = dropped;
+    }
+
     /**
      * The total a draft is judged and approved on at the tax rate: the grand total.
      */
@@ -2279,9 +2291,12 @@ public class Invoice {
 
     /**
      * Days past its due date this invoice is given before it becomes overdue: its client's grace
-     * period, else their region's, else the standard week.
+     * period, else their region's, else the standard week; none for a HIGH payment risk client (see {@link #dropGrace}).
      */
     public int graceDays() {
+        if (graceDropped) {
+            return 0;
+        }
         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
     }
 
