@@ -1,0 +1,401 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index c8fed8d..d69304a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -709,6 +709,21 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
+         }
+ 
++        @if (inv.creditOf === null) {
++          <p>
++            Approval:
++            <span data-testid="invoice-approval">{{ approvalLabel(inv.approval) }}</span>
++          </p>
++        }
++        @if (inv.status === 'DRAFT' && inv.creditOf === null) {
++          <button type="button" data-testid="invoice-approve" [disabled]="approving()" (click)="approve(inv.id)">
++            Approve
++          </button>
++          @if (approveError()) {
++            <p role="alert" data-testid="invoice-approve-error">{{ approveError() }}</p>
++          }
++        }
++
+         @if (inv.status === 'DRAFT') {
+           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv)">
+             {{ inv.creditOf === null ? 'Send invoice' : 'Issue credit note' }}
+@@ -901,6 +916,8 @@ export class InvoicePanel {
+   protected readonly waiveError = signal('');
+   protected readonly writingOff = signal(false);
+   protected readonly writeOffError = signal('');
++  protected readonly approving = signal(false);
++  protected readonly approveError = signal('');
+   protected readonly sending = signal(false);
+   protected readonly sendError = signal('');
+   protected readonly duplicating = signal(false);
+@@ -997,6 +1014,7 @@ export class InvoicePanel {
+       this.skipError.set('');
+       this.writeOffError.set('');
+       this.sendError.set('');
++      this.approveError.set('');
+       this.voidError.set('');
+       this.duplicateError.set('');
+       this.creditError.set('');
+@@ -1372,6 +1390,37 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected approvalLabel(approval: InvoiceDetail['approval']): string {
++    switch (approval) {
++      case 'NEEDS_APPROVAL':
++        return 'Needs approval';
++      case 'APPROVED':
++        return 'Approved';
++      default:
++        return 'Not needed';
++    }
++  }
++
++  protected approve(invoiceId: number): void {
++    this.approving.set(true);
++    this.approveError.set('');
++    this.service.approve(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.sendError.set('');
++        this.approving.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.approveError.set(
++          typeof detail === 'string' && detail ? detail : 'The invoice could not be approved.',
++        );
++        this.approving.set(false);
++      },
++    });
++  }
++
+   // Sends a draft; an issued credit note also changes what its original owes, so the client's
+   // invoices are shown again.
+   protected send(inv: InvoiceDetail): void {
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index aa576d2..d36723a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -208,6 +208,12 @@ export interface InvoiceDetail {
+   withholding: string;
+   // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
+   withholdingPct: string;
++  // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
++  // over the workspace's approval limit and above the total it was approved at, if any. Credit notes
++  // never need approval.
++  approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
++  // The grand total it was approved at; null when it was not approved.
++  approvedTotal: string | null;
+   // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
+   // that makes (signed); once settled in cash, the cash rounding it was settled with.
+   cashDue: string;
+@@ -367,6 +373,12 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/release-retention`, { amount });
+   }
+ 
++  // Approves a draft whose grand total is over the workspace's approval limit. Refused (409) when it
++  // needs no approval.
++  approve(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/approve`, null);
++  }
++
+   // Writes off everything still owed on a sent invoice as a bad debt. Refused (409) on a draft, a void
+   // invoice or one with nothing owed.
+   writeOff(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 50905b3..b92cb9c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,7 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
+ public class TestSupportController {
+ 
+     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
+-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown");
++    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit");
+     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
+     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
+     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
+@@ -50,10 +50,12 @@ public class TestSupportController {
+     /** The setting holding the workspace's withholding threshold in US dollars (see Invoice#withholding). */
+     private static final String WITHHOLDING_THRESHOLD = "withholding_threshold";
+     private static final String PLAN_FEE = "plan_fee";
++    /** The setting holding the workspace's approval limit in US dollars (see Invoice#approval). */
++    private static final String APPROVAL_LIMIT = "approval_limit";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -170,6 +172,11 @@ public class TestSupportController {
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+                         WITHHOLDING_THRESHOLD, threshold.toPlainString());
+             }
++            if (values.get("approvalLimit") != null) {
++                BigDecimal limit = money(values.get("approvalLimit"), "settings.approvalLimit");
++                jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
++                        APPROVAL_LIMIT, limit.toPlainString());
++            }
+             if (values.get("planFee") != null) {
+                 BigDecimal fee = money(values.get("planFee"), "settings.planFee");
+                 jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
+@@ -416,7 +423,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -443,7 +450,8 @@ public class TestSupportController {
+                     surchargePct(row.get("surchargePct"), "invoices[].surchargePct"),
+                     row.get("supplyRegion") == null || row.get("supplyRegion").toString().isBlank() ? null
+                             : row.get("supplyRegion").toString(),
+-                    money(row.get("planFee"), "invoices[].planFee"));
++                    money(row.get("planFee"), "invoices[].planFee"),
++                    row.get("approvedTotal") == null ? null : money(row.get("approvedTotal"), "invoices[].approvedTotal"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -583,6 +591,11 @@ public class TestSupportController {
+         if (!planFee.isEmpty()) {
+             settings.put("planFee", new BigDecimal(planFee.get(0)));
+         }
++        List<String> approvalLimit = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
++                String.class, APPROVAL_LIMIT);
++        if (!approvalLimit.isEmpty()) {
++            settings.put("approvalLimit", new BigDecimal(approvalLimit.get(0)));
++        }
+         List<String> interestThreshold = jdbc.queryForList("SELECT setting_value FROM app_setting WHERE name = ?",
+                 String.class, INTEREST_THRESHOLD);
+         if (!interestThreshold.isEmpty()) {
+@@ -720,7 +733,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -757,6 +770,9 @@ public class TestSupportController {
+                     row.put("instalmentRate", r.get("INSTALMENT_RATE"));
+                     row.put("planDownPct", r.get("PLAN_DOWN_PCT"));
+                     row.put("planFee", r.get("PLAN_FEE"));
++                    if (r.get("APPROVED_TOTAL") != null) {
++                        row.put("approvedTotal", r.get("APPROVED_TOTAL"));
++                    }
+                     row.put("surchargePct", r.get("SURCHARGE_PCT"));
+                     if (r.get("SKIPPED_INSTALMENT") != null) {
+                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 5f930a3..21baa71 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -166,6 +166,13 @@ public class Invoice {
+     @Column(name = "plan_fee")
+     private BigDecimal planFee = BigDecimal.ZERO;
+ 
++    /**
++     * The grand total the invoice was approved at, when it was over the workspace's approval limit;
++     * null while it has not been approved.
++     */
++    @Column(name = "approved_total")
++    private BigDecimal approvedTotal;
++
+     /**
+      * The number of the instalment the client skipped: it pays only its interest and the instalments
+      * after it are worked out again (see {@link #schedule}); null when none was.
+@@ -341,6 +348,13 @@ public class Invoice {
+     @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'withholding_threshold')")
+     private String withholdingThresholdUsd;
+ 
++    /**
++     * The workspace's approval limit in US dollars, as stored (the {@code approval_limit} setting); null
++     * when none is set.
++     */
++    @Formula("(SELECT s.setting_value FROM app_setting s WHERE s.name = 'approval_limit')")
++    private String approvalLimitUsd;
++
+     /** The client's own annual late-interest rate, a percentage; null for the workspace's. Read from the client. */
+     @Formula("(SELECT c.interest_rate FROM client c WHERE c.id = client_id)")
+     private BigDecimal clientInterestRate;
+@@ -986,6 +1000,51 @@ public class Invoice {
+         return currency().divideDownToStep(new BigDecimal(withholdingThresholdUsd.trim()), usdPerOn(issueDate));
+     }
+ 
++    /** Whether an invoice needs approval before it is sent, has been approved, or needs none. */
++    public enum Approval {
++        NOT_NEEDED, NEEDS_APPROVAL, APPROVED
++    }
++
++    /**
++     * The grand total above which a draft needs approval: the workspace's approval limit in US dollars
++     * converted at the issue date's rate, rounded down to the step; null when none is set.
++     */
++    private BigDecimal approvalLimit() {
++        if (approvalLimitUsd == null) {
++            return null;
++        }
++        return currency().divideDownToStep(new BigDecimal(approvalLimitUsd.trim()), usdPerOn(issueDate));
++    }
++
++    /**
++     * The invoice's approval at the tax rate: a credit note, or an invoice whose grand total (before any
++     * withholding) is not over the approval limit, needs none; otherwise it is approved while its grand
++     * total is not above the total it was approved at. Once sent, an invoice is as it was approved.
++     */
++    public Approval approval(BigDecimal taxRate) {
++        if (isCreditNote()) {
++            return Approval.NOT_NEEDED;
++        }
++        if (!isDraft()) {
++            return approvedTotal == null ? Approval.NOT_NEEDED : Approval.APPROVED;
++        }
++        BigDecimal limit = approvalLimit();
++        BigDecimal total = total(taxRate);
++        if (limit == null || total.compareTo(limit) <= 0) {
++            return Approval.NOT_NEEDED;
++        }
++        return approvedTotal != null && total.compareTo(approvedTotal) <= 0 ? Approval.APPROVED : Approval.NEEDS_APPROVAL;
++    }
++
++    public BigDecimal getApprovedTotal() {
++        return approvedTotal;
++    }
++
++    /** Approves the invoice at the grand total. */
++    public void approve(BigDecimal total) {
++        this.approvedTotal = total;
++    }
++
+     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */
+     private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
+             LocalDate today) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index f389548..60b4933 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -145,7 +145,8 @@ public class InvoiceController {
+      * the subtotal less the discount, rounded down to the cent; it counts towards the {@code minimumCharge}.
+      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
+      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
+-     * is the client's withholding percentage.
++     * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
++     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at (null when it was not).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -156,7 +157,7 @@ public class InvoiceController {
+             Currency currency, String earlyDiscount, String settleAmount, String lateInterest, String lateWaived,
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+-            String withholdingPct, String supplyRegion) {
++            String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -199,7 +200,8 @@ public class InvoiceController {
+                     i.cashDue(paid, taxRate).toPlainString(), i.cashRounding(paid, taxRate).toPlainString(),
+                     i.chargedSurchargePct().stripTrailingZeros().toPlainString(), i.surcharge().toPlainString(),
+                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
+-                    i.getSupplyRegion());
++                    i.getSupplyRegion(), i.approval(taxRate),
++                    i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString());
+         }
+     }
+ 
+@@ -650,6 +652,14 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
+     }
+ 
++    /** Approves a draft whose grand total is over the workspace's approval limit. */
++    @PostMapping("/api/invoices/{id}/approve")
++    public InvoiceDetail approve(@PathVariable Long id) {
++        return invoices.approve(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     @PostMapping("/api/invoices/{id}/send")
+     public InvoiceDetail send(@PathVariable Long id) {
+         return invoices.send(id)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index f310216..6d30447 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -749,21 +749,52 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
+                         + ") is already past; set a later due date before sending the invoice.");
+             }
++            if (invoice.approval(taxRate.percent()) == Invoice.Approval.NEEDS_APPROVAL) {
++                throw new InvoiceRejectedException(
++                        "The grand total is over the approval limit; approve the invoice before sending it.");
++            }
+             markSent(invoice);
+         });
+         return found;
+     }
+ 
++    /**
++     * Approves a draft whose grand total is over the workspace's approval limit, keeping that total,
++     * and records it in the audit; empty if no such invoice. An invoice that needs no approval, or is
++     * already approved at its total, is refused.
++     */
++    @Transactional
++    public Optional<Invoice> approve(Long invoiceId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a draft invoice can be approved.");
++            }
++            BigDecimal rate = taxRate.percent();
++            if (invoice.approval(rate) != Invoice.Approval.NEEDS_APPROVAL) {
++                throw new InvoiceRejectedException(invoice.approval(rate) == Invoice.Approval.APPROVED
++                        ? "This invoice is already approved."
++                        : "This invoice is within the approval limit, so it needs no approval.");
++            }
++            BigDecimal total = invoice.total(rate);
++            invoice.approve(total);
++            invoices.saveAndFlush(invoice);
++            audit.record("INVOICE_APPROVED id=" + invoice.getId() + " total=" + total.toPlainString());
++        });
++        return found;
++    }
++
+     /**
+      * Sends each of the client's drafts that has at least one line, lowest id first, as {@link #send}
+-     * would; drafts with no lines, whose discount needs a reason but has none, or whose due date set by
+-     * hand is already past, stay drafts.
++     * would; drafts with no lines, whose discount needs a reason but has none, whose due date set by
++     * hand is already past, or that need approval, stay drafts.
+      */
+     @Transactional
+     public void sendAllDrafts(Long clientId) {
+         loadForClient(clientId).stream()
+                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty() && !invoice.discountLacksReason()
+-                        && !invoice.dueDatePassedBy(today.date()))
++                        && !invoice.dueDatePassedBy(today.date())
++                        && invoice.approval(taxRate.percent()) != Invoice.Approval.NEEDS_APPROVAL)
+                 .forEach(invoice -> {
+                     if (!invoice.isCreditNote()) {
+                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
+diff --git a/src/main/resources/db/migration/V65__invoice_approved_total.sql b/src/main/resources/db/migration/V65__invoice_approved_total.sql
+new file mode 100644
+index 0000000..56c2d7d
+--- /dev/null
++++ b/src/main/resources/db/migration/V65__invoice_approved_total.sql
+@@ -0,0 +1,3 @@
++-- The grand total an invoice was approved at, when it was over the workspace's approval limit; the
++-- approval stands while its grand total is not above it. Null while it has not been approved.
++ALTER TABLE invoice ADD COLUMN approved_total DECIMAL(19, 2);
