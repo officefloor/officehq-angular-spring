@@ -60,7 +60,7 @@ export interface Client {
   // first with an exponential weight of 0.3, to one decimal; null when nothing is paid in full.
   riskScore: string | null;
   // The payment risk band: LOW under 15 days, MEDIUM under 30, HIGH from 30. Every invoice of a HIGH
-  // client needs approval before it is sent.
+  // client needs approval, and deposits held for it worth at least 30% of its grand total, before it is sent.
   riskBand: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 

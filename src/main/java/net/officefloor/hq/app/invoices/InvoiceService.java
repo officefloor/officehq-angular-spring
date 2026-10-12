@@ -870,6 +870,10 @@ public class InvoiceService {
                                         ? "The client pays slowly (HIGH payment risk); approve the invoice before sending it."
                                         : "The grand total is over the approval limit; approve the invoice before sending it.");
             }
+            String noDeposit = depositRefusal(invoice);
+            if (noDeposit != null) {
+                throw new InvoiceRejectedException(noDeposit);
+            }
             String overLimit = creditLimitRefusal(invoice);
             if (overLimit != null) {
                 throw new InvoiceRejectedException(overLimit);
@@ -922,7 +926,8 @@ public class InvoiceService {
         loadForClient(clientId).stream()
                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
                         && !invoice.dueDatePassedBy(today.date())
-                        && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL)
+                        && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL
+                        && (invoice.isCreditNote() || depositRefusal(invoice) == null))
                 .forEach(invoice -> {
                     if (!invoice.isCreditNote()) {
                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
@@ -952,6 +957,34 @@ public class InvoiceService {
             owed = owed.add(i.amountDue(paid.get(i.getId()), rate)).add(i.retentionHeld(rate));
         }
         return owed.subtract(credits().getOrDefault(clientId, BigDecimal.ZERO)).setScale(2);
+    }
+
+    /** The share of a HIGH-risk client's draft's grand total its deposits must cover before it is sent. */
+    private static final BigDecimal DEPOSIT_SHARE = new BigDecimal("0.30");
+
+    /**
+     * Why the draft of a HIGH payment risk client cannot be sent yet, or null when it can: the deposits
+     * held for it, at what they are worth in the client's currency (after any conversion fee or card
+     * surcharge), must add up to at least 30% of its grand total.
+     */
+    private String depositRefusal(Invoice invoice) {
+        if (riskOf(invoice.getClientId()).band() != RiskBand.HIGH) {
+            return null;
+        }
+        Map<String, Long> drafts = draftsByReference(invoice.getClientId());
+        BigDecimal held = payments.findForClient(invoice.getClientId()).stream()
+                .filter(p -> invoice.getId().equals(heldFor(p, drafts)))
+                .map(Payment::credit).filter(c -> c.signum() > 0)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal needed = invoice.total(taxRate.percent()).multiply(DEPOSIT_SHARE)
+                .setScale(invoice.scale(), RoundingMode.CEILING);
+        if (held.compareTo(needed) >= 0) {
+            return null;
+        }
+        Currency currency = invoice.currency();
+        return "The client pays slowly (HIGH payment risk): deposits of at least " + currency.format(needed)
+                + " (30% of the grand total) must be held for this invoice before it is sent; "
+                + currency.format(held) + " is held.";
     }
 
     /**
