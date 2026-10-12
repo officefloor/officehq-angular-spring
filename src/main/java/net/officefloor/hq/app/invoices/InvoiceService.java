@@ -1274,13 +1274,41 @@ public class InvoiceService {
             if (invoice.amountDue(paid, rate).signum() <= 0) {
                 throw new InvoiceRejectedException("There is nothing owed on this invoice to write off.");
             }
-            invoice.writeOff(today.date());
-            withInterest(List.of(invoice));
-            BigDecimal amount = invoice.writtenOff(paid, rate);
-            invoices.saveAndFlush(invoice);
-            audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + amount.toPlainString());
+            writeOff(invoice, today.date(), paid, rate);
         });
         return found;
+    }
+
+    /** Writes off the invoice on the day, everything it still owes then, and records it in the audit. */
+    private void writeOff(Invoice invoice, LocalDate on, BigDecimal paid, BigDecimal rate) {
+        invoice.writeOff(on);
+        withInterest(List.of(invoice));
+        BigDecimal amount = invoice.writtenOff(paid, rate);
+        invoices.saveAndFlush(invoice);
+        audit.record("INVOICE_WRITTEN_OFF id=" + invoice.getId() + " amount=" + amount.toPlainString());
+    }
+
+    /**
+     * Writes off, as {@link #writeOff(Long)} does by hand, each sent invoice that still owes something by the day it
+     * is given up on (30 days after its collections notice went out, see {@link Invoice#givenUpOn}), once today has
+     * reached that day; it is written off on that day.
+     */
+    @Transactional
+    public void writeOffGivenUp() {
+        LocalDate now = today.date();
+        BigDecimal rate = taxRate.percent();
+        for (Long id : invoices.findNotWrittenOffWithReminders(DunningLevel.COLLECTIONS.reminders())) {
+            load(id).ifPresent(invoice -> {
+                LocalDate on = invoice.givenUpOn();
+                if (on == null || on.isAfter(now) || invoice.isDraft() || invoice.isVoid() || invoice.isCreditNote()) {
+                    return;
+                }
+                BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
+                if (invoice.amountDue(paid, rate).signum() > 0) {
+                    writeOff(invoice, on, paid, rate);
+                }
+            });
+        }
     }
 
     /**

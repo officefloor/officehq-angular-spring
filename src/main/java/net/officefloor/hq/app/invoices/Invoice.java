@@ -1585,6 +1585,18 @@ public class Invoice {
     }
 
     /**
+     * The day the invoice is given up on: 30 days after its collections notice went out; null when it has not
+     * gone out.
+     */
+    public LocalDate givenUpOn() {
+        LocalDate collections = reminderOn(DunningLevel.COLLECTIONS);
+        return collections == null ? null : collections.plusDays(GIVEN_UP_AFTER_DAYS);
+    }
+
+    /** The days after its collections notice went out that an invoice still owing is written off. */
+    private static final long GIVEN_UP_AFTER_DAYS = 30;
+
+    /**
      * How much of a credit note of the amount comes off this invoice once the given amount has been
      * paid, at the tax rate: what it still owes; the rest is left over as credit.
      */
