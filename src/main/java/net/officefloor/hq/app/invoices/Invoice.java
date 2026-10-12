@@ -701,7 +701,8 @@ public class Invoice {
     /**
      * The corrected replacement of this rebilled invoice: a draft for the same client, issued and due on the given dates,
      * with copies of its lines, its percentage discount, surcharge and purchase order number, worked out afresh. It
-     * remembers which invoice it replaces.
+     * remembers which invoice it replaces. It carries on what was going on with this invoice: an open dispute (from the
+     * same day, over the same lines), its milestones (with the days they were reached and disputed) and its recurring plan.
      */
     public Invoice rebill(LocalDate issueDate, LocalDate dueDate) {
         Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
@@ -710,8 +711,41 @@ public class Invoice {
         next.surchargePct = surchargePct;
         next.poNumber = poNumber;
         next.replaces = id;
-        lines.forEach(line -> next.addLine(line.copy()));
+        boolean disputed = isInvoiceDisputed();
+        lines.forEach(line -> {
+            InvoiceLine copy = line.copy();
+            copy.setDisputed(disputed && line.isDisputed());
+            next.addLine(copy);
+        });
+        if (disputed) {
+            next.disputedOn = disputedOn;
+        }
+        milestones.forEach(m -> next.addMilestone(m.carryOver()));
+        next.recurring = recurring;
+        next.recurringSince = recurringSince;
+        next.recurUntil = recurUntil;
         return next;
+    }
+
+    /**
+     * Takes the rebilled invoice's open states off it, now its replacement carries them: its dispute (its milestones'
+     * included) is resolved on the day and it stops recurring.
+     */
+    public void handOver(LocalDate on) {
+        if (isDisputed()) {
+            resolveDispute(on);
+        }
+        this.recurring = false;
+    }
+
+    /**
+     * Approves the draft at the grand total on the day with as many approvals as it needs: a replacement for no more than
+     * what the invoice it replaces was sent for is approved already.
+     */
+    public void approveInFull(BigDecimal total, LocalDate on, BigDecimal taxRate) {
+        this.approvals = approvalsRequired(taxRate);
+        this.approvedTotal = total;
+        this.approvedOn = on;
     }
 
     /**

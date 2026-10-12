@@ -102,6 +102,14 @@ public class Milestone {
         this.disputedOn = null;
     }
 
+    /** A copy of the milestone for the invoice replacing its own: the day it was reached and disputed carry over. */
+    public Milestone carryOver() {
+        Milestone copy = new Milestone(description, pct);
+        copy.reachedOn = reachedOn;
+        copy.disputedOn = disputedOn;
+        return copy;
+    }
+
     /** Marks the milestone reached on the day. */
     public void reach(LocalDate on) {
         this.reachedOn = on;

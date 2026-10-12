@@ -238,7 +238,9 @@ public class InvoiceService {
      * Rebills the sent invoice, answering it; empty if no such invoice. A credit note dated today credits every line for
      * exactly what the invoice is worth (what it was sent for) and is issued as any credit note is, after every payment
      * made to the invoice has come off it; then a draft replacing it (see {@link Invoice#rebill}), issued today and due
-     * as any new invoice is, gets those payments held for it as credit, used on it first when it is sent. Records
+     * as any new invoice is, gets those payments held for it as credit, used on it first when it is sent. The draft takes
+     * over the invoice's open dispute, milestones and recurring plan (the invoice's dispute closes and it stops recurring),
+     * and is approved already when its grand total is no more than the invoice was sent for. Records
      * INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
      * refused.
      */
@@ -278,9 +280,18 @@ public class InvoiceService {
             issue(note);
             invoice.markRebilled(on);
             invoices.saveAndFlush(invoice);
+            BigDecimal sentFor = invoice.total(rate);
             Invoice next = invoices.saveAndFlush(invoice.rebill(on, dueDateFor(invoice.getClientId(), on)));
+            invoice.handOver(on);
+            invoices.saveAndFlush(invoice);
             // Read again how far through the bands a copied tiered line's units reach.
             entityManager.refresh(next);
+            if (approval(next) == Invoice.Approval.NEEDS_APPROVAL) {
+                if (next.total(rate).compareTo(sentFor) <= 0) {
+                    next.approveInFull(next.approvalTotal(rate), on, rate);
+                    invoices.saveAndFlush(next);
+                }
+            }
             paidBy.forEach(p -> {
                 p.holdFor(next.getId());
                 payments.saveAndFlush(p);
