@@ -1,0 +1,150 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 87cf578..96d085d 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -66,11 +66,14 @@ export interface Client {
+   // The percentage (0 to 100) the typed unit prices of the client's recurring invoices go up by on each
+   // anniversary of the plan; 0 is none. Prices from the rate card or price list are not raised.
+   upliftPct: number;
++  // The credit limit that counts for the client: half of what is set (rounded down to the cent) for a
++  // HIGH payment risk; null when it has no limit.
++  effectiveCreditLimit: string | number | null;
+ }
+ 
+ export type ClientTier = 'STANDARD' | 'KEY' | 'NEW';
+ 
+-export type NewClient = Omit<Client, 'id' | 'onHold' | 'overLimit' | 'riskScore' | 'riskBand'>;
++export type NewClient = Omit<Client, 'id' | 'onHold' | 'overLimit' | 'riskScore' | 'riskBand' | 'effectiveCreditLimit'>;
+ 
+ // The clients REST API.
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index dd3e339..8f62835 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -101,7 +101,10 @@ function validTaxNumber(taxNumber: string): boolean {
+               @if (c.creditLimit !== null) {
+                 <span>
+                   Available <span data-testid="client-available">{{ money(availableOf(c), c.currency) }}</span>
+-                  of {{ money(String(c.creditLimit), c.currency) }}
++                  of {{ money(String(c.effectiveCreditLimit ?? c.creditLimit), c.currency) }}
++                  @if (Number(c.effectiveCreditLimit) !== Number(c.creditLimit)) {
++                    (half of {{ money(String(c.creditLimit), c.currency) }} for a HIGH payment risk)
++                  }
+                 </span>
+               }
+             </button>
+@@ -332,6 +335,7 @@ export class Clients {
+   protected readonly balances = signal<Map<number, ClientBalance>>(new Map());
+   protected readonly money = money;
+   protected readonly String = String;
++  protected readonly Number = Number;
+   protected readonly currencies = CURRENCIES;
+   protected readonly tiers: readonly ClientTier[] = ['STANDARD', 'KEY', 'NEW'];
+   protected readonly saving = signal(false);
+@@ -392,10 +396,11 @@ export class Clients {
+   }
+ 
+   // What the client can still be invoiced under its credit limit: the limit less its balance, leaving out
+-  // what is in dispute, and less what its approved drafts will add to it.
++  // what is in dispute, and less what its approved drafts will add to it. A HIGH payment risk client's limit
++  // counts as half of what is set.
+   protected availableOf(client: Client): string {
+     const b = this.balanceOf(client.id);
+-    const cents = Math.round(Number(client.creditLimit) * 100) - Math.round(Number(b.balance) * 100)
++    const cents = Math.round(Number(client.effectiveCreditLimit ?? client.creditLimit) * 100) - Math.round(Number(b.balance) * 100)
+       + Math.round(Number(b.disputed) * 100) - Math.round(Number(b.committed) * 100);
+     return String(cents / 100);
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 289191c..98226cf 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -33,18 +33,21 @@ public class ClientController {
+             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
+             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
+-            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier, BigDecimal upliftPct) {
++            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier, BigDecimal upliftPct,
++            BigDecimal effectiveCreditLimit) {
+         /**
+          * The client, on hold when held by hand or while over its credit limit (overLimit), with its payment risk
+-         * score (null when nothing is paid in full) and band.
++         * score (null when nothing is paid in full) and band, and the credit limit that counts for it (half of
++         * what is set for a HIGH payment risk).
+          */
+-        static ClientView of(Client c, boolean overLimit, InvoiceService.Risk risk) {
++        static ClientView of(Client c, boolean overLimit, InvoiceService.Risk risk, BigDecimal effectiveCreditLimit) {
+             return new ClientView(c.getId(), c.getName(), c.getEmail(), c.getTermsDays(), c.getDiscountPct(),
+                     c.isTaxExempt(), c.isPricesIncludeTax(), c.getCurrency(), c.getEarlyPayPct(), c.getEarlyPayDays(),
+                     c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
+                     c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit, overLimit,
+-                    risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier(), c.getUpliftPct());
++                    risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier(), c.getUpliftPct(),
++                    effectiveCreditLimit);
+         }
+     }
+ 
+@@ -165,7 +168,7 @@ public class ClientController {
+     }
+ 
+     private ClientView view(Client c) {
+-        return ClientView.of(c, invoices.overLimit(c.getId()), invoices.riskOf(c.getId()));
++        return ClientView.of(c, invoices.overLimit(c.getId()), invoices.riskOf(c.getId()), invoices.creditLimitOf(c));
+     }
+ 
+     @GetMapping
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 05e5777..8e4810d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1348,12 +1348,14 @@ public class InvoiceService {
+         repriceFromRates(invoice, null, today.date());
+         BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
+                 .add(invoice.owedTotal(taxRate.percent()));
+-        if (after.compareTo(client.getCreditLimit()) <= 0) {
++        BigDecimal limit = creditLimitOf(client);
++        if (after.compareTo(limit) <= 0) {
+             return null;
+         }
+         Currency currency = client.getCurrency();
+         return "Sending this invoice would take " + client.getName() + "'s balance (less what is in dispute, plus its approved drafts) to " + currency.format(after)
+-                + ", over its " + currency.format(client.getCreditLimit()) + " credit limit.";
++                + ", over its " + currency.format(limit) + " credit limit"
++                + (limit.compareTo(client.getCreditLimit()) == 0 ? "." : " (half of its " + currency.format(client.getCreditLimit()) + " limit, as a HIGH payment risk).");
+     }
+ 
+     /**
+@@ -2516,7 +2518,21 @@ public class InvoiceService {
+         }
+         BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
+                 .add(invoice.owedTotal(taxRate.percent()));
+-        return after.compareTo(client.getCreditLimit()) > 0;
++        return after.compareTo(creditLimitOf(client)) > 0;
++    }
++
++    /**
++     * The credit limit that counts for the client: a HIGH payment risk client's is half of what is set, rounded
++     * down to the cent; null when it has no limit.
++     */
++    @Transactional(readOnly = true)
++    public BigDecimal creditLimitOf(Client client) {
++        if (client.getCreditLimit() == null) {
++            return null;
++        }
++        return riskOf(client.getId()).band() == RiskBand.HIGH
++                ? client.getCreditLimit().divide(BigDecimal.valueOf(2), 2, RoundingMode.DOWN)
++                : client.getCreditLimit();
+     }
+ 
+     /**
+@@ -2529,7 +2545,7 @@ public class InvoiceService {
+     }
+ 
+     private boolean overLimit(Client client) {
+-        return client.getCreditLimit() != null && creditBalance(client.getId()).compareTo(client.getCreditLimit()) > 0;
++        return client.getCreditLimit() != null && creditBalance(client.getId()).compareTo(creditLimitOf(client)) > 0;
+     }
+ 
+     /**
