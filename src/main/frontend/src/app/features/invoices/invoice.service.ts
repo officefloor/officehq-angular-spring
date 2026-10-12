@@ -352,6 +352,8 @@ export interface ClientBalance {
   overdue: string;
   credit: string;
   disputed: string;
+  // What the client's approved drafts will add to its balance once sent: it counts against the credit limit.
+  committed: string;
 }
 
 // The invoices REST API.

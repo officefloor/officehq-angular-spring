@@ -1259,6 +1259,23 @@ public class InvoiceService {
         return balance(clientId).subtract(disputed).setScale(2);
     }
 
+    /**
+     * What the client's approved drafts will add to its balance when sent (each one's grand total less the
+     * withholding), leaving out the draft with the given id (null for none): an approved draft is as good as
+     * sent, so it counts against the credit limit. A draft is approved while the approvals it was given still
+     * stand for its grand total (see {@link Invoice#approval}). Credit notes do not count.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal committed(Long clientId, Long excludeId) {
+        BigDecimal rate = taxRate.percent();
+        LocalDate on = today.date();
+        return loadForClient(clientId).stream()
+                .filter(i -> i.isDraft() && !i.isCreditNote() && !i.getId().equals(excludeId)
+                        && i.approval(rate, on, false, true) == Invoice.Approval.APPROVED)
+                .map(i -> i.owedTotal(rate))
+                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+    }
+
     /** The share of a HIGH-risk client's draft's grand total its deposits must cover before it is sent. */
     private static final BigDecimal DEPOSIT_SHARE = new BigDecimal("0.30");
 
@@ -1289,7 +1306,8 @@ public class InvoiceService {
 
     /**
      * Why sending the draft would take its client over its credit limit, or null when it would not or the
-     * client has no limit: the client's balance less what is in dispute (see {@link #creditBalance}) plus what the invoice adds to it (its grand total, priced
+     * client has no limit: the client's balance less what is in dispute (see {@link #creditBalance}) plus what its other
+     * approved drafts will add (see {@link #committed}) plus what the invoice adds to it (its grand total, priced
      * as it would be sent, less the withholding) must not be over the limit.
      */
     private String creditLimitRefusal(Invoice invoice) {
@@ -1298,12 +1316,13 @@ public class InvoiceService {
             return null;
         }
         repriceFromRates(invoice, null, today.date());
-        BigDecimal after = creditBalance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
+        BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
+                .add(invoice.owedTotal(taxRate.percent()));
         if (after.compareTo(client.getCreditLimit()) <= 0) {
             return null;
         }
         Currency currency = client.getCurrency();
-        return "Sending this invoice would take " + client.getName() + "'s balance (less what is in dispute) to " + currency.format(after)
+        return "Sending this invoice would take " + client.getName() + "'s balance (less what is in dispute, plus its approved drafts) to " + currency.format(after)
                 + ", over its " + currency.format(client.getCreditLimit()) + " credit limit.";
     }
 
@@ -2453,7 +2472,8 @@ public class InvoiceService {
         if (client == null || client.getCreditLimit() == null) {
             return false;
         }
-        BigDecimal after = creditBalance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
+        BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
+                .add(invoice.owedTotal(taxRate.percent()));
         return after.compareTo(client.getCreditLimit()) > 0;
     }
 

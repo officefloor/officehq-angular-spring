@@ -388,15 +388,15 @@ export class Clients {
   }
 
   protected balanceOf(clientId: number): ClientBalance {
-    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0', credit: '0', disputed: '0' };
+    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0', credit: '0', disputed: '0', committed: '0' };
   }
 
   // What the client can still be invoiced under its credit limit: the limit less its balance, leaving out
-  // what is in dispute.
+  // what is in dispute, and less what its approved drafts will add to it.
   protected availableOf(client: Client): string {
     const b = this.balanceOf(client.id);
     const cents = Math.round(Number(client.creditLimit) * 100) - Math.round(Number(b.balance) * 100)
-      + Math.round(Number(b.disputed) * 100);
+      + Math.round(Number(b.disputed) * 100) - Math.round(Number(b.committed) * 100);
     return String(cents / 100);
   }
 

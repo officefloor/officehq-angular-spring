@@ -56,9 +56,11 @@ public class InvoiceController {
      * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
      * and payments, less the client's unused credit (so it can be below zero), how much of what is due
      * is overdue, the unused credit, and how much of what is due is in dispute (it does not count against the
-     * credit limit); decimal strings to the cent.
+     * credit limit), and what its approved drafts will add to the balance once sent (committed: it counts
+     * against the credit limit); decimal strings to the cent.
      */
-    public record ClientBalance(Long clientId, String balance, String overdue, String credit, String disputed) {
+    public record ClientBalance(Long clientId, String balance, String overdue, String credit, String disputed,
+            String committed) {
     }
 
     /**
@@ -512,8 +514,8 @@ public class InvoiceController {
     }
 
     /**
-     * The balance of each client that has a sent invoice or credit; a client not listed owes nothing and
-     * has no credit. Void invoices and credit notes do not count (a credit note comes off its original).
+     * The balance of each client that has a sent invoice, an approved draft or credit; a client not listed owes nothing,
+     * has no credit and nothing committed. Void invoices and credit notes do not count (a credit note comes off its original).
      */
     @GetMapping("/api/clients/balances")
     public List<ClientBalance> balances() {
@@ -531,12 +533,17 @@ public class InvoiceController {
             sums[2] = sums[2].add(i.disputedAmount(paid.get(i.getId()), rate));
         }
         Map<Long, BigDecimal> credits = invoices.credits();
+        invoices.all().stream().filter(i -> i.isDraft() && !i.isCreditNote()).map(Invoice::getClientId).distinct()
+                .filter(clientId -> invoices.committed(clientId, null).signum() > 0)
+                .forEach(clientId -> owed.computeIfAbsent(clientId,
+                        k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) }));
         credits.keySet().forEach(clientId -> owed.computeIfAbsent(clientId,
                 k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) }));
         return owed.entrySet().stream().map(e -> {
             BigDecimal credit = credits.getOrDefault(e.getKey(), BigDecimal.ZERO).setScale(2);
             return new ClientBalance(e.getKey(), e.getValue()[0].subtract(credit).toPlainString(),
-                    e.getValue()[1].toPlainString(), credit.toPlainString(), e.getValue()[2].toPlainString());
+                    e.getValue()[1].toPlainString(), credit.toPlainString(), e.getValue()[2].toPlainString(),
+                    invoices.committed(e.getKey(), null).toPlainString());
         }).toList();
     }
 
