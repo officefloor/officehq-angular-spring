@@ -1,0 +1,571 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index f8b9ce1..4ed8f9b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -12,6 +12,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   CREDITED: 'Credited',
+   RETENTION_HELD: 'Retention held',
+   WRITTEN_OFF: 'Written off',
++  DISPUTED: 'Disputed',
+ };
+ const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
+   PAID: 'Paid',
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 42e7e45..8b35719 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -717,6 +717,19 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
+         }
+ 
++        @if (inv.status === 'DISPUTED') {
++          <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
++            Resolve dispute
++          </button>
++        } @else if (inv.creditOf === null) {
++          <button type="button" data-testid="invoice-dispute" [disabled]="disputing()" (click)="dispute(inv.id)">
++            Dispute
++          </button>
++        }
++        @if (disputeError()) {
++          <p role="alert" data-testid="invoice-dispute-error">{{ disputeError() }}</p>
++        }
++
+         @if (inv.creditOf === null) {
+           <p>
+             Approval:
+@@ -960,6 +973,8 @@ export class InvoicePanel {
+   protected readonly waiveError = signal('');
+   protected readonly writingOff = signal(false);
+   protected readonly writeOffError = signal('');
++  protected readonly disputing = signal(false);
++  protected readonly disputeError = signal('');
+   protected readonly approving = signal(false);
+   protected readonly approveError = signal('');
+   protected readonly sending = signal(false);
+@@ -1065,6 +1080,7 @@ export class InvoicePanel {
+       this.waiveError.set('');
+       this.skipError.set('');
+       this.writeOffError.set('');
++      this.disputeError.set('');
+       this.sendError.set('');
+       this.approveError.set('');
+       this.voidError.set('');
+@@ -1452,6 +1468,40 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected dispute(invoiceId: number): void {
++    this.disputing.set(true);
++    this.disputeError.set('');
++    this.service.dispute(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.disputing.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The invoice could not be disputed.');
++        this.disputing.set(false);
++      },
++    });
++  }
++
++  protected resolveDispute(invoiceId: number): void {
++    this.disputing.set(true);
++    this.disputeError.set('');
++    this.service.resolveDispute(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.disputing.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The dispute could not be resolved.');
++        this.disputing.set(false);
++      },
++    });
++  }
++
+   protected approvalLabel(approval: InvoiceDetail['approval']): string {
+     switch (approval) {
+       case 'NEEDS_APPROVAL':
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index f8313d7..0bc4336 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -13,6 +13,8 @@ import { Currency } from './invoice-format';
+ // credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice with nothing due
+ // but retention still held back is RETENTION_HELD instead of PAID. A sent invoice written off as a bad
+ // debt is WRITTEN_OFF for good: it owes nothing, earns no more interest and takes no payments.
++// A sent invoice in dispute is DISPUTED until the dispute is resolved: it earns no interest, is not
++// overdue and takes no payments.
+ export type InvoiceStatus =
+   | 'DRAFT'
+   | 'SENT'
+@@ -24,7 +26,8 @@ export type InvoiceStatus =
+   | 'CREDIT_NOTE'
+   | 'CREDITED'
+   | 'RETENTION_HELD'
+-  | 'WRITTEN_OFF';
++  | 'WRITTEN_OFF'
++  | 'DISPUTED';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+ // server: the grand total — the lines' subtotal less any discount plus tax.
+@@ -196,6 +199,10 @@ export interface InvoiceDetail {
+   // The day (yyyy-mm-dd) it was written off as a bad debt, null when it was not; everything it still
+   // owed then, late charges and retention included, is in `writtenOff`.
+   writtenOffOn: string | null;
++  // The day (yyyy-mm-dd) it was last disputed, null when never, and the day that dispute was resolved,
++  // null while it is open.
++  disputedOn: string | null;
++  disputeResolvedOn: string | null;
+   // Whether it is reverse charged: its client is registered (a valid tax number whose two letters are
+   // their region's code) outside the workspace's home region and accounts for the tax itself, so no line is taxed.
+   reverseCharge: boolean;
+@@ -398,6 +405,17 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/write-off`, null);
+   }
+ 
++  // Puts a sent invoice that still has something due in dispute. Refused (409) on a draft, an invoice
++  // with nothing due or one already in dispute.
++  dispute(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/dispute`, null);
++  }
++
++  // Ends the dispute on an invoice; interest runs again from today on what is still owed.
++  resolveDispute(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/resolve-dispute`, null);
++  }
++
+   // Waives the late interest still unpaid on an overdue invoice; interest starts again
+   // from today on what is still owed. Refused (409) when there is nothing to waive.
+   waiveInterest(invoiceId: number): Observable<InvoiceDetail> {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index c6a6747..565a723 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -55,7 +55,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "retentionPct", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "retentionPct", "retentionCap", "retentionReleasedOn", "retentionReleasedAmount", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "disputedOn", "disputeResolvedOn", "lineItems");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -425,7 +425,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "retention_pct", "retention_cap", "retention_released_on", "retention_released_amount", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "disputed_on", "dispute_resolved_on"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -456,7 +456,10 @@ public class TestSupportController {
+                     row.get("approvedTotal") == null ? null : money(row.get("approvedTotal"), "invoices[].approvedTotal"),
+                     row.get("approvedOn") == null ? null : date(row.get("approvedOn"), "invoices[].approvedOn"),
+                     flag(row.get("recurring"), "invoices[].recurring"),
+-                    row.get("recurringFrom") == null ? null : id(row.get("recurringFrom")));
++                    row.get("recurringFrom") == null ? null : id(row.get("recurringFrom")),
++                    row.get("disputedOn") == null ? null : date(row.get("disputedOn"), "invoices[].disputedOn"),
++                    row.get("disputeResolvedOn") == null ? null
++                            : date(row.get("disputeResolvedOn"), "invoices[].disputeResolvedOn"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -752,7 +755,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, retention_pct, retention_cap, retention_released_on, retention_released_amount, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, disputed_on, dispute_resolved_on FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -797,6 +800,12 @@ public class TestSupportController {
+                     }
+                     row.put("surchargePct", r.get("SURCHARGE_PCT"));
+                     row.put("recurring", r.get("RECURRING"));
++                    if (r.get("DISPUTED_ON") != null) {
++                        row.put("disputedOn", r.get("DISPUTED_ON").toString());
++                    }
++                    if (r.get("DISPUTE_RESOLVED_ON") != null) {
++                        row.put("disputeResolvedOn", r.get("DISPUTE_RESOLVED_ON").toString());
++                    }
+                     if (r.get("RECURRING_FROM") != null) {
+                         row.put("recurringFrom", r.get("RECURRING_FROM"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index d47b11d..441ec42 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -139,6 +139,14 @@ public class Invoice {
+     @Column(name = "written_off_on")
+     private LocalDate writtenOffOn;
+ 
++    /** The day the client disputed the invoice; null when it has never been disputed. */
++    @Column(name = "disputed_on")
++    private LocalDate disputedOn;
++
++    /** The day the dispute was resolved; null while it is open or when there has been none. */
++    @Column(name = "dispute_resolved_on")
++    private LocalDate disputeResolvedOn;
++
+     /** How many monthly instalments the invoice is spread over; null when it has no plan. */
+     @Column(name = "instalments")
+     private Integer instalments;
+@@ -845,6 +853,35 @@ public class Invoice {
+         this.interestWaivedOn = on;
+     }
+ 
++    /** The day the client disputed the invoice; null when it has never been disputed. */
++    public LocalDate getDisputedOn() {
++        return disputedOn;
++    }
++
++    /** The day the dispute was resolved; null while it is open or when there has been none. */
++    public LocalDate getDisputeResolvedOn() {
++        return disputeResolvedOn;
++    }
++
++    /**
++     * Whether the invoice is in dispute: it earns no interest, is not overdue and takes no payments
++     * until the dispute is resolved.
++     */
++    public boolean isDisputed() {
++        return disputedOn != null && disputeResolvedOn == null;
++    }
++
++    /** Puts the invoice in dispute from the given day. */
++    public void dispute(LocalDate on) {
++        this.disputedOn = on;
++        this.disputeResolvedOn = null;
++    }
++
++    /** Resolves the dispute on the given day; interest runs again from then. */
++    public void resolveDispute(LocalDate on) {
++        this.disputeResolvedOn = on;
++    }
++
+     /** The day the invoice was written off as a bad debt; null when it was not. */
+     public LocalDate getWrittenOffOn() {
+         return writtenOffOn;
+@@ -1161,7 +1198,7 @@ public class Invoice {
+         for (Part part : inOrder) {
+             if (waiveOn != null && part.on().isAfter(waiveOn)) {
+                 if (owed.signum() > 0) {
+-                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
++                    BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
+                     charged = charged.add(earned);
+                     unpaidInterest = unpaidInterest.add(earned);
+                 }
+@@ -1171,7 +1208,7 @@ public class Invoice {
+                 waiveOn = null;
+             }
+             if (part.on().isAfter(from) && owed.signum() > 0) {
+-                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
++                BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+                 from = part.on();
+@@ -1188,7 +1225,7 @@ public class Invoice {
+         }
+         if (waiveOn != null) {
+             if (owed.signum() > 0) {
+-                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
++                BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+             }
+@@ -1196,7 +1233,7 @@ public class Invoice {
+             interestWaived = unpaidInterest;
+         }
+         if (owed.signum() > 0) {
+-            charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
++            charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
+         }
+         this.lateInterest = charged.subtract(interestWaived);
+         this.lateWaived = interestWaived;
+@@ -1257,7 +1294,7 @@ public class Invoice {
+         for (Part part : toRetention) {
+             if (waiveOn != null && part.on().isAfter(waiveOn)) {
+                 if (owed.signum() > 0) {
+-                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
++                    BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
+                     charged = charged.add(earned);
+                     unpaidInterest = unpaidInterest.add(earned);
+                 }
+@@ -1267,7 +1304,7 @@ public class Invoice {
+                 waiveOn = null;
+             }
+             if (part.on().isAfter(from) && owed.signum() > 0) {
+-                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
++                BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+                 from = part.on();
+@@ -1280,7 +1317,7 @@ public class Invoice {
+         }
+         if (waiveOn != null) {
+             if (owed.signum() > 0) {
+-                BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, waiveOn));
++                BigDecimal earned = interestOn(owed, daily, interestDays(from, waiveOn));
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+             }
+@@ -1288,7 +1325,7 @@ public class Invoice {
+             waived = unpaidInterest;
+         }
+         if (owed.signum() > 0) {
+-            charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
++            charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
+         }
+         this.retentionInterest = charged.subtract(waived);
+         this.lateInterest = this.lateInterest.add(retentionInterest);
+@@ -1351,7 +1388,7 @@ public class Invoice {
+             for (int j = 0; j < left.length; j++) {
+                 Part part = inOrder.get(j);
+                 if (late && part.on().isAfter(from) && owed.signum() > 0) {
+-                    BigDecimal earned = interestOn(owed, daily, ChronoUnit.DAYS.between(from, part.on()));
++                    BigDecimal earned = interestOn(owed, daily, interestDays(from, part.on()));
+                     charged = charged.add(earned);
+                     unpaidInterest = unpaidInterest.add(earned);
+                     from = part.on();
+@@ -1364,7 +1401,7 @@ public class Invoice {
+                 left[j] = left[j].subtract(toInterest);
+             }
+             if (late && owed.signum() > 0) {
+-                charged = charged.add(interestOn(owed, daily, ChronoUnit.DAYS.between(from, today)));
++                charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
+             }
+             charges.add(charged.setScale(scale(), RoundingMode.HALF_UP));
+             total = total.add(charged);
+@@ -1373,6 +1410,20 @@ public class Invoice {
+         this.lateInterest = total;
+     }
+ 
++    /**
++     * The days from one day to another that earn interest: those spent in dispute (from the day it was
++     * disputed up to the day it was resolved, or for good while it is still open) earn none.
++     */
++    private long interestDays(LocalDate from, LocalDate to) {
++        long days = ChronoUnit.DAYS.between(from, to);
++        if (disputedOn == null || days <= 0) {
++            return days;
++        }
++        LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
++        LocalDate end = disputeResolvedOn == null || to.isBefore(disputeResolvedOn) ? to : disputeResolvedOn;
++        return days - Math.max(0, ChronoUnit.DAYS.between(start, end));
++    }
++
+     /** The interest the balance earns over the days at the daily growth factor, rounded half up to the cent. */
+     private BigDecimal interestOn(BigDecimal balance, BigDecimal daily, long days) {
+         if (days <= 0) {
+@@ -1879,6 +1930,9 @@ public class Invoice {
+         if (isWrittenOff()) {
+             return InvoiceStatus.WRITTEN_OFF;
+         }
++        if (isDisputed()) {
++            return InvoiceStatus.DISPUTED;
++        }
+         BigDecimal amountDue = amountDue(paid, taxRate);
+         boolean due = amountDue.signum() > 0;
+         BigDecimal retentionDue = amountDue.min(retentionReleased(taxRate).add(getRetentionInterest())).max(BigDecimal.ZERO);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index d25cf22..aa09679 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -151,6 +151,7 @@ public class InvoiceController {
+      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
+      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
+      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not).
++     * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open).
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -162,7 +163,7 @@ public class InvoiceController {
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+-            boolean recurring, Long recurringFrom) {
++            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -207,7 +208,7 @@ public class InvoiceController {
+                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
+                     i.getSupplyRegion(), i.approval(taxRate, today),
+                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
+-                    i.isRecurring(), i.getRecurringFrom());
++                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn());
+         }
+     }
+ 
+@@ -610,6 +611,22 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Puts a sent invoice that still has something due in dispute. */
++    @PostMapping("/api/invoices/{id}/dispute")
++    public InvoiceDetail dispute(@PathVariable Long id) {
++        return invoices.dispute(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
++    /** Ends the dispute on an invoice. */
++    @PostMapping("/api/invoices/{id}/resolve-dispute")
++    public InvoiceDetail resolveDispute(@PathVariable Long id) {
++        return invoices.resolveDispute(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Waives the late interest still unpaid on an overdue invoice. */
+     @PostMapping("/api/invoices/{id}/waive-interest")
+     public InvoiceDetail waiveInterest(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 884aa7e..1dc0795 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -666,6 +666,63 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Puts a sent invoice that still has something due in dispute today, and records it with the amount
++     * due in the audit; empty if no such invoice. While in dispute it earns no interest (what was charged
++     * before stays), is not overdue and takes no payments. A draft, a void or written-off invoice, a credit
++     * note, one already in dispute or one with nothing due is refused.
++     */
++    @Transactional
++    public Optional<Invoice> dispute(Long invoiceId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isDraft()) {
++                throw new InvoiceRejectedException("A draft cannot be disputed; only a sent invoice can.");
++            }
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice cannot be disputed.");
++            }
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be disputed.");
++            }
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("A written-off invoice cannot be disputed.");
++            }
++            if (invoice.isDisputed()) {
++                throw new InvoiceRejectedException("This invoice is already in dispute.");
++            }
++            BigDecimal paid = paid(List.of(invoice)).get(invoice.getId());
++            BigDecimal due = invoice.amountDue(paid, taxRate.percent());
++            if (due.signum() <= 0) {
++                throw new InvoiceRejectedException("There is nothing due on this invoice to dispute.");
++            }
++            invoice.dispute(today.date());
++            invoices.saveAndFlush(invoice);
++            withInterest(List.of(invoice));
++            audit.record("INVOICE_DISPUTED id=" + invoice.getId() + " amount=" + due.toPlainString());
++        });
++        return found;
++    }
++
++    /**
++     * Resolves the dispute on an invoice today, and records it in the audit; empty if no such invoice.
++     * Interest runs again from today on what is still owed. Refused when it is not in dispute.
++     */
++    @Transactional
++    public Optional<Invoice> resolveDispute(Long invoiceId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (!invoice.isDisputed()) {
++                throw new InvoiceRejectedException("This invoice is not in dispute.");
++            }
++            invoice.resolveDispute(today.date());
++            invoices.saveAndFlush(invoice);
++            withInterest(List.of(invoice));
++            audit.record("DISPUTE_RESOLVED id=" + invoice.getId());
++        });
++        return found;
++    }
++
+     /**
+      * Puts a single price for the unit type on the client's rate card: replaces the price of its entry in force
+      * today (its date, increment, minimum units and tax rate are kept), or adds an entry that has always applied
+@@ -1296,6 +1353,9 @@ public class InvoiceService {
+             if (invoice.isWrittenOff()) {
+                 throw new InvoiceRejectedException("A written-off invoice takes no more payments.");
+             }
++            if (invoice.isDisputed()) {
++                throw new InvoiceRejectedException("The invoice is in dispute: resolve the dispute before recording a payment.");
++            }
+             boolean cash = method == PaymentMethod.CASH;
+             if (cash && paidIn != null && paidIn != invoice.currency()) {
+                 throw new InvoiceRejectedException("Cash is paid only in the client's own currency ("
+@@ -1446,6 +1506,9 @@ public class InvoiceService {
+                 if (invoice.isCreditNote()) {
+                     throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
+                 }
++                if (invoice.isDisputed()) {
++                    throw new InvoiceRejectedException(number + " is in dispute and takes no payments.");
++                }
+                 if (quoted.amount() == null) {
+                     named.add(invoice.getId());
+                     continue;
+@@ -1489,13 +1552,13 @@ public class InvoiceService {
+     }
+ 
+     /**
+-     * The sent invoices among these (not drafts, void invoices or credit notes) in the payment order:
++     * The sent invoices among these (not drafts, void invoices, credit notes or invoices in dispute) in the payment order:
+      * the overdue ones first, earliest due date first, then the rest from the largest amount due to the
+      * smallest; lower id first on a tie. Fills in what each has due.
+      */
+     private List<Invoice> inPaymentOrder(List<Invoice> candidates, Map<Long, BigDecimal> dues) {
+         List<Invoice> unordered = candidates.stream()
+-                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote())
++                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote() && !i.isDisputed())
+                 .toList();
+         Map<Long, BigDecimal> paid = paid(unordered);
+         LocalDate now = today.date();
+@@ -1624,6 +1687,9 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
+             }
++            if (invoice.isDisputed()) {
++                throw new InvoiceRejectedException(number + " is in dispute and takes no payments.");
++            }
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (part.getAmount().compareTo(due) > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index 216f552..3d95f83 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -17,7 +17,9 @@ package net.officefloor.hq.app.invoices;
+  * paid; that follows from its retention and payments and is never stored.
+  * A sent invoice written off as a bad debt is written off for good: it owes nothing, earns no more
+  * interest and takes no payments; that follows from the day it was written off.
++ * A sent invoice in dispute is disputed until the dispute is resolved: it earns no interest, is not
++ * overdue and takes no payments; that follows from the days it was disputed and resolved.
+  */
+ public enum InvoiceStatus {
+-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD, WRITTEN_OFF
++    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, RETENTION_HELD, WRITTEN_OFF, DISPUTED
+ }
+diff --git a/src/main/resources/db/migration/V71__invoice_dispute.sql b/src/main/resources/db/migration/V71__invoice_dispute.sql
+new file mode 100644
+index 0000000..e48e543
+--- /dev/null
++++ b/src/main/resources/db/migration/V71__invoice_dispute.sql
+@@ -0,0 +1,5 @@
++-- The day the client disputed a sent invoice (null when never): from then it earns no interest, is not
++-- overdue and takes no payments until the dispute is resolved.
++ALTER TABLE invoice ADD COLUMN disputed_on DATE;
++-- The day the dispute was resolved (null while it is open or when there was none): interest runs again from it.
++ALTER TABLE invoice ADD COLUMN dispute_resolved_on DATE;
