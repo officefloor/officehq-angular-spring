@@ -850,11 +850,12 @@ public class Invoice {
     /**
      * A new, empty draft debit note adjusting this sent invoice, issued on the given date and due on the date given: same
      * client, billed on this invoice's terms (its percentage discount and its surcharge percentage), priced and taxed as of
-     * this invoice's issue date in its region.
+     * this invoice's issue date in its region, and carrying its purchase order number.
      */
     public Invoice debitNote(LocalDate issueDate, LocalDate dueDate) {
         Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         note.adjustmentOf = id;
+        note.poNumber = poNumber;
         note.supplyRegion = supplyRegion;
         note.creditedIssueDate = this.issueDate;
         note.discountPct = discountPct;
@@ -869,6 +870,7 @@ public class Invoice {
     public Invoice adjustmentCreditNote(LocalDate issueDate) {
         Invoice note = creditNote(issueDate);
         note.adjustmentOf = id;
+        note.poNumber = poNumber;
         note.discountPct = discountPct;
         return note;
     }

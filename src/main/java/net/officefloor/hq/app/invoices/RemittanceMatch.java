@@ -3,10 +3,10 @@ package net.officefloor.hq.app.invoices;
 import java.util.Locale;
 
 /** How alike a payment's remittance text is to an invoice's purchase order number. */
-final class RemittanceMatch {
+public final class RemittanceMatch {
 
     /** The least similarity that counts as a match. */
-    static final double THRESHOLD = 0.90;
+    public static final double THRESHOLD = 0.90;
 
     private RemittanceMatch() {
     }
@@ -16,7 +16,7 @@ final class RemittanceMatch {
      * half the longer length less one, transpositions are halved, and a common prefix of up to four
      * characters is boosted by 0.1.
      */
-    static double similarity(String first, String second) {
+    public static double similarity(String first, String second) {
         String a = first.toLowerCase(Locale.ROOT);
         String b = second.toLowerCase(Locale.ROOT);
         if (a.isEmpty() || b.isEmpty()) {

@@ -924,13 +924,20 @@ public class InvoiceService {
         return found;
     }
 
-    /** Sets the client's purchase order number on an invoice (blank for none); empty if no such invoice. */
+    /**
+     * Sets the client's purchase order number on an invoice (blank for none), and on its adjustment notes, which carry
+     * their invoice's; empty if no such invoice.
+     */
     @Transactional
     public Optional<Invoice> setPoNumber(Long invoiceId, String poNumber) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             invoice.setPoNumber(poNumber);
             invoices.saveAndFlush(invoice);
+            loadForClient(invoice.getClientId()).stream().filter(n -> invoiceId.equals(n.getAdjustmentOf())).forEach(n -> {
+                n.setPoNumber(poNumber);
+                invoices.saveAndFlush(n);
+            });
         });
         return found;
     }
@@ -2305,8 +2312,17 @@ public class InvoiceService {
                 }
             }
             if (!matched.isEmpty()) {
-                List<Invoice> reordered = new ArrayList<>(matched);
-                sent.stream().filter(i -> !matched.contains(i)).forEach(reordered::add);
+                // Each matched invoice is paid first, straight followed by its debit adjustment notes, oldest first.
+                List<Invoice> first = new ArrayList<>();
+                for (Invoice invoice : matched) {
+                    if (!first.contains(invoice)) {
+                        first.add(invoice);
+                    }
+                    sent.stream().filter(i -> isDebitNote(i) && invoice.getId().equals(i.getAdjustmentOf()) && !first.contains(i))
+                            .sorted(oldestFirst()).forEach(first::add);
+                }
+                List<Invoice> reordered = new ArrayList<>(first);
+                sent.stream().filter(i -> !first.contains(i)).forEach(reordered::add);
                 sent = reordered;
             }
         }

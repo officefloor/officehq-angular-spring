@@ -20,6 +20,7 @@ import net.officefloor.hq.app.invoices.Invoice;
 import net.officefloor.hq.app.invoices.InvoiceRepository;
 import net.officefloor.hq.app.invoices.PaymentMethod;
 import net.officefloor.hq.app.invoices.PaymentRepository;
+import net.officefloor.hq.app.invoices.RemittanceMatch;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -643,6 +644,7 @@ public class TestSupportController {
                         cents(allocation.get("amount"), "payments[].allocations[].amount"),
                         allocation.get("date") == null ? null : date(allocation.get("date"), "payments[].allocations[].date"));
             }
+            matchRemittance(paymentId, id(row.get("clientId")), row.get("remittance"));
         }
         // An issued credit note keeps its grand total, which comes off what its original owes, in the
         // order they were issued; any rest is the client's credit.
@@ -665,6 +667,47 @@ public class TestSupportController {
         for (String table : List.of("client", "invoice", "invoice_line", "invoice_milestone", "payment")) {
             Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
+        }
+    }
+
+    /**
+     * Matches a seeded payment's remittance, part by part (separated by semicolons), to the purchase order numbers of
+     * the client's invoices, as when a payment is recorded: each part to the closest invoice not matched by an earlier
+     * part, preferring on a tie an invoice the payment was allocated to, then an invoice over an adjustment note, then
+     * the lower id.
+     */
+    private void matchRemittance(Long paymentId, Long clientId, Object remittance) {
+        if (remittance == null || remittance.toString().isBlank()) {
+            return;
+        }
+        List<Map<String, Object>> candidates = jdbc.queryForList(
+                "SELECT i.id, i.po_number, i.adjustment_of, (SELECT COUNT(*) FROM payment_allocation a WHERE a.payment_id = ? AND a.invoice_id = i.id) AS allocated "
+                        + "FROM invoice i WHERE i.client_id = ? AND i.po_number IS NOT NULL AND i.status NOT IN ('DRAFT', 'VOID', 'CREDIT_NOTE') "
+                        + "ORDER BY allocated DESC, CASE WHEN i.adjustment_of IS NULL THEN 0 ELSE 1 END, i.id",
+                paymentId, clientId);
+        List<Object> matched = new ArrayList<>();
+        int position = 0;
+        for (String part : remittance.toString().split(";")) {
+            if (part.isBlank()) {
+                continue;
+            }
+            Map<String, Object> best = null;
+            double score = 0;
+            for (Map<String, Object> candidate : candidates) {
+                if (matched.contains(candidate.get("ID"))) {
+                    continue;
+                }
+                double similarity = RemittanceMatch.similarity(part.trim(), candidate.get("PO_NUMBER").toString());
+                if (similarity >= RemittanceMatch.THRESHOLD && (best == null || similarity > score)) {
+                    best = candidate;
+                    score = similarity;
+                }
+            }
+            if (best != null) {
+                matched.add(best.get("ID"));
+                jdbc.update("INSERT INTO payment_match (payment_id, position, invoice_id, score) VALUES (?, ?, ?, ?)",
+                        paymentId, position++, best.get("ID"), BigDecimal.valueOf(score).setScale(3, java.math.RoundingMode.HALF_UP));
+            }
         }
     }
 
