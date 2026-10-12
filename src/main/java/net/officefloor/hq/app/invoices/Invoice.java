@@ -173,6 +173,10 @@ public class Invoice {
     @Column(name = "approved_total")
     private BigDecimal approvedTotal;
 
+    /** The day the invoice was approved; null while it has not been, or for an approval given before the day was kept. */
+    @Column(name = "approved_on")
+    private LocalDate approvedOn;
+
     /**
      * The number of the instalment the client skipped: it pays only its interest and the instalments
      * after it are worked out again (see {@link #schedule}); null when none was.
@@ -1011,14 +1015,17 @@ public class Invoice {
         return currency().divideDownToStep(new BigDecimal(approvalLimitUsd.trim()), usdPerOn(issueDate));
     }
 
+    /** The number of days an approval stays good after the day it was given. */
+    public static final int APPROVAL_DAYS = 30;
+
     /**
-     * The invoice's approval at the tax rate: a credit note, or an invoice whose grand total (before any
-     * withholding) is not over the approval limit and whose discount takes off no more than a fifth of the
-     * subtotal, needs none; otherwise it is approved while its grand total is not above the total it was
-     * approved at (and, for a large discount, not below it either, so a bigger discount needs approval
-     * again). Once sent, an invoice is as it was approved.
+     * The invoice's approval at the tax rate as of today: a credit note, or an invoice whose grand total
+     * (before any withholding) is not over the approval limit and whose discount takes off no more than a
+     * fifth of the subtotal, needs none; otherwise it is approved while its grand total is exactly the total
+     * it was approved at and no more than {@link #APPROVAL_DAYS} days have passed since it was approved.
+     * Once sent, an invoice is as it was approved.
      */
-    public Approval approval(BigDecimal taxRate) {
+    public Approval approval(BigDecimal taxRate, LocalDate today) {
         if (isCreditNote()) {
             return Approval.NOT_NEEDED;
         }
@@ -1027,24 +1034,28 @@ public class Invoice {
         }
         BigDecimal limit = approvalLimit();
         BigDecimal total = total(taxRate);
-        boolean largeDiscount = discountIsLarge();
-        if (!largeDiscount && (limit == null || total.compareTo(limit) <= 0)) {
+        if (!discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
             return Approval.NOT_NEEDED;
         }
-        if (approvedTotal == null) {
+        if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {
             return Approval.NEEDS_APPROVAL;
         }
-        int againstApproved = total.compareTo(approvedTotal);
-        return againstApproved <= 0 && (!largeDiscount || againstApproved == 0) ? Approval.APPROVED : Approval.NEEDS_APPROVAL;
+        boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(APPROVAL_DAYS));
+        return lapsed ? Approval.NEEDS_APPROVAL : Approval.APPROVED;
     }
 
     public BigDecimal getApprovedTotal() {
         return approvedTotal;
     }
 
-    /** Approves the invoice at the grand total. */
-    public void approve(BigDecimal total) {
+    public LocalDate getApprovedOn() {
+        return approvedOn;
+    }
+
+    /** Approves the invoice at the grand total on the day. */
+    public void approve(BigDecimal total, LocalDate on) {
         this.approvedTotal = total;
+        this.approvedOn = on;
     }
 
     /** The late interest charged on the invoice itself, released retention left out (see {@link #accrueLateInterest}). */

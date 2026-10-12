@@ -214,10 +214,12 @@ export interface InvoiceDetail {
   withholdingPct: string;
   // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
   // over the workspace's approval limit, or its discount takes off more than a fifth of the subtotal,
-  // and it has not been approved at its total. Credit notes never need approval.
+  // and it has not been approved at exactly its total within the last 30 days. Credit notes never need approval.
   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
   // The grand total it was approved at; null when it was not approved.
   approvedTotal: string | null;
+  // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after 30 days.
+  approvedOn: string | null;
   // The amount due rounded down to the cash coin below (0.05, or whole yen), and the difference
   // that makes (signed); once settled in cash, the cash rounding it was settled with.
   cashDue: string;

@@ -745,7 +745,7 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
                         + ") is already past; set a later due date before sending the invoice.");
             }
-            if (invoice.approval(taxRate.percent()) == Invoice.Approval.NEEDS_APPROVAL) {
+            if (invoice.approval(taxRate.percent(), today.date()) == Invoice.Approval.NEEDS_APPROVAL) {
                 throw new InvoiceRejectedException(
                         invoice.discountIsLarge()
                                 ? "The discount is more than 20% of the subtotal; approve the invoice before sending it."
@@ -762,7 +762,7 @@ public class InvoiceService {
 
     /**
      * Approves a draft whose grand total is over the workspace's approval limit, or whose discount takes
-     * off more than a fifth of the subtotal, keeping that total,
+     * off more than a fifth of the subtotal, keeping that total and the day,
      * and records it in the audit; empty if no such invoice. An invoice that needs no approval, or is
      * already approved at its total, is refused.
      */
@@ -774,13 +774,15 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("Only a draft invoice can be approved.");
             }
             BigDecimal rate = taxRate.percent();
-            if (invoice.approval(rate) != Invoice.Approval.NEEDS_APPROVAL) {
-                throw new InvoiceRejectedException(invoice.approval(rate) == Invoice.Approval.APPROVED
+            LocalDate on = today.date();
+            Invoice.Approval approval = invoice.approval(rate, on);
+            if (approval != Invoice.Approval.NEEDS_APPROVAL) {
+                throw new InvoiceRejectedException(approval == Invoice.Approval.APPROVED
                         ? "This invoice is already approved."
                         : "This invoice is within the approval limit and its discount is not over 20%, so it needs no approval.");
             }
             BigDecimal total = invoice.total(rate);
-            invoice.approve(total);
+            invoice.approve(total, on);
             invoices.saveAndFlush(invoice);
             audit.record("INVOICE_APPROVED id=" + invoice.getId() + " total=" + total.toPlainString());
         });
@@ -801,7 +803,7 @@ public class InvoiceService {
         loadForClient(clientId).stream()
                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
                         && !invoice.dueDatePassedBy(today.date())
-                        && invoice.approval(taxRate.percent()) != Invoice.Approval.NEEDS_APPROVAL)
+                        && invoice.approval(taxRate.percent(), today.date()) != Invoice.Approval.NEEDS_APPROVAL)
                 .forEach(invoice -> {
                     if (!invoice.isCreditNote()) {
                         // Read again the client's sent invoices: one sent just before counts towards its month's volume.
