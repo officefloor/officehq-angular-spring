@@ -6,7 +6,7 @@ import java.util.Locale;
 final class RemittanceMatch {
 
     /** The least similarity that counts as a match. */
-    static final double THRESHOLD = 0.85;
+    static final double THRESHOLD = 0.90;
 
     private RemittanceMatch() {
     }
