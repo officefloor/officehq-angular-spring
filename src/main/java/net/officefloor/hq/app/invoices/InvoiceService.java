@@ -2417,8 +2417,8 @@ public class InvoiceService {
      * The client's payment risk: how many days late each of its invoices paid in full was paid (its paid date,
      * see {@link Invoice#paidOn}, less its due date; 0 when paid by the due date), oldest payment first, averaged
      * with an exponential weight of 0.5 (the first as it is, then 0.5 of each next and 0.5 of the average so far),
-     * rounded half up to one decimal. Part-paid
-     * invoices, credit notes and invoices cleared without a payment do not count; with none the score is null
+     * rounded half up to one decimal. An invoice
+     * written off by hand counts as paid in full on the day it was written off. Part-paid invoices, credit notes and invoices cleared without a payment do not count; with none the score is null
      * and the band LOW.
      */
     @Transactional(readOnly = true)
@@ -2430,12 +2430,19 @@ public class InvoiceService {
     /** The payment risk the invoices give (see {@link #riskOf(Long)}), each paid in full on its date in paidOn. */
     private static Risk riskOf(List<Invoice> invoices, Map<Long, LocalDate> paidOn) {
         List<Invoice> list = invoices.stream().filter(i -> !i.isCreditNote() && i.getDueDate() != null).toList();
-        List<Invoice> paid = list.stream().filter(i -> paidOn.containsKey(i.getId()))
-                .sorted(Comparator.comparing((Invoice i) -> paidOn.get(i.getId())).thenComparing(Invoice::getId))
+        Map<Long, LocalDate> settledOn = new HashMap<>();
+        for (Invoice i : list) {
+            LocalDate on = i.isWrittenOff() ? i.getWrittenOffOn() : paidOn.get(i.getId());
+            if (on != null) {
+                settledOn.put(i.getId(), on);
+            }
+        }
+        List<Invoice> paid = list.stream().filter(i -> settledOn.containsKey(i.getId()))
+                .sorted(Comparator.comparing((Invoice i) -> settledOn.get(i.getId())).thenComparing(Invoice::getId))
                 .toList();
         BigDecimal average = null;
         for (Invoice i : paid) {
-            BigDecimal days = BigDecimal.valueOf(Math.max(0, java.time.temporal.ChronoUnit.DAYS.between(i.getDueDate(), paidOn.get(i.getId()))));
+            BigDecimal days = BigDecimal.valueOf(Math.max(0, java.time.temporal.ChronoUnit.DAYS.between(i.getDueDate(), settledOn.get(i.getId()))));
             average = average == null ? days
                     : RISK_WEIGHT.multiply(days).add(BigDecimal.ONE.subtract(RISK_WEIGHT).multiply(average));
         }
