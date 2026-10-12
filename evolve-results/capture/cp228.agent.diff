@@ -1,0 +1,56 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 258e201..21420fa 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1190,9 +1190,9 @@ public class Invoice {
+ 
+     /**
+      * The dunning level of the invoice at the given status on the given day: NONE unless it is overdue and at least
+-     * 7 days past its due date; REMINDER_1 from 7 days; REMINDER_2 from 21 days once the first reminder went out at
+-     * least 14 days before; FINAL from 45 days once the second went out; COLLECTIONS from 60 days once the final
+-     * notice went out. NONE too, however late, while less than the dunning minimum is overdue (see
++     * 10 days past its due date; REMINDER_1 from 10 days; REMINDER_2 from 21 days, FINAL from 45 days and COLLECTIONS
++     * from 60 days, each only once the reminder of the level before it went out at least 14 days before. A level
++     * never skips the one before it. NONE too, however late, while less than the dunning minimum is overdue (see
+      * {@link #dunningMinimum}).
+      */
+     public DunningLevel dunningLevel(InvoiceStatus status, BigDecimal overdueAmount, LocalDate today) {
+@@ -1200,22 +1200,27 @@ public class Invoice {
+             return DunningLevel.NONE;
+         }
+         long overdue = ChronoUnit.DAYS.between(dueDate, today);
+-        int sent = reminders.size();
+-        if (overdue < 7) {
++        if (overdue < 10) {
+             return DunningLevel.NONE;
+         }
+-        if (overdue < 21 || sent < 1 || ChronoUnit.DAYS.between(reminders.get(0), today) < 14) {
+-            return DunningLevel.REMINDER_1;
+-        }
+-        if (overdue < 45 || sent < 2) {
+-            return DunningLevel.REMINDER_2;
+-        }
+-        if (overdue < 60 || sent < 3) {
+-            return DunningLevel.FINAL;
++        DunningLevel level = DunningLevel.REMINDER_1;
++        while (level != DunningLevel.COLLECTIONS) {
++            DunningLevel next = DunningLevel.values()[level.ordinal() + 1];
++            if (overdue < DUNNING_FROM_DAYS[next.ordinal()] || reminders.size() < level.reminders()
++                    || ChronoUnit.DAYS.between(reminders.get(level.reminders() - 1), today) < DUNNING_WAIT_DAYS) {
++                break;
++            }
++            level = next;
+         }
+-        return DunningLevel.COLLECTIONS;
++        return level;
+     }
+ 
++    /** The days overdue from which each dunning level can be reached, by level. */
++    private static final long[] DUNNING_FROM_DAYS = { 0, 10, 21, 45, 60 };
++
++    /** The days a dunning level after the first waits after the reminder of the level before it went out. */
++    private static final long DUNNING_WAIT_DAYS = 14;
++
+     /**
+      * The least that must be overdue for the invoice to be chased: the workspace's dunning minimum in US dollars
+      * converted at the day's rate, rounded down to the step; 0 when none is set.
