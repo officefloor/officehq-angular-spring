@@ -41,7 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TestSupportController {
 
     private static final Set<String> FIXTURE_KEYS = Set.of("asOf", "settings", "clients", "invoices", "payments");
-    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays");
+    private static final Set<String> SETTINGS_FIELDS = Set.of("taxRate", "usdPer", "fxRates", "lateInterestRate", "regionTaxRates", "homeRegion", "minimumCharge", "cardSurchargePct", "cardSurchargeCap", "fxFeePct", "rates", "taxRateChanges", "regionMaxInterest", "volumeDiscounts", "interestThreshold", "regionGraceDays", "regionTermsDays", "withholdingThreshold", "planFee", "regionRoundDown", "approvalLimit", "tierApprovalLimits", "duplicateDays", "holidays");
     private static final Set<String> VOLUME_DISCOUNT_FIELDS = Set.of("over", "pct");
     private static final Set<String> TAX_RATE_CHANGE_FIELDS = Set.of("region", "from", "rate");
     /** The setting holding the workspace's minimum charge in US dollars (see Invoice#minimumCharge). */
@@ -80,6 +80,7 @@ public class TestSupportController {
     private final Today today;
 
     private final LateInterestRate lateInterestRate;
+    private final Holidays holidays;
 
     private final VolumeDiscounts volumeDiscounts;
 
@@ -89,12 +90,13 @@ public class TestSupportController {
 
     public TestSupportController(Audit audit, JdbcTemplate jdbc, InvoiceRepository invoices, TaxRate taxRate,
             PaymentRepository payments, EntityManager entityManager, ExchangeRates exchangeRates,
-            CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate,
+            CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList, Today today, LateInterestRate lateInterestRate, Holidays holidays,
             VolumeDiscounts volumeDiscounts, RegionGrace regionGrace, RegionTerms regionTerms) {
         this.regionTerms = regionTerms;
         this.regionGrace = regionGrace;
         this.volumeDiscounts = volumeDiscounts;
         this.lateInterestRate = lateInterestRate;
+        this.holidays = holidays;
         this.today = today;
         this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
@@ -121,6 +123,7 @@ public class TestSupportController {
         jdbc.execute("DELETE FROM payment_match");
         jdbc.execute("DELETE FROM client_rate");
         jdbc.execute("DELETE FROM price_list_rate");
+        jdbc.execute("DELETE FROM holiday");
         for (String table : List.of("payment", "invoice_milestone", "invoice_line", "invoice", "client")) {
             jdbc.execute("DELETE FROM " + table);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
@@ -262,6 +265,12 @@ public class TestSupportController {
                     jdbc.update("INSERT INTO app_setting (name, setting_value) VALUES (?, ?)",
                             TaxRate.REGION_TAX_RATE + region, rate.toPlainString());
                 }
+            }
+            if (values.get("holidays") != null) {
+                if (!(values.get("holidays") instanceof List<?> days)) {
+                    throw refuse("settings.holidays must be a list of dates");
+                }
+                holidays.set(days.stream().map(d -> date(d, "settings.holidays[]")).toList());
             }
             if (values.get("regionRoundDown") != null) {
                 if (!(values.get("regionRoundDown") instanceof List<?> regions)) {
@@ -711,6 +720,7 @@ public class TestSupportController {
         if (!regionTaxRates.isEmpty()) {
             settings.put("regionTaxRates", regionTaxRates);
         }
+        holidays.calendar().ifPresent(days -> settings.put("holidays", days.stream().map(LocalDate::toString).toList()));
         List<String> regionRoundDown = this.taxRate.roundDownRegions();
         if (!regionRoundDown.isEmpty()) {
             settings.put("regionRoundDown", regionRoundDown);

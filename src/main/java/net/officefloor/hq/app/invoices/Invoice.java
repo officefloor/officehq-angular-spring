@@ -29,7 +29,11 @@ import java.util.Comparator;
 import java.util.Objects;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import net.officefloor.hq.app.Holidays;
 import net.officefloor.hq.app.clients.ClientTier;
 import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.clients.TaxNumber;
@@ -423,6 +427,13 @@ public class Invoice {
      */
     @Formula("(SELECT COALESCE(c.terms_days, (SELECT CAST(s.setting_value AS INT) FROM app_setting s WHERE s.name = 'region_terms_days_' || c.region)) FROM client c WHERE c.id = client_id)")
     private Integer clientTermsDays;
+
+    /**
+     * The workspace's holidays, comma separated, when it keeps a holiday calendar (an empty string when it
+     * has none listed); null when it keeps none, so terms are in calendar days (see {@link #afterDays}).
+     */
+    @Formula("(SELECT COALESCE((SELECT LISTAGG(CAST(h.holiday_on AS VARCHAR), ',') WITHIN GROUP (ORDER BY h.holiday_on) FROM holiday h), '') FROM app_setting s WHERE s.name = 'holidays')")
+    private String holidays;
 
     /**
      * The workspace's late-interest threshold in US dollars, as stored (the {@code interest_threshold}
@@ -1553,7 +1564,7 @@ public class Invoice {
         if (approvedTotal == null || total.compareTo(approvedTotal) != 0) {
             return 0;
         }
-        boolean lapsed = approvedOn != null && today.isAfter(approvedOn.plusDays(approvalDays()));
+        boolean lapsed = approvedOn != null && today.isAfter(afterDays(approvedOn, approvalDays()));
         return lapsed ? 0 : approvals;
     }
 
@@ -1596,7 +1607,7 @@ public class Invoice {
     private void accrueInvoiceInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate,
             LocalDate today) {
         if (status != InvoiceStatus.SENT || isCreditNote() || hasPlan() || dueDate == null
-                || !today.isAfter(dueDate.plusDays(graceDays()))) {
+                || !today.isAfter(graceEnd(dueDate))) {
             return;
         }
         if (annualRate == null || annualRate.signum() <= 0) {
@@ -1619,24 +1630,24 @@ public class Invoice {
                 String[] parts = credit.split("=");
                 LocalDate on = LocalDate.parse(parts[0].trim());
                 BigDecimal amount = new BigDecimal(parts[1].trim());
-                if (amount.signum() > 0 && on.isAfter(dueDate.plusDays(graceDays())) && !on.isAfter(today)) {
+                if (amount.signum() > 0 && on.isAfter(graceEnd(dueDate)) && !on.isAfter(today)) {
                     owed = owed.add(amount);
                     inOrder.add(new Part(on, Long.MIN_VALUE, amount, true));
                 }
             }
         }
         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
-        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(dueDate.plusDays(graceDays())))
+        BigDecimal paidInGrace = inOrder.stream().filter(p -> !p.on().isAfter(graceEnd(dueDate)))
                 .map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (owed.subtract(paidInGrace).signum() <= 0) {
             return;
         }
-        LocalDate overdueOn = dueDate.plusDays(graceDays() + 1);
+        LocalDate overdueOn = graceEnd(dueDate).plusDays(1);
         BigDecimal disputedLines = hasDisputedLines() ? disputedLinesAmount(taxRate) : null;
         BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
         BigDecimal charged = BigDecimal.ZERO;
         BigDecimal unpaidInterest = BigDecimal.ZERO;
-        LocalDate from = dueDate.plusDays(graceDays());
+        LocalDate from = graceEnd(dueDate);
         LocalDate waiveOn = interestWaivedOn != null && !interestWaivedOn.isBefore(overdueOn)
                 && !interestWaivedOn.isAfter(today) ? interestWaivedOn : null;
         BigDecimal interestWaived = BigDecimal.ZERO;
@@ -1783,10 +1794,10 @@ public class Invoice {
             LocalDate due = dues.get(k);
             BigDecimal owed = amounts.get(k);
             boolean late = false;
-            if (due != null && today.isAfter(due.plusDays(graceDays()))) {
+            if (due != null && today.isAfter(graceEnd(due))) {
                 BigDecimal paidInGrace = BigDecimal.ZERO;
                 for (int j = 0; j < left.length; j++) {
-                    if (!paidOn.get(j).isAfter(due.plusDays(graceDays()))) {
+                    if (!paidOn.get(j).isAfter(graceEnd(due))) {
                         paidInGrace = paidInGrace.add(left[j]);
                     }
                 }
@@ -1794,7 +1805,7 @@ public class Invoice {
             }
             BigDecimal charged = BigDecimal.ZERO;
             BigDecimal unpaidInterest = BigDecimal.ZERO;
-            LocalDate from = due == null ? null : due.plusDays(graceDays());
+            LocalDate from = due == null ? null : graceEnd(due);
             for (int j = 0; j < left.length; j++) {
                 LocalDate on = paidOn.get(j);
                 if (late && on.isAfter(from) && owed.signum() > 0) {
@@ -1893,7 +1904,7 @@ public class Invoice {
      */
     public boolean isEarlyWindowOpen(LocalDate on, BigDecimal taxRate) {
         return status == InvoiceStatus.SENT && issueDate != null && getEarlyDiscountTaken().signum() == 0
-                && earlyDiscount(taxRate).signum() > 0 && !on.isAfter(issueDate.plusDays(earlyPayDays));
+                && earlyDiscount(taxRate).signum() > 0 && !on.isAfter(afterDays(issueDate, earlyPayDays));
     }
 
     /**
@@ -2205,7 +2216,7 @@ public class Invoice {
             Instalment.Status status;
             if (unpaid.signum() <= 0 && interestUnpaid.signum() <= 0) {
                 status = Instalment.Status.PAID;
-            } else if (instalment.dueDate() != null && today.isAfter(instalment.dueDate().plusDays(graceDays()))) {
+            } else if (instalment.dueDate() != null && today.isAfter(graceEnd(instalment.dueDate()))) {
                 status = Instalment.Status.OVERDUE;
             } else if (part.signum() > 0) {
                 status = Instalment.Status.PART_PAID;
@@ -2353,7 +2364,7 @@ public class Invoice {
         if (!milestone.isReached()) {
             return null;
         }
-        return milestone.getReachedOn().plusDays(clientTermsDays == null ? MILESTONE_TERMS_DAYS : clientTermsDays);
+        return afterDays(milestone.getReachedOn(), clientTermsDays == null ? MILESTONE_TERMS_DAYS : clientTermsDays);
     }
 
     /**
@@ -2408,7 +2419,7 @@ public class Invoice {
                     st = Milestone.Status.PAID;
                 } else if (m.isDisputed()) {
                     st = Milestone.Status.DISPUTED;
-                } else if (today.isAfter(due.plusDays(graceDays()))) {
+                } else if (today.isAfter(graceEnd(due))) {
                     st = Milestone.Status.OVERDUE;
                 } else if (part.signum() > 0) {
                     st = Milestone.Status.PART_PAID;
@@ -2602,6 +2613,21 @@ public class Invoice {
         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
     }
 
+    /** The last day of the grace period after the given due date: {@link #graceDays()} days after it (see {@link #afterDays}). */
+    private LocalDate graceEnd(LocalDate due) {
+        return afterDays(due, graceDays());
+    }
+
+    /**
+     * The day the given days of payment terms after from: business days when the workspace keeps a holiday
+     * calendar, else calendar days.
+     */
+    private LocalDate afterDays(LocalDate from, int days) {
+        Set<LocalDate> calendar = holidays == null ? null : holidays.isBlank() ? Set.of()
+                : Arrays.stream(holidays.split(",")).map(d -> LocalDate.parse(d.trim())).collect(Collectors.toSet());
+        return Holidays.after(from, days, calendar);
+    }
+
     /**
      * The status on the given day once the given amount has been paid against the grand total at the
      * tax rate: a sent invoice with something still due more than {@link #graceDays()} days after its
@@ -2641,7 +2667,7 @@ public class Invoice {
                     .anyMatch(p -> p.status() == Milestone.Status.OVERDUE)) {
                 return InvoiceStatus.OVERDUE;
             }
-        } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
+        } else if (restDue && dueDate != null && today.isAfter(graceEnd(dueDate))) {
             return InvoiceStatus.OVERDUE;
         }
         if (!due && hasPendingMilestones()) {

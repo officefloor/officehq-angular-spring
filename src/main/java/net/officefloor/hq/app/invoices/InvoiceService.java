@@ -23,6 +23,7 @@ import net.officefloor.hq.app.ExchangeRates;
 import net.officefloor.hq.app.FxFee;
 import net.officefloor.hq.app.LateInterestRate;
 import net.officefloor.hq.app.PriceList;
+import net.officefloor.hq.app.Holidays;
 import net.officefloor.hq.app.RegionTerms;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
@@ -57,14 +58,16 @@ public class InvoiceService {
     private final FxFee fxFee;
 
     private final RegionTerms regionTerms;
+    private final Holidays holidays;
 
     private final DuplicateWindow duplicateWindow;
 
     public InvoiceService(InvoiceRepository invoices, PaymentRepository payments, ClientRepository clients,
             Today today, TaxRate taxRate, Audit audit, EntityManager entityManager, ExchangeRates exchangeRates,
             LateInterestRate lateInterestRate, CardSurcharge cardSurcharge, FxFee fxFee, PriceList priceList,
-            RegionTerms regionTerms, DuplicateWindow duplicateWindow) {
+            RegionTerms regionTerms, DuplicateWindow duplicateWindow, Holidays holidays) {
         this.regionTerms = regionTerms;
+        this.holidays = holidays;
         this.duplicateWindow = duplicateWindow;
         this.priceList = priceList;
         this.cardSurcharge = cardSurcharge;
@@ -507,7 +510,7 @@ public class InvoiceService {
     private LocalDate dueDateFor(Long clientId, LocalDate issued) {
         return clients.findById(clientId)
                 .flatMap(c -> Optional.ofNullable(c.getTermsDays()).or(() -> regionTerms.forRegion(c.getRegion())))
-                .map(days -> issued.plusDays(days))
+                .map(days -> holidays.after(issued, days))
                 .orElseGet(() -> dueDateFor(issued));
     }
 
@@ -517,8 +520,8 @@ public class InvoiceService {
      */
     private LocalDate cappedForRisk(Long clientId, LocalDate issued, LocalDate due) {
         LocalDate cap = switch (riskOf(clientId).band()) {
-            case HIGH -> issued.plusDays(7);
-            case MEDIUM -> issued.plusDays(21);
+            case HIGH -> holidays.after(issued, 7);
+            case MEDIUM -> holidays.after(issued, 21);
             default -> null;
         };
         return cap != null && due.isAfter(cap) ? cap : due;
