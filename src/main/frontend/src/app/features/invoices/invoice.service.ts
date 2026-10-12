@@ -90,6 +90,9 @@ export interface InvoiceLineView {
   // The percentage of the line's work done, without trailing zeros, for a line billed by progress
   // (its amount is that share of quantity x unit price); null when the whole line is billed.
   percentComplete: string | null;
+  // For a line copied into a progress claim, the percentage of its work already billed (without trailing
+  // zeros): it bills its percent complete of its full amount less this share; null when none was.
+  billedPct: string | null;
 }
 
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
@@ -243,6 +246,8 @@ export interface InvoiceDetail {
   recurringFrom: number | null;
   // The last day a recurring invoice bills for (yyyy-mm-dd): a generated period stops on it; null for no end.
   recurUntil: string | null;
+  // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
+  claimFrom: number | null;
   // The client's purchase order number for the invoice; null when none was given.
   poNumber: string | null;
   // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
@@ -523,6 +528,12 @@ export class InvoiceService {
   // issued today and due as any new invoice. Answers the new draft.
   generate(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/generate`, null);
+  }
+
+  // Makes the next progress claim of a sent invoice: a draft for the same client, issued today, with a copy
+  // of each percent-complete line that has billed its percentage so far. Answers the new draft.
+  nextClaim(invoiceId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/next-claim`, null);
   }
 
   // Starts an empty draft credit note against a sent invoice, numbered CN-; answers the new draft.

@@ -97,12 +97,13 @@ public class InvoiceController {
      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
      * {@code periodStart} and {@code periodEnd} are the line's service period (null for none): its quantity times unit price is
      * then a month's price, and its amounts are for the days of the period, month by month.
-     * {@code percentComplete} (without trailing zeros) is the percentage of a line billed by progress, null for the whole line.
+     * {@code percentComplete} (without trailing zeros) is the percentage of a line billed by progress, null for the whole line;
+     * {@code billedPct} (without trailing zeros) is the percentage of it already billed by earlier claims, null when none was.
      */
     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
             Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice,
-            LocalDate periodStart, LocalDate periodEnd, boolean disputed, String percentComplete) {
+            LocalDate periodStart, LocalDate periodEnd, boolean disputed, String percentComplete, String billedPct) {
         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax,
                 boolean inDispute) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
@@ -115,7 +116,8 @@ public class InvoiceController {
                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
                     l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd(),
                     inDispute && l.isDisputed(),
-                    l.getPercentComplete() == null ? null : l.getPercentComplete().stripTrailingZeros().toPlainString());
+                    l.getPercentComplete() == null ? null : l.getPercentComplete().stripTrailingZeros().toPlainString(),
+                    l.getBilledPct() == null ? null : l.getBilledPct().stripTrailingZeros().toPlainString());
         }
     }
 
@@ -158,6 +160,7 @@ public class InvoiceController {
      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
      * {@code recurUntil} is the last day it bills for when recurring (null for no end).
+     * {@code claimFrom} is the id of the invoice it was claimed from as its next progress claim (null when it was not).
      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
      * {@code poNumber} is the client's purchase order number (null when none).
@@ -174,7 +177,7 @@ public class InvoiceController {
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
-            List<MilestoneView> milestones, String milestonesPct) {
+            List<MilestoneView> milestones, String milestonesPct, Long claimFrom) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -218,7 +221,7 @@ public class InvoiceController {
                     i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getDisputedOn(), i.getDisputeResolvedOn(),
                     i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
                     i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
-                    i.milestonesPct().stripTrailingZeros().toPlainString());
+                    i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom());
         }
     }
 
@@ -746,6 +749,15 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail generate(@PathVariable Long id) {
         return invoices.generateNext(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Makes the next progress claim of a sent invoice billed by percent complete; answers the new draft. */
+    @PostMapping("/api/invoices/{id}/next-claim")
+    @ResponseStatus(HttpStatus.CREATED)
+    public InvoiceDetail nextClaim(@PathVariable Long id) {
+        return invoices.nextClaim(id)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

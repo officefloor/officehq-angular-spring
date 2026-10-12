@@ -211,7 +211,8 @@ function problemWith(line: NewLine): string {
 // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
 // be duplicated into a new draft for the same client, which then opens. An invoice can be marked as
 // recurring, until an end date its generated drafts keep; a sent recurring invoice generates the next period's draft once
-// (its period stopping on the end date), which then opens. A draft's due date can be set
+// (its period stopping on the end date), which then opens. A sent invoice with percent-complete lines makes its
+// next progress claim once: a draft of those lines that bills only the progress since, which then opens. A draft's due date can be set
 // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
 // server refuses to send it once that date is past. A draft can
 // be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
@@ -241,6 +242,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Unit price</th>
               <th scope="col">Service period</th>
               <th scope="col">Complete</th>
+              <th scope="col">Billed before</th>
               <th scope="col">Line discount</th>
               <th scope="col">Amount</th>
               <th scope="col">Discount share</th>
@@ -261,6 +263,7 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-unit-price">{{ l.tiered ? 'Tiered from ' + amount(l.unitPrice) : amount(l.unitPrice) }}</td>
                 <td data-testid="line-period">{{ l.periodStart ? l.periodStart + ' to ' + l.periodEnd : '' }}</td>
                 <td data-testid="line-percent">{{ l.percentComplete === null ? '' : l.percentComplete + '%' }}</td>
+                <td data-testid="line-billed-pct">{{ l.billedPct === null ? '' : l.billedPct + '%' }}</td>
                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
@@ -317,17 +320,17 @@ function problemWith(line: NewLine): string {
               </tr>
             } @empty {
               <tr>
-                <td colspan="13" data-testid="line-empty">No lines yet.</td>
+                <td colspan="14" data-testid="line-empty">No lines yet.</td>
               </tr>
             }
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colspan="10">Subtotal</th>
+              <th scope="row" colspan="11">Subtotal</th>
               <td data-testid="invoice-subtotal">{{ amount(inv.subtotal) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="10">
+              <th scope="row" colspan="11">
                 @if (+inv.discountAmount > 0) {
                   Discount (fixed@if (inv.discountCap !== null) {, max {{ amount(inv.discountCap) }} in all})
                 } @else {
@@ -339,16 +342,16 @@ function problemWith(line: NewLine): string {
             </tr>
             @if (inv.discountReason) {
               <tr>
-                <th scope="row" colspan="10">Discount reason</th>
+                <th scope="row" colspan="11">Discount reason</th>
                 <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
               </tr>
             }
             <tr>
-              <th scope="row" colspan="10">Surcharge ({{ inv.surchargePct }}%)</th>
+              <th scope="row" colspan="11">Surcharge ({{ inv.surchargePct }}%)</th>
               <td data-testid="invoice-surcharge">{{ amount(inv.surcharge) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="10">Minimum charge</th>
+              <th scope="row" colspan="11">Minimum charge</th>
               <td data-testid="invoice-minimum-charge">{{ amount(inv.minimumCharge) }}</td>
             </tr>
             @if (inv.reverseCharge) {
@@ -357,11 +360,11 @@ function problemWith(line: NewLine): string {
               </tr>
             }
             <tr>
-              <th scope="row" colspan="10">Amount before tax</th>
+              <th scope="row" colspan="11">Amount before tax</th>
               <td data-testid="invoice-net">{{ amount(inv.net) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="10">
+              <th scope="row" colspan="11">
                 @if (inv.pricesIncludeTax && !inv.reverseCharge) {
                   Tax included (lines at their own rate, otherwise {{ inv.taxRate }}%)
                 } @else {
@@ -371,12 +374,12 @@ function problemWith(line: NewLine): string {
               <td data-testid="invoice-tax">{{ amount(inv.tax) }}</td>
             </tr>
             <tr>
-              <th scope="row" colspan="10">Total</th>
+              <th scope="row" colspan="11">Total</th>
               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
             </tr>
             @if (+inv.withholdingPct > 0) {
               <tr>
-                <th scope="row" colspan="10">Withheld by the client for its tax office</th>
+                <th scope="row" colspan="11">Withheld by the client for its tax office</th>
                 <td data-testid="invoice-withholding">{{ amount(inv.withholding) }}</td>
               </tr>
             }
@@ -832,6 +835,15 @@ function problemWith(line: NewLine): string {
           }
         }
 
+        @if (canClaim(inv)) {
+          <button type="button" data-testid="invoice-next-claim" [disabled]="claiming()" (click)="nextClaim(inv.id)">
+            Next claim
+          </button>
+          @if (claimError()) {
+            <p role="alert" data-testid="invoice-next-claim-error">{{ claimError() }}</p>
+          }
+        }
+
         <button
           type="button"
           data-testid="invoice-duplicate"
@@ -1042,6 +1054,8 @@ export class InvoicePanel {
   protected readonly recurringError = signal('');
   protected readonly generating = signal(false);
   protected readonly generateError = signal('');
+  protected readonly claiming = signal(false);
+  protected readonly claimError = signal('');
   protected readonly recurUntilForm = new FormGroup({
     recurUntil: new FormControl('', { nonNullable: true }),
   });
@@ -1153,6 +1167,7 @@ export class InvoicePanel {
       this.recurringError.set('');
       this.recurUntilForm.reset();
       this.generateError.set('');
+      this.claimError.set('');
       this.creditError.set('');
       this.reverseError.set('');
       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
@@ -1770,6 +1785,33 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The next period could not be generated.',
         );
         this.generating.set(false);
+      },
+    });
+  }
+
+  // Whether the invoice is sent and has percent-complete lines, so it can make its next progress claim.
+  protected canClaim(inv: InvoiceDetail): boolean {
+    return (
+      inv.creditOf === null &&
+      inv.status !== 'DRAFT' &&
+      inv.status !== 'VOID' &&
+      inv.lines.some((l) => l.percentComplete !== null)
+    );
+  }
+
+  // Makes the next progress claim, which the list then shows and opens (as a duplicate is).
+  protected nextClaim(invoiceId: number): void {
+    this.claiming.set(true);
+    this.claimError.set('');
+    this.service.nextClaim(invoiceId).subscribe({
+      next: (detail) => {
+        this.claiming.set(false);
+        this.duplicated.emit(detail);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.claimError.set(typeof detail === 'string' && detail ? detail : 'The next claim could not be made.');
+        this.claiming.set(false);
       },
     });
   }

@@ -133,6 +133,14 @@ public class InvoiceLine {
     @Column(name = "percent_complete")
     private BigDecimal percentComplete;
 
+    /**
+     * For a line copied into a progress claim, the percentage of its work already billed (its percent complete on the invoice it
+     * was claimed from): the line bills its percent complete of its full amount less this percentage of it, each rounded half up
+     * to the cent; its percent complete is never below it. Null when nothing was billed before.
+     */
+    @Column(name = "billed_pct")
+    private BigDecimal billedPct;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -174,7 +182,15 @@ public class InvoiceLine {
         copy.periodStart = periodStart;
         copy.periodEnd = periodEnd;
         copy.percentComplete = percentComplete;
+        copy.billedPct = billedPct;
         return copy;
+    }
+
+    /** A copy of this line for the next progress claim: its percent complete so far is what it has already billed. */
+    public InvoiceLine claimCopy() {
+        InvoiceLine claim = copy();
+        claim.billedPct = percentComplete;
+        return claim;
     }
 
     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
@@ -215,6 +231,16 @@ public class InvoiceLine {
     /** Sets the percentage of the line's work done (null for the whole line); it has already been checked. */
     void setPercentComplete(BigDecimal percentComplete) {
         this.percentComplete = percentComplete;
+    }
+
+    /** Whether the line is billed by progress. */
+    public boolean isProgress() {
+        return percentComplete != null;
+    }
+
+    /** The percentage of the line's work already billed by the claims before; null when none was. */
+    public BigDecimal getBilledPct() {
+        return billedPct;
     }
 
     /** Whether the line is billed for a service period. */
@@ -388,9 +414,18 @@ public class InvoiceLine {
      */
     public BigDecimal grossAmount(int scale) {
         BigDecimal full = fullAmount(scale);
-        // A line billed by progress is charged its percentage of the full amount, rounded half up once more.
-        return percentComplete == null ? full
-                : full.multiply(percentComplete).divide(BigDecimal.valueOf(100)).setScale(scale, RoundingMode.HALF_UP);
+        // A line billed by progress is charged its percentage of the full amount, rounded half up once more,
+        // less what was already billed of it, rounded the same way on its own.
+        if (percentComplete == null) {
+            return full;
+        }
+        BigDecimal toDate = share(full, percentComplete, scale);
+        return billedPct == null ? toDate : toDate.subtract(share(full, billedPct, scale));
+    }
+
+    /** The given percentage of an amount, rounded half up to the given number of decimals. */
+    private static BigDecimal share(BigDecimal amount, BigDecimal pct, int scale) {
+        return amount.multiply(pct).divide(BigDecimal.valueOf(100)).setScale(scale, RoundingMode.HALF_UP);
     }
 
     /** The line's whole amount, before its percent complete and its discount (see {@link #grossAmount(int)}). */

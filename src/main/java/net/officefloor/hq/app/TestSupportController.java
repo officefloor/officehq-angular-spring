@@ -56,9 +56,9 @@ public class TestSupportController {
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "lineItems", "milestones");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "lineItems", "milestones");
     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn");
-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete");
+    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
@@ -444,7 +444,7 @@ public class TestSupportController {
                 throw refuse("invoices[].clientId is required");
             }
             Long invoiceId = insert("invoice", row.get("id"),
-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number"},
+                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from"},
                     id(row.get("clientId")), status,
                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
@@ -475,7 +475,8 @@ public class TestSupportController {
                     row.get("disputeResolvedOn") == null ? null
                             : date(row.get("disputeResolvedOn"), "invoices[].disputeResolvedOn"),
                     flag(row.get("disputeCredit"), "invoices[].disputeCredit"),
-                    row.get("poNumber") == null ? null : row.get("poNumber").toString());
+                    row.get("poNumber") == null ? null : row.get("poNumber").toString(),
+                    row.get("claimFrom") == null ? null : id(row.get("claimFrom")));
             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
                 Object[] price = linePrice(invoiceId, line);
@@ -489,7 +490,7 @@ public class TestSupportController {
                     throw refuse("invoices[].lineItems[].periodEnd must not be before periodStart");
                 }
                 insert("invoice_line", line.get("id"),
-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete"},
+                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete", "billed_pct"},
                         invoiceId, text(line, "description"),
                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
                         price[0], price[1],
@@ -503,7 +504,8 @@ public class TestSupportController {
                         price[2], price[3],
                         period[0], period[1],
                         flag(line.get("disputed"), "invoices[].lineItems[].disputed"),
-                        percentComplete(line.get("percentComplete"), "invoices[].lineItems[].percentComplete"));
+                        percentComplete(line.get("percentComplete"), "invoices[].lineItems[].percentComplete"),
+                        line.get("billedPct") == null ? null : percent(line.get("billedPct"), "invoices[].lineItems[].billedPct"));
             }
             BigDecimal pctSum = BigDecimal.ZERO;
             for (Map<String, Object> milestone : rows(row.get("milestones"), "invoices[].milestones")) {
@@ -796,7 +798,7 @@ public class TestSupportController {
                     return row;
                 }).toList());
         out.put("invoices", jdbc.queryForList(
-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number FROM invoice ORDER BY id").stream()
+                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from FROM invoice ORDER BY id").stream()
                 .map(r -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", r.get("ID"));
@@ -844,6 +846,9 @@ public class TestSupportController {
                     if (r.get("RECURRING_FROM") != null) {
                         row.put("recurringFrom", r.get("RECURRING_FROM"));
                     }
+                    if (r.get("CLAIM_FROM") != null) {
+                        row.put("claimFrom", r.get("CLAIM_FROM"));
+                    }
                     if (r.get("SKIPPED_INSTALMENT") != null) {
                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
                     }
@@ -872,7 +877,7 @@ public class TestSupportController {
                                 return milestone;
                             }).toList());
                     row.put("lineItems", jdbc.queryForList(
-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete, billed_pct FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {
                                 Map<String, Object> line = new LinkedHashMap<>();
                                 line.put("id", l.get("ID"));
@@ -898,6 +903,9 @@ public class TestSupportController {
                                 }
                                 if (l.get("PERCENT_COMPLETE") != null) {
                                     line.put("percentComplete", l.get("PERCENT_COMPLETE"));
+                                }
+                                if (l.get("BILLED_PCT") != null) {
+                                    line.put("billedPct", l.get("BILLED_PCT"));
                                 }
                                 return line;
                             }).toList());

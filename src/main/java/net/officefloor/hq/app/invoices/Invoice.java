@@ -187,6 +187,10 @@ public class Invoice {
     @Column(name = "recur_until")
     private LocalDate recurUntil;
 
+    /** The id of the sent invoice this draft was claimed from as its next progress claim (see {@link #nextClaim}); null when it was not. */
+    @Column(name = "claim_from")
+    private Long claimFrom;
+
     /**
      * The number of the instalment the client skipped: it pays only its interest and the instalments
      * after it are worked out again (see {@link #schedule}); null when none was.
@@ -558,6 +562,32 @@ public class Invoice {
             }
         }
         return next;
+    }
+
+    /**
+     * The next progress claim of this invoice: a draft for the same client, issued and due on the given dates, with a claim copy
+     * of each line billed by progress (see {@link InvoiceLine#claimCopy}) — so nothing more is billed until its percentage is
+     * raised — and this invoice's percentage discount and surcharge. Lines billed whole are not copied. It remembers it was
+     * claimed from this invoice.
+     */
+    public Invoice nextClaim(LocalDate issueDate, LocalDate dueDate) {
+        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        next.supplyRegion = supplyRegion;
+        next.discountPct = discountPct;
+        next.surchargePct = surchargePct;
+        next.claimFrom = id;
+        lines.stream().filter(InvoiceLine::isProgress).forEach(line -> next.addLine(line.claimCopy()));
+        return next;
+    }
+
+    /** Whether any line is billed by progress. */
+    public boolean hasProgressLines() {
+        return lines.stream().anyMatch(InvoiceLine::isProgress);
+    }
+
+    /** The id of the sent invoice this draft was claimed from; null when it was not. */
+    public Long getClaimFrom() {
+        return claimFrom;
     }
 
     /** The first day of the next period: the first of the month after the latest period end. */
@@ -2373,6 +2403,10 @@ public class Invoice {
         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
         if (line == null) {
             return false;
+        }
+        if (line.getBilledPct() != null && (percentComplete == null || percentComplete.compareTo(line.getBilledPct()) < 0)) {
+            throw new InvoiceRejectedException("This line has already billed " + line.getBilledPct().stripTrailingZeros().toPlainString()
+                    + "% of its work: its percent complete cannot be less.");
         }
         InvoiceLine was = line.copy();
         line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);

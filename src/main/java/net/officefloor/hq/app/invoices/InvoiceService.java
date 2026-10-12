@@ -243,6 +243,37 @@ public class InvoiceService {
     }
 
     /**
+     * Makes the next progress claim of a sent invoice (see {@link Invoice#nextClaim}), issued today and due as any new
+     * invoice is, and records it in the audit; empty if no such invoice. A draft, a credit note, a void invoice, one with
+     * no line billed by progress, or one already claimed from is refused.
+     */
+    @Transactional
+    public Optional<Invoice> nextClaim(Long invoiceId) {
+        return load(invoiceId).map(original -> {
+            if (original.isDraft()) {
+                throw new InvoiceRejectedException("Only a sent invoice can be claimed from.");
+            }
+            if (original.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be claimed from.");
+            }
+            if (original.isVoid()) {
+                throw new InvoiceRejectedException("A void invoice cannot be claimed from.");
+            }
+            if (!original.hasProgressLines()) {
+                throw new InvoiceRejectedException("The invoice has no line billed by percent complete.");
+            }
+            if (invoices.existsByClaimFrom(original.getId())) {
+                throw new InvoiceRejectedException("The next claim has already been made from this invoice.");
+            }
+            LocalDate issued = today.date();
+            Invoice next = invoices.saveAndFlush(original.nextClaim(issued, dueDateFor(original.getClientId(), issued)));
+            entityManager.refresh(next);
+            audit.record("PROGRESS_CLAIM from=" + original.number() + " to=" + next.number());
+            return next;
+        });
+    }
+
+    /**
      * A new, empty draft credit note against the sent invoice, issued today; empty if no such invoice.
      * A draft, a void invoice or a credit note is refused.
      */

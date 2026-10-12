@@ -18,4 +18,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     /** Whether a draft has been generated from the recurring invoice as its next period. */
     boolean existsByRecurringFrom(Long recurringFrom);
+
+    /** Whether the next progress claim has been made from the invoice. */
+    boolean existsByClaimFrom(Long claimFrom);
 }
