@@ -878,7 +878,8 @@ public class InvoiceService {
      * Bills the line on a debit note adjusting the sent invoice: a new invoice for its client dated today, priced and
      * taxed as the invoice is, with no discount or charges, issued at once as any invoice sent today is (see
      * {@link #markSent}). A note that needs approval as any draft would (see {@link #approval}) is left a draft
-     * note instead, to be approved and then sent.
+     * note instead, to be approved and then sent; so is a note for a client on hold (for any reason, see
+     * {@link #onHold}), refused sending until the hold ends.
      */
     private void issueDebitNote(Invoice invoice, InvoiceLine line) {
         LocalDate on = today.date();
@@ -887,7 +888,7 @@ public class InvoiceService {
         Invoice saved = invoices.saveAndFlush(note);
         // Read again the original's issue date it is priced and taxed as of.
         entityManager.refresh(saved);
-        if (approval(saved) != Invoice.Approval.NEEDS_APPROVAL) {
+        if (!onHold(saved.getClientId()) && approval(saved) != Invoice.Approval.NEEDS_APPROVAL) {
             markSent(saved);
         }
         entityManager.refresh(invoice);
