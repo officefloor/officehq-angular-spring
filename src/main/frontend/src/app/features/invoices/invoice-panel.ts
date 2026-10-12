@@ -1798,10 +1798,15 @@ export class InvoicePanel {
     this.savingRecurring.set(true);
     this.recurringError.set('');
     const recurUntil = this.recurUntilForm.getRawValue().recurUntil.trim();
+    const creditedBefore = Number(this.invoice()?.credited ?? 0);
     this.service.setRecurUntil(invoiceId, recurUntil || null).subscribe({
       next: (detail) => {
         this.invoice.set(detail);
         this.changed.emit(detail);
+        // Ending the plan inside a billed period issues a credit note for the days after it.
+        if (Number(detail.credited) !== creditedBefore) {
+          this.creditIssued.emit(detail);
+        }
         this.recurUntilForm.reset();
         this.savingRecurring.set(false);
         this.generateWaiting();

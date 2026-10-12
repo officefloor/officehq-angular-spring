@@ -673,6 +673,28 @@ public class Invoice {
         this.recurUntil = recurUntil;
     }
 
+    /**
+     * Credit note lines for the days this invoice billed after the given end date: for each line with a service period ending after
+     * it, a credit copy for the part of its period after the end date, stopping on the end date it had before when that was earlier
+     * (those days were credited already). Lines without a period are not credited.
+     */
+    public List<InvoiceLine> creditsAfter(LocalDate end, LocalDate before) {
+        List<InvoiceLine> credits = new ArrayList<>();
+        for (InvoiceLine line : lines) {
+            if (!line.hasPeriod()) {
+                continue;
+            }
+            LocalDate from = line.getPeriodStart().isAfter(end) ? line.getPeriodStart() : end.plusDays(1);
+            LocalDate to = before != null && before.isBefore(line.getPeriodEnd()) ? before : line.getPeriodEnd();
+            if (!from.isAfter(to)) {
+                InvoiceLine credit = line.creditCopy();
+                credit.setPeriod(from, to);
+                credits.add(credit);
+            }
+        }
+        return credits;
+    }
+
     /** The id of the recurring invoice this draft was generated from; null when it was not. */
     public Long getRecurringFrom() {
         return recurringFrom;

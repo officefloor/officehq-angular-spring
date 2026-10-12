@@ -216,6 +216,10 @@ public class InvoiceService {
 
     /**
      * Sets the last day the recurring invoice bills for (null for no end); empty if no such invoice. A credit note is refused.
+     * When a sent recurring invoice has already billed days after the new end date, the plan ends early: a credit note dated
+     * today credits each line with a service period for the part of its period after the end date (up to the end date it had
+     * before, past which those days were credited already), charged by the day and taxed like the original (lines without a
+     * period are not credited), and is issued as any credit note is (what is beyond what the invoice owes is held as credit).
      */
     @Transactional
     public Optional<Invoice> setRecurUntil(Long invoiceId, LocalDate recurUntil) {
@@ -224,10 +228,35 @@ public class InvoiceService {
             if (invoice.isCreditNote()) {
                 throw new InvoiceRejectedException("A credit note cannot be recurring.");
             }
+            LocalDate before = invoice.getRecurUntil();
             invoice.setRecurUntil(recurUntil);
             invoices.saveAndFlush(invoice);
+            if (recurUntil != null && invoice.isRecurring() && !invoice.isDraft() && !invoice.isVoid()
+                    && !invoice.isWrittenOff()) {
+                creditAfterEnd(invoice, recurUntil, before);
+            }
         });
         return found;
+    }
+
+    /** Issues the credit note for the days the invoice billed after its plan's new end date (see {@link #setRecurUntil}). */
+    private void creditAfterEnd(Invoice invoice, LocalDate end, LocalDate before) {
+        List<InvoiceLine> credits = invoice.creditsAfter(end, before);
+        if (credits.isEmpty()) {
+            return;
+        }
+        Invoice note = invoice.creditNote(today.date());
+        credits.forEach(note::addLine);
+        Invoice draft = invoices.saveAndFlush(note);
+        entityManager.refresh(draft);
+        // Its days are bounded by the end dates, so only what stops any credit note from being issued applies.
+        String refusal = creditNoteRefusal(draft, false);
+        if (refusal != null) {
+            throw new InvoiceRejectedException(refusal);
+        }
+        issue(draft);
+        entityManager.refresh(invoice);
+        withInterest(List.of(invoice));
     }
 
     /**
@@ -1333,11 +1362,16 @@ public class InvoiceService {
      * overdue instalment and the credit note cannot be more than the principal still owed before them.
      */
     private String creditNoteRefusal(Invoice note) {
+        return creditNoteRefusal(note, true);
+    }
+
+    /** As {@link #creditNoteRefusal(Invoice)}, checking that it credits no more of a line than was invoiced only when asked. */
+    private String creditNoteRefusal(Invoice note, boolean checkOverCredit) {
         Invoice original = load(note.getCreditOf()).orElse(null);
         if (original == null || original.isDraft() || original.isVoid()) {
             return "The invoice this credits is not a sent invoice, so the credit note cannot be issued.";
         }
-        String overCredit = overCreditRefusal(note, original);
+        String overCredit = checkOverCredit ? overCreditRefusal(note, original) : null;
         if (overCredit != null) {
             return overCredit;
         }
