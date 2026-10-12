@@ -207,8 +207,9 @@ public class InvoiceLine {
      * A line carrying the late interest of the rebilled invoice onto its replacement: "Late interest <its number>",
      * quantity 1, for the amount, with no tax.
      */
-    public static InvoiceLine lateInterest(Long invoiceId, BigDecimal amount) {
-        InvoiceLine line = new InvoiceLine("Late interest " + InvoiceNumber.of(invoiceId), BigDecimal.ONE, amount, true,
+    public static InvoiceLine lateInterest(Invoice invoice, BigDecimal amount) {
+        Long invoiceId = invoice.getId();
+        InvoiceLine line = new InvoiceLine("Late interest " + invoice.number(), BigDecimal.ONE, amount, true,
                 BigDecimal.ZERO, null);
         line.interestOf = invoiceId;
         return line;

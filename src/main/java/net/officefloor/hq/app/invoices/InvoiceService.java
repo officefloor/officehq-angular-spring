@@ -241,8 +241,8 @@ public class InvoiceService {
             }
             LocalDate issued = today.date();
             Invoice copy = invoices.saveAndFlush(original.duplicate(issued, dueDateFor(original.getClientId(), issued)));
-            audit.record("INVOICE_DUPLICATED from=" + InvoiceNumber.of(original.getId())
-                    + " to=" + InvoiceNumber.of(copy.getId()));
+            audit.record("INVOICE_DUPLICATED from=" + original.number()
+                    + " to=" + copy.number());
             return copy;
         });
     }
@@ -304,7 +304,7 @@ public class InvoiceService {
             BigDecimal sentFor = invoice.total(rate);
             Invoice replacement = invoice.rebill(on, dueDateFor(invoice.getClientId(), on));
             if (interest.signum() > 0) {
-                replacement.addLine(InvoiceLine.lateInterest(invoice.getId(), interest));
+                replacement.addLine(InvoiceLine.lateInterest(invoice, interest));
                 invoice.waiveInterest(on);
             }
             Invoice next = invoices.saveAndFlush(replacement);
@@ -1881,7 +1881,7 @@ public class InvoiceService {
         LocalDate now = today.date();
         boolean used = false;
         Map<String, Long> drafts = holdersByReference(invoice.getClientId());
-        drafts.put(PaymentReference.of(invoice.getId()), invoice.getId());
+        drafts.put(PaymentReference.of(invoice), invoice.getId());
         List<Payment> usable = new ArrayList<>();
         List<Payment> others = new ArrayList<>();
         for (Payment payment : payments.findForClient(invoice.getClientId())) {
@@ -2209,10 +2209,10 @@ public class InvoiceService {
                 throw new InvoiceRejectedException(
                         "The payment date cannot be before the invoice's issue date (" + invoice.getIssueDate() + ").");
             }
-            if (reference != null && !reference.equals(PaymentReference.of(invoice.getId()))) {
+            if (reference != null && !reference.equals(PaymentReference.of(invoice))) {
                 throw new InvoiceRejectedException(PaymentReference.grouped(reference)
                         + " is the reference of a different invoice; this invoice's is "
-                        + PaymentReference.grouped(PaymentReference.of(invoice.getId())) + ".");
+                        + PaymentReference.grouped(PaymentReference.of(invoice)) + ".");
             }
             if (rounding.signum() != 0) {
                 invoice.roundForCash(rounding);
@@ -2313,11 +2313,11 @@ public class InvoiceService {
             for (QuotedReference quoted : references) {
                 String reference = quoted.reference();
                 Invoice invoice = ofClient.stream()
-                        .filter(i -> reference.equals(PaymentReference.of(i.getId())))
+                        .filter(i -> reference.equals(PaymentReference.of(i)))
                         .findFirst()
                         .orElseThrow(() -> new InvoiceRejectedException(PaymentReference.grouped(reference)
                                 + " is not the reference of any of this client's invoices."));
-                String number = InvoiceNumber.of(invoice.getId());
+                String number = invoice.number();
                 if (invoice.isDraft()) {
                     throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
                 }
@@ -2430,7 +2430,8 @@ public class InvoiceService {
             throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
                     : "Those invoices have already been paid.");
         }
-        String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
+        String reference = references.isEmpty() ? null
+                : load(parts.get(0).getInvoiceId()).map(PaymentReference::of).orElse(null);
         Payment payment = recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee,
                         stated)
                 .remitted(remittance);
@@ -2665,7 +2666,7 @@ public class InvoiceService {
             Invoice invoice = load(part.getInvoiceId())
                     .filter(i -> i.getClientId().equals(clientId))
                     .orElseThrow(() -> new InvoiceRejectedException("A part of the payment goes to an invoice of another client."));
-            String number = InvoiceNumber.of(invoice.getId());
+            String number = invoice.number();
             if (invoice.isDraft()) {
                 throw new InvoiceRejectedException("Send " + number + " before recording a payment against it.");
             }
@@ -2694,7 +2695,7 @@ public class InvoiceService {
             }
             spreadOver.add(invoice);
         }
-        if (reference != null && spreadOver.stream().noneMatch(i -> reference.equals(PaymentReference.of(i.getId())))) {
+        if (reference != null && spreadOver.stream().noneMatch(i -> reference.equals(PaymentReference.of(i)))) {
             throw new InvoiceRejectedException(PaymentReference.grouped(reference)
                     + " is not the reference of any of the invoices being paid.");
         }
@@ -2820,7 +2821,7 @@ public class InvoiceService {
         Map<String, Long> drafts = new HashMap<>();
         for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
             if (invoice.isDraft() && !invoice.isCreditNote()) {
-                drafts.put(PaymentReference.of(invoice.getId()), invoice.getId());
+                drafts.put(PaymentReference.of(invoice), invoice.getId());
             }
         }
         return drafts;
@@ -2835,7 +2836,7 @@ public class InvoiceService {
         Map<String, Long> holders = draftsByReference(clientId);
         for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
             if (invoice.hasPendingMilestones() && !invoice.isWrittenOff()) {
-                holders.put(PaymentReference.of(invoice.getId()), invoice.getId());
+                holders.put(PaymentReference.of(invoice), invoice.getId());
             }
         }
         return holders;
@@ -2857,7 +2858,7 @@ public class InvoiceService {
         }
         String compact = reference.replaceAll("\\s", "").toUpperCase();
         if (compact.startsWith("INV")) {
-            compact = InvoiceNumber.idOf(compact).map(PaymentReference::of).orElse(compact);
+            compact = InvoiceNumber.bodyOf(compact).map(PaymentReference::ofBody).orElse(compact);
         }
         return drafts.get(compact);
     }

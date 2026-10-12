@@ -36,6 +36,7 @@ import java.util.TreeMap;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Holidays;
+import net.officefloor.hq.app.Today;
 import net.officefloor.hq.app.clients.ClientTier;
 import net.officefloor.hq.app.clients.Currency;
 import net.officefloor.hq.app.clients.TaxNumber;
@@ -1055,8 +1056,18 @@ public class Invoice {
 
     /** The number shown: CN-... for a credit note, otherwise INV-... (see {@link InvoiceNumber}). */
     public String number() {
-        return isAdjustment() ? InvoiceNumber.adjustmentOf(id)
-                : isCreditNote() ? InvoiceNumber.creditNoteOf(id) : InvoiceNumber.of(id);
+        return isAdjustment() ? InvoiceNumber.adjustmentOf(id, numberedOn())
+                : isCreditNote() ? InvoiceNumber.creditNoteOf(id, numberedOn()) : InvoiceNumber.of(id, numberedOn());
+    }
+
+    /** The six digits and check character of its number (see {@link InvoiceNumber#body}). */
+    public String numberBody() {
+        return InvoiceNumber.body(id, numberedOn());
+    }
+
+    /** The date its number's check character is chosen by: a draft is numbered as of today, else its issue date. */
+    private LocalDate numberedOn() {
+        return isDraft() || issueDate == null ? Today.current() : issueDate;
     }
 
     /** What the credit notes issued against this invoice add up to, to the cent. */

@@ -27,10 +27,12 @@ function referenceChecks(reference: string): boolean {
   return rest === 1;
 }
 
-// Whether an invoice number quoted instead of a reference (INV-, six digits, then a Luhn check
-// digit over them) passes its check. Spaces and capitals are ignored by the caller.
+// Whether an invoice number quoted instead of a reference (INV-, six digits, then a check character
+// over them) passes its check. Numbers given before 2026-07-01 carry a Luhn check digit, later ones an
+// ISO 7064 MOD 11-2 check character (0-9 or X); the server says whether it is the number of an invoice.
+// Spaces and capitals are ignored by the caller.
 function invoiceNumberChecks(typed: string): boolean {
-  const m = /^INV-(\d{6})(\d)$/.exec(typed);
+  const m = /^INV-(\d{6})([0-9X])$/.exec(typed);
   if (!m) {
     return false;
   }
@@ -45,7 +47,12 @@ function invoiceNumberChecks(typed: string): boolean {
     }
     sum += d;
   });
-  return (10 - (sum % 10)) % 10 === Number(m[2]);
+  let p = 0;
+  for (const c of m[1]) {
+    p = ((p + Number(c)) * 2) % 11;
+  }
+  const mod112 = (12 - p) % 11;
+  return m[2] === String((10 - (sum % 10)) % 10) || m[2] === (mod112 === 10 ? 'X' : String(mod112));
 }
 
 // Whether a typed reference (an RF reference or an invoice number) passes its check.
@@ -119,7 +126,7 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
 // invoices in that order. What is paid beyond
 // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
 // or before the issue date; a quoted reference must pass the ISO 11649 check and be the invoice's. The
-// invoice number may be quoted instead: it must pass its Luhn check and stands for that invoice's reference.
+// invoice number may be quoted instead: it must pass its check and stands for that invoice's reference.
 // Ticking Deposit instead holds the whole amount on the client's account as credit, applied to no
 // invoice even when one is open; the client's credit is used when one of its invoices is sent. A
 // deposit quoting one of the client's drafts is held for that draft until it is sent.

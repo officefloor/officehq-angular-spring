@@ -14,10 +14,22 @@ public class Today {
 
     static final String AS_OF = "as_of";
 
+    private static volatile Today current;
+
     private final JdbcTemplate jdbc;
 
     public Today(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        current = this;
+    }
+
+    /**
+     * Today, for code that is not a Spring bean (such as the number an entity shows); the real date
+     * before the application has started.
+     */
+    public static LocalDate current() {
+        Today today = current;
+        return today == null ? LocalDate.now() : today.date();
     }
 
     public LocalDate date() {

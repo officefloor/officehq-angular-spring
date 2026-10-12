@@ -35,7 +35,8 @@ export type InvoiceStatus =
 // server: the grand total — the lines' subtotal less any discount plus tax.
 export interface InvoiceSummary {
   id: number;
-  // INV-, the id padded to six digits, then a Luhn check digit, e.g. INV-0000075; CN- for a credit note.
+  // INV-, the id padded to six digits, then a check character (a Luhn digit before 2026-07-01,
+  // an ISO 7064 MOD 11-2 character, 0-9 or X, from then on), e.g. INV-0000075 or INV-000028X; CN- for a credit note.
   number: string;
   status: InvoiceStatus;
   // Negative for a credit note.

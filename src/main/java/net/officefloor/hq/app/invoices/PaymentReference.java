@@ -4,9 +4,10 @@ import java.math.BigInteger;
 import java.util.Optional;
 
 /**
- * An invoice's ISO 11649 "RF" creditor reference, made from the seven digits of its number (leading
- * zeros kept): RF, two check digits, then the digits, so invoice 7 (INV-0000075) is RF160000075,
- * shown in groups of four as RF16 0000 075.
+ * An invoice's ISO 11649 "RF" creditor reference, made from the body of its number (its six digits,
+ * leading zeros kept, and its check character): RF, two check digits, then the body, so invoice 7
+ * (INV-0000075) is RF160000075, shown in groups of four as RF16 0000 075, and invoice 28 numbered with
+ * a MOD 11-2 check character (INV-000028X) is RF46 0000 28X.
  */
 public final class PaymentReference {
 
@@ -15,11 +16,15 @@ public final class PaymentReference {
     private PaymentReference() {
     }
 
-    /** The reference of the invoice with this id, without spaces. */
-    public static String of(long id) {
-        String digits = InvoiceNumber.of(id).substring("INV-".length());
-        int check = 98 - mod97(digits + "RF00");
-        return String.format("RF%02d", check) + digits;
+    /** The reference of the invoice, without spaces. */
+    public static String of(Invoice invoice) {
+        return ofBody(invoice.numberBody());
+    }
+
+    /** The reference made from the body of a number (see {@link InvoiceNumber#bodyOf}), without spaces. */
+    public static String ofBody(String body) {
+        int check = 98 - mod97(body + "RF00");
+        return String.format("RF%02d", check) + body;
     }
 
     /** The reference in groups of four, e.g. RF16 0000 075. */

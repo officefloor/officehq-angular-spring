@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -77,14 +78,14 @@ public class InvoiceController {
     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
             String reference, PaymentMethod method, String surcharge, String fxFee, String remittance, String matchedInvoice,
             String matchScore) {
-        static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
+        static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency, Function<Long, String> numberOf) {
             return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
                     p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString(),
                     p.getRemittance(),
                     p.getMatches().isEmpty() ? null : p.getMatches().stream()
-                            .map(m -> InvoiceNumber.of(m.getInvoiceId())).collect(Collectors.joining(", ")),
+                            .map(m -> numberOf.apply(m.getInvoiceId())).collect(Collectors.joining(", ")),
                     p.getMatches().isEmpty() ? null : p.getMatches().stream()
                             .map(m -> m.getScore().setScale(3).toPlainString()).collect(Collectors.joining(", ")));
         }
@@ -191,7 +192,7 @@ public class InvoiceController {
             String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy,
             Long adjustmentOf, String adjusted, DunningLevel dunning, List<LocalDate> reminders) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
-                List<Invoice> duplicates, DunningLevel dunning) {
+                List<Invoice> duplicates, DunningLevel dunning, Function<Long, String> numberOf) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
             LocalDate paidOn = i.paidOn(payments, taxRate);
@@ -203,7 +204,7 @@ public class InvoiceController {
                             inside.get(n), i.isDisputed())).toList();
             InvoiceStatus status = i.statusWhenPaid(paid, paidOn, taxRate, today);
             return new InvoiceDetail(i.getId(), i.number(),
-                    PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
+                    PaymentReference.grouped(PaymentReference.of(i)), i.getClientId(),
                     status, i.getIssueDate(), i.getDueDate(),
                     lines, i.subtotal().toPlainString(),
                     i.getDiscountPct().stripTrailingZeros().toPlainString(),
@@ -212,7 +213,7 @@ public class InvoiceController {
                     i.discount().toPlainString(), i.getDiscountReason(),
                     i.clientTaxRate(taxRate).stripTrailingZeros().toPlainString(), i.tax(taxRate).toPlainString(),
                     i.total(taxRate).toPlainString(), i.beforeTax(taxRate).toPlainString(), i.isPricesIncludeTax(),
-                    payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency())).toList(), paid.toPlainString(),
+                    payments.stream().map(p -> PaymentView.of(p, i.getId(), i.currency(), numberOf)).toList(), paid.toPlainString(),
                     i.amountDue(paid, taxRate).toPlainString(), i.writtenOff(paid, taxRate).toPlainString(), paidOn,
                     i.isManualDueDate(), i.getCredited().toPlainString(), i.getCreditOf(), InvoiceController.listedTotal(i, taxRate),
                     i.listedDueDate(paid, taxRate),
@@ -239,8 +240,8 @@ public class InvoiceController {
                     Optional.ofNullable(i.fingerprint()).map(f -> f.substring(0, 8)).orElse(null),
                     duplicates.isEmpty() ? null
                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
-                    i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
-                    i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
+                    i.getRebilledOn(), i.getReplaces() == null ? null : numberOf.apply(i.getReplaces()),
+                    i.getReplacedBy() == null ? null : numberOf.apply(i.getReplacedBy()),
                     i.getAdjustmentOf(), i.getAdjusted().toPlainString(), dunning, i.getReminders());
         }
     }
@@ -473,7 +474,12 @@ public class InvoiceController {
     private InvoiceDetail detail(Invoice i) {
         invoices.adjustFingerprint(i);
         return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i),
-                invoices.possibleDuplicateOf(i), invoices.dunningLevel(i));
+                invoices.possibleDuplicateOf(i), invoices.dunningLevel(i), this::numberOf);
+    }
+
+    /** The number of the invoice with this id, or null when there is none. */
+    private String numberOf(Long id) {
+        return invoices.find(id).map(Invoice::number).orElse(null);
     }
 
     @GetMapping("/api/clients/{clientId}/invoices")
@@ -863,7 +869,7 @@ public class InvoiceController {
             return null;
         }
         Optional<String> parsed = typed.trim().toUpperCase().startsWith("INV")
-                ? InvoiceNumber.idOf(typed).map(PaymentReference::of)
+                ? InvoiceNumber.bodyOf(typed).map(PaymentReference::ofBody)
                 : PaymentReference.parse(typed);
         return parsed.orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.BAD_REQUEST, typed.trim() + " is mistyped: check the payment reference."));
