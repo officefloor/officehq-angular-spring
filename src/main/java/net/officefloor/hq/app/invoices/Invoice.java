@@ -618,8 +618,9 @@ public class Invoice {
      * The draft is recurring too, keeps the end date and plan date and remembers it was generated from this invoice.
      * When the period starts on or after the next anniversary of the plan date, each typed unit price (not one priced from
      * the rates) goes up by the client's yearly percentage, rounded half up to the cent, and the draft's plan date moves on a year.
+     * The lines copied are this invoice's as adjusted by the adjustment notes issued against it (see {@link #periodLinesAsAdjusted}).
      */
-    public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate, BigDecimal upliftPct) {
+    public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate, BigDecimal upliftPct, List<Invoice> notes) {
         Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         next.supplyRegion = supplyRegion;
         next.discountPct = discountPct;
@@ -637,9 +638,8 @@ public class Invoice {
         if (recurUntil != null && recurUntil.isBefore(end)) {
             end = recurUntil;
         }
-        for (InvoiceLine line : lines) {
-            if (line.hasPeriod()) {
-                InvoiceLine copy = line.copy();
+        for (InvoiceLine copy : periodLinesAsAdjusted(notes)) {
+            if (copy.hasPeriod()) {
                 copy.setPeriod(start, end);
                 if (rise && upliftPct != null && upliftPct.signum() > 0) {
                     copy.raisePrice(upliftPct);
@@ -648,6 +648,43 @@ public class Invoice {
             }
         }
         return next;
+    }
+
+    /**
+     * Copies of this invoice's lines as adjusted by the given adjustment notes issued against it, oldest first: a debit
+     * note line billing the same as one of them but for its quantity adds to that line's quantity, any other debit note
+     * line is a line of its own, and a credit note line takes its quantity off the line it credits. Lines left with
+     * nothing billed are dropped.
+     */
+    private List<InvoiceLine> periodLinesAsAdjusted(List<Invoice> notes) {
+        List<InvoiceLine> copies = new ArrayList<>();
+        java.util.Map<Long, InvoiceLine> byId = new java.util.HashMap<>();
+        for (InvoiceLine line : lines) {
+            InvoiceLine copy = line.copy();
+            copies.add(copy);
+            if (line.getId() != null) {
+                byId.put(line.getId(), copy);
+            }
+        }
+        for (Invoice note : notes) {
+            for (InvoiceLine line : note.getLines()) {
+                if (note.isCreditNote()) {
+                    InvoiceLine credited = line.getCreditOfLine() == null ? null : byId.get(line.getCreditOfLine());
+                    if (credited != null && credited.getQty() != null && line.getQty() != null) {
+                        credited.withQty(credited.getQty().subtract(line.getQty()));
+                    }
+                    continue;
+                }
+                InvoiceLine same = copies.stream().filter(c -> c.sameButQty(line)).findFirst().orElse(null);
+                if (same != null && same.getQty() != null && line.getQty() != null) {
+                    same.withQty(same.getQty().add(line.getQty()));
+                } else {
+                    copies.add(line.copy());
+                }
+            }
+        }
+        copies.removeIf(c -> c.getQty() != null && c.getQty().signum() <= 0);
+        return copies;
     }
 
     /**

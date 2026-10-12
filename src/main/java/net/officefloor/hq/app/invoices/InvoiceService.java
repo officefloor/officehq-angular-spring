@@ -480,7 +480,8 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("The client is on hold: nothing is generated for them.");
             }
             LocalDate issued = today.date();
-            Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued), upliftPct(original.getClientId())));
+            Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued), upliftPct(original.getClientId()),
+                    notesOf(original, invoices.findByClientIdOrderByIdAsc(original.getClientId()))));
             // Read again how far through the bands a copied tiered line's units reach.
             entityManager.refresh(next);
             audit.record("INVOICE_GENERATED from=" + original.number() + " to=" + next.number());
