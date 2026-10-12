@@ -9,6 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
 import java.util.Objects;
@@ -162,6 +163,10 @@ public class InvoiceLine {
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
     private Invoice invoice;
 
+    /** The line this changed line is priced in the place of, carrying on through the bands from where it did; null for none. */
+    @Transient
+    private InvoiceLine inPlaceOf;
+
     protected InvoiceLine() {
     }
 
@@ -284,6 +289,26 @@ public class InvoiceLine {
         change.percentComplete = up ? newPct : percentComplete;
         change.billedPct = up ? percentComplete : newPct;
         return change;
+    }
+
+    /**
+     * A line for an adjustment note billing the change of this line's amount to the changed line's (priced in this
+     * line's place, with what it has already billed): the changed line's description, quantity 1 and the difference as
+     * its price when the amount went up, or quantity -1 and the (negative) difference as its price, for a credit note,
+     * when it went down; with the changed line's tax rate or exemption and no discount. Null when the amount is the same.
+     */
+    InvoiceLine amountChange(InvoiceLine changed, int scale) {
+        changed.inPlaceOf = this;
+        if (changed.percentComplete != null && percentComplete != null) {
+            changed.billedPct = billedPct;
+        }
+        BigDecimal difference = changed.amount(scale).subtract(amount(scale));
+        changed.inPlaceOf = null;
+        if (difference.signum() == 0) {
+            return null;
+        }
+        BigDecimal qty = difference.signum() > 0 ? BigDecimal.ONE : BigDecimal.ONE.negate();
+        return new InvoiceLine(changed.description, qty, difference, changed.taxExempt, BigDecimal.ZERO, changed.taxRate);
     }
 
     /** Whether two amounts are the same: both none, or equal in value. */
@@ -576,6 +601,7 @@ public class InvoiceLine {
         if (tiers != null) {
             BigDecimal before = creditOfLine != null && creditedUnitsTop != null
                     ? creditedUnitsTop.subtract(invoice == null ? BigDecimal.ZERO : invoice.creditedUnitsBefore(this)).subtract(billedQty()).max(BigDecimal.ZERO)
+                    : inPlaceOf != null ? (inPlaceOf.invoice == null ? BigDecimal.ZERO : inPlaceOf.invoice.tieredUnitsBefore(inPlaceOf))
                     : invoice == null ? BigDecimal.ZERO : invoice.tieredUnitsBefore(this);
             RateTiers bands = RateTiers.parse(tiers);
             if (overtime) {

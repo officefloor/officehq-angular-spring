@@ -715,8 +715,8 @@ public class InvoiceService {
      * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice is left as it
      * was sent and the change is made by adjustment notes instead: a change of quantity alone by one note for
      * the difference (a debit note for more, a credit note for less), a change of percent complete alone likewise by one
-     * note for the difference of the two percentages' amounts (see {@link InvoiceLine#percentChange}), any other change by a credit note taking
-     * the old line off and a debit note billing the new one.
+     * note for the difference of the two percentages' amounts (see {@link InvoiceLine#percentChange}), any other change by one
+     * note for the change in the line's amount (see {@link InvoiceLine#amountChange}).
      */
     @Transactional
     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
@@ -745,9 +745,16 @@ public class InvoiceService {
                     issueAdjustmentCredit(invoice, change);
                 }
             } else if (!old.sameButQty(changed)) {
-                refuseDuplicateAdjustment(invoice, List.of(changed), List.of(old.creditCopy()));
-                issueAdjustmentCredit(invoice, old.creditCopy());
-                issueDebitNote(invoice, changed);
+                InvoiceLine change = old.amountChange(changed, invoice.scale());
+                if (change == null) {
+                    // The amount is the same: the line is left as it was sent.
+                } else if (change.getQty().signum() > 0) {
+                    refuseDuplicateAdjustment(invoice, List.of(change), List.of());
+                    issueDebitNote(invoice, change);
+                } else {
+                    refuseDuplicateAdjustment(invoice, List.of(), List.of(change));
+                    issueAdjustmentCredit(invoice, change);
+                }
             } else if (qty.compareTo(old.getQty()) > 0) {
                 refuseDuplicateAdjustment(invoice, List.of(old.copy().withQty(qty.subtract(old.getQty()))), List.of());
                 issueDebitNote(invoice, old.copy().withQty(qty.subtract(old.getQty())));
