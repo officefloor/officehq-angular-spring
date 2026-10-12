@@ -1,0 +1,58 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 0aaad3b..5f930a3 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -2333,6 +2333,39 @@ public class Invoice {
+         return tax;
+     }
+ 
++    /**
++     * The invoice's tax broken down by rate (a percentage), the lower rate first: for each rate, the amount
++     * before tax of the lines and of the surcharge and minimum charge taxed at it, after the discounts (the
++     * net when the client's prices include tax), and the tax worked out for that rate, as {@link #tax} does.
++     * Untaxed lines and charges come under rate 0, and a reverse-charged invoice puts everything there. The
++     * surcharge and minimum charge add no rate of their own when there are none.
++     */
++    public Map<BigDecimal, BigDecimal[]> taxByRate(BigDecimal taxRate) {
++        Map<BigDecimal, BigDecimal[]> result = new TreeMap<>();
++        if (clientPricesIncludeTax && isReverseCharge()) {
++            result.put(BigDecimal.ZERO, new BigDecimal[] { beforeTax(taxRate), zero() });
++            return result;
++        }
++        List<BigDecimal> amounts = inclusiveAmounts();
++        List<BigDecimal> exact = clientPricesIncludeTax ? null : exactLineTaxes(taxRate);
++        for (Map.Entry<BigDecimal, List<Integer>> group : byRate(taxRate, !clientPricesIncludeTax).entrySet()) {
++            List<Integer> indexes = group.getValue();
++            BigDecimal amount = zero();
++            for (int i : indexes) {
++                amount = amount.add(amounts.get(i));
++            }
++            if (indexes.size() == 1 && indexes.get(0) == lines.size() && amount.signum() == 0) {
++                continue;
++            }
++            BigDecimal rate = group.getKey();
++            BigDecimal tax = clientPricesIncludeTax
++                    ? (rate.signum() == 0 ? zero() : inclusiveRateTax(amounts, rate, indexes))
++                    : roundTax(indexes.stream().map(exact::get).toList());
++            result.put(rate, new BigDecimal[] { clientPricesIncludeTax ? amount.subtract(tax) : amount, tax });
++        }
++        return result;
++    }
++
+     /**
+      * Each line's tax taken out of tax-inclusive prices, in the order of the lines; none when the prices
+      * do not include tax. A reverse-charged invoice has it taken out as usual, though it is not charged.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 05e67df..f310216 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -874,6 +874,9 @@ public class InvoiceService {
+         invoices.saveAndFlush(invoice);
+         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
+                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
++        invoice.taxByRate(taxRate.percent()).forEach((rate, amounts) -> audit.record("TAX_CHARGED id="
++                + invoice.getId() + " rate=" + rate.stripTrailingZeros().toPlainString() + " net="
++                + amounts[0].toPlainString() + " tax=" + amounts[1].toPlainString()));
+         if (invoice.isReverseCharge()) {
+             audit.record("REVERSE_CHARGE id=" + invoice.getId() + " number=" + invoice.number()
+                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
