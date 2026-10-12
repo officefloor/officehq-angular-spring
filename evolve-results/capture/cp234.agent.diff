@@ -1,0 +1,302 @@
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 9a07341..25824d6 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -61,7 +61,7 @@ public class TestSupportController {
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "interestWaivedOn", "writtenOffOn", "surchargePct", "supplyRegion", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "promiseAmount", "promiseDate", "promisedOn", "reminders", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct", "interestOf");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "disputeSettledOn", "percentComplete", "billedPct", "interestOf");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance", "deposit");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+@@ -545,7 +545,7 @@ public class TestSupportController {
+                     throw refuse("invoices[].lineItems[].periodEnd must not be before periodStart");
+                 }
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete", "billed_pct", "interest_of"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "dispute_settled_on", "percent_complete", "billed_pct", "interest_of"},
+                         invoiceId, text(line, "description"),
+                         adjustmentCredit ? cents(line.get("qty"), "invoices[].lineItems[].qty").negate()
+                                 : cents(line.get("qty"), "invoices[].lineItems[].qty"),
+@@ -560,6 +560,8 @@ public class TestSupportController {
+                         price[2], price[3],
+                         period[0], period[1],
+                         flag(line.get("disputed"), "invoices[].lineItems[].disputed"),
++                        line.get("disputeSettledOn") == null ? null
++                                : date(line.get("disputeSettledOn"), "invoices[].lineItems[].disputeSettledOn"),
+                         percentComplete(line.get("percentComplete"), "invoices[].lineItems[].percentComplete"),
+                         line.get("billedPct") == null ? null : percent(line.get("billedPct"), "invoices[].lineItems[].billedPct"),
+                         line.get("interestOf") == null ? null : id(line.get("interestOf")));
+@@ -1021,7 +1023,7 @@ public class TestSupportController {
+                                 return milestone;
+                             }).toList());
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete, billed_pct, interest_of FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, dispute_settled_on, percent_complete, billed_pct, interest_of FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+@@ -1036,6 +1038,9 @@ public class TestSupportController {
+                                 line.put("taxExempt", l.get("TAX_EXEMPT"));
+                                 line.put("overtime", l.get("OVERTIME"));
+                                 line.put("disputed", l.get("DISPUTED"));
++                                if (l.get("DISPUTE_SETTLED_ON") != null) {
++                                    line.put("disputeSettledOn", l.get("DISPUTE_SETTLED_ON").toString());
++                                }
+                                 line.put("discountPct", l.get("DISCOUNT_PCT"));
+                                 if (l.get("TAX_RATE") != null) {
+                                     line.put("taxRate", l.get("TAX_RATE"));
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index d168645..979ad0f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -741,7 +741,7 @@ public class Invoice {
+         boolean disputed = isInvoiceDisputed();
+         lines.forEach(line -> {
+             InvoiceLine copy = line.copy();
+-            copy.setDisputed(disputed && line.isDisputed());
++            copy.setDisputed(disputed && line.isInOpenDispute());
+             next.addLine(copy);
+         });
+         if (disputed) {
+@@ -1433,16 +1433,26 @@ public class Invoice {
+     }
+ 
+     /**
+-     * What the disputed lines come to at the tax rate: each line's amount after its share of the invoice
+-     * discount, with its tax.
++     * What the lines still in dispute (not credited off) come to at the tax rate: each line's amount after its
++     * share of the invoice discount, with its tax.
+      */
+     public BigDecimal disputedLinesAmount(BigDecimal taxRate) {
++        return disputedLinesAmount(taxRate, InvoiceLine::isInOpenDispute);
++    }
++
++    /** What the lines in dispute on the given day (not yet credited off by then) come to at the tax rate. */
++    private BigDecimal disputedLinesAmountOn(BigDecimal taxRate, LocalDate on) {
++        return disputedLinesAmount(taxRate, l -> l.isDisputedOn(on));
++    }
++
++    /** What the lines given come to at the tax rate (see {@link #disputedLinesAmount(BigDecimal)}). */
++    private BigDecimal disputedLinesAmount(BigDecimal taxRate, java.util.function.Predicate<InvoiceLine> inDispute) {
+         List<BigDecimal> shares = discountShares();
+         List<BigDecimal> taxes = lineTaxes(taxRate);
+         List<BigDecimal> inside = lineTaxesInside(taxRate);
+         BigDecimal amount = zero();
+         for (int i = 0; i < lines.size(); i++) {
+-            if (!lines.get(i).isDisputed()) {
++            if (!inDispute.test(lines.get(i))) {
+                 continue;
+             }
+             BigDecimal line = lines.get(i).amount(scale()).subtract(shares.get(i));
+@@ -1515,7 +1525,21 @@ public class Invoice {
+      * whole invoice is in dispute.
+      */
+     public List<InvoiceLine> disputedLines() {
+-        return isWhollyDisputed() ? List.copyOf(lines) : lines.stream().filter(InvoiceLine::isDisputed).toList();
++        return isWhollyDisputed() ? List.copyOf(lines) : lines.stream().filter(InvoiceLine::isInOpenDispute).toList();
++    }
++
++    /** Whether the line is in the invoice's open dispute over particular lines (not yet credited off). */
++    public boolean isInOpenLineDispute(InvoiceLine line) {
++        return isInvoiceDisputed() && line.isInOpenDispute();
++    }
++
++    /**
++     * Takes the disputed line out of the open dispute on the given day, credited off the invoice in the client's
++     * favour: it holds interest back until then. Answers whether no disputed line is left in the dispute.
++     */
++    public boolean settleDisputedLine(InvoiceLine line, LocalDate on) {
++        line.settleDispute(on);
++        return lines.stream().noneMatch(InvoiceLine::isInOpenDispute);
+     }
+ 
+     /**
+@@ -1920,7 +1944,7 @@ public class Invoice {
+             return;
+         }
+         LocalDate overdueOn = graceEnd(dueDate).plusDays(1);
+-        BigDecimal disputedLines = hasDisputedLines() ? disputedLinesAmount(taxRate) : null;
++        boolean disputedLines = hasDisputedLines();
+         BigDecimal charged = BigDecimal.ZERO;
+         BigDecimal unpaidInterest = BigDecimal.ZERO;
+         LocalDate from = graceEnd(dueDate);
+@@ -1930,7 +1954,7 @@ public class Invoice {
+         for (Part part : inOrder) {
+             if (waiveOn != null && part.on().isAfter(waiveOn)) {
+                 if (owed.signum() > 0) {
+-                    BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, waiveOn);
++                    BigDecimal earned = earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, waiveOn);
+                     charged = charged.add(earned);
+                     unpaidInterest = unpaidInterest.add(earned);
+                 }
+@@ -1940,7 +1964,7 @@ public class Invoice {
+                 waiveOn = null;
+             }
+             if (part.on().isAfter(from) && owed.signum() > 0) {
+-                BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, part.on());
++                BigDecimal earned = earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, part.on());
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+                 from = part.on();
+@@ -1963,7 +1987,7 @@ public class Invoice {
+         }
+         if (waiveOn != null) {
+             if (owed.signum() > 0) {
+-                BigDecimal earned = earnedOn(owed, disputedLines, rates.daily(from), from, waiveOn);
++                BigDecimal earned = earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, waiveOn);
+                 charged = charged.add(earned);
+                 unpaidInterest = unpaidInterest.add(earned);
+             }
+@@ -1971,7 +1995,7 @@ public class Invoice {
+             interestWaived = unpaidInterest;
+         }
+         if (owed.signum() > 0) {
+-            charged = charged.add(earnedOn(owed, disputedLines, rates.daily(from), from, today));
++            charged = charged.add(earnedOn(owed, disputedLines, taxRate, rates.daily(from), from, today));
+         }
+         this.lateInterest = charged.subtract(interestWaived);
+         this.lateWaived = interestWaived;
+@@ -2099,15 +2123,16 @@ public class Invoice {
+ 
+     /**
+      * The interest what the invoice owes earns from one day to another at the daily growth factor. While
+-     * disputed lines are in an open dispute (from the day they were disputed) only what is owed besides them
+-     * (disputedLines) earns interest, the days before earning on all that is owed; each part is rounded half up
++     * disputed lines are in an open dispute (from the day they were disputed, until each is credited off) only what is
++     * owed besides them earns interest, the days before earning on all that is owed; each part is rounded half up
+      * to the cent. Once the dispute is resolved it holds nothing back: all that is owed earns interest as if it
+      * had never been disputed, the days in dispute included — unless it was resolved with a credit note, when
+-     * the days it was open still hold the disputed lines back. With no disputed lines (null), the days the whole
++     * the days it was open still hold the disputed lines back. With no disputed lines, the days the whole
+      * invoice spends in an open dispute earn nothing (see {@link #interestDays}).
+      */
+-    private BigDecimal earnedOn(BigDecimal owed, BigDecimal disputedLines, BigDecimal daily, LocalDate from, LocalDate to) {
+-        if (disputedLines == null || !holdsBackInterest()) {
++    private BigDecimal earnedOn(BigDecimal owed, boolean disputedLines, BigDecimal taxRate, BigDecimal daily,
++            LocalDate from, LocalDate to) {
++        if (!disputedLines || !holdsBackInterest()) {
+             return interestOn(owed, daily, interestDays(from, to));
+         }
+         LocalDate start = from.isAfter(disputedOn) ? from : disputedOn;
+@@ -2116,7 +2141,8 @@ public class Invoice {
+             return interestOn(owed, daily, ChronoUnit.DAYS.between(from, to));
+         }
+         return interestOn(owed, daily, ChronoUnit.DAYS.between(from, start))
+-                .add(interestOn(owed.subtract(disputedLines).max(BigDecimal.ZERO), daily, ChronoUnit.DAYS.between(start, end)))
++                .add(interestOn(owed.subtract(disputedLinesAmountOn(taxRate, start)).max(BigDecimal.ZERO), daily,
++                        ChronoUnit.DAYS.between(start, end)))
+                 .add(interestOn(owed, daily, ChronoUnit.DAYS.between(end, to)));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index aec86a6..eb90973 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -124,7 +124,7 @@ public class InvoiceController {
+                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
+                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
+                     l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd(),
+-                    inDispute && l.isDisputed(),
++                    inDispute && l.isInOpenDispute(),
+                     l.getPercentComplete() == null ? null : l.getPercentComplete().stripTrailingZeros().toPlainString(),
+                     l.getBilledPct() == null ? null : l.getBilledPct().stripTrailingZeros().toPlainString());
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index ad53b58..c176ff8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -102,6 +102,13 @@ public class InvoiceLine {
+      */
+     private boolean disputed;
+ 
++    /**
++     * The day the disputed line was taken off its sent invoice by a credit note, settling it in the client's favour:
++     * it held interest back until then and is out of the dispute from then on; null while it is still in dispute.
++     */
++    @Column(name = "dispute_settled_on")
++    private LocalDate disputeSettledOn;
++
+     /**
+      * Whether the line's price comes from the rates for its unit type (its client's rate card, or else the price
+      * list): on a draft it follows the card when that rate is changed, and sending reprices it at the rates in force
+@@ -425,6 +432,27 @@ public class InvoiceLine {
+     /** Puts the line in dispute, or takes it out. */
+     public void setDisputed(boolean disputed) {
+         this.disputed = disputed;
++        this.disputeSettledOn = null;
++    }
++
++    /** The day the disputed line was credited off its invoice, out of the dispute; null while still in it. */
++    public LocalDate getDisputeSettledOn() {
++        return disputeSettledOn;
++    }
++
++    /** Takes the disputed line out of the dispute on the given day, credited off its invoice. */
++    public void settleDispute(LocalDate on) {
++        this.disputeSettledOn = on;
++    }
++
++    /** Whether the line is disputed and still in the dispute on the given day (not credited off by then). */
++    public boolean isDisputedOn(LocalDate on) {
++        return disputed && (disputeSettledOn == null || disputeSettledOn.isAfter(on));
++    }
++
++    /** Whether the line is disputed and not yet credited off its invoice. */
++    public boolean isInOpenDispute() {
++        return disputed && disputeSettledOn == null;
+     }
+ 
+     /** Whether the line is charged at time and a half. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 424f0bb..63f4e97 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -665,7 +665,9 @@ public class InvoiceService {
+     /**
+      * Removes a line from an invoice; empty if no such invoice or line. Refused when what is left would
+      * be less than a fixed discount. A sent invoice is left as it was sent: the line is taken off by a
+-     * credit note instead (see {@link #issueAdjustmentCredit}).
++     * credit note instead (see {@link #issueAdjustmentCredit}). A disputed line taken off a sent invoice leaves the
++     * dispute, settled in the client's favour; taking off the last one resolves the dispute with credit
++     * (DISPUTE_RESOLVED in the audit).
+      */
+     @Transactional
+     public Optional<Invoice> removeLine(Long invoiceId, Long lineId) {
+@@ -678,9 +680,24 @@ public class InvoiceService {
+             return Optional.empty();
+         }
+         if (adjustsByNotes(invoice)) {
+-            InvoiceLine credit = lineOf(invoice, lineId).creditCopy();
++            InvoiceLine line = lineOf(invoice, lineId);
++            InvoiceLine credit = line.creditCopy();
+             refuseDuplicateAdjustment(invoice, List.of(), List.of(credit));
++            // Taking a disputed line off settles it in the client's favour: it leaves the dispute, and the last
++            // to leave resolves the dispute with credit, so the interest it held back is never charged.
++            boolean resolved = false;
++            if (invoice.isInOpenLineDispute(line)) {
++                LocalDate on = today.date();
++                if (invoice.settleDisputedLine(line, on)) {
++                    invoice.resolveDisputeWithCredit(on);
++                    resolved = true;
++                }
++                invoices.saveAndFlush(invoice);
++            }
+             issueAdjustmentCredit(invoice, credit);
++            if (resolved) {
++                audit.record("DISPUTE_RESOLVED id=" + invoice.getId());
++            }
+             return found;
+         }
+         invoice.removeLine(lineId);
+diff --git a/src/main/resources/db/migration/V95__line_dispute_settled.sql b/src/main/resources/db/migration/V95__line_dispute_settled.sql
+new file mode 100644
+index 0000000..66d205e
+--- /dev/null
++++ b/src/main/resources/db/migration/V95__line_dispute_settled.sql
+@@ -0,0 +1,3 @@
++-- The day a disputed line was taken off its sent invoice by a credit note, settling it in the client's favour: from
++-- then it is out of the dispute (it held back interest until then). Null while the line is still in dispute.
++ALTER TABLE invoice_line ADD COLUMN dispute_settled_on DATE;
