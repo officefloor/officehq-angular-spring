@@ -1,0 +1,667 @@
+diff --git a/src/main/frontend/src/app/features/invoices/client-invoices.ts b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+index 96654f3..31fc211 100644
+--- a/src/main/frontend/src/app/features/invoices/client-invoices.ts
++++ b/src/main/frontend/src/app/features/invoices/client-invoices.ts
+@@ -264,8 +264,14 @@ export class ClientInvoices {
+     this.changed.emit();
+   }
+ 
+-  // An invoice changed in the panel: show its new status, dates and total in the list.
++  // An invoice changed in the panel: show its new status, dates and total in the list. A sent
++  // invoice's change is made by adjustment notes, so list the client's invoices again.
+   protected totalChanged(detail: InvoiceDetail): void {
++    if (detail.status !== 'DRAFT') {
++      this.service.forClient(this.clientId()).subscribe((list) => this.invoices.set(list));
++      this.changed.emit();
++      return;
++    }
+     this.invoices.update((list) =>
+       list.map((i) =>
+         i.id === detail.id
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 3beae1b..6aea20b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -588,6 +588,12 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="invoice-credited">{{ amount(inv.credited) }}</td>
+               </tr>
+             }
++            @if (inv.creditOf === null) {
++              <tr>
++                <th scope="row" colspan="5">Adjusted by adjustment notes</th>
++                <td data-testid="invoice-adjusted">{{ amount(inv.adjusted) }}</td>
++              </tr>
++            }
+             @if (inv.creditOf === null) {
+               <tr>
+                 <th scope="row" colspan="5">Early-payment discount</th>
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index b377f89..52bc5c3 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -274,6 +274,10 @@ export interface InvoiceDetail {
+   replaces: string | null;
+   // The number of the invoice that replaces this rebilled one; null when none does.
+   replacedBy: string | null;
++  // The id of the sent invoice this is an adjustment note of; null when it is not.
++  adjustmentOf: number | null;
++  // What the adjustment notes issued against this invoice add up to, a credit note's negative.
++  adjusted: string;
+   // The client's purchase order number for the invoice; null when none was given.
+   poNumber: string | null;
+   // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 76c4d74..a3dbe63 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -56,7 +56,7 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "lineItems", "milestones");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "adjustmentOf", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance");
+@@ -443,15 +443,24 @@ public class TestSupportController {
+             if ("CREDIT_NOTE".equals(status) && row.get("creditOf") == null) {
+                 throw refuse("an invoices[] row with status CREDIT_NOTE needs creditOf");
+             }
++            // An adjustment note taking lines off (with negative quantities) is a credit note against the invoice it adjusts,
++            // stored with the quantities it credits.
++            Object creditOf = row.get("creditOf");
++            boolean adjustmentCredit = row.get("adjustmentOf") != null
++                    && rows(row.get("lineItems"), "invoices[].lineItems").stream()
++                            .anyMatch(l -> l.get("qty") != null && new BigDecimal(l.get("qty").toString()).signum() < 0);
++            if (adjustmentCredit && creditOf == null) {
++                creditOf = row.get("adjustmentOf");
++            }
+             // A credit note that has been sent is an issued credit note.
+-            if ("SENT".equals(status) && row.get("creditOf") != null) {
++            if ("SENT".equals(status) && creditOf != null) {
+                 status = "CREDIT_NOTE";
+             }
+             if (row.get("clientId") == null) {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces", "adjustment_of"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -460,7 +469,7 @@ public class TestSupportController {
+                     row.get("discountCap") == null ? null : money(row.get("discountCap"), "invoices[].discountCap"),
+                     row.get("discountReason") == null ? null : row.get("discountReason").toString(),
+                     flag(row.get("manualDueDate"), "invoices[].manualDueDate"),
+-                    row.get("creditOf") == null ? null : id(row.get("creditOf")),
++                    creditOf == null ? null : id(creditOf),
+                     instalments(row.get("instalments"), "invoices[].instalments"),
+                     instalmentRate(row.get("instalmentRate"), "invoices[].instalmentRate"),
+                     planDownPct(row.get("planDownPct"), "invoices[].planDownPct"),
+@@ -489,7 +498,8 @@ public class TestSupportController {
+                     row.get("sentTotal") == null ? null : cents(row.get("sentTotal"), "invoices[].sentTotal"),
+                     row.get("sentTax") == null ? null : cents(row.get("sentTax"), "invoices[].sentTax"),
+                     row.get("rebilledOn") == null ? null : date(row.get("rebilledOn"), "invoices[].rebilledOn"),
+-                    row.get("replaces") == null ? null : id(row.get("replaces")));
++                    row.get("replaces") == null ? null : id(row.get("replaces")),
++                    row.get("adjustmentOf") == null ? null : id(row.get("adjustmentOf")));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -505,7 +515,8 @@ public class TestSupportController {
+                 insert("invoice_line", line.get("id"),
+                         new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete", "billed_pct"},
+                         invoiceId, text(line, "description"),
+-                        cents(line.get("qty"), "invoices[].lineItems[].qty"),
++                        adjustmentCredit ? cents(line.get("qty"), "invoices[].lineItems[].qty").negate()
++                                : cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                         price[0], price[1],
+                         flag(line.get("taxExempt"), "invoices[].lineItems[].taxExempt"),
+                         percent(line.get("discountPct"), "invoices[].lineItems[].discountPct"),
+@@ -816,7 +827,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces, adjustment_of FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -883,6 +894,9 @@ public class TestSupportController {
+                     if (r.get("REPLACES") != null) {
+                         row.put("replaces", r.get("REPLACES"));
+                     }
++                    if (r.get("ADJUSTMENT_OF") != null) {
++                        row.put("adjustmentOf", r.get("ADJUSTMENT_OF"));
++                    }
+                     if (r.get("SKIPPED_INSTALMENT") != null) {
+                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
+                     }
+@@ -919,7 +933,9 @@ public class TestSupportController {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+                                 line.put("description", l.get("DESCRIPTION"));
+-                                line.put("qty", l.get("QTY"));
++                                // A credit note adjusting an invoice takes its lines off: their quantities read back negative.
++                                line.put("qty", r.get("ADJUSTMENT_OF") != null && r.get("CREDIT_OF") != null
++                                        ? ((BigDecimal) l.get("QTY")).negate() : l.get("QTY"));
+                                 if (l.get("UNIT_TYPE") != null) {
+                                     line.put("unitType", l.get("UNIT_TYPE"));
+                                 }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index f2eaddf..45d6637 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -290,8 +290,8 @@ public class Invoice {
+             + " AND o.credit_of IS NULL AND o.issue_date IS NOT NULL AND l.invoice_id = o.id AND l.tiers IS NOT NULL AND l.unit_type IS NOT NULL)")
+     private String clientTieredUnits;
+ 
+-    /** The issue date of the invoice this credit note credits; null for an ordinary invoice. */
+-    @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = credit_of)")
++    /** The issue date of the invoice this credit note credits, or this adjustment note adjusts; null for an ordinary invoice. */
++    @Formula("(SELECT o.issue_date FROM invoice o WHERE o.id = COALESCE(adjustment_of, credit_of))")
+     private LocalDate creditedIssueDate;
+ 
+     /** The surcharge percentage of the invoice this credit note credits; null for an ordinary invoice. */
+@@ -313,6 +313,18 @@ public class Invoice {
+     @Column(name = "credit_of")
+     private Long creditOf;
+ 
++    /**
++     * The id of the sent invoice this adjustment note adjusts (see {@link #debitNote} and {@link #adjustmentCreditNote});
++     * null for any other invoice.
++     */
++    @Column(name = "adjustment_of")
++    private Long adjustmentOf;
++
++    /** What the adjustment notes issued against this invoice add up to: debit notes less credit notes; read from them. */
++    @Formula("(SELECT COALESCE(SUM(CASE WHEN a.credit_of IS NULL THEN a.sent_total ELSE -a.credit_total END), 0) FROM invoice a"
++            + " WHERE a.adjustment_of = id AND a.status <> 'DRAFT' AND a.status <> 'VOID')")
++    private BigDecimal adjusted = BigDecimal.ZERO;
++
+     /** The code of the currency the invoice's client is billed in; read from the client. */
+     @Formula("(SELECT c.currency FROM client c WHERE c.id = client_id)")
+     private String clientCurrency;
+@@ -465,7 +477,7 @@ public class Invoice {
+     private BigDecimal credited = BigDecimal.ZERO;
+ 
+     /** How many credit notes have been issued against this invoice; read from them. */
+-    @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE')")
++    @Formula("(SELECT COUNT(*) FROM invoice cn WHERE cn.credit_of = id AND cn.status = 'CREDIT_NOTE' AND cn.adjustment_of IS NULL)")
+     private int creditNotesIssued;
+ 
+     /**
+@@ -790,6 +802,44 @@ public class Invoice {
+         return note;
+     }
+ 
++    /**
++     * A new, empty draft debit note adjusting this sent invoice, issued on the given date and due on the date given: same
++     * client, no discount or charges, priced and taxed as of this invoice's issue date in its region.
++     */
++    public Invoice debitNote(LocalDate issueDate, LocalDate dueDate) {
++        Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        note.adjustmentOf = id;
++        note.supplyRegion = supplyRegion;
++        note.creditedIssueDate = this.issueDate;
++        return note;
++    }
++
++    /**
++     * A new, empty draft credit note adjusting this sent invoice, issued on the given date: as {@link #creditNote}, but
++     * with no charges of its own.
++     */
++    public Invoice adjustmentCreditNote(LocalDate issueDate) {
++        Invoice note = creditNote(issueDate);
++        note.adjustmentOf = id;
++        note.creditedSurchargePct = null;
++        return note;
++    }
++
++    /** Whether this is an adjustment note (debit or credit) of another invoice. */
++    public boolean isAdjustment() {
++        return adjustmentOf != null;
++    }
++
++    /** The id of the invoice this adjustment note adjusts; null for any other invoice. */
++    public Long getAdjustmentOf() {
++        return adjustmentOf;
++    }
++
++    /** What the adjustment notes issued against this invoice add up to (credit notes negative), to the cent. */
++    public BigDecimal getAdjusted() {
++        return (adjusted == null ? BigDecimal.ZERO : adjusted).setScale(scale(), RoundingMode.HALF_UP);
++    }
++
+     /** Tells the invoice what today is, the day a draft is priced and taxed as of (see {@link #pricingDate}). */
+     public void priceAsOf(LocalDate today) {
+         this.pricedToday = today;
+@@ -800,12 +850,15 @@ public class Invoice {
+      * (not a credit note), since it will be dated today when sent; otherwise its issue date.
+      */
+     public LocalDate pricingDate() {
++        if (adjustmentOf != null && creditedIssueDate != null) {
++            return creditedIssueDate;
++        }
+         return isDraft() && !isCreditNote() && pricedToday != null ? pricedToday : issueDate;
+     }
+ 
+     /** The day the invoice is taxed as of: a credit note's original's issue date, otherwise {@link #pricingDate}. */
+     private LocalDate taxDate() {
+-        return creditOf != null ? creditedIssueDate : pricingDate();
++        return creditOf != null || adjustmentOf != null ? creditedIssueDate : pricingDate();
+     }
+ 
+     /** The currency the invoice is in: its client's. */
+@@ -898,7 +951,8 @@ public class Invoice {
+ 
+     /** The number shown: CN-... for a credit note, otherwise INV-... (see {@link InvoiceNumber}). */
+     public String number() {
+-        return isCreditNote() ? InvoiceNumber.creditNoteOf(id) : InvoiceNumber.of(id);
++        return isAdjustment() ? InvoiceNumber.adjustmentOf(id)
++                : isCreditNote() ? InvoiceNumber.creditNoteOf(id) : InvoiceNumber.of(id);
+     }
+ 
+     /** What the credit notes issued against this invoice add up to, to the cent. */
+@@ -2786,7 +2840,7 @@ public class Invoice {
+      * credit note.
+      */
+     public BigDecimal volumeDiscount() {
+-        if (volumeDiscounts == null || isCreditNote()) {
++        if (volumeDiscounts == null || isCreditNote() || isAdjustment()) {
+             return zero();
+         }
+         BigDecimal subtotal = subtotal();
+@@ -3247,7 +3301,7 @@ public class Invoice {
+      * credit note, or for an invoice with no lines.
+      */
+     public BigDecimal minimumCharge() {
+-        if ((clientMinimumCharge == null && minimumChargeUsd == null) || isCreditNote() || lines.isEmpty()) {
++        if ((clientMinimumCharge == null && minimumChargeUsd == null) || isCreditNote() || isAdjustment() || lines.isEmpty()) {
+             return zero();
+         }
+         BigDecimal minimum = clientMinimumCharge != null ? currency().divideDownToStep(clientMinimumCharge, BigDecimal.ONE)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 4054c1c..f56d12c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -178,6 +178,8 @@ public class InvoiceController {
+      * {@code currentTotal} the grand total today's prices, rates and client details would give, only when that differs (else null).
+      * {@code rebilledOn} is the day it was rebilled (null when it was not); {@code replaces} is the number of the rebilled
+      * invoice it replaces and {@code replacedBy} the number of the invoice that replaces it (each null when none).
++     * {@code adjustmentOf} is the id of the sent invoice it is an adjustment note of (null when it is not) and {@code adjusted}
++     * what the adjustment notes issued against it add up to, a credit note's negative (0 when none).
+      * {@code milestones} are the milestones it is billed by (empty when it is billed whole), each with its
+      * amount and status (see {@link Invoice#milestoneProgress}); {@code milestonesPct} is what their percentages add up to.
+      */
+@@ -193,7 +195,8 @@ public class InvoiceController {
+             int approvalsNeeded, int approvals,
+             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+             List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal,
+-            String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy) {
++            String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy,
++            Long adjustmentOf, String adjusted) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
+                 List<Invoice> duplicates) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+@@ -247,7 +250,8 @@ public class InvoiceController {
+                     duplicates.isEmpty() ? null
+                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
+                     i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
+-                    i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()));
++                    i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
++                    i.getAdjustmentOf(), i.getAdjusted().toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 37e10f2..c5f217c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ import org.hibernate.annotations.Formula;
+ import java.math.BigDecimal;
++import java.util.Objects;
+ import java.math.MathContext;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+@@ -201,6 +202,28 @@ public class InvoiceLine {
+         return credit;
+     }
+ 
++    /** Sets the line's quantity (of a copy for an adjustment note), answering the line. */
++    InvoiceLine withQty(BigDecimal qty) {
++        this.qty = qty;
++        return this;
++    }
++
++    /** Whether the other line bills the same thing as this one at the same price, discount and tax, whatever its quantity. */
++    boolean sameButQty(InvoiceLine other) {
++        return Objects.equals(description, other.description) && Objects.equals(unitType, other.unitType)
++                && same(unitPrice, other.unitPrice) && Objects.equals(tiers, other.tiers)
++                && same(increment, other.increment) && same(minUnits, other.minUnits)
++                && overtime == other.overtime && taxExempt == other.taxExempt
++                && same(discountPct, other.discountPct) && same(taxRate, other.taxRate)
++                && Objects.equals(periodStart, other.periodStart) && Objects.equals(periodEnd, other.periodEnd)
++                && same(percentComplete, other.percentComplete);
++    }
++
++    /** Whether two amounts are the same: both none, or equal in value. */
++    private static boolean same(BigDecimal a, BigDecimal b) {
++        return a == null ? b == null : b != null && a.compareTo(b) == 0;
++    }
++
+     /** Changes the line's description, quantity, price, discount, tax rate and exemption; they have already been checked. */
+     public void update(String description, BigDecimal qty, String unitType, BigDecimal unitPrice, String tiers,
+             BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java
+index 87f6319..ff7208b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceNumber.java
+@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
+  */
+ public final class InvoiceNumber {
+ 
+-    private static final Pattern FORM = Pattern.compile("(?:INV|CN)-(\\d{6})(\\d)");
++    private static final Pattern FORM = Pattern.compile("(?:INV|CN|ADJ)-(\\d{6})(\\d)");
+ 
+     private InvoiceNumber() {
+     }
+@@ -26,6 +26,11 @@ public final class InvoiceNumber {
+         return "CN-" + of(id).substring("INV-".length());
+     }
+ 
++    /** The number of the adjustment note with this id: ADJ-, then the same digits as an invoice number. */
++    public static String adjustmentOf(long id) {
++        return "ADJ-" + of(id).substring("INV-".length());
++    }
++
+     /**
+      * The invoice id a typed number stands for. Empty when it is not of the form INV-nnnnnnn (or CN-nnnnnnn) or its
+      * check digit does not match — the number was mistyped.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index ef007ae..2b6ee07 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -503,7 +503,7 @@ public class InvoiceService {
+ 
+     /**
+      * Adds a line to an invoice; empty if no such invoice. The line has already been checked. A sent
+-     * invoice with no payments goes back to draft; one with a payment refuses it.
++     * invoice is left as it was sent: the line is billed on a debit note instead (see {@link #issueDebitNote}).
+      */
+     @Transactional
+     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, String unitType,
+@@ -511,26 +511,23 @@ public class InvoiceService {
+             LocalDate periodStart, LocalDate periodEnd, BigDecimal percentComplete) {
+         Optional<Invoice> found = load(invoiceId);
+         found.ifPresent(invoice -> {
+-            LinePrice price = linePrice(invoice, unitType, unitPrice);
+-            boolean reopened = reopenForChange(invoice, "A paid invoice cannot take new lines.");
+-            InvoiceLine line = new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
+-                    discountPct, taxRate);
+-            line.setCardPriced(price.fromCard());
+-            line.setPeriod(periodStart, periodEnd);
+-            line.setPercentComplete(percentComplete);
++            boolean adjusting = adjustsByNotes(invoice);
++            InvoiceLine line = newLine(invoice, description, qty, unitType, unitPrice, overtime, taxExempt, discountPct,
++                    taxRate, periodStart, periodEnd, percentComplete);
++            if (adjusting) {
++                issueDebitNote(invoice, line);
++                return;
++            }
+             invoice.addLine(line);
+             invoices.saveAndFlush(invoice);
+-            if (reopened) {
+-                audit.record("INVOICE_REOPENED id=" + invoice.getId());
+-            }
+         });
+         return found;
+     }
+ 
+     /**
+      * Removes a line from an invoice; empty if no such invoice or line. Refused when what is left would
+-     * be less than a fixed discount. A sent invoice with no payments goes back to draft; one with a
+-     * payment refuses it.
++     * be less than a fixed discount. A sent invoice is left as it was sent: the line is taken off by a
++     * credit note instead (see {@link #issueAdjustmentCredit}).
+      */
+     @Transactional
+     public Optional<Invoice> removeLine(Long invoiceId, Long lineId) {
+@@ -542,19 +539,21 @@ public class InvoiceService {
+         if (!invoice.hasLine(lineId)) {
+             return Optional.empty();
+         }
+-        boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines removed.");
++        if (adjustsByNotes(invoice)) {
++            issueAdjustmentCredit(invoice, lineOf(invoice, lineId).creditCopy());
++            return found;
++        }
+         invoice.removeLine(lineId);
+         invoices.saveAndFlush(invoice);
+-        if (reopened) {
+-            audit.record("INVOICE_REOPENED id=" + invoice.getId());
+-        }
+         return found;
+     }
+ 
+     /**
+      * Changes a line of an invoice; empty if no such invoice or line. The line has already been
+-     * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice with no
+-     * payments goes back to draft; one with a payment refuses it.
++     * checked. Refused when the subtotal would be less than a fixed discount. A sent invoice is left as it
++     * was sent and the change is made by adjustment notes instead: a change of quantity alone by one note for
++     * the difference (a debit note for more, a credit note for less), any other change by a credit note taking
++     * the old line off and a debit note billing the new one.
+      */
+     @Transactional
+     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
+@@ -569,23 +568,110 @@ public class InvoiceService {
+             return Optional.empty();
+         }
+         requireWithinCreditedPeriod(invoice, lineId, periodStart, periodEnd);
++        if (adjustsByNotes(invoice)) {
++            InvoiceLine old = lineOf(invoice, lineId);
++            InvoiceLine changed = newLine(invoice, description, qty, unitType, unitPrice, overtime, taxExempt, discountPct,
++                    taxRate, periodStart, periodEnd, percentComplete);
++            if (!old.sameButQty(changed)) {
++                issueAdjustmentCredit(invoice, old.creditCopy());
++                issueDebitNote(invoice, changed);
++            } else if (qty.compareTo(old.getQty()) > 0) {
++                issueDebitNote(invoice, old.copy().withQty(qty.subtract(old.getQty())));
++            } else if (qty.compareTo(old.getQty()) < 0) {
++                issueAdjustmentCredit(invoice, old.creditCopy().withQty(old.getQty().subtract(qty)));
++            }
++            return found;
++        }
+         LinePrice price = linePrice(invoice, unitType, unitPrice);
+-        boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
+         invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
+                 discountPct, taxRate, periodStart, periodEnd, percentComplete);
+         invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).forEach(l -> l.setCardPriced(price.fromCard()));
+         invoices.saveAndFlush(invoice);
+-        if (reopened) {
+-            audit.record("INVOICE_REOPENED id=" + invoice.getId());
+-        }
+         return found;
+     }
+ 
++    /** A new line for the invoice, priced as its lines are (see {@link #linePrice(Invoice, String, BigDecimal)}). */
++    private InvoiceLine newLine(Invoice invoice, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
++            boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate, LocalDate periodStart,
++            LocalDate periodEnd, BigDecimal percentComplete) {
++        LinePrice price = linePrice(invoice, unitType, unitPrice);
++        InvoiceLine line = new InvoiceLine(description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
++                discountPct, taxRate);
++        line.setCardPriced(price.fromCard());
++        line.setPeriod(periodStart, periodEnd);
++        line.setPercentComplete(percentComplete);
++        return line;
++    }
++
++    private static InvoiceLine lineOf(Invoice invoice, Long lineId) {
++        return invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).findFirst().orElseThrow();
++    }
++
++    /**
++     * Whether a change to the invoice's lines is made by adjustment notes, leaving the invoice as it was sent: it is
++     * not a draft. A void or written-off invoice, a credit note, or one already credited or rebilled is refused.
++     */
++    private boolean adjustsByNotes(Invoice invoice) {
++        if (invoice.isDraft()) {
++            return false;
++        }
++        if (invoice.isVoid()) {
++            throw new InvoiceRejectedException("A void invoice cannot be changed.");
++        }
++        if (invoice.isCreditNote()) {
++            throw new InvoiceRejectedException("An issued credit note cannot be changed.");
++        }
++        if (invoice.isWrittenOff()) {
++            throw new InvoiceRejectedException("A written-off invoice cannot be changed.");
++        }
++        if (invoice.hasCreditNotesIssued() || invoice.getRebilledOn() != null) {
++            throw new InvoiceRejectedException("An invoice with an issued credit note cannot be changed.");
++        }
++        return true;
++    }
++
++    /**
++     * Bills the line on a debit note adjusting the sent invoice: a new invoice for its client dated today, priced and
++     * taxed as the invoice is, with no discount or charges, sent at once as any invoice sent today is (see
++     * {@link #markSent}); records ADJUSTMENT_ISSUED in the audit.
++     */
++    private void issueDebitNote(Invoice invoice, InvoiceLine line) {
++        LocalDate on = today.date();
++        Invoice note = invoice.debitNote(on, dueDateFor(invoice.getClientId(), on));
++        note.addLine(line);
++        Invoice saved = invoices.saveAndFlush(note);
++        // Read again the original's issue date it is priced and taxed as of.
++        entityManager.refresh(saved);
++        audit.record("ADJUSTMENT_ISSUED id=" + saved.getId() + " number=" + saved.number() + " invoice="
++                + invoice.getId() + " total=" + saved.total(taxRate.percent()).toPlainString());
++        markSent(saved);
++        entityManager.refresh(invoice);
++        withInterest(List.of(invoice));
++    }
++
++    /**
++     * Takes the credited line off the sent invoice on a credit note adjusting it, dated today and taxed as the invoice
++     * is, with no charges, issued as any credit note is (see {@link #issue}): it comes off what the invoice owes and any
++     * rest is held as credit.
++     */
++    private void issueAdjustmentCredit(Invoice invoice, InvoiceLine credit) {
++        Invoice note = invoice.adjustmentCreditNote(today.date());
++        note.addLine(credit);
++        Invoice draft = invoices.saveAndFlush(note);
++        entityManager.refresh(draft);
++        String refusal = creditNoteRefusal(draft, false);
++        if (refusal != null) {
++            throw new InvoiceRejectedException(refusal);
++        }
++        issue(draft);
++        entityManager.refresh(invoice);
++        withInterest(List.of(invoice));
++    }
++
+     /**
+      * Gives an invoice a percentage discount, or a fixed amount off when one is given; the one given
+      * clears the other, and the cap (null for none) limits everything taken off, line discounts included. Empty if no such invoice. The values have already been checked; a fixed amount
+-     * over the subtotal is refused; the reason is optional. A sent invoice with no payments goes back to draft; one with a
+-     * payment refuses it.
++     * over the subtotal is refused; the reason is optional. A sent invoice's discount is fixed: it is refused.
+      */
+     @Transactional
+     public Optional<Invoice> setDiscount(Long invoiceId, BigDecimal discountPct, BigDecimal discountAmount,
+@@ -601,7 +687,9 @@ public class InvoiceService {
+             if (discountCap != null) {
+                 requireWhole(invoice.currency(), discountCap, "The discount cap");
+             }
+-            boolean reopened = reopenForChange(invoice, "A paid invoice cannot be given a discount.");
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("The discount of a sent invoice cannot be changed.");
++            }
+             if (discountAmount != null) {
+                 invoice.setDiscountAmount(discountAmount);
+             } else {
+@@ -610,9 +698,6 @@ public class InvoiceService {
+             invoice.setDiscountCap(discountCap);
+             invoice.setDiscountReason(discountReason);
+             invoices.saveAndFlush(invoice);
+-            if (reopened) {
+-                audit.record("INVOICE_REOPENED id=" + invoice.getId());
+-            }
+         });
+         return found;
+     }
+@@ -1149,34 +1234,6 @@ public class InvoiceService {
+         return changed;
+     }
+ 
+-    /**
+-     * Readies the invoice for a change: a draft stays as it is; a sent invoice with no payments goes
+-     * back to draft, to be sent again; an invoice with any payment is refused with the message.
+-     * Whether it went back to draft.
+-     */
+-    private boolean reopenForChange(Invoice invoice, String refusal) {
+-        if (invoice.isDraft()) {
+-            return false;
+-        }
+-        if (invoice.isVoid()) {
+-            throw new InvoiceRejectedException("A void invoice cannot be changed.");
+-        }
+-        if (invoice.isCreditNote()) {
+-            throw new InvoiceRejectedException("An issued credit note cannot be changed.");
+-        }
+-        if (invoice.isWrittenOff()) {
+-            throw new InvoiceRejectedException("A written-off invoice cannot be changed.");
+-        }
+-        if (invoice.hasCreditNotesIssued()) {
+-            throw new InvoiceRejectedException("An invoice with an issued credit note cannot be changed.");
+-        }
+-        if (!payments.findForInvoice(invoice.getId()).isEmpty()) {
+-            throw new InvoiceRejectedException(refusal);
+-        }
+-        invoice.reopen();
+-        return true;
+-    }
+-
+     /**
+      * Sends a draft invoice, issuing it today and making it due on the client's terms (or keeping a due
+      * date set by hand), and records it in the audit; empty if no such invoice. An invoice already
+@@ -1509,8 +1566,13 @@ public class InvoiceService {
+         BigDecimal taken = original.creditTaken(total, paid(List.of(original)).get(original.getId()), rate);
+         note.markIssued(today.date(), rate, taken);
+         invoices.saveAndFlush(note);
+-        audit.record("CREDIT_NOTE_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
+-                + note.getCreditOf() + " total=" + total.toPlainString());
++        if (note.isAdjustment()) {
++            audit.record("ADJUSTMENT_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
++                    + note.getCreditOf() + " total=" + total.negate().toPlainString());
++        } else {
++            audit.record("CREDIT_NOTE_ISSUED id=" + note.getId() + " number=" + note.number() + " invoice="
++                    + note.getCreditOf() + " total=" + total.toPlainString());
++        }
+         BigDecimal rest = total.subtract(taken);
+         if (rest.signum() > 0) {
+             recordCreditHeld(payments.saveAndFlush(Payment.fromCreditNote(note, rest)));
+@@ -1524,7 +1586,8 @@ public class InvoiceService {
+      */
+     private void markSent(Invoice invoice) {
+         LocalDate issued = today.date();
+-        repriceFromRates(invoice, null, issued);
++        // An adjustment note is priced as of the invoice it adjusts.
++        repriceFromRates(invoice, null, invoice.isAdjustment() ? invoice.pricingDate() : issued);
+         invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
+         invoice.keepSentFigures(taxRate.percent());
+         invoices.saveAndFlush(invoice);
+diff --git a/src/main/resources/db/migration/V87__adjustment_note.sql b/src/main/resources/db/migration/V87__adjustment_note.sql
+new file mode 100644
+index 0000000..ad8cfff
+--- /dev/null
++++ b/src/main/resources/db/migration/V87__adjustment_note.sql
+@@ -0,0 +1,2 @@
++-- The id of the sent invoice this adjustment note (debit or credit) adjusts; null for any other invoice.
++ALTER TABLE invoice ADD COLUMN adjustment_of BIGINT;
