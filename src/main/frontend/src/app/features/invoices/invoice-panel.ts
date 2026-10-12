@@ -842,7 +842,7 @@ function problemWith(line: NewLine): string {
 
         @if (inv.status === 'DRAFT') {
           <button type="button" data-testid="invoice-send" [disabled]="sending()" (click)="send(inv)">
-            {{ inv.creditOf === null ? 'Send invoice' : 'Issue credit note' }}
+            {{ inv.creditOf !== null ? 'Issue credit note' : inv.adjustmentOf !== null ? 'Issue adjustment note' : 'Send invoice' }}
           </button>
           @if (sendError()) {
             <p role="alert" data-testid="invoice-send-error">{{ sendError() }}</p>

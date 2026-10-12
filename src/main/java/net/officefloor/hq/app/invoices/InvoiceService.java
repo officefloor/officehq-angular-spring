@@ -712,8 +712,9 @@ public class InvoiceService {
 
     /**
      * Bills the line on a debit note adjusting the sent invoice: a new invoice for its client dated today, priced and
-     * taxed as the invoice is, with no discount or charges, sent at once as any invoice sent today is (see
-     * {@link #markSent}); records ADJUSTMENT_ISSUED in the audit.
+     * taxed as the invoice is, with no discount or charges, issued at once as any invoice sent today is (see
+     * {@link #markSent}). A note that needs approval as any draft would (see {@link #approval}) is left a draft
+     * note instead, to be approved and then sent.
      */
     private void issueDebitNote(Invoice invoice, InvoiceLine line) {
         LocalDate on = today.date();
@@ -722,9 +723,9 @@ public class InvoiceService {
         Invoice saved = invoices.saveAndFlush(note);
         // Read again the original's issue date it is priced and taxed as of.
         entityManager.refresh(saved);
-        audit.record("ADJUSTMENT_ISSUED id=" + saved.getId() + " number=" + saved.number() + " invoice="
-                + invoice.getId() + " total=" + saved.total(taxRate.percent()).toPlainString());
-        markSent(saved);
+        if (approval(saved) != Invoice.Approval.NEEDS_APPROVAL) {
+            markSent(saved);
+        }
         entityManager.refresh(invoice);
         withInterest(List.of(invoice));
     }
@@ -1660,7 +1661,8 @@ public class InvoiceService {
     }
 
     /**
-     * Issues the draft today, due on the client's terms, and records it in the audit; then uses the
+     * Issues the draft today, due on the client's terms, and records it in the audit (INVOICE_SENT, or
+     * ADJUSTMENT_ISSUED for a debit adjustment note); then uses the
      * client's credit on it (see {@link #applyCredit}), unless it is spread over instalments, whose
      * schedule is dated from the new issue date.
      */
@@ -1671,8 +1673,13 @@ public class InvoiceService {
         invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
         invoice.keepSentFigures(taxRate.percent());
         invoices.saveAndFlush(invoice);
-        audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
-                + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        if (invoice.isAdjustment()) {
+            audit.record("ADJUSTMENT_ISSUED id=" + invoice.getId() + " number=" + invoice.number() + " invoice="
+                    + invoice.getAdjustmentOf() + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        } else {
+            audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
+                    + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        }
         invoice.taxByRate(taxRate.percent()).forEach((rate, amounts) -> audit.record("TAX_CHARGED id="
                 + invoice.getId() + " rate=" + rate.stripTrailingZeros().toPlainString() + " net="
                 + amounts[0].toPlainString() + " tax=" + amounts[1].toPlainString()));
