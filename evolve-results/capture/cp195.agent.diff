@@ -1,0 +1,62 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index b38f395..303f19d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1964,22 +1964,18 @@ public class InvoiceService {
+                 left = left.subtract(part);
+             }
+         }
+-        // What is left goes to what is in dispute, which stays in dispute, before any of it is held as credit.
++        // What is left goes to what is in dispute, which stays in dispute, before any of it is held as credit; the
++        // disputed part of a partly disputed invoice is a part of its own, after its undisputed part.
+         for (Map.Entry<Invoice, BigDecimal> disputed : inDisputeOrder(candidates).entrySet()) {
+             if (left.signum() <= 0) {
+                 break;
+             }
+             Long invoiceId = disputed.getKey().getId();
+-            BigDecimal part = left.min(disputed.getValue());
+-            PaymentAllocation already = parts.stream().filter(a -> a.getInvoiceId().equals(invoiceId)).findFirst().orElse(null);
+-            if (already != null) {
+-                if (stated.contains(invoiceId)) {
+-                    continue;
+-                }
+-                parts.set(parts.indexOf(already), new PaymentAllocation(invoiceId, already.getAmount().add(part)));
+-            } else {
+-                parts.add(new PaymentAllocation(invoiceId, part));
++            if (stated.contains(invoiceId)) {
++                continue;
+             }
++            BigDecimal part = left.min(disputed.getValue());
++            parts.add(new PaymentAllocation(invoiceId, part));
+             left = left.subtract(part);
+         }
+         if (parts.isEmpty()) {
+@@ -2128,7 +2124,7 @@ public class InvoiceService {
+      * Records one payment of the amount on the date spread over several of the client's invoices, and
+      * records each part in the audit. The amounts have already been checked to be more than zero; they
+      * must add up to no more than the payment: the rest is
+-     * held on the client's account as credit and recorded in the audit. Each must go to a different
++     * held on the client's account as credit and recorded in the audit. The parts to each invoice (at most an undisputed and a disputed part) must go to a
+      * sent invoice of the client and be no more than what it still has due. The date must be no later
+      * than today nor before any of the invoices' issue dates. Only the parts going to the stated invoices
+      * must be at least their minimum part payment. The reference (null when none) has
+@@ -2154,12 +2150,14 @@ public class InvoiceService {
+         if (date.isAfter(now)) {
+             throw new InvoiceRejectedException("The payment date cannot be after today (" + now + ").");
+         }
+-        Set<Long> seen = new HashSet<>();
+-        List<Invoice> spreadOver = new ArrayList<>();
++        // An invoice may take two parts (its undisputed part, then its disputed part); they are checked together.
++        Map<Long, BigDecimal> toInvoice = new LinkedHashMap<>();
+         for (PaymentAllocation part : parts) {
+-            if (!seen.add(part.getInvoiceId())) {
+-                throw new InvoiceRejectedException("Each invoice can take only one part of the payment.");
+-            }
++            toInvoice.merge(part.getInvoiceId(), part.getAmount(), BigDecimal::add);
++        }
++        List<Invoice> spreadOver = new ArrayList<>();
++        for (Map.Entry<Long, BigDecimal> entry : toInvoice.entrySet()) {
++            PaymentAllocation part = new PaymentAllocation(entry.getKey(), entry.getValue());
+             Invoice invoice = load(part.getInvoiceId())
+                     .filter(i -> i.getClientId().equals(clientId))
+                     .orElseThrow(() -> new InvoiceRejectedException("A part of the payment goes to an invoice of another client."));
