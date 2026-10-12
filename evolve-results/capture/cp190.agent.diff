@@ -1,0 +1,148 @@
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index d8e6cd6..dd3e339 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -388,15 +388,15 @@ export class Clients {
+   }
+ 
+   protected balanceOf(clientId: number): ClientBalance {
+-    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0', credit: '0', disputed: '0' };
++    return this.balances().get(clientId) ?? { clientId, balance: '0', overdue: '0', credit: '0', disputed: '0', committed: '0' };
+   }
+ 
+   // What the client can still be invoiced under its credit limit: the limit less its balance, leaving out
+-  // what is in dispute.
++  // what is in dispute, and less what its approved drafts will add to it.
+   protected availableOf(client: Client): string {
+     const b = this.balanceOf(client.id);
+     const cents = Math.round(Number(client.creditLimit) * 100) - Math.round(Number(b.balance) * 100)
+-      + Math.round(Number(b.disputed) * 100);
++      + Math.round(Number(b.disputed) * 100) - Math.round(Number(b.committed) * 100);
+     return String(cents / 100);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index a954d6e..4176037 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -352,6 +352,8 @@ export interface ClientBalance {
+   overdue: string;
+   credit: string;
+   disputed: string;
++  // What the client's approved drafts will add to its balance once sent: it counts against the credit limit.
++  committed: string;
+ }
+ 
+ // The invoices REST API.
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 095fa27..3feae59 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -56,9 +56,11 @@ public class InvoiceController {
+      * What a client still owes across its sent invoices (drafts do not count), after discounts, tax
+      * and payments, less the client's unused credit (so it can be below zero), how much of what is due
+      * is overdue, the unused credit, and how much of what is due is in dispute (it does not count against the
+-     * credit limit); decimal strings to the cent.
++     * credit limit), and what its approved drafts will add to the balance once sent (committed: it counts
++     * against the credit limit); decimal strings to the cent.
+      */
+-    public record ClientBalance(Long clientId, String balance, String overdue, String credit, String disputed) {
++    public record ClientBalance(Long clientId, String balance, String overdue, String credit, String disputed,
++            String committed) {
+     }
+ 
+     /**
+@@ -512,8 +514,8 @@ public class InvoiceController {
+     }
+ 
+     /**
+-     * The balance of each client that has a sent invoice or credit; a client not listed owes nothing and
+-     * has no credit. Void invoices and credit notes do not count (a credit note comes off its original).
++     * The balance of each client that has a sent invoice, an approved draft or credit; a client not listed owes nothing,
++     * has no credit and nothing committed. Void invoices and credit notes do not count (a credit note comes off its original).
+      */
+     @GetMapping("/api/clients/balances")
+     public List<ClientBalance> balances() {
+@@ -531,12 +533,17 @@ public class InvoiceController {
+             sums[2] = sums[2].add(i.disputedAmount(paid.get(i.getId()), rate));
+         }
+         Map<Long, BigDecimal> credits = invoices.credits();
++        invoices.all().stream().filter(i -> i.isDraft() && !i.isCreditNote()).map(Invoice::getClientId).distinct()
++                .filter(clientId -> invoices.committed(clientId, null).signum() > 0)
++                .forEach(clientId -> owed.computeIfAbsent(clientId,
++                        k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) }));
+         credits.keySet().forEach(clientId -> owed.computeIfAbsent(clientId,
+                 k -> new BigDecimal[] { BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2) }));
+         return owed.entrySet().stream().map(e -> {
+             BigDecimal credit = credits.getOrDefault(e.getKey(), BigDecimal.ZERO).setScale(2);
+             return new ClientBalance(e.getKey(), e.getValue()[0].subtract(credit).toPlainString(),
+-                    e.getValue()[1].toPlainString(), credit.toPlainString(), e.getValue()[2].toPlainString());
++                    e.getValue()[1].toPlainString(), credit.toPlainString(), e.getValue()[2].toPlainString(),
++                    invoices.committed(e.getKey(), null).toPlainString());
+         }).toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 2411cda..9b3b102 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1259,6 +1259,23 @@ public class InvoiceService {
+         return balance(clientId).subtract(disputed).setScale(2);
+     }
+ 
++    /**
++     * What the client's approved drafts will add to its balance when sent (each one's grand total less the
++     * withholding), leaving out the draft with the given id (null for none): an approved draft is as good as
++     * sent, so it counts against the credit limit. A draft is approved while the approvals it was given still
++     * stand for its grand total (see {@link Invoice#approval}). Credit notes do not count.
++     */
++    @Transactional(readOnly = true)
++    public BigDecimal committed(Long clientId, Long excludeId) {
++        BigDecimal rate = taxRate.percent();
++        LocalDate on = today.date();
++        return loadForClient(clientId).stream()
++                .filter(i -> i.isDraft() && !i.isCreditNote() && !i.getId().equals(excludeId)
++                        && i.approval(rate, on, false, true) == Invoice.Approval.APPROVED)
++                .map(i -> i.owedTotal(rate))
++                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
++    }
++
+     /** The share of a HIGH-risk client's draft's grand total its deposits must cover before it is sent. */
+     private static final BigDecimal DEPOSIT_SHARE = new BigDecimal("0.30");
+ 
+@@ -1289,7 +1306,8 @@ public class InvoiceService {
+ 
+     /**
+      * Why sending the draft would take its client over its credit limit, or null when it would not or the
+-     * client has no limit: the client's balance less what is in dispute (see {@link #creditBalance}) plus what the invoice adds to it (its grand total, priced
++     * client has no limit: the client's balance less what is in dispute (see {@link #creditBalance}) plus what its other
++     * approved drafts will add (see {@link #committed}) plus what the invoice adds to it (its grand total, priced
+      * as it would be sent, less the withholding) must not be over the limit.
+      */
+     private String creditLimitRefusal(Invoice invoice) {
+@@ -1298,12 +1316,13 @@ public class InvoiceService {
+             return null;
+         }
+         repriceFromRates(invoice, null, today.date());
+-        BigDecimal after = creditBalance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
++        BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
++                .add(invoice.owedTotal(taxRate.percent()));
+         if (after.compareTo(client.getCreditLimit()) <= 0) {
+             return null;
+         }
+         Currency currency = client.getCurrency();
+-        return "Sending this invoice would take " + client.getName() + "'s balance (less what is in dispute) to " + currency.format(after)
++        return "Sending this invoice would take " + client.getName() + "'s balance (less what is in dispute, plus its approved drafts) to " + currency.format(after)
+                 + ", over its " + currency.format(client.getCreditLimit()) + " credit limit.";
+     }
+ 
+@@ -2453,7 +2472,8 @@ public class InvoiceService {
+         if (client == null || client.getCreditLimit() == null) {
+             return false;
+         }
+-        BigDecimal after = creditBalance(client.getId()).add(invoice.owedTotal(taxRate.percent()));
++        BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
++                .add(invoice.owedTotal(taxRate.percent()));
+         return after.compareTo(client.getCreditLimit()) > 0;
+     }
+ 
