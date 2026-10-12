@@ -1,0 +1,504 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 471aee2..3beae1b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -210,7 +210,9 @@ function problemWith(line: NewLine): string {
+ // client); the server refuses to void a draft or one with a recorded
+ // payment, and refuses any payment or change to a void invoice. A payment can be reversed (a bounced
+ // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
+-// be duplicated into a new draft for the same client, which then opens. An invoice can be marked as
++// be duplicated into a new draft for the same client, which then opens. A sent invoice can be rebilled: credited
++// in full and replaced by a corrected draft that what was paid on it is held for; each shows the other's number.
++// An invoice can be marked as
+ // recurring, until an end date its generated drafts keep; a sent recurring invoice generates the next period's draft once
+ // (its period stopping on the end date), which then opens. A sent invoice with percent-complete lines makes its
+ // next progress claim once: a draft of those lines that bills only the progress since, which then opens. A draft's due date can be set
+@@ -229,6 +231,12 @@ function problemWith(line: NewLine): string {
+       </h2>
+       @if (invoice(); as inv) {
+         <p>Status: <span data-testid="invoice-panel-status">{{ statusLabel(inv.status) }}</span></p>
++        @if (inv.replaces !== null) {
++          <p>Replaces: <span data-testid="invoice-replaces">{{ inv.replaces }}</span></p>
++        }
++        @if (inv.replacedBy !== null) {
++          <p>Replaced by: <span data-testid="invoice-replaced-by">{{ inv.replacedBy }}</span></p>
++        }
+         @if (inv.paidDate) {
+           <p>Paid on: <span data-testid="invoice-paid-date">{{ inv.paidDate }}</span></p>
+         }
+@@ -887,6 +895,15 @@ function problemWith(line: NewLine): string {
+           }
+         }
+ 
++        @if (inv.creditOf === null) {
++          <button type="button" data-testid="invoice-rebill" [disabled]="rebilling()" (click)="rebill(inv.id)">
++            Rebill
++          </button>
++          @if (rebillError()) {
++            <p role="alert" data-testid="invoice-rebill-error">{{ rebillError() }}</p>
++          }
++        }
++
+         <button
+           type="button"
+           data-testid="invoice-duplicate"
+@@ -1101,6 +1118,8 @@ export class InvoicePanel {
+   protected readonly generateError = signal('');
+   protected readonly claiming = signal(false);
+   protected readonly claimError = signal('');
++  protected readonly rebilling = signal(false);
++  protected readonly rebillError = signal('');
+   protected readonly recurUntilForm = new FormGroup({
+     recurUntil: new FormControl('', { nonNullable: true }),
+   });
+@@ -1213,6 +1232,7 @@ export class InvoicePanel {
+       this.recurUntilForm.reset();
+       this.generateError.set('');
+       this.claimError.set('');
++      this.rebillError.set('');
+       this.creditError.set('');
+       this.reverseError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+@@ -1905,6 +1925,25 @@ export class InvoicePanel {
+     });
+   }
+ 
++  // Rebills the invoice: it is credited in full and a corrected draft replaces it, so the client's invoices and
++  // credit changed.
++  protected rebill(invoiceId: number): void {
++    this.rebilling.set(true);
++    this.rebillError.set('');
++    this.service.rebill(invoiceId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.rebilling.set(false);
++        this.creditIssued.emit(detail);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.rebillError.set(typeof detail === 'string' && detail ? detail : 'The invoice could not be rebilled.');
++        this.rebilling.set(false);
++      },
++    });
++  }
++
+   protected creditNote(invoiceId: number): void {
+     this.crediting.set(true);
+     this.creditError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 6558601..b377f89 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -268,6 +268,12 @@ export interface InvoiceDetail {
+   duplicateOf: string | null;
+   // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
+   claimFrom: number | null;
++  // The day the invoice was rebilled (credited in full and replaced by a corrected draft); null when it was not.
++  rebilledOn: string | null;
++  // The number of the rebilled invoice this one replaces; null when it replaces none.
++  replaces: string | null;
++  // The number of the invoice that replaces this rebilled one; null when none does.
++  replacedBy: string | null;
+   // The client's purchase order number for the invoice; null when none was given.
+   poNumber: string | null;
+   // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
+@@ -549,6 +555,13 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/duplicate`, null);
+   }
+ 
++  // Rebills a sent invoice: a credit note for exactly what it was sent for, and a corrected draft for the same
++  // client with its lines, percentage discount, surcharge and purchase order, which what was paid on it is held
++  // for. Answers the rebilled invoice.
++  rebill(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/rebill`, null);
++  }
++
+   // Marks an invoice as recurring, or not; answers the invoice.
+   setRecurring(invoiceId: number, recurring: boolean): Observable<InvoiceDetail> {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/recurring`, { recurring });
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1ff4744..76c4d74 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -56,10 +56,10 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "lineItems", "milestones");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "sentTotal", "sentTax", "rebilledOn", "replaces", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
+-    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
++    private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "heldFor", "allocations", "currency", "method", "remittance");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+ 
+@@ -451,7 +451,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since", "sent_total", "sent_tax", "rebilled_on", "replaces"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -487,7 +487,9 @@ public class TestSupportController {
+                     row.get("claimFrom") == null ? null : id(row.get("claimFrom")),
+                     row.get("recurringSince") == null ? null : date(row.get("recurringSince"), "invoices[].recurringSince"),
+                     row.get("sentTotal") == null ? null : cents(row.get("sentTotal"), "invoices[].sentTotal"),
+-                    row.get("sentTax") == null ? null : cents(row.get("sentTax"), "invoices[].sentTax"));
++                    row.get("sentTax") == null ? null : cents(row.get("sentTax"), "invoices[].sentTax"),
++                    row.get("rebilledOn") == null ? null : date(row.get("rebilledOn"), "invoices[].rebilledOn"),
++                    row.get("replaces") == null ? null : id(row.get("replaces")));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -568,7 +570,7 @@ public class TestSupportController {
+                             : date(row.get("date"), "payments[].date")) : BigDecimal.ZERO;
+             // Part of a payment in another currency is the workspace's conversion fee, as when one is recorded.
+             BigDecimal fee = foreign ? fxFee.of(amount, clientCurrency.scale()) : BigDecimal.ZERO;
+-            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee", "remittance"},
++            Long paymentId = insert("payment", row.get("id"), new String[] {"client_id", "amount", "payment_date", "reference", "reversed", "refunded", "credit_note", "paid_currency", "paid_amount", "method", "surcharge", "fx_fee", "remittance", "held_for"},
+                     id(row.get("clientId")), amount,
+                     date(row.get("date"), "payments[].date"),
+                     row.get("reference") == null ? null : row.get("reference").toString(),
+@@ -576,7 +578,8 @@ public class TestSupportController {
+                     money(row.get("refunded"), "payments[].refunded"),
+                     row.get("creditNote") == null ? null : id(row.get("creditNote")),
+                     foreign ? paidIn.name() : null, foreign ? paidAmount : null, method, surcharge, fee,
+-                    row.get("remittance") == null ? null : row.get("remittance").toString());
++                    row.get("remittance") == null ? null : row.get("remittance").toString(),
++                    row.get("heldFor") == null ? null : id(row.get("heldFor")));
+             for (Map<String, Object> allocation : rows(row.get("allocations"), "payments[].allocations")) {
+                 only(allocation, ALLOCATION_FIELDS, "payments[].allocations[]");
+                 if (allocation.get("invoiceId") == null) {
+@@ -813,7 +816,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since, sent_total, sent_tax, rebilled_on, replaces FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -874,6 +877,12 @@ public class TestSupportController {
+                     if (r.get("CLAIM_FROM") != null) {
+                         row.put("claimFrom", r.get("CLAIM_FROM"));
+                     }
++                    if (r.get("REBILLED_ON") != null) {
++                        row.put("rebilledOn", r.get("REBILLED_ON").toString());
++                    }
++                    if (r.get("REPLACES") != null) {
++                        row.put("replaces", r.get("REPLACES"));
++                    }
+                     if (r.get("SKIPPED_INSTALMENT") != null) {
+                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
+                     }
+@@ -939,7 +948,7 @@ public class TestSupportController {
+                             }).toList());
+                     return row;
+                 }).toList());
+-        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, p.method, p.remittance, "
++        out.put("payments", jdbc.queryForList("SELECT p.id, p.client_id, p.amount, p.payment_date, p.reference, p.reversed, p.refunded, p.credit_note, p.held_for, p.method, p.remittance, "
+                 + "p.paid_currency, p.paid_amount, c.currency FROM payment p LEFT JOIN client c ON c.id = p.client_id ORDER BY p.id")
+                 .stream().map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+@@ -958,6 +967,9 @@ public class TestSupportController {
+                     if (r.get("CREDIT_NOTE") != null) {
+                         row.put("creditNote", r.get("CREDIT_NOTE"));
+                     }
++                    if (r.get("HELD_FOR") != null) {
++                        row.put("heldFor", r.get("HELD_FOR"));
++                    }
+                     row.put("allocations", jdbc.queryForList(
+                             "SELECT invoice_id, amount, applied_date FROM payment_allocation WHERE payment_id = ? ORDER BY invoice_id",
+                             r.get("ID")).stream().map(a -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index c794ba2..f2eaddf 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -210,6 +210,18 @@ public class Invoice {
+     @Column(name = "recur_until")
+     private LocalDate recurUntil;
+ 
++    /** The day the sent invoice was rebilled: cancelled with a full credit note and replaced (see {@link #rebill}); null when it was not. */
++    @Column(name = "rebilled_on")
++    private LocalDate rebilledOn;
++
++    /** The id of the rebilled invoice this one replaces (see {@link #rebill}); null when it replaces none. */
++    @Column(name = "replaces")
++    private Long replaces;
++
++    /** The id of the invoice that replaces this rebilled one; read from it, null when none does. */
++    @Formula("(SELECT MIN(r.id) FROM invoice r WHERE r.replaces = id)")
++    private Long replacedBy;
++
+     /** The id of the sent invoice this draft was claimed from as its next progress claim (see {@link #nextClaim}); null when it was not. */
+     @Column(name = "claim_from")
+     private Long claimFrom;
+@@ -638,6 +650,54 @@ public class Invoice {
+         return next;
+     }
+ 
++    /**
++     * The corrected replacement of this rebilled invoice: a draft for the same client, issued and due on the given dates,
++     * with copies of its lines, its percentage discount, surcharge and purchase order number, worked out afresh. It
++     * remembers which invoice it replaces.
++     */
++    public Invoice rebill(LocalDate issueDate, LocalDate dueDate) {
++        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        next.supplyRegion = supplyRegion;
++        next.discountPct = discountPct;
++        next.surchargePct = surchargePct;
++        next.poNumber = poNumber;
++        next.replaces = id;
++        lines.forEach(line -> next.addLine(line.copy()));
++        return next;
++    }
++
++    /**
++     * A draft credit note for exactly what this sent invoice is worth, issued on the given date: a credit copy of each
++     * of its lines, with its grand total and tax at the tax rate (those it was sent with, when kept) as its own.
++     */
++    public Invoice creditNoteInFull(LocalDate issueDate, BigDecimal taxRate) {
++        Invoice note = creditNote(issueDate);
++        lines.forEach(line -> note.addLine(line.creditCopy()));
++        note.sentTotal = total(taxRate);
++        note.sentTax = tax(taxRate);
++        return note;
++    }
++
++    /** Notes that the invoice was rebilled on the day. */
++    public void markRebilled(LocalDate on) {
++        this.rebilledOn = on;
++    }
++
++    /** The day the invoice was rebilled; null when it was not. */
++    public LocalDate getRebilledOn() {
++        return rebilledOn;
++    }
++
++    /** The id of the rebilled invoice this one replaces; null when it replaces none. */
++    public Long getReplaces() {
++        return replaces;
++    }
++
++    /** The id of the invoice that replaces this rebilled one; null when none does. */
++    public Long getReplacedBy() {
++        return replacedBy;
++    }
++
+     /** Whether any line is billed by progress. */
+     public boolean hasProgressLines() {
+         return lines.stream().anyMatch(InvoiceLine::isProgress);
+@@ -3230,9 +3290,12 @@ public class Invoice {
+         return amount.add(currentTax(taxRate));
+     }
+ 
+-    /** Whether the invoice is sent (not a draft) with the grand total and tax it was sent with kept. */
++    /**
++     * Whether the invoice is sent (not a draft) with the grand total and tax it was sent with kept, or is a credit note
++     * for exactly what its original was worth (see {@link #creditNoteInFull}).
++     */
+     public boolean hasSentFigures() {
+-        return status != InvoiceStatus.DRAFT && sentTotal != null && sentTax != null;
++        return (status != InvoiceStatus.DRAFT || creditOf != null) && sentTotal != null && sentTax != null;
+     }
+ 
+     /** The grand total the invoice was sent with; null for a draft or when it was not kept. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 495509c..4054c1c 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -176,6 +176,8 @@ public class InvoiceController {
+      * {@code poNumber} is the client's purchase order number (null when none).
+      * {@code sentTotal} is the grand total it was sent with, which it is worth (null for a draft, or when not kept), and
+      * {@code currentTotal} the grand total today's prices, rates and client details would give, only when that differs (else null).
++     * {@code rebilledOn} is the day it was rebilled (null when it was not); {@code replaces} is the number of the rebilled
++     * invoice it replaces and {@code replacedBy} the number of the invoice that replaces it (each null when none).
+      * {@code milestones} are the milestones it is billed by (empty when it is billed whole), each with its
+      * amount and status (see {@link Invoice#milestoneProgress}); {@code milestonesPct} is what their percentages add up to.
+      */
+@@ -191,7 +193,7 @@ public class InvoiceController {
+             int approvalsNeeded, int approvals,
+             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+             List<MilestoneView> milestones, String milestonesPct, Long claimFrom, String sentTotal, String currentTotal,
+-            String fingerprint, String duplicateOf) {
++            String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
+                 List<Invoice> duplicates) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+@@ -243,7 +245,9 @@ public class InvoiceController {
+                             ? i.currentTotal(taxRate).toPlainString() : null,
+                     Optional.ofNullable(i.fingerprint()).map(f -> f.substring(0, 8)).orElse(null),
+                     duplicates.isEmpty() ? null
+-                            : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")));
++                            : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
++                    i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
++                    i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()));
+         }
+     }
+ 
+@@ -784,6 +788,16 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /**
++     * Rebills a sent invoice: credits it in full and starts a corrected draft replacing it; answers the rebilled invoice.
++     */
++    @PostMapping("/api/invoices/{id}/rebill")
++    public InvoiceDetail rebill(@PathVariable Long id) {
++        return invoices.rebill(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Generates the next period's draft of a sent recurring invoice; answers the new draft. */
+     @PostMapping("/api/invoices/{id}/generate")
+     @ResponseStatus(HttpStatus.CREATED)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 4c634d1..ef007ae 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -202,6 +202,64 @@ public class InvoiceService {
+         });
+     }
+ 
++    /**
++     * Rebills the sent invoice, answering it; empty if no such invoice. A credit note dated today credits every line for
++     * exactly what the invoice is worth (what it was sent for) and is issued as any credit note is, after every payment
++     * made to the invoice has come off it; then a draft replacing it (see {@link Invoice#rebill}), issued today and due
++     * as any new invoice is, gets those payments held for it as credit, used on it first when it is sent. Records
++     * INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
++     * refused.
++     */
++    @Transactional
++    public Optional<Invoice> rebill(Long invoiceId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be rebilled.");
++            }
++            if (invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a sent invoice can be rebilled.");
++            }
++            if (invoice.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice cannot be rebilled.");
++            }
++            if (invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("A written-off invoice cannot be rebilled.");
++            }
++            if (invoice.hasCreditNotesIssued() || invoice.getRebilledOn() != null) {
++                throw new InvoiceRejectedException("An invoice already credited cannot be rebilled.");
++            }
++            LocalDate on = today.date();
++            BigDecimal rate = taxRate.percent();
++            List<Payment> paidBy = payments.findForInvoice(invoice.getId()).stream()
++                    .filter(p -> !p.isReversed()).toList();
++            paidBy.forEach(p -> {
++                p.returnCredit(invoice.getId());
++                payments.saveAndFlush(p);
++            });
++            Invoice note = invoices.saveAndFlush(invoice.creditNoteInFull(on, rate));
++            entityManager.refresh(note);
++            String refusal = creditNoteRefusal(note, false);
++            if (refusal != null) {
++                throw new InvoiceRejectedException(refusal);
++            }
++            issue(note);
++            invoice.markRebilled(on);
++            invoices.saveAndFlush(invoice);
++            Invoice next = invoices.saveAndFlush(invoice.rebill(on, dueDateFor(invoice.getClientId(), on)));
++            // Read again how far through the bands a copied tiered line's units reach.
++            entityManager.refresh(next);
++            paidBy.forEach(p -> {
++                p.holdFor(next.getId());
++                payments.saveAndFlush(p);
++            });
++            audit.record("INVOICE_REBILLED from=" + invoice.number() + " to=" + next.number());
++            entityManager.refresh(invoice);
++            withInterest(List.of(invoice));
++        });
++        return found;
++    }
++
+     /**
+      * Marks the invoice as recurring, or not; empty if no such invoice. A credit note is refused. The invoice
+      * is otherwise unchanged, so a sent one stays sent.
+@@ -2387,9 +2445,13 @@ public class InvoiceService {
+     /**
+      * The draft the payment is held for, or null when it is ordinary credit: a payment whose reference
+      * (an RF reference or invoice number, as stored) is that of one of the client's drafts is a deposit
+-     * held for it. Once that invoice has been sent the deposit's rest is ordinary credit.
++     * held for it, as is a payment moved onto the draft that replaces a rebilled invoice. Once that invoice has
++     * been sent the deposit's rest is ordinary credit.
+      */
+     private static Long heldFor(Payment payment, Map<String, Long> drafts) {
++        if (payment.getHeldFor() != null && drafts.containsValue(payment.getHeldFor())) {
++            return payment.getHeldFor();
++        }
+         String reference = payment.getReference();
+         if (reference == null || reference.isBlank()) {
+             return null;
+@@ -2537,7 +2599,7 @@ public class InvoiceService {
+ 
+     /**
+      * The invoices the draft is a possible duplicate of, lowest id first: its client's sent invoices (not
+-     * void, not credit notes) issued within the workspace's duplicate window of days before today whose
++     * void, not credit notes, not rebilled or fully credited) issued within the workspace's duplicate window of days before today whose
+      * {@link Invoice#fingerprint fingerprint} is the draft's. Empty for anything but a draft with lines, or
+      * when the workspace has no duplicate window.
+      */
+@@ -2552,6 +2614,8 @@ public class InvoiceService {
+         LocalDate from = on.minusDays(days);
+         return invoices.findByClientIdOrderByIdAsc(invoice.getClientId()).stream()
+                 .filter(i -> !i.getId().equals(invoice.getId()) && !i.isDraft() && !i.isVoid() && !i.isCreditNote())
++                // A rebilled or fully credited invoice is cancelled: nothing duplicates it.
++                .filter(i -> i.getRebilledOn() == null && i.getCredited().compareTo(i.total(taxRate.percent())) < 0)
+                 .filter(i -> i.getIssueDate() != null && !i.getIssueDate().isBefore(from) && !i.getIssueDate().isAfter(on))
+                 .filter(i -> fingerprint.equals(i.fingerprint()))
+                 .toList();
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Payment.java b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+index 3eadf9a..bdced9e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Payment.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Payment.java
+@@ -55,6 +55,10 @@ public class Payment {
+     @Column(name = "credit_note")
+     private Long creditNote;
+ 
++    /** The draft this payment's credit is held for, moved off the invoice it replaces when that was rebilled; null for none. */
++    @Column(name = "held_for")
++    private Long heldFor;
++
+     /** How much of the payment's unused credit has been refunded to the client; it is no longer credit. */
+     private BigDecimal refunded = BigDecimal.ZERO;
+ 
+@@ -222,6 +226,16 @@ public class Payment {
+         return creditNote;
+     }
+ 
++    /** The draft this payment's credit is held for (see {@link #holdFor}); null for none. */
++    public Long getHeldFor() {
++        return heldFor;
++    }
++
++    /** Holds this payment's credit for the draft, used on it first when it is sent. */
++    public void holdFor(Long invoiceId) {
++        this.heldFor = invoiceId;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/resources/db/migration/V86__rebill.sql b/src/main/resources/db/migration/V86__rebill.sql
+new file mode 100644
+index 0000000..818568c
+--- /dev/null
++++ b/src/main/resources/db/migration/V86__rebill.sql
+@@ -0,0 +1,6 @@
++-- The day a sent invoice was rebilled (cancelled with a full credit note and replaced); null when it was not.
++ALTER TABLE invoice ADD COLUMN rebilled_on DATE;
++-- The id of the rebilled invoice this one replaces; null when it replaces none.
++ALTER TABLE invoice ADD COLUMN replaces BIGINT;
++-- The invoice a payment's credit is held for, when it was moved off a rebilled invoice; null for none.
++ALTER TABLE payment ADD COLUMN held_for BIGINT;
