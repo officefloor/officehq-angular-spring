@@ -1,0 +1,76 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index c0ff5a6..22ba153 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -2427,7 +2427,8 @@ public class Invoice {
+ 
+     /**
+      * The invoice's fingerprint, to spot the same work billed twice: the SHA-256 hash (hex, in capitals) of
+-     * the client's id, a '|', then its lines (see {@link InvoiceLine#fingerprint}) sorted and joined with ';'.
++     * the client's id, a '|', then its lines (see {@link InvoiceLine#fingerprint}) sorted and joined with ';' — lines
++     * with the same description and unit price merged into one first, their quantities added.
+      * A sent invoice's is taken over its lines as adjusted (see {@link #adjustedFingerprint}). Null when it has no lines.
+      */
+     public String fingerprint() {
+@@ -2438,7 +2439,8 @@ public class Invoice {
+      * The fingerprint of the invoice as adjusted by its adjustment notes (see {@link #adjustWith}) and then by the
+      * further lines given: lines its debit notes (and {@code added}) bill count, and lines its credit notes (and
+      * {@code taken}) take off don't — a line taken off comes off the quantity of the lines billing the same thing at
+-     * the same price. Null when no line is left.
++     * the same price. Lines left billing the same thing at the same price are merged into one, their quantities
++     * added. Null when no line is left.
+      */
+     public String adjustedFingerprint(List<InvoiceLine> added, List<InvoiceLine> taken) {
+         List<InvoiceLine> billed = new ArrayList<>(lines);
+@@ -2462,12 +2464,18 @@ public class Invoice {
+                 }
+             }
+         }
+-        List<String> parts = new ArrayList<>();
++        // Lines billing the same thing at the same price count as one, their quantities added.
++        java.util.Map<String, InvoiceLine> byKey = new java.util.LinkedHashMap<>();
++        java.util.Map<String, BigDecimal> qtyByKey = new java.util.LinkedHashMap<>();
+         for (int i = 0; i < billed.size(); i++) {
+             if (left.get(i).signum() > 0) {
+-                parts.add(billed.get(i).fingerprintWith(left.get(i)));
++                String key = billed.get(i).fingerprintKey();
++                byKey.putIfAbsent(key, billed.get(i));
++                qtyByKey.merge(key, left.get(i), BigDecimal::add);
+             }
+         }
++        List<String> parts = new ArrayList<>();
++        byKey.forEach((key, line) -> parts.add(line.fingerprintWith(qtyByKey.get(key))));
+         if (parts.isEmpty()) {
+             return null;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 6c6c9bb..89a4e21 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -2828,8 +2828,9 @@ public class InvoiceService {
+     /**
+      * The invoices the draft is a possible duplicate of, lowest id first: its client's sent invoices (not
+      * void, not credit notes, not rebilled or fully credited) issued within the workspace's duplicate window of days before today whose
+-     * {@link Invoice#fingerprint fingerprint} is the draft's. Empty for anything but a draft with lines, or
+-     * when the workspace has no duplicate window.
++     * {@link Invoice#fingerprint fingerprint} is the draft's, and its client's earlier drafts (lower id, not credit or
++     * adjustment notes) with the same fingerprint. Empty for anything but a draft with lines, or when the workspace
++     * has no duplicate window.
+      */
+     @Transactional(readOnly = true)
+     public List<Invoice> possibleDuplicateOf(Invoice invoice) {
+@@ -2838,8 +2839,12 @@ public class InvoiceService {
+         if (days == null || fingerprint == null || !invoice.isDraft() || invoice.isCreditNote()) {
+             return List.of();
+         }
+-        return duplicateCandidates(invoice, adjusted(invoices.findByClientIdOrderByIdAsc(invoice.getClientId())), days)
+-                .stream().filter(i -> fingerprint.equals(i.fingerprint())).toList();
++        List<Invoice> all = adjusted(invoices.findByClientIdOrderByIdAsc(invoice.getClientId()));
++        List<Invoice> candidates = new ArrayList<>(duplicateCandidates(invoice, all, days));
++        all.stream().filter(i -> i.isDraft() && !i.isCreditNote() && !i.isAdjustment()
++                && invoice.getId() != null && i.getId() < invoice.getId()).forEach(candidates::add);
++        return candidates.stream().filter(i -> fingerprint.equals(i.fingerprint()))
++                .sorted(Comparator.comparing(Invoice::getId)).toList();
+     }
+ 
+     /**
