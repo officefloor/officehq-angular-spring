@@ -1,0 +1,54 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index ab2640c..beee8bf 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1829,8 +1829,8 @@ public class InvoiceService {
+      * The payment keeps the reference of the first invoice it reaches.
+      * With no reference, remittance text (null or blank when none) first pays, for each of its parts separated
+      * by semicolons in turn, the open invoice not matched by an earlier part whose purchase order number is
+-     * most like it: a Jaro-Winkler similarity (see {@link RemittanceMatch}) of at least 0.85,
+-     * the earlier due date then the lower id on a tie, among invoices that take payments and have something due. The rest goes in the same order.
++     * most like it: a Jaro-Winkler similarity (see {@link RemittanceMatch}) of at least 0.90,
++     * the larger amount due, then the earlier due date, then the lower id on a tie, among invoices that take payments and have something due. The rest goes in the same order.
+      */
+     @Transactional
+     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+@@ -1913,7 +1913,7 @@ public class InvoiceService {
+                     if (similarity < RemittanceMatch.THRESHOLD) {
+                         continue;
+                     }
+-                    if (best == null || similarity > score || (similarity == score && earlierMatch(invoice, best))) {
++                    if (best == null || similarity > score || (similarity == score && earlierMatch(invoice, best, dues))) {
+                         best = invoice;
+                         score = similarity;
+                     }
+@@ -1972,9 +1972,13 @@ public class InvoiceService {
+         return payments.saveAndFlush(payment);
+     }
+ 
+-    /** Of two equally good remittance matches, whether this one is taken first: the earlier due date, then the lower id. */
+-    private static boolean earlierMatch(Invoice invoice, Invoice than) {
+-        Comparator<Invoice> order = Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
++    /**
++     * Of two equally good remittance matches, whether this one is taken first: the larger amount due, then the earlier
++     * due date, then the lower id.
++     */
++    private static boolean earlierMatch(Invoice invoice, Invoice than, Map<Long, BigDecimal> dues) {
++        Comparator<Invoice> order = Comparator.comparing((Invoice i) -> dues.get(i.getId()), Comparator.reverseOrder())
++                .thenComparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                 .thenComparing(Invoice::getId);
+         return order.compare(invoice, than) < 0;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java b/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java
+index 94e3e06..5ea1a62 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/RemittanceMatch.java
+@@ -6,7 +6,7 @@ import java.util.Locale;
+ final class RemittanceMatch {
+ 
+     /** The least similarity that counts as a match. */
+-    static final double THRESHOLD = 0.85;
++    static final double THRESHOLD = 0.90;
+ 
+     private RemittanceMatch() {
+     }
