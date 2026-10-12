@@ -1,0 +1,488 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index ad85b84..9183beb 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -63,6 +63,9 @@ export interface Client {
+   // The client's tier: a tier the workspace gives its own approval limit (in US dollars) uses it
+   // instead of the workspace's approval limit.
+   tier: ClientTier;
++  // The percentage (0 to 100) the typed unit prices of the client's recurring invoices go up by on each
++  // anniversary of the plan; 0 is none. Prices from the rate card or price list are not raised.
++  upliftPct: number;
+ }
+ 
+ export type ClientTier = 'STANDARD' | 'KEY' | 'NEW';
+diff --git a/src/main/frontend/src/app/features/clients/clients.ts b/src/main/frontend/src/app/features/clients/clients.ts
+index aba72ce..d8e6cd6 100644
+--- a/src/main/frontend/src/app/features/clients/clients.ts
++++ b/src/main/frontend/src/app/features/clients/clients.ts
+@@ -187,6 +187,17 @@ function validTaxNumber(taxNumber: string): boolean {
+           step="0.01"
+           formControlName="creditLimit"
+         />
++        <label for="client-uplift">Yearly price rise % on recurring invoices (optional)</label>
++        <input
++          id="client-uplift"
++          data-testid="client-form-uplift-pct"
++          type="number"
++          inputmode="decimal"
++          min="0"
++          max="100"
++          step="0.01"
++          formControlName="upliftPct"
++        />
+         <label for="client-rate-discount">Discount on rates % (optional)</label>
+         <input
+           id="client-rate-discount"
+@@ -352,6 +363,7 @@ export class Clients {
+     minimumCharge: new FormControl<number | null>(null),
+     creditLimit: new FormControl<number | null>(null),
+     rateDiscountPct: new FormControl<number | null>(null),
++    upliftPct: new FormControl<number | null>(null),
+     graceDays: new FormControl<number | null>(null),
+     interestRate: new FormControl<number | null>(null),
+     region: new FormControl('', { nonNullable: true }),
+@@ -422,6 +434,8 @@ export class Clients {
+     const creditLimit = limit === null || (limit as unknown) === '' ? null : Number(limit);
+     const rateDiscount = this.form.controls.rateDiscountPct.value;
+     const rateDiscountPct = rateDiscount === null || (rateDiscount as unknown) === '' ? null : Number(rateDiscount);
++    const uplift = this.form.controls.upliftPct.value;
++    const upliftPct = uplift === null || (uplift as unknown) === '' ? null : Number(uplift);
+     const grace = this.form.controls.graceDays.value;
+     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
+     const interest = this.form.controls.interestRate.value;
+@@ -446,6 +460,7 @@ export class Clients {
+       minimumCharge,
+       creditLimit,
+       rateDiscountPct,
++      upliftPct,
+       graceDays,
+       interestRate,
+       region,
+@@ -469,6 +484,7 @@ export class Clients {
+       minimumCharge,
+       creditLimit,
+       rateDiscountPct,
++      upliftPct,
+       graceDays,
+       interestRate,
+       earlyPayPct,
+@@ -497,6 +513,7 @@ export class Clients {
+       minimumCharge,
+       creditLimit,
+       rateDiscountPct: rateDiscountPct ?? 0,
++      upliftPct: upliftPct ?? 0,
+       graceDays,
+       interestRate,
+       region: region || null,
+@@ -562,6 +579,7 @@ export class Clients {
+     minimumCharge: number | null,
+     creditLimit: number | null,
+     rateDiscountPct: number | null,
++    upliftPct: number | null,
+     graceDays: number | null,
+     interestRate: number | null,
+     earlyPayPct: number | null,
+@@ -617,6 +635,13 @@ export class Clients {
+         problems.push('The rate discount can have at most two decimals.');
+       }
+     }
++    if (upliftPct !== null) {
++      if (!(Number.isFinite(upliftPct) && upliftPct >= 0 && upliftPct <= 100)) {
++        problems.push('The yearly price rise must be from 0 to 100 percent.');
++      } else if (Math.abs(Math.round(upliftPct * 100) - upliftPct * 100) > 1e-6) {
++        problems.push('The yearly price rise can have at most two decimals.');
++      }
++    }
+     if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {
+       problems.push('The grace period must be from 0 to 30 days.');
+     }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 2fd10fb..0797e9b 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -831,6 +831,9 @@ function problemWith(line: NewLine): string {
+             />
+             Recurring
+           </label>
++          @if (inv.recurring && inv.recurringSince) {
++            <p data-testid="invoice-recurring-since">Plan since {{ inv.recurringSince }}</p>
++          }
+           @if (recurringError()) {
+             <p role="alert" data-testid="invoice-recurring-error">{{ recurringError() }}</p>
+           }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index d75a45c..1912833 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -252,6 +252,8 @@ export interface InvoiceDetail {
+   recurringFrom: number | null;
+   // The last day a recurring invoice bills for (yyyy-mm-dd): a generated period stops on it; null for no end.
+   recurUntil: string | null;
++  // The day a recurring invoice's plan began (yyyy-mm-dd), moved on a year at each yearly price rise; null for none.
++  recurringSince: string | null;
+   // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
+   claimFrom: number | null;
+   // The client's purchase order number for the invoice; null when none was given.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index cb6de2b..8a6aa3c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -54,9 +54,9 @@ public class TestSupportController {
+     /** The setting holding the workspace's approval limit in US dollars (see Invoice#approval). */
+     private static final String APPROVAL_LIMIT = "approval_limit";
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+-    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
++    private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier", "upliftPct");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "lineItems", "milestones");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "approvals", "recurring", "recurringFrom", "recurringSince", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
+@@ -382,7 +382,7 @@ public class TestSupportController {
+             if (tier == null) {
+                 throw refuse("unsupported value of clients[].tier: " + row.get("tier"));
+             }
+-            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct", "tax_exempt_until", "credit_limit", "on_hold", "tier"},
++            insert("client", row.get("id"), new String[] {"name", "email", "terms_days", "discount_pct", "tax_exempt", "prices_include_tax", "currency", "early_pay_pct", "early_pay_days", "grace_days", "interest_rate", "region", "tax_number", "withholding_pct", "minimum_charge", "rate_discount_pct", "tax_exempt_until", "credit_limit", "on_hold", "tier", "uplift_pct"},
+                     text(row, "name"), text(row, "email"), days(row.get("termsDays"), "clients[].termsDays"),
+                     percent(row.get("discountPct"), "clients[].discountPct"),
+                     flag(row.get("taxExempt"), "clients[].taxExempt"),
+@@ -398,7 +398,8 @@ public class TestSupportController {
+                     percent(row.get("rateDiscountPct"), "clients[].rateDiscountPct"),
+                     row.get("taxExemptUntil") == null ? null : date(row.get("taxExemptUntil"), "clients[].taxExemptUntil"),
+                     row.get("creditLimit") == null ? null : money(row.get("creditLimit"), "clients[].creditLimit"),
+-                    flag(row.get("onHold"), "clients[].onHold"), tier.name());
++                    flag(row.get("onHold"), "clients[].onHold"), tier.name(),
++                    percent(row.get("upliftPct"), "clients[].upliftPct"));
+             Long clientId = id(row.get("id") == null
+                     ? jdbc.queryForObject("SELECT MAX(id) FROM client", Long.class) : row.get("id"));
+             for (Map<String, Object> rate : rows(row.get("rates"), "clients[].rates")) {
+@@ -445,7 +446,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "approvals", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from", "recurring_since"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -478,7 +479,8 @@ public class TestSupportController {
+                             : date(row.get("disputeResolvedOn"), "invoices[].disputeResolvedOn"),
+                     flag(row.get("disputeCredit"), "invoices[].disputeCredit"),
+                     row.get("poNumber") == null ? null : row.get("poNumber").toString(),
+-                    row.get("claimFrom") == null ? null : id(row.get("claimFrom")));
++                    row.get("claimFrom") == null ? null : id(row.get("claimFrom")),
++                    row.get("recurringSince") == null ? null : date(row.get("recurringSince"), "invoices[].recurringSince"));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -735,7 +737,7 @@ public class TestSupportController {
+         if (!settings.isEmpty()) {
+             out.put("settings", settings);
+         }
+-        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct, tax_exempt_until, credit_limit, on_hold, tier FROM client ORDER BY id").stream()
++        out.put("clients", jdbc.queryForList("SELECT id, name, email, terms_days, discount_pct, tax_exempt, prices_include_tax, currency, early_pay_pct, early_pay_days, grace_days, interest_rate, region, tax_number, withholding_pct, minimum_charge, rate_discount_pct, tax_exempt_until, credit_limit, on_hold, tier, uplift_pct FROM client ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -756,6 +758,7 @@ public class TestSupportController {
+                     row.put("rateDiscountPct", r.get("RATE_DISCOUNT_PCT"));
+                     row.put("onHold", r.get("ON_HOLD"));
+                     row.put("tier", r.get("TIER"));
++                    row.put("upliftPct", r.get("UPLIFT_PCT"));
+                     if (r.get("TAX_EXEMPT_UNTIL") != null) {
+                         row.put("taxExemptUntil", r.get("TAX_EXEMPT_UNTIL").toString());
+                     }
+@@ -801,7 +804,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, approvals, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from, recurring_since FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -847,6 +850,9 @@ public class TestSupportController {
+                     if (r.get("RECUR_UNTIL") != null) {
+                         row.put("recurUntil", r.get("RECUR_UNTIL").toString());
+                     }
++                    if (r.get("RECURRING_SINCE") != null) {
++                        row.put("recurringSince", r.get("RECURRING_SINCE").toString());
++                    }
+                     if (r.get("RECURRING_FROM") != null) {
+                         row.put("recurringFrom", r.get("RECURRING_FROM"));
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/Client.java b/src/main/java/net/officefloor/hq/app/clients/Client.java
+index 21ad43b..1303cc5 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/Client.java
++++ b/src/main/java/net/officefloor/hq/app/clients/Client.java
+@@ -120,6 +120,13 @@ public class Client {
+     @Column(name = "on_hold")
+     private boolean onHold;
+ 
++    /**
++     * The percentage (0 to 100, 0 for none) the typed unit prices of the client's recurring invoices go up by on each
++     * anniversary of the plan.
++     */
++    @Column(name = "uplift_pct")
++    private BigDecimal upliftPct = BigDecimal.ZERO;
++
+     /** The client's tier: its approval limit is the tier's when the workspace gives the tier one. */
+     @Enumerated(EnumType.STRING)
+     private ClientTier tier = ClientTier.STANDARD;
+@@ -151,8 +158,9 @@ public class Client {
+     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
+-            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit, ClientTier tier) {
++            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit, ClientTier tier, BigDecimal upliftPct) {
+         this.name = name;
++        this.upliftPct = upliftPct == null ? BigDecimal.ZERO : upliftPct;
+         this.tier = tier == null ? ClientTier.STANDARD : tier;
+         this.creditLimit = creditLimit;
+         this.taxExemptUntil = taxExemptUntil;
+@@ -233,6 +241,10 @@ public class Client {
+         return creditLimit;
+     }
+ 
++    public BigDecimal getUpliftPct() {
++        return upliftPct;
++    }
++
+     public ClientTier getTier() {
+         return tier;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientController.java b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+index 4a05879..289191c 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientController.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientController.java
+@@ -33,7 +33,7 @@ public class ClientController {
+             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
+             Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
+             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
+-            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier) {
++            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier, BigDecimal upliftPct) {
+         /**
+          * The client, on hold when held by hand or while over its credit limit (overLimit), with its payment risk
+          * score (null when nothing is paid in full) and band.
+@@ -44,7 +44,7 @@ public class ClientController {
+                     c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
+                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
+                     c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit, overLimit,
+-                    risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier());
++                    risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier(), c.getUpliftPct());
+         }
+     }
+ 
+@@ -126,7 +126,12 @@ public class ClientController {
+             BigDecimal creditLimit,
+             /** The client's tier; STANDARD when left out. */
+             @Pattern(regexp = "STANDARD|KEY|NEW", message = "The tier must be STANDARD, KEY or NEW.")
+-            String tier) {
++            String tier,
++            /** The yearly percentage rise of the client's typed recurring prices; none when left out. */
++            @DecimalMin(value = "0", message = "The yearly price rise must be from 0 to 100 percent.")
++            @DecimalMax(value = "100", message = "The yearly price rise must be from 0 to 100 percent.")
++            @Digits(integer = 3, fraction = 2, message = "The yearly price rise can have at most two decimals.")
++            BigDecimal upliftPct) {
+ 
+         @AssertTrue(message = "Only a tax-exempt client can have an exemption end date: tick tax exempt or clear the date.")
+         public boolean isTaxExemptUntilExempt() {
+@@ -174,7 +179,7 @@ public class ClientController {
+         return view(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
+                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
+                 body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
+-                body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit(), ClientTier.orStandard(body.tier())));
++                body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit(), ClientTier.orStandard(body.tier()), body.upliftPct()));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/clients/ClientService.java b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+index a1f1e69..a52a9bd 100644
+--- a/src/main/java/net/officefloor/hq/app/clients/ClientService.java
++++ b/src/main/java/net/officefloor/hq/app/clients/ClientService.java
+@@ -39,13 +39,13 @@ public class ClientService {
+     public Client add(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
+             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays, Integer graceDays,
+             BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
+-            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit, ClientTier tier) {
++            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit, ClientTier tier, BigDecimal upliftPct) {
+         String address = email.trim();
+         if (clients.existsByEmailIgnoreCase(address)) {
+             throw new ClientRejectedException("Another client already has the email " + address + ".");
+         }
+         return clients.save(new Client(name.trim(), address, termsDays, discountPct, taxExempt, pricesIncludeTax, currency, earlyPayPct, earlyPayDays, graceDays, interestRate,
+-                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct, minimumCharge, rateDiscountPct, taxExemptUntil, creditLimit, tier));
++                region == null || region.isBlank() ? null : region.trim(), TaxNumber.normalize(taxNumber), withholdingPct, minimumCharge, rateDiscountPct, taxExemptUntil, creditLimit, tier, upliftPct));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 0310f29..99f8873 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -188,6 +188,13 @@ public class Invoice {
+     @Column(name = "recurring_from")
+     private Long recurringFrom;
+ 
++    /**
++     * The day the recurring invoice's plan began: the first period's start when it was first made recurring, kept by the
++     * drafts it generates and moved on a year at each yearly price rise; null when it has none.
++     */
++    @Column(name = "recurring_since")
++    private LocalDate recurringSince;
++
+     /** The last day the recurring invoice bills for: a generated period stops on it; null when it has no end. */
+     @Column(name = "recur_until")
+     private LocalDate recurUntil;
+@@ -544,9 +551,11 @@ public class Invoice {
+      * each line with a service period, moved to the whole calendar month after the latest period end on the invoice (lines
+      * without a period are one-off charges and are not copied), with this invoice's percentage discount and surcharge.
+      * The period stops on the end date when it falls inside that month (and is prorated as usual).
+-     * The draft is recurring too, keeps the end date and remembers it was generated from this invoice.
++     * The draft is recurring too, keeps the end date and plan date and remembers it was generated from this invoice.
++     * When the period starts on or after the next anniversary of the plan date, each typed unit price (not one priced from
++     * the rates) goes up by the client's yearly percentage, rounded half up to the cent, and the draft's plan date moves on a year.
+      */
+-    public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate) {
++    public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate, BigDecimal upliftPct) {
+         Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+         next.supplyRegion = supplyRegion;
+         next.discountPct = discountPct;
+@@ -554,7 +563,12 @@ public class Invoice {
+         next.recurring = true;
+         next.recurringFrom = id;
+         next.recurUntil = recurUntil;
++        next.recurringSince = recurringSince;
+         LocalDate start = nextPeriodStart();
++        boolean rise = recurringSince != null && !start.isBefore(recurringSince.plusYears(1));
++        if (rise) {
++            next.recurringSince = recurringSince.plusYears(1);
++        }
+         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+         if (recurUntil != null && recurUntil.isBefore(end)) {
+             end = recurUntil;
+@@ -563,6 +577,9 @@ public class Invoice {
+             if (line.hasPeriod()) {
+                 InvoiceLine copy = line.copy();
+                 copy.setPeriod(start, end);
++                if (rise && upliftPct != null && upliftPct.signum() > 0) {
++                    copy.raisePrice(upliftPct);
++                }
+                 next.addLine(copy);
+             }
+         }
+@@ -611,8 +628,21 @@ public class Invoice {
+         return recurring;
+     }
+ 
++    /**
++     * Makes the invoice recurring, or not. When first made recurring its plan begins on its first period's start
++     * (the earliest service period start of its lines).
++     */
+     public void setRecurring(boolean recurring) {
+         this.recurring = recurring;
++        if (recurring && recurringSince == null) {
++            recurringSince = lines.stream().filter(InvoiceLine::hasPeriod).map(InvoiceLine::getPeriodStart)
++                    .min(LocalDate::compareTo).orElse(null);
++        }
++    }
++
++    /** The day the recurring invoice's plan began (moved on a year at each price rise); null when it has none. */
++    public LocalDate getRecurringSince() {
++        return recurringSince;
+     }
+ 
+     /** The last day the recurring invoice bills for; null when it has no end. */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index fbf56d9..31fa3b7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -166,7 +166,8 @@ public class InvoiceController {
+      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not);
+      * {@code approvalsNeeded} is how many approvals it still needs before it is sent (0 when none) and {@code approvals} how many it has at its total.
+      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
+-     * {@code recurUntil} is the last day it bills for when recurring (null for no end).
++     * {@code recurUntil} is the last day it bills for when recurring (null for no end), and {@code recurringSince} the day its plan began
++     * (moved on a year at each yearly price rise; null for none).
+      * {@code claimFrom} is the id of the invoice it was claimed from as its next progress claim (null when it was not).
+      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
+      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
+@@ -184,7 +185,7 @@ public class InvoiceController {
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+             int approvalsNeeded, int approvals,
+-            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
++            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+             List<MilestoneView> milestones, String milestonesPct, Long claimFrom) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+@@ -227,7 +228,7 @@ public class InvoiceController {
+                     i.getSupplyRegion(), approval,
+                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
+                     i.approvalsNeeded(approval, taxRate, today), i.approvalsGiven(taxRate, today),
+-                    i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getDisputedOn(), i.getDisputeResolvedOn(),
++                    i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getRecurringSince(), i.getDisputedOn(), i.getDisputeResolvedOn(),
+                     i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
+                     i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
+                     i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom());
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 59951cc..fbeb1b8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -297,6 +297,18 @@ public class InvoiceLine {
+         this.minUnits = minUnits;
+     }
+ 
++    /**
++     * Raises a typed unit price by the percentage, rounded half up to the cent; a price taken from the rates (rate card or
++     * price list) keeps that price.
++     */
++    void raisePrice(BigDecimal pct) {
++        if (ratePriced || cardPriced || unitPrice == null) {
++            return;
++        }
++        unitPrice = unitPrice.multiply(BigDecimal.valueOf(100).add(pct)).divide(BigDecimal.valueOf(100))
++                .setScale(2, RoundingMode.HALF_UP);
++    }
++
+     /** Puts the line on the given invoice. */
+     void placeOn(Invoice invoice) {
+         this.invoice = invoice;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 41f2834..0c8c224 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -259,7 +259,7 @@ public class InvoiceService {
+                 throw new InvoiceRejectedException("The client is on hold: nothing is generated for them.");
+             }
+             LocalDate issued = today.date();
+-            Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued)));
++            Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued), upliftPct(original.getClientId())));
+             // Read again how far through the bands a copied tiered line's units reach.
+             entityManager.refresh(next);
+             audit.record("INVOICE_GENERATED from=" + original.number() + " to=" + next.number());
+@@ -2375,6 +2375,11 @@ public class InvoiceService {
+         return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c)).orElse(false);
+     }
+ 
++    /** The client's yearly percentage rise of its typed recurring prices; zero when none or no such client. */
++    private BigDecimal upliftPct(Long clientId) {
++        return clients.findById(clientId).map(Client::getUpliftPct).orElse(BigDecimal.ZERO);
++    }
++
+     /** How quickly a client pays: LOW under 15 days, MEDIUM under 30, HIGH from 30. */
+     public enum RiskBand {
+         LOW, MEDIUM, HIGH
+diff --git a/src/main/resources/db/migration/V84__yearly_uplift.sql b/src/main/resources/db/migration/V84__yearly_uplift.sql
+new file mode 100644
+index 0000000..043cab4
+--- /dev/null
++++ b/src/main/resources/db/migration/V84__yearly_uplift.sql
+@@ -0,0 +1,4 @@
++-- The percentage (0 for none) a client's typed recurring prices go up by on each anniversary of the plan.
++ALTER TABLE client ADD COLUMN uplift_pct DECIMAL(5, 2) NOT NULL DEFAULT 0;
++-- The day a recurring invoice's plan began (moved on a year at each price rise); null when it has none.
++ALTER TABLE invoice ADD COLUMN recurring_since DATE;
