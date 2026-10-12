@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, ReplaySubject, of, switchMap, tap } from 'rxjs';
+import { Observable, ReplaySubject, Subject, of, switchMap, tap } from 'rxjs';
 import { Currency } from './invoice-format';
 
 // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
@@ -102,8 +102,9 @@ export interface InvoiceLineView {
 // part applied to this invoice) in the client's currency. `surcharge` is the part of the amount that
 // was the card surcharge, in the client's currency ("0.00" unless paid by card), and `fxFee` the part
 // that was the conversion fee ("0.00" unless paid in another currency). `remittance` is the client's
-// remittance text (null when none); `matchedInvoice` is the number of the invoice whose purchase order
-// it matched and `matchScore` the similarity to three decimals (both null when none).
+// remittance text (null when none); `matchedInvoice` is the numbers of the invoices whose purchase
+// orders its semicolon-separated parts matched and `matchScore` their similarities to three decimals, each
+// comma separated in the order of the parts (both null when none).
 export interface InvoicePaymentView {
   id: number;
   amount: string;
@@ -350,6 +351,10 @@ export class InvoiceService {
   // Completes once the latest payment spread over a client's invoices has been answered, so an
   // invoice opened meanwhile is read with it.
   private paymentSettled: Observable<unknown> = of(null);
+  private readonly splitPayments = new Subject<{ clientId: number; invoices: InvoiceSummary[] }>();
+  // Each payment spread over a client's invoices once recorded, with the client's invoices' new
+  // statuses: heard even when the form it was recorded in has gone (an invoice was opened meanwhile).
+  readonly splitRecorded = this.splitPayments.asObservable();
 
   forClient(clientId: number): Observable<InvoiceSummary[]> {
     return this.paymentSettled.pipe(
@@ -581,7 +586,16 @@ export class InvoiceService {
     };
     return this.http
       .post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment)
-      .pipe(tap({ next: done, error: done, unsubscribe: done }));
+      .pipe(
+        tap({
+          next: (invoices) => {
+            done();
+            this.splitPayments.next({ clientId, invoices });
+          },
+          error: done,
+          unsubscribe: done,
+        }),
+      );
   }
 
   // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice

@@ -1810,10 +1810,10 @@ public class InvoiceService {
      * each be more than zero and together no more than the payment; each must be no more than its
      * invoice has due and at least its minimum part payment (both checked with the other parts).
      * The payment keeps the reference of the first invoice it reaches.
-     * With no reference, remittance text (null or blank when none) first pays the open invoice whose
-     * purchase order number is most like it: a Jaro-Winkler similarity (see {@link RemittanceMatch}) of at least
-     * 0.85, the earlier due date then the lower id on a tie, among invoices that take payments and have something
-     * due. The rest goes in the same order.
+     * With no reference, remittance text (null or blank when none) first pays, for each of its parts separated
+     * by semicolons in turn, the open invoice not matched by an earlier part whose purchase order number is
+     * most like it: a Jaro-Winkler similarity (see {@link RemittanceMatch}) of at least 0.85,
+     * the earlier due date then the lower id on a tie, among invoices that take payments and have something due. The rest goes in the same order.
      */
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
@@ -1878,27 +1878,37 @@ public class InvoiceService {
         }
         Map<Long, BigDecimal> dues = new HashMap<>();
         List<Invoice> sent = inPaymentOrder(candidates, dues);
-        Invoice matched = null;
-        double score = 0;
+        // Each part of the remittance (separated by semicolons) in turn matches an invoice not matched by an earlier part.
+        List<Invoice> matched = new ArrayList<>();
+        List<Double> scores = new ArrayList<>();
         if (references.isEmpty() && remittance != null && !remittance.isBlank()) {
-            for (Invoice invoice : sent) {
-                if (dues.get(invoice.getId()).signum() <= 0 || invoice.getPoNumber() == null) {
+            for (String part : remittance.split(";")) {
+                if (part.isBlank()) {
                     continue;
                 }
-                double similarity = RemittanceMatch.similarity(remittance.trim(), invoice.getPoNumber());
-                if (similarity < RemittanceMatch.THRESHOLD) {
-                    continue;
+                Invoice best = null;
+                double score = 0;
+                for (Invoice invoice : sent) {
+                    if (dues.get(invoice.getId()).signum() <= 0 || invoice.getPoNumber() == null || matched.contains(invoice)) {
+                        continue;
+                    }
+                    double similarity = RemittanceMatch.similarity(part.trim(), invoice.getPoNumber());
+                    if (similarity < RemittanceMatch.THRESHOLD) {
+                        continue;
+                    }
+                    if (best == null || similarity > score || (similarity == score && earlierMatch(invoice, best))) {
+                        best = invoice;
+                        score = similarity;
+                    }
                 }
-                if (matched == null || similarity > score || (similarity == score && earlierMatch(invoice, matched))) {
-                    matched = invoice;
-                    score = similarity;
+                if (best != null) {
+                    matched.add(best);
+                    scores.add(score);
                 }
             }
-            if (matched != null) {
-                List<Invoice> reordered = new ArrayList<>();
-                reordered.add(matched);
-                Long matchedId = matched.getId();
-                sent.stream().filter(i -> !i.getId().equals(matchedId)).forEach(reordered::add);
+            if (!matched.isEmpty()) {
+                List<Invoice> reordered = new ArrayList<>(matched);
+                sent.stream().filter(i -> !matched.contains(i)).forEach(reordered::add);
                 sent = reordered;
             }
         }
@@ -1939,8 +1949,8 @@ public class InvoiceService {
         Payment payment = recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee,
                         stated)
                 .remitted(remittance);
-        if (matched != null) {
-            payment.matched(matched.getId(), score);
+        for (int i = 0; i < matched.size(); i++) {
+            payment.matched(matched.get(i).getId(), scores.get(i));
         }
         return payments.saveAndFlush(payment);
     }

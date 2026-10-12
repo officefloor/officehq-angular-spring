@@ -118,6 +118,7 @@ public class TestSupportController {
         jdbc.execute("DELETE FROM volume_discount");
         jdbc.execute("DELETE FROM tax_rate_change");
         jdbc.execute("DELETE FROM payment_allocation");
+        jdbc.execute("DELETE FROM payment_match");
         jdbc.execute("DELETE FROM client_rate");
         jdbc.execute("DELETE FROM price_list_rate");
         for (String table : List.of("payment", "invoice_milestone", "invoice_line", "invoice", "client")) {

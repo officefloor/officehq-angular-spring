@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { InvoiceDetail, InvoiceService, InvoiceSummary } from './invoice.service';
 import { PaymentForm } from './payment-form';
@@ -109,7 +110,6 @@ import { Currency, money, statusLabel } from './invoice-format';
       <app-payment-form
         [clientId]="clientId()"
         [currency]="currency()"
-        (split)="splitRecorded($event)"
         (deposited)="splitRecorded($event)"
       />
     }
@@ -144,6 +144,15 @@ export class ClientInvoices {
   protected readonly money = money;
 
   constructor() {
+    // A payment spread over the client's invoices: show their new statuses, even when an invoice was
+    // opened (closing the payment form) before it was answered.
+    this.service.splitRecorded
+      .pipe(takeUntilDestroyed())
+      .subscribe(({ clientId, invoices }) => {
+        if (clientId === untracked(this.clientId)) {
+          this.splitRecorded(invoices);
+        }
+      });
     effect((onCleanup) => {
       const id = this.clientId();
       this.invoices.set([]);

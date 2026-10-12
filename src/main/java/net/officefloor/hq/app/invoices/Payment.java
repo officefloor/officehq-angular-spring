@@ -6,10 +6,12 @@ import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -40,13 +42,11 @@ public class Payment {
     /** The remittance text the client wrote on the payment, or null when none was. */
     private String remittance;
 
-    /** The invoice whose purchase order number the remittance matched; null when none did. */
-    @Column(name = "matched_invoice")
-    private Long matchedInvoice;
-
-    /** How closely the remittance matched that invoice's purchase order number (Jaro-Winkler); null when none did. */
-    @Column(name = "match_score")
-    private BigDecimal matchScore;
+    /** The invoices whose purchase order numbers the parts of the remittance matched, in order; empty when none did. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "payment_match", joinColumns = @JoinColumn(name = "payment_id"))
+    @OrderColumn(name = "position")
+    private List<PaymentMatch> matches = new ArrayList<>();
 
     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
     private boolean reversed;
@@ -161,10 +161,9 @@ public class Payment {
         return this;
     }
 
-    /** Notes the invoice the remittance matched and the similarity, rounded half up to three decimals. */
+    /** Notes the next invoice a part of the remittance matched and the similarity, rounded half up to three decimals. */
     public Payment matched(Long invoiceId, double score) {
-        this.matchedInvoice = invoiceId;
-        this.matchScore = BigDecimal.valueOf(score).setScale(3, java.math.RoundingMode.HALF_UP);
+        matches.add(new PaymentMatch(invoiceId, BigDecimal.valueOf(score).setScale(3, java.math.RoundingMode.HALF_UP)));
         return this;
     }
 
@@ -172,12 +171,8 @@ public class Payment {
         return remittance;
     }
 
-    public Long getMatchedInvoice() {
-        return matchedInvoice;
-    }
-
-    public BigDecimal getMatchScore() {
-        return matchScore;
+    public List<PaymentMatch> getMatches() {
+        return matches;
     }
 
     /** Notes how the payment was made (null for a bank transfer). */

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import net.officefloor.hq.app.TaxRate;
 import net.officefloor.hq.app.Today;
@@ -65,8 +66,9 @@ public class InvoiceController {
      * reference it quoted in groups of four (null when none). {@code surcharge} is the part of it that
      * was the card surcharge, in the client's currency ("0.00" unless paid by card), and {@code fxFee} the
      * part that was the conversion fee ("0.00" unless paid in another currency). {@code remittance} is the
-     * remittance text (null when none), {@code matchedInvoice} the number of the invoice whose purchase order
-     * number it matched and {@code matchScore} the similarity to three decimals (both null when none).
+     * remittance text (null when none), {@code matchedInvoice} the numbers of the invoices whose purchase order
+     * numbers its parts matched and {@code matchScore} their similarities to three decimals, each comma separated
+     * in the order of the parts (both null when none).
      */
     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
             String reference, PaymentMethod method, String surcharge, String fxFee, String remittance, String matchedInvoice,
@@ -76,8 +78,11 @@ public class InvoiceController {
                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
                     p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString(),
-                    p.getRemittance(), p.getMatchedInvoice() == null ? null : InvoiceNumber.of(p.getMatchedInvoice()),
-                    p.getMatchScore() == null ? null : p.getMatchScore().setScale(3).toPlainString());
+                    p.getRemittance(),
+                    p.getMatches().isEmpty() ? null : p.getMatches().stream()
+                            .map(m -> InvoiceNumber.of(m.getInvoiceId())).collect(Collectors.joining(", ")),
+                    p.getMatches().isEmpty() ? null : p.getMatches().stream()
+                            .map(m -> m.getScore().setScale(3).toPlainString()).collect(Collectors.joining(", ")));
         }
     }
 
