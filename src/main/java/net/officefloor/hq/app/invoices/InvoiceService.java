@@ -335,6 +335,19 @@ public class InvoiceService {
                 .orElseGet(() -> dueDateFor(issued));
     }
 
+    /**
+     * Shortens the due date of an invoice sent to a slow payer: a MEDIUM-risk client's is at most 21 days
+     * after the issue date and a HIGH-risk client's at most 7; an earlier due date is kept.
+     */
+    private LocalDate cappedForRisk(Long clientId, LocalDate issued, LocalDate due) {
+        LocalDate cap = switch (riskOf(clientId).band()) {
+            case HIGH -> issued.plusDays(7);
+            case MEDIUM -> issued.plusDays(21);
+            default -> null;
+        };
+        return cap != null && due.isAfter(cap) ? cap : due;
+    }
+
     /** A new invoice is due on the last day of the month after the month it is issued in. */
     static LocalDate dueDateFor(LocalDate issued) {
         LocalDate nextMonth = issued.plusMonths(1);
@@ -1243,7 +1256,7 @@ public class InvoiceService {
     private void markSent(Invoice invoice) {
         LocalDate issued = today.date();
         repriceFromRates(invoice, null, issued);
-        invoice.markSent(issued, dueDateFor(invoice.getClientId(), issued));
+        invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
         invoices.saveAndFlush(invoice);
         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
