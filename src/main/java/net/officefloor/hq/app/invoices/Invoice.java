@@ -1265,11 +1265,19 @@ public class Invoice {
         return currency().divideDownToStep(new BigDecimal(approvalLimitUsd.trim()), usdPerOn(issueDate));
     }
 
+    /**
+     * The total a draft is judged and approved on at the tax rate: the plan total (with its interest and plan fee)
+     * when it has an instalment plan, else the grand total.
+     */
+    public BigDecimal approvalTotal(BigDecimal taxRate) {
+        return hasPlan() ? planTotal(taxRate) : total(taxRate);
+    }
+
     /** The number of days an approval stays good after the day it was given. */
     public static final int APPROVAL_DAYS = 30;
 
     /**
-     * The invoice's approval at the tax rate as of today: a credit note, or an invoice whose grand total
+     * The invoice's approval at the tax rate as of today, judged on its {@link #approvalTotal}: a credit note, or an invoice whose grand total
      * (before any withholding) is not over the approval limit and whose discount takes off no more than a
      * fifth of the subtotal, needs none; otherwise it is approved while its grand total is exactly the total
      * it was approved at and no more than {@link #APPROVAL_DAYS} days have passed since it was approved.
@@ -1286,7 +1294,7 @@ public class Invoice {
             return approvedTotal == null ? Approval.NOT_NEEDED : Approval.APPROVED;
         }
         BigDecimal limit = approvalLimit();
-        BigDecimal total = total(taxRate);
+        BigDecimal total = approvalTotal(taxRate);
         if (!highRisk && !overCreditLimit && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
             return Approval.NOT_NEEDED;
         }
@@ -1296,7 +1304,7 @@ public class Invoice {
     /** The approvals a draft needs: two when its grand total is more than twice the approval limit, else one. */
     public int approvalsRequired(BigDecimal taxRate) {
         BigDecimal limit = approvalLimit();
-        return limit != null && total(taxRate).compareTo(limit.multiply(BigDecimal.valueOf(2))) > 0 ? 2 : 1;
+        return limit != null && approvalTotal(taxRate).compareTo(limit.multiply(BigDecimal.valueOf(2))) > 0 ? 2 : 1;
     }
 
     /**
@@ -1316,12 +1324,12 @@ public class Invoice {
         if (approval != Approval.NEEDS_APPROVAL) {
             return 0;
         }
-        return Math.max(1, approvalsRequired(taxRate) - approvalsAt(total(taxRate), today));
+        return Math.max(1, approvalsRequired(taxRate) - approvalsAt(approvalTotal(taxRate), today));
     }
 
     /** The approvals that stand for the grand total as of today (see {@link #approvalsNeeded}). */
     public int approvalsGiven(BigDecimal taxRate, LocalDate today) {
-        return approvalsAt(total(taxRate), today);
+        return approvalsAt(approvalTotal(taxRate), today);
     }
 
     public int getApprovals() {

@@ -1166,7 +1166,7 @@ public class InvoiceService {
                         ? "This invoice is already approved."
                         : "This invoice is within the approval limit, its discount is not over 20%, its client is not a HIGH payment risk and it would not take the client over its credit limit, so it needs no approval.");
             }
-            BigDecimal total = invoice.total(rate);
+            BigDecimal total = invoice.approvalTotal(rate);
             invoice.approve(total, on);
             invoices.saveAndFlush(invoice);
             audit.record("INVOICE_APPROVED id=" + invoice.getId() + " total=" + total.toPlainString());

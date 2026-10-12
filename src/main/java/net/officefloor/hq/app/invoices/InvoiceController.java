@@ -163,7 +163,7 @@ public class InvoiceController {
      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
-     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not);
+     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total (the plan total, with a plan) it was approved at and {@code approvedOn} the day (null when it was not);
      * {@code approvalsNeeded} is how many approvals it still needs before it is sent (0 when none) and {@code approvals} how many it has at its total.
      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
      * {@code recurUntil} is the last day it bills for when recurring (null for no end), and {@code recurringSince} the day its plan began
