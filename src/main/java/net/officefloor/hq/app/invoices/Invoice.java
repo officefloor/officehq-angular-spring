@@ -5,6 +5,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -13,6 +14,8 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -456,6 +459,13 @@ public class Invoice {
     @JoinColumn(name = "invoice_id", nullable = false)
     @OrderBy("id")
     private List<InvoiceLine> lines = new ArrayList<>();
+
+    /** The milestones the invoice is billed by, lowest id first; empty when it is billed whole. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @JoinColumn(name = "invoice_id", nullable = false)
+    @OrderBy("id")
+    private List<Milestone> milestones = new ArrayList<>();
 
     protected Invoice() {
     }
@@ -982,7 +992,8 @@ public class Invoice {
      * already come off its plan total.
      */
     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
-        BigDecimal owed = hasPlan() ? planTotal(taxRate) : owedTotal(taxRate).subtract(getCredited());
+        BigDecimal owed = hasPlan() ? planTotal(taxRate)
+                : (isBilledByMilestones() ? reachedTotal(taxRate) : owedTotal(taxRate)).subtract(getCredited());
         return owed.subtract(getEarlyDiscountTaken())
                 .subtract(getInterestSaved()).add(getCashRounding());
     }
@@ -1707,6 +1718,120 @@ public class Invoice {
                 .findFirst().orElse(zero());
     }
 
+    public List<Milestone> getMilestones() {
+        return milestones;
+    }
+
+    /** Adds a milestone to the end of the invoice. */
+    public void addMilestone(Milestone milestone) {
+        milestones.add(milestone);
+    }
+
+    /** The milestone with the id; null when the invoice has none. */
+    public Milestone milestone(Long milestoneId) {
+        return milestones.stream().filter(m -> m.getId().equals(milestoneId)).findFirst().orElse(null);
+    }
+
+    /** What the milestones' percentages add up to; 0 when there are none. */
+    public BigDecimal milestonesPct() {
+        return milestones.stream().map(Milestone::getPct).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** Whether the invoice is billed by milestones once sent: only its reached milestones are then owed. */
+    public boolean isBilledByMilestones() {
+        return !milestones.isEmpty() && status == InvoiceStatus.SENT;
+    }
+
+    /** Whether the sent invoice has milestones still to be reached. */
+    public boolean hasPendingMilestones() {
+        return isBilledByMilestones() && milestones.stream().anyMatch(m -> !m.isReached());
+    }
+
+    /**
+     * Each milestone's amount at the tax rate, in the order of the milestones: its percentage of what the
+     * client pays ({@link #owedTotal}, the grand total less the withholding), rounded down to the cent, with
+     * the cents left over (of the milestones' share of it, rounded half up) going one each to the largest
+     * remainders, the lower id first on a tie, so they add up exactly.
+     */
+    public List<BigDecimal> milestoneAmounts(BigDecimal taxRate) {
+        int scale = scale();
+        BigDecimal units = owedTotal(taxRate).movePointRight(scale);
+        BigDecimal hundred = BigDecimal.valueOf(100);
+        int n = milestones.size();
+        BigInteger[] floors = new BigInteger[n];
+        BigDecimal[] remainders = new BigDecimal[n];
+        BigInteger sum = BigInteger.ZERO;
+        for (int k = 0; k < n; k++) {
+            BigDecimal exact = units.multiply(milestones.get(k).getPct()).divide(hundred);
+            floors[k] = exact.setScale(0, RoundingMode.FLOOR).toBigInteger();
+            remainders[k] = exact.subtract(new BigDecimal(floors[k]));
+            sum = sum.add(floors[k]);
+        }
+        BigInteger target = units.multiply(milestonesPct()).divide(hundred).setScale(0, RoundingMode.HALF_UP)
+                .toBigInteger();
+        List<Integer> order = new ArrayList<>();
+        for (int k = 0; k < n; k++) {
+            order.add(k);
+        }
+        order.sort(Comparator.comparing((Integer k) -> remainders[k]).reversed()
+                .thenComparing(k -> milestones.get(k).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
+        int left = target.subtract(sum).intValue();
+        for (int k = 0; k < left && k < n; k++) {
+            floors[order.get(k)] = floors[order.get(k)].add(BigInteger.ONE);
+        }
+        List<BigDecimal> amounts = new ArrayList<>(n);
+        for (BigInteger f : floors) {
+            amounts.add(new BigDecimal(f).movePointLeft(scale).setScale(scale));
+        }
+        return amounts;
+    }
+
+    /** What the reached milestones add up to at the tax rate. */
+    public BigDecimal reachedTotal(BigDecimal taxRate) {
+        List<BigDecimal> amounts = milestoneAmounts(taxRate);
+        BigDecimal sum = zero();
+        for (int k = 0; k < milestones.size(); k++) {
+            if (milestones.get(k).isReached()) {
+                sum = sum.add(amounts.get(k));
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * Each milestone with its amount at the tax rate, what is paid off it once the given amount has been
+     * paid, and its status on the day: a milestone not reached (or on a draft) is pending; payments pay
+     * the reached milestones in order, each paid off before the next; a reached one is due on the
+     * invoice's due date, and overdue more than the grace period after it.
+     */
+    public List<Milestone.Progress> milestoneProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
+        List<BigDecimal> amounts = milestoneAmounts(taxRate);
+        BigDecimal left = paid.add(writtenOff(paid, taxRate)).add(getCredited());
+        List<Milestone.Progress> progress = new ArrayList<>();
+        for (int k = 0; k < milestones.size(); k++) {
+            Milestone m = milestones.get(k);
+            BigDecimal amount = amounts.get(k);
+            if (status != InvoiceStatus.SENT || !m.isReached()) {
+                progress.add(new Milestone.Progress(m, amount, zero(), Milestone.Status.PENDING));
+                continue;
+            }
+            BigDecimal part = left.min(amount).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
+            left = left.subtract(part);
+            Milestone.Status st;
+            if (part.compareTo(amount) >= 0) {
+                st = Milestone.Status.PAID;
+            } else if (dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
+                st = Milestone.Status.OVERDUE;
+            } else if (part.signum() > 0) {
+                st = Milestone.Status.PART_PAID;
+            } else {
+                st = Milestone.Status.DUE;
+            }
+            progress.add(new Milestone.Progress(m, amount, part, st));
+        }
+        return progress;
+    }
+
     public List<InvoiceLine> getLines() {
         return lines;
     }
@@ -1849,6 +1974,9 @@ public class Invoice {
         } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
             return InvoiceStatus.OVERDUE;
         }
+        if (!due && hasPendingMilestones()) {
+            return InvoiceStatus.AWAITING_MILESTONE;
+        }
         if (paid.signum() <= 0) {
             return !due && getCredited().signum() > 0 ? InvoiceStatus.CREDITED : status;
         }
@@ -1868,7 +1996,7 @@ public class Invoice {
      */
     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
         BigDecimal total = payable(taxRate);
-        if (status != InvoiceStatus.SENT || isWrittenOff() || total.signum() <= 0) {
+        if (status != InvoiceStatus.SENT || isWrittenOff() || total.signum() <= 0 || hasPendingMilestones()) {
             return null;
         }
         record Part(LocalDate on, Long paymentId, BigDecimal amount) {

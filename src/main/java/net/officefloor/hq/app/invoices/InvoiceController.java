@@ -161,6 +161,8 @@ public class InvoiceController {
      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
      * {@code poNumber} is the client's purchase order number (null when none).
+     * {@code milestones} are the milestones it is billed by (empty when it is billed whole), each with its
+     * amount and status (see {@link Invoice#milestoneProgress}); {@code milestonesPct} is what their percentages add up to.
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -171,7 +173,8 @@ public class InvoiceController {
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
-            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber) {
+            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+            List<MilestoneView> milestones, String milestonesPct) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -213,7 +216,9 @@ public class InvoiceController {
                     i.getSupplyRegion(), approval,
                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
                     i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getDisputedOn(), i.getDisputeResolvedOn(),
-                    i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber());
+                    i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
+                    i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
+                    i.milestonesPct().stripTrailingZeros().toPlainString());
         }
     }
 
@@ -361,6 +366,31 @@ public class InvoiceController {
             Currency currency,
             @NotNull(message = "Enter the date it was refunded.")
             LocalDate date) {
+    }
+
+    /**
+     * One milestone of an invoice: its id, description, percentage (without trailing zeros), the day it was
+     * reached (null while pending), its amount and what has been paid off it, decimal strings to the cent; and its status.
+     */
+    public record MilestoneView(Long id, String description, String pct, LocalDate reachedOn, String amount,
+            String paid, Milestone.Status status) {
+        static MilestoneView of(Milestone.Progress p) {
+            Milestone m = p.milestone();
+            return new MilestoneView(m.getId(), m.getDescription(), m.getPct().stripTrailingZeros().toPlainString(),
+                    m.getReachedOn(), p.amount().toPlainString(), p.paid().toPlainString(), p.status());
+        }
+    }
+
+    /** A milestone to add to a draft: a description and a percentage over 0 and at most 100 with at most two decimals. */
+    public record NewMilestone(
+            @NotBlank(message = "Enter a description.")
+            @Size(max = 255, message = "The description must be at most 255 characters.")
+            String description,
+            @NotNull(message = "Enter a percentage.")
+            @DecimalMin(value = "0", inclusive = false, message = "The percentage must be more than 0 and at most 100.")
+            @DecimalMax(value = "100", message = "The percentage must be more than 0 and at most 100.")
+            @Digits(integer = 3, fraction = 2, message = "The percentage can have at most two decimals.")
+            BigDecimal pct) {
     }
 
     /** A rush surcharge on a draft: a percentage from 0 to 25 with at most two decimals. */
@@ -573,6 +603,21 @@ public class InvoiceController {
     public InvoiceDetail setPlan(@PathVariable Long id, @Valid @RequestBody NewPlan body) {
         return invoices.setPlan(id, body.instalments().intValueExact(), body.instalmentRate(),
                 body.planDownPct() == null ? BigDecimal.ZERO : body.planDownPct())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    @PostMapping("/api/invoices/{id}/milestones")
+    public InvoiceDetail addMilestone(@PathVariable Long id, @Valid @RequestBody NewMilestone body) {
+        return invoices.addMilestone(id, body.description().trim(), body.pct())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Marks a milestone of a sent invoice reached: it is owed from today. */
+    @PostMapping("/api/invoices/{id}/milestones/{milestoneId}/reach")
+    public InvoiceDetail reachMilestone(@PathVariable Long id, @PathVariable Long milestoneId) {
+        return invoices.reachMilestone(id, milestoneId)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

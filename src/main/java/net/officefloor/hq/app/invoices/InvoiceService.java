@@ -2,6 +2,7 @@ package net.officefloor.hq.app.invoices;
 
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import org.hibernate.Hibernate;
 import java.time.LocalDate;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -111,6 +112,8 @@ public class InvoiceService {
         BigDecimal annual = lateInterestRate.percent();
         LocalDate now = today.date();
         list.forEach(i -> {
+            // Loaded with its lines only: read its milestones now, while the session is open.
+            Hibernate.initialize(i.getMilestones());
             i.priceAsOf(now);
             if (i.isDraft() && !i.isCreditNote()) {
                 repriceWhereRated(i, now);
@@ -507,6 +510,9 @@ public class InvoiceService {
             if (!invoice.isDraft()) {
                 throw new InvoiceRejectedException("Only a draft can be spread over instalments.");
             }
+            if (!invoice.getMilestones().isEmpty()) {
+                throw new InvoiceRejectedException("An invoice billed by milestones cannot be spread over instalments.");
+            }
             invoice.setPlan(instalments, instalmentRate, planDownPct);
             if (invoice.isInstalmentTooSmall(taxRate.percent(), today.date())) {
                 throw new InvoiceRejectedException("The monthly instalment must be worth at least $"
@@ -515,6 +521,76 @@ public class InvoiceService {
             invoices.saveAndFlush(invoice);
         });
         return found;
+    }
+
+    /**
+     * Adds a milestone of the percentage to a draft; empty if no such invoice. The percentage has already
+     * been checked to be over 0; one that would take the milestones over 100% is refused, as is any invoice
+     * that is not a draft, a credit note, or one spread over instalments.
+     */
+    @Transactional
+    public Optional<Invoice> addMilestone(Long invoiceId, String description, BigDecimal pct) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            if (invoice.isCreditNote()) {
+                throw new InvoiceRejectedException("A credit note cannot be billed by milestones.");
+            }
+            if (!invoice.isDraft()) {
+                throw new InvoiceRejectedException("Only a draft can have milestones added.");
+            }
+            if (invoice.hasPlan()) {
+                throw new InvoiceRejectedException("An invoice spread over instalments cannot be billed by milestones.");
+            }
+            BigDecimal after = invoice.milestonesPct().add(pct);
+            if (after.compareTo(BigDecimal.valueOf(100)) > 0) {
+                throw new InvoiceRejectedException("The milestones would add up to "
+                        + after.stripTrailingZeros().toPlainString() + "%, over 100%.");
+            }
+            invoice.addMilestone(new Milestone(description, pct));
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
+    /**
+     * Marks a milestone of a sent invoice reached today, records it in the audit with its amount, and
+     * then uses the client's credit on what is now owed, as sending does (see {@link #applyCredit}); empty
+     * if no such invoice. A milestone already reached, or of an invoice that is not sent, void, written off
+     * or a credit note, is refused.
+     */
+    @Transactional
+    public Optional<Invoice> reachMilestone(Long invoiceId, Long milestoneId) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            Milestone milestone = invoice.milestone(milestoneId);
+            if (milestone == null) {
+                throw new InvoiceRejectedException("The invoice has no such milestone.");
+            }
+            if (invoice.getStatus() != InvoiceStatus.SENT || invoice.isCreditNote() || invoice.isWrittenOff()) {
+                throw new InvoiceRejectedException("Only a milestone of a sent invoice can be reached.");
+            }
+            if (milestone.isReached()) {
+                throw new InvoiceRejectedException("This milestone has already been reached.");
+            }
+            milestone.reach(today.date());
+            invoices.saveAndFlush(invoice);
+            BigDecimal amount = invoice.milestoneAmounts(taxRate.percent())
+                    .get(invoice.getMilestones().indexOf(milestone));
+            audit.record("MILESTONE_REACHED id=" + invoice.getId() + " milestone=" + milestone.getId()
+                    + " amount=" + amount.toPlainString());
+            withInterest(List.of(invoice));
+            applyCredit(invoice);
+        });
+        return found;
+    }
+
+    /** Why the draft's milestones keep it from being sent, or null when they do not: they must add up to exactly 100%. */
+    private static String milestoneRefusal(Invoice invoice) {
+        if (invoice.getMilestones().isEmpty() || invoice.milestonesPct().compareTo(BigDecimal.valueOf(100)) == 0) {
+            return null;
+        }
+        return "The milestones add up to " + invoice.milestonesPct().stripTrailingZeros().toPlainString()
+                + "%; they must add up to exactly 100% before the invoice is sent.";
     }
 
     /**
@@ -846,6 +922,10 @@ public class InvoiceService {
                 issue(invoice);
                 return;
             }
+            String milestones = milestoneRefusal(invoice);
+            if (milestones != null) {
+                throw new InvoiceRejectedException(milestones);
+            }
             if (invoice.dueDatePassedBy(today.date())) {
                 throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
                         + ") is already past; set a later due date before sending the invoice.");
@@ -915,6 +995,7 @@ public class InvoiceService {
                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
                         && !invoice.dueDatePassedBy(today.date())
                         && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL
+                        && milestoneRefusal(invoice) == null
                         && (invoice.isCreditNote() || depositRefusal(invoice) == null))
                 .forEach(invoice -> {
                     if (!invoice.isCreditNote()) {

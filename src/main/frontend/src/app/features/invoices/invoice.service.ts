@@ -13,7 +13,8 @@ import { Currency } from './invoice-format';
 // credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice written off as a bad
 // debt is WRITTEN_OFF for good: it owes nothing, earns no more interest and takes no payments.
 // A sent invoice in dispute is DISPUTED until the dispute is resolved: it earns no interest, is not
-// overdue and takes no payments.
+// overdue and takes no payments. A sent invoice billed by milestones with nothing owed now but
+// milestones still to be reached is AWAITING_MILESTONE.
 export type InvoiceStatus =
   | 'DRAFT'
   | 'SENT'
@@ -25,7 +26,8 @@ export type InvoiceStatus =
   | 'CREDIT_NOTE'
   | 'CREDITED'
   | 'WRITTEN_OFF'
-  | 'DISPUTED';
+  | 'DISPUTED'
+  | 'AWAITING_MILESTONE';
 
 // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
 // server: the grand total — the lines' subtotal less any discount plus tax.
@@ -243,6 +245,25 @@ export interface InvoiceDetail {
   recurUntil: string | null;
   // The client's purchase order number for the invoice; null when none was given.
   poNumber: string | null;
+  // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
+  // to (without trailing zeros). Once sent only the reached ones are owed.
+  milestones: MilestoneView[];
+  milestonesPct: string;
+}
+
+// One milestone: its percentage of what the client pays (without trailing zeros), the day it was
+// reached (yyyy-mm-dd; null while pending), its amount and what has been paid off it, decimal strings to
+// the cent (reached milestones are paid in order), and its status.
+export type MilestoneStatus = 'PENDING' | 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
+
+export interface MilestoneView {
+  id: number;
+  description: string;
+  pct: string;
+  reachedOn: string | null;
+  amount: string;
+  paid: string;
+  status: MilestoneStatus;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
@@ -396,6 +417,17 @@ export class InvoiceService {
   // refused (400) outside that, or (409) when it is not a draft.
   setPlan(invoiceId: number, instalments: string, instalmentRate: string, planDownPct: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate, planDownPct });
+  }
+
+  // Adds a milestone (a description and a percentage over 0 with at most two decimals) to a draft;
+  // refused (409) when the milestones would add up to more than 100%.
+  addMilestone(invoiceId: number, description: string, pct: string): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones`, { description, pct });
+  }
+
+  // Marks a milestone of a sent invoice reached: it is owed from today, and the client's credit is used on it.
+  reachMilestone(invoiceId: number, milestoneId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones/${milestoneId}/reach`, null);
   }
 
   // Approves a draft whose grand total is over the workspace's approval limit, or whose discount is

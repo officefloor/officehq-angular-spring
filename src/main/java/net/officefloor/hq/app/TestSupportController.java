@@ -56,7 +56,8 @@ public class TestSupportController {
     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
     private static final Set<String> INVOICE_FIELDS =
-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems");
+            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems", "milestones");
+    private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn");
     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete");
     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
@@ -119,7 +120,7 @@ public class TestSupportController {
         jdbc.execute("DELETE FROM payment_allocation");
         jdbc.execute("DELETE FROM client_rate");
         jdbc.execute("DELETE FROM price_list_rate");
-        for (String table : List.of("payment", "invoice_line", "invoice", "client")) {
+        for (String table : List.of("payment", "invoice_milestone", "invoice_line", "invoice", "client")) {
             jdbc.execute("DELETE FROM " + table);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
         }
@@ -503,6 +504,23 @@ public class TestSupportController {
                         flag(line.get("disputed"), "invoices[].lineItems[].disputed"),
                         percentComplete(line.get("percentComplete"), "invoices[].lineItems[].percentComplete"));
             }
+            BigDecimal pctSum = BigDecimal.ZERO;
+            for (Map<String, Object> milestone : rows(row.get("milestones"), "invoices[].milestones")) {
+                only(milestone, MILESTONE_FIELDS, "invoices[].milestones[]");
+                BigDecimal pct = percent(milestone.get("pct"), "invoices[].milestones[].pct");
+                if (milestone.get("pct") == null || pct.signum() <= 0) {
+                    throw refuse("invoices[].milestones[].pct must be more than 0 and at most 100, not " + milestone.get("pct"));
+                }
+                pctSum = pctSum.add(pct);
+                insert("invoice_milestone", milestone.get("id"),
+                        new String[] {"invoice_id", "description", "pct", "reached_on"},
+                        invoiceId,
+                        text(milestone, "description"), pct,
+                        milestone.get("reachedOn") == null ? null : date(milestone.get("reachedOn"), "invoices[].milestones[].reachedOn"));
+            }
+            if (pctSum.compareTo(BigDecimal.valueOf(100)) > 0) {
+                throw refuse("invoices[].milestones[].pct must add up to at most 100, not " + pctSum.toPlainString());
+            }
         }
         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
             only(row, PAYMENT_FIELDS, "payments[]");
@@ -573,7 +591,7 @@ public class TestSupportController {
                     total, applied, noteId);
         }
         // Keep generated ids clear of the seeded ones.
-        for (String table : List.of("client", "invoice", "invoice_line", "payment")) {
+        for (String table : List.of("client", "invoice", "invoice_line", "invoice_milestone", "payment")) {
             Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
         }
@@ -839,6 +857,18 @@ public class TestSupportController {
                     if (r.get("SUPPLY_REGION") != null) {
                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
                     }
+                    row.put("milestones", jdbc.queryForList(
+                            "SELECT id, description, pct, reached_on FROM invoice_milestone WHERE invoice_id = ? ORDER BY id",
+                            r.get("ID")).stream().map(m -> {
+                                Map<String, Object> milestone = new LinkedHashMap<>();
+                                milestone.put("id", m.get("ID"));
+                                milestone.put("description", m.get("DESCRIPTION"));
+                                milestone.put("pct", m.get("PCT"));
+                                if (m.get("REACHED_ON") != null) {
+                                    milestone.put("reachedOn", m.get("REACHED_ON").toString());
+                                }
+                                return milestone;
+                            }).toList());
                     row.put("lineItems", jdbc.queryForList(
                             "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete FROM invoice_line WHERE invoice_id = ? ORDER BY id",
                             r.get("ID")).stream().map(l -> {

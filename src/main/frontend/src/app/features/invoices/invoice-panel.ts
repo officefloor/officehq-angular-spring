@@ -9,7 +9,7 @@ import {
   NewDiscount,
   NewLine,
 } from './invoice.service';
-import { TWO_DECIMALS, instalmentStatusLabel, money, statusLabel, symbolOf } from './invoice-format';
+import { TWO_DECIMALS, instalmentStatusLabel, milestoneStatusLabel, money, statusLabel, symbolOf } from './invoice-format';
 import { PaymentForm } from './payment-form';
 
 // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
@@ -43,6 +43,24 @@ function problemWithSurcharge(pct: string): string {
 // A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals,
 // after an optional down payment from 0 to 50 percent with at most two decimals; the server checks
 // them again.
+// A milestone needs a description and a percentage over 0 and at most 100 with at most two decimals;
+// the server also refuses one that would take the milestones over 100%.
+function problemWithMilestone(description: string, pct: string): string {
+  if (!description.trim()) {
+    return 'Enter a description.';
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(pct)) {
+    return 'The percentage must be a number, like 30 or 12.5.';
+  }
+  if (Number(pct) <= 0 || Number(pct) > 100) {
+    return 'The percentage must be more than 0 and at most 100.';
+  }
+  if (!TWO_DECIMALS.test(pct)) {
+    return 'The percentage can have at most two decimals.';
+  }
+  return '';
+}
+
 function problemWithPlan(count: string, rate: string, down: string): string {
   if (!/^\d+$/.test(count)) {
     return 'The number of instalments must be a whole number, like 3 or 12.';
@@ -365,6 +383,51 @@ function problemWith(line: NewLine): string {
           </tfoot>
         </table>
 
+        @if (inv.milestones.length > 0) {
+          <table aria-label="Milestones">
+            <caption>Billed by milestones ({{ inv.milestonesPct }}% planned)</caption>
+            <thead>
+              <tr>
+                <th scope="col">Milestone</th>
+                <th scope="col">Share</th>
+                <th scope="col">Amount</th>
+                <th scope="col">Reached</th>
+                <th scope="col">Paid</th>
+                <th scope="col">Status</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (m of inv.milestones; track m.id) {
+                <tr [attr.data-testid]="'milestone-row-' + m.id">
+                  <td data-testid="milestone-description">{{ m.description }}</td>
+                  <td data-testid="milestone-pct">{{ m.pct }}%</td>
+                  <td data-testid="milestone-amount">{{ amount(m.amount) }}</td>
+                  <td data-testid="milestone-reached-on">{{ m.reachedOn ?? '' }}</td>
+                  <td data-testid="milestone-paid">{{ amount(m.paid) }}</td>
+                  <td data-testid="milestone-status">{{ milestoneStatusLabel(m.status) }}</td>
+                  <td>
+                    @if (m.reachedOn === null && inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF') {
+                      <button
+                        type="button"
+                        data-testid="milestone-reach"
+                        [disabled]="reaching()"
+                        [attr.aria-label]="'Reach milestone ' + m.description"
+                        (click)="reachMilestone(inv.id, m.id)"
+                      >
+                        Reach
+                      </button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          @if (reachError()) {
+            <p role="alert" data-testid="milestone-reach-error">{{ reachError() }}</p>
+          }
+        }
+
         @if (inv.instalments !== null) {
           <table aria-label="Instalments">
             <caption>
@@ -625,6 +688,19 @@ function problemWith(line: NewLine): string {
             </button>
             @if (surchargeError()) {
               <p role="alert" data-testid="surcharge-form-error">{{ surchargeError() }}</p>
+            }
+          </form>
+        }
+
+        @if (inv.status === 'DRAFT' && inv.creditOf === null && inv.instalments === null) {
+          <form [formGroup]="milestoneForm" (ngSubmit)="addMilestone(inv.id)" aria-label="Milestone" novalidate>
+            <label for="milestone-description">Milestone</label>
+            <input id="milestone-description" data-testid="milestone-form-description" formControlName="description" [readonly]="savingMilestone()" />
+            <label for="milestone-pct">Share (% of what the client pays)</label>
+            <input id="milestone-pct" data-testid="milestone-form-pct" inputmode="decimal" formControlName="pct" [readonly]="savingMilestone()" />
+            <button type="submit" data-testid="milestone-form-submit" [disabled]="savingMilestone()">Add milestone</button>
+            @if (milestoneError()) {
+              <p role="alert" data-testid="milestone-form-error">{{ milestoneError() }}</p>
             }
           </form>
         }
@@ -929,6 +1005,10 @@ export class InvoicePanel {
   protected readonly surchargeError = signal('');
   protected readonly savingPlan = signal(false);
   protected readonly planError = signal('');
+  protected readonly savingMilestone = signal(false);
+  protected readonly milestoneError = signal('');
+  protected readonly reaching = signal(false);
+  protected readonly reachError = signal('');
   protected readonly waiving = signal(false);
   protected readonly skipping = signal(false);
   protected readonly skipError = signal('');
@@ -962,6 +1042,7 @@ export class InvoicePanel {
   // A payment's amount is shown in the currency it was paid in.
   protected readonly money = money;
   protected readonly instalmentStatusLabel = instalmentStatusLabel;
+  protected readonly milestoneStatusLabel = milestoneStatusLabel;
   // An amount shown in the currency of the open invoice's client.
   protected amount(value: string): string {
     return money(value, this.invoice()?.currency ?? 'USD');
@@ -1002,6 +1083,11 @@ export class InvoicePanel {
     down: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly milestoneForm = new FormGroup({
+    description: new FormControl('', { nonNullable: true }),
+    pct: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly dueForm = new FormGroup({
     dueDate: new FormControl('', { nonNullable: true }),
   });
@@ -1038,6 +1124,9 @@ export class InvoicePanel {
       this.surchargeError.set('');
       this.planForm.reset();
       this.planError.set('');
+      this.milestoneForm.reset();
+      this.milestoneError.set('');
+      this.reachError.set('');
       this.waiveError.set('');
       this.skipError.set('');
       this.writeOffError.set('');
@@ -1338,6 +1427,52 @@ export class InvoicePanel {
           typeof detail === 'string' && detail ? detail : 'The plan could not be set.',
         );
         this.savingPlan.set(false);
+      },
+    });
+  }
+
+  protected addMilestone(invoiceId: number): void {
+    const { description, pct } = this.milestoneForm.getRawValue();
+    const problem = problemWithMilestone(description, pct.trim());
+    if (problem) {
+      this.milestoneForm.markAllAsTouched();
+      this.milestoneError.set(problem);
+      return;
+    }
+    this.savingMilestone.set(true);
+    this.milestoneError.set('');
+    this.service.addMilestone(invoiceId, description.trim(), pct.trim()).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.milestoneForm.reset();
+        this.savingMilestone.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.milestoneError.set(
+          typeof detail === 'string' && detail ? detail : 'The milestone could not be added.',
+        );
+        this.savingMilestone.set(false);
+      },
+    });
+  }
+
+  protected reachMilestone(invoiceId: number, milestoneId: number): void {
+    this.reaching.set(true);
+    this.reachError.set('');
+    this.service.reachMilestone(invoiceId, milestoneId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.reaching.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.reachError.set(
+          typeof detail === 'string' && detail ? detail : 'The milestone could not be marked reached.',
+        );
+        this.reaching.set(false);
       },
     });
   }

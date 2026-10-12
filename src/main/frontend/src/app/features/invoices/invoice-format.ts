@@ -1,4 +1,4 @@
-import { InstalmentStatus, InvoiceStatus } from './invoice.service';
+import { InstalmentStatus, InvoiceStatus, MilestoneStatus } from './invoice.service';
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
   DRAFT: 'Draft',
@@ -12,6 +12,14 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   CREDITED: 'Credited',
   WRITTEN_OFF: 'Written off',
   DISPUTED: 'Disputed',
+  AWAITING_MILESTONE: 'Awaiting milestone',
+};
+const MILESTONE_STATUS_LABEL: Record<MilestoneStatus, string> = {
+  PENDING: 'Pending',
+  PAID: 'Paid',
+  PART_PAID: 'Part paid',
+  OVERDUE: 'Overdue',
+  DUE: 'Due',
 };
 const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
   PAID: 'Paid',
@@ -36,6 +44,10 @@ export function decimalsOf(currency: Currency): number {
 
 export function statusLabel(status: InvoiceStatus): string {
   return STATUS_LABEL[status];
+}
+
+export function milestoneStatusLabel(status: MilestoneStatus): string {
+  return MILESTONE_STATUS_LABEL[status];
 }
 
 export function instalmentStatusLabel(status: InstalmentStatus): string {

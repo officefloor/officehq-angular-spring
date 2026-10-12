@@ -17,7 +17,9 @@ package net.officefloor.hq.app.invoices;
  * interest and takes no payments; that follows from the day it was written off.
  * A sent invoice in dispute is disputed until the dispute is resolved: it earns no interest, is not
  * overdue and takes no payments; that follows from the days it was disputed and resolved.
+ * A sent invoice billed by milestones with nothing owed now but milestones still to be reached is
+ * awaiting a milestone; that follows from its milestones and payments and is never stored.
  */
 public enum InvoiceStatus {
-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, WRITTEN_OFF, DISPUTED
+    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, WRITTEN_OFF, DISPUTED, AWAITING_MILESTONE
 }
