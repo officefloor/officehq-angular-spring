@@ -1,0 +1,108 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index c9ecab2..b198b6d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -582,6 +582,13 @@ public class Invoice {
+     @Transient
+     private boolean graceDropped;
+ 
++    /**
++     * Whether this is a debit adjustment note issued while the invoice it adjusts was overdue, so it has no grace
++     * period (see {@link #dueAtOnce}); not stored, worked out again each time the invoice is read.
++     */
++    @Transient
++    private boolean dueAtOnce;
++
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+     @JoinColumn(name = "invoice_id", nullable = false)
+     @OrderBy("id")
+@@ -1851,6 +1858,27 @@ public class Invoice {
+         this.graceDropped = dropped;
+     }
+ 
++    /**
++     * Marks this debit adjustment note as issued while its invoice was overdue (or not): it is then due the day it is
++     * issued with no grace period, overdue from the next day and earning late interest from its due date.
++     */
++    public void dueAtOnce(boolean atOnce) {
++        this.dueAtOnce = atOnce;
++    }
++
++    /**
++     * Whether this sent invoice was overdue on the given day (a promise to pay held or not), judged on what had been
++     * paid against it by then from the payments (those not reversed count).
++     */
++    public boolean wasOverdueOn(List<Payment> payments, BigDecimal taxRate, LocalDate day) {
++        BigDecimal paidBy = payments.stream().filter(p -> !p.isReversed())
++                .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
++                        .filter(a -> !received(a.getDate() == null ? p.getDate() : a.getDate()).isAfter(day))
++                        .map(PaymentAllocation::getAmount))
++                .reduce(BigDecimal.ZERO, BigDecimal::add);
++        return statusIgnoringPromise(paidBy, null, taxRate, day) == InvoiceStatus.OVERDUE;
++    }
++
+     /**
+      * The total a draft is judged and approved on at the tax rate: the grand total.
+      */
+@@ -2713,7 +2741,7 @@ public class Invoice {
+      * period, else their region's, else the standard week; none for a HIGH payment risk client (see {@link #dropGrace}).
+      */
+     public int graceDays() {
+-        if (graceDropped) {
++        if (graceDropped || dueAtOnce) {
+             return 0;
+         }
+         return clientGraceDays == null ? GRACE_DAYS : clientGraceDays;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index f38e935..880a8b7 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -134,6 +134,10 @@ public class InvoiceService {
+             if (i.isDraft() && !i.isCreditNote()) {
+                 repriceWhereRated(i, ratesDate(i));
+             }
++            // A debit note issued while its invoice was overdue has no grace.
++            i.dueAtOnce(isDebitNote(i) && !i.isDraft() && all.stream()
++                    .filter(o -> o.getId().equals(i.getAdjustmentOf())).findFirst()
++                    .map(o -> o.wasOverdueOn(found, rate, i.getIssueDate())).orElse(false));
+             i.accrueLateInterest(found, rate, annual, now);
+             i.notePromisePayments(found);
+         });
+@@ -1229,6 +1233,13 @@ public class InvoiceService {
+         return invoice.dunningLevel(status, overdue, now);
+     }
+ 
++    /** Whether the invoice is a debit adjustment note whose invoice is overdue on the day it is issued. */
++    private boolean dueAtOnce(Invoice invoice, LocalDate issued) {
++        return isDebitNote(invoice) && load(invoice.getAdjustmentOf())
++                .map(o -> o.wasOverdueOn(payments.findForInvoices(List.of(o.getId())), taxRate.percent(), issued))
++                .orElse(false);
++    }
++
+     /** The invoice's issued debit adjustment notes that are overdue today, oldest first, with what is overdue on each. */
+     private Map<Invoice, BigDecimal> overdueDebitNotes(Invoice invoice) {
+         Map<Invoice, BigDecimal> overdue = new LinkedHashMap<>();
+@@ -1881,7 +1892,9 @@ public class InvoiceService {
+         repriceFromRates(invoice, null, invoice.isAdjustment() ? invoice.pricingDate() : issued);
+         // A replacement carrying on the chasing keeps its due date (see Invoice#markSent). With a holiday
+         // calendar a due date on a weekend or a holiday moves to the next business day.
+-        invoice.markSent(issued, holidays.onBusinessDay(cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued))));
++        // A debit note on an invoice already overdue is due the day it is issued.
++        invoice.markSent(issued, dueAtOnce(invoice, issued) ? issued
++                : holidays.onBusinessDay(cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued))));
+         invoice.keepSentFigures(taxRate.percent());
+         invoices.saveAndFlush(invoice);
+         if (invoice.isAdjustment()) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index c62c239..edcc39e 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -5,7 +5,7 @@ package net.officefloor.hq.app.invoices;
+  * part paid while some of it has been paid and some is still due, and paid once nothing is due, or
+  * paid late when the payment that cleared it (taking payments in date order) came after its due date;
+  * those follow from its payments and are never stored. A sent invoice with something still due
+- * more than its client's grace period (a week unless set otherwise; none for a HIGH payment risk client) after its due date is overdue, part paid or not; that follows from the date and is never stored.
++ * more than its client's grace period (a week unless set otherwise; none for a HIGH payment risk client, nor for a debit adjustment note issued while its invoice was overdue) after its due date is overdue, part paid or not; that follows from the date and is never stored.
+  * A sent invoice with no payments can be voided: it is then void for good, owes nothing and takes no
+  * payments or changes.
+  * A credit note is a draft until it is issued, when it becomes CREDIT_NOTE for good. A sent invoice
