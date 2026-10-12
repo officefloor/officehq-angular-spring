@@ -238,13 +238,16 @@ public class Invoice {
 
     /**
      * The tiered lines on the client's other sent invoices (not credit notes), as the invoice id, its issue
-     * date, the line's unit type and its billed units separated by CHAR(31), lines separated by CHAR(30);
-     * null when there are none. Their units count first through the bands of an invoice issued later in
-     * the same month (see {@link #tieredUnitsBefore}).
+     * date, the line's unit type, its billed units and the id of the invoice it adjusts (empty for none)
+     * separated by CHAR(31), lines separated by CHAR(30); null when there are none. A debit note's issue date
+     * is the one of the invoice it adjusts, where its units are billed. Their units count first through the
+     * bands of an invoice issued later in the same month (see {@link #tieredUnitsBefore}).
      */
-    @Formula("(SELECT LISTAGG(CAST(o.id AS VARCHAR) || CHAR(31) || CAST(o.issue_date AS VARCHAR) || CHAR(31) || l.unit_type || CHAR(31)"
+    @Formula("(SELECT LISTAGG(CAST(o.id AS VARCHAR) || CHAR(31)"
+            + " || CAST(COALESCE((SELECT a.issue_date FROM invoice a WHERE a.id = o.adjustment_of), o.issue_date) AS VARCHAR) || CHAR(31) || l.unit_type || CHAR(31)"
             + " || CAST(GREATEST(CASE WHEN l.billing_increment > 0 THEN CEILING(l.qty / l.billing_increment) * l.billing_increment ELSE l.qty END,"
-            + " COALESCE(l.billing_min_units, 0)) AS VARCHAR), CHAR(30)) WITHIN GROUP (ORDER BY o.id, l.id)"
+            + " COALESCE(l.billing_min_units, 0)) AS VARCHAR) || CHAR(31) || COALESCE(CAST(o.adjustment_of AS VARCHAR), ''), CHAR(30))"
+            + " WITHIN GROUP (ORDER BY o.id, l.id)"
             + " FROM invoice o, invoice_line l WHERE o.client_id = client_id AND o.id <> id AND o.status = 'SENT'"
             + " AND o.credit_of IS NULL AND o.issue_date IS NOT NULL AND l.invoice_id = o.id AND l.tiers IS NOT NULL AND l.unit_type IS NOT NULL)")
     private String clientTieredUnits;
@@ -2770,7 +2773,9 @@ public class Invoice {
      * How many units of the tiered unit type the client was already billed this calendar month before this
      * invoice: the tiered lines of that unit type on the client's other sent invoices (not credit notes)
      * issued earlier in the same month as this one is priced in (see {@link #pricingDate}), or on the same date with a lower id. Drafts, void
-     * invoices and credit notes don't count; a credit note itself carries on from none.
+     * invoices and credit notes don't count; a credit note itself carries on from none. A debit note is billed in
+     * the place of the invoice it adjusts, after it and the debit notes issued against it before: its units carry on
+     * from the invoice's own, and invoices billed after the invoice don't come in between.
      */
     private BigDecimal monthUnitsBefore(String unitType) {
         BigDecimal before = BigDecimal.ZERO;
@@ -2778,21 +2783,32 @@ public class Invoice {
         if (clientTieredUnits == null || unitType == null || on == null || isCreditNote()) {
             return before;
         }
+        long[] place = billingPlace(adjustmentOf, id);
         for (String entry : clientTieredUnits.split(String.valueOf((char) 30))) {
             String[] parts = entry.split(String.valueOf((char) 31), -1);
             if (parts.length < 4 || !unitType.equals(parts[2])) {
                 continue;
             }
             Long otherId = Long.valueOf(parts[0]);
+            Long otherAdjusts = parts.length > 4 && !parts[4].isEmpty() ? Long.valueOf(parts[4]) : null;
             LocalDate issued = LocalDate.parse(parts[1]);
             boolean sameMonth = issued.getYear() == on.getYear() && issued.getMonth() == on.getMonth();
             boolean earlier = issued.isBefore(on)
-                    || (issued.isEqual(on) && (id == null || otherId < id));
+                    || (issued.isEqual(on) && Arrays.compare(billingPlace(otherAdjusts, otherId), place) < 0);
             if (sameMonth && earlier) {
                 before = before.add(new BigDecimal(parts[3]));
             }
         }
         return before;
+    }
+
+    /**
+     * Where an invoice comes among those billed on the same day: by the id of the invoice (the one adjusted, for a debit
+     * note), the invoice itself before its debit notes, which come in id order. Not yet saved comes last.
+     */
+    private static long[] billingPlace(Long adjusts, Long invoiceId) {
+        long own = invoiceId == null ? Long.MAX_VALUE : invoiceId;
+        return adjusts == null ? new long[] { own, 0 } : new long[] { adjusts, own };
     }
 
     /** Whether the invoice has the line with the given id. */
