@@ -1,0 +1,193 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 12b0cee..7f3155d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -10,6 +10,7 @@ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.Iterator;
++import java.util.LinkedHashMap;
+ import java.util.LinkedHashSet;
+ import java.util.Set;
+ import java.util.List;
+@@ -699,7 +700,7 @@ public class InvoiceService {
+     /**
+      * Puts a sent invoice that still has something due in dispute today, and records it with the amount
+      * due in the audit; empty if no such invoice. While in dispute it earns no interest (what was charged
+-     * before stays), is not overdue and takes no payments. A draft, a void or written-off invoice, a credit
++     * before stays) and is not overdue; a payment reaching it resolves the dispute. A draft, a void or written-off invoice, a credit
+      * note, one already in dispute or one with nothing due is refused.
+      */
+     @Transactional
+@@ -1490,6 +1491,8 @@ public class InvoiceService {
+      * already been checked; one that belongs to a different invoice is refused. Cash (the method; null
+      * for a bank transfer) must be in the client's own currency and a whole number of its coins; paying
+      * exactly what is due rounded to them settles the invoice, the difference its cash rounding.
++     * A payment reaching what is in dispute accepts it: the dispute is resolved on the payment date and
++     * recorded in the audit, the interest it held back owed again, and the payment is applied as usual.
+      */
+     @Transactional
+     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
+@@ -1508,9 +1511,6 @@ public class InvoiceService {
+             if (invoice.isWrittenOff()) {
+                 throw new InvoiceRejectedException("A written-off invoice takes no more payments.");
+             }
+-            if (invoice.onlyDisputedDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent())) {
+-                throw new InvoiceRejectedException("The invoice is in dispute: resolve the dispute before recording a payment.");
+-            }
+             boolean cash = method == PaymentMethod.CASH;
+             if (cash && paidIn != null && paidIn != invoice.currency()) {
+                 throw new InvoiceRejectedException("Cash is paid only in the client's own currency ("
+@@ -1530,11 +1530,21 @@ public class InvoiceService {
+             BigDecimal fee = feeOf(received, paidIn, invoice.currency());
+             BigDecimal amount = received.subtract(surcharge).subtract(fee);
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
++            LocalDate now = today.date();
++            // A payment reaching what is in dispute accepts it: the dispute is resolved that day, and the
++            // interest it held back is owed again.
++            boolean resolved = invoice.isDisputed() && !date.isAfter(now)
++                    && amount.compareTo(invoice.amountDue(paidSoFar, taxRate.percent())
++                            .subtract(invoice.disputedAmount(paidSoFar, taxRate.percent()))) > 0;
++            if (resolved) {
++                invoice.resolveDispute(date.isBefore(invoice.getDisputedOn()) ? invoice.getDisputedOn() : date);
++                invoices.saveAndFlush(invoice);
++                withInterest(List.of(invoice));
++            }
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (due.signum() <= 0) {
+                 throw new InvoiceRejectedException("This invoice has already been paid.");
+             }
+-            LocalDate now = today.date();
+             BigDecimal early = BigDecimal.ZERO;
+             BigDecimal settle = date.isAfter(now) ? null : invoice.settleAmount(paidSoFar, taxRate.percent(), date);
+             if (settle != null && amount.compareTo(settle) >= 0) {
+@@ -1580,6 +1590,9 @@ public class InvoiceService {
+                 invoice.roundForCash(rounding);
+                 invoices.saveAndFlush(invoice);
+             }
++            if (resolved) {
++                audit.record("DISPUTE_RESOLVED id=" + invoice.getId());
++            }
+             Payment payment = payments.saveAndFlush(Payment.against(invoice, received, applied, date, reference)
+                     .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge).feeCharged(fee)
+                     .remitted(remittance));
+@@ -1613,7 +1626,7 @@ public class InvoiceService {
+      * Records one payment of the amount on the date against the client's unpaid sent invoices: the overdue
+      * ones first, earliest due date first (lower id first on the same due date), then the rest from the
+      * largest amount due to the smallest (lower id first on the same amount), paying each off in full
+-     * before the next.
++     * before the next; then what is in dispute (see {@link #inDisputeOrder}), which stays in dispute.
+      * What it pays beyond everything the client owes is held on the client's account as credit; the
+      * rest is checked and recorded as a split payment over the invoices it reaches.
+      * References (empty when none, each already checked) instead limit the payment to the client's
+@@ -1728,6 +1741,24 @@ public class InvoiceService {
+                 left = left.subtract(part);
+             }
+         }
++        // What is left goes to what is in dispute, which stays in dispute, before any of it is held as credit.
++        for (Map.Entry<Invoice, BigDecimal> disputed : inDisputeOrder(candidates).entrySet()) {
++            if (left.signum() <= 0) {
++                break;
++            }
++            Long invoiceId = disputed.getKey().getId();
++            BigDecimal part = left.min(disputed.getValue());
++            PaymentAllocation already = parts.stream().filter(a -> a.getInvoiceId().equals(invoiceId)).findFirst().orElse(null);
++            if (already != null) {
++                if (stated.contains(invoiceId)) {
++                    continue;
++                }
++                parts.set(parts.indexOf(already), new PaymentAllocation(invoiceId, already.getAmount().add(part)));
++            } else {
++                parts.add(new PaymentAllocation(invoiceId, part));
++            }
++            left = left.subtract(part);
++        }
+         if (parts.isEmpty()) {
+             throw new InvoiceRejectedException(references.isEmpty() ? "The client has no unpaid invoices to pay."
+                     : "Those invoices have already been paid.");
+@@ -1782,11 +1813,32 @@ public class InvoiceService {
+         return unordered.stream().sorted(byPriority).toList();
+     }
+ 
++    /**
++     * What is in dispute on the sent invoices among these (see {@link Invoice#disputedAmount}), by invoice, in the
++     * order it is paid once everything else is: oldest due date first, lower id on a tie.
++     */
++    private Map<Invoice, BigDecimal> inDisputeOrder(List<Invoice> candidates) {
++        List<Invoice> disputed = candidates.stream()
++                .filter(i -> !i.isDraft() && !i.isVoid() && !i.isCreditNote() && i.isDisputed())
++                .sorted(Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
++                        .thenComparing(Invoice::getId))
++                .toList();
++        Map<Long, BigDecimal> paid = paid(disputed);
++        Map<Invoice, BigDecimal> amounts = new LinkedHashMap<>();
++        for (Invoice invoice : disputed) {
++            BigDecimal amount = invoice.disputedAmount(paid.get(invoice.getId()), taxRate.percent());
++            if (amount.signum() > 0) {
++                amounts.put(invoice, amount);
++            }
++        }
++        return amounts;
++    }
++
+     /**
+      * Uses the client's unused credit now on what they owe: the oldest payment's credit first (lower id
+      * first on the same date), never a deposit held for one of the client's drafts, spread over their
+-     * sent invoices in the payment order (see {@link #inPaymentOrder}), each paid off before the next;
+-     * each part applied today and recorded in the audit. Empty if no such client. Refused when the
++     * sent invoices in the payment order (see {@link #inPaymentOrder}), each paid off before the next, then
++     * over what is in dispute (see {@link #inDisputeOrder}), which stays in dispute; each part applied today and recorded in the audit. Empty if no such client. Refused when the
+      * client has no credit to use or owes nothing.
+      */
+     @Transactional
+@@ -1806,9 +1858,13 @@ public class InvoiceService {
+             throw new InvoiceRejectedException("The client has no unused credit to apply.");
+         }
+         Map<Long, BigDecimal> dues = new HashMap<>();
+-        List<Invoice> owing = inPaymentOrder(loadForClient(clientId), dues).stream()
++        List<Invoice> ofClient = loadForClient(clientId);
++        // What is in dispute is paid last, and stays in dispute.
++        List<Map.Entry<Invoice, BigDecimal>> owing = new ArrayList<>();
++        inPaymentOrder(ofClient, dues).stream()
+                 .filter(i -> dues.get(i.getId()).signum() > 0)
+-                .toList();
++                .forEach(i -> owing.add(Map.entry(i, dues.get(i.getId()))));
++        owing.addAll(inDisputeOrder(ofClient).entrySet());
+         if (owing.isEmpty()) {
+             throw new InvoiceRejectedException("The client owes nothing to apply credit to.");
+         }
+@@ -1817,8 +1873,9 @@ public class InvoiceService {
+         Iterator<Payment> from = usable.iterator();
+         Payment payment = from.next();
+         BigDecimal credit = payment.credit();
+-        for (Invoice invoice : owing) {
+-            BigDecimal due = dues.get(invoice.getId());
++        for (Map.Entry<Invoice, BigDecimal> owed : owing) {
++            Invoice invoice = owed.getKey();
++            BigDecimal due = owed.getValue();
+             while (due.signum() > 0 && credit != null) {
+                 BigDecimal part = credit.min(due);
+                 payment.apply(invoice.getId(), part, now);
+@@ -1890,9 +1947,6 @@ public class InvoiceService {
+             if (invoice.isCreditNote()) {
+                 throw new InvoiceRejectedException(invoice.number() + " is a credit note and takes no payments.");
+             }
+-            if (invoice.onlyDisputedDue(paid(List.of(invoice)).get(invoice.getId()), taxRate.percent())) {
+-                throw new InvoiceRejectedException(number + " is in dispute and takes no payments.");
+-            }
+             BigDecimal paidSoFar = paid(List.of(invoice)).get(invoice.getId());
+             BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+             if (part.getAmount().compareTo(due) > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index aa7975b..79da399 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -16,7 +16,7 @@ package net.officefloor.hq.app.invoices;
+  * A sent invoice written off as a bad debt is written off for good: it owes nothing, earns no more
+  * interest and takes no payments; that follows from the day it was written off.
+  * A sent invoice in dispute is disputed until the dispute is resolved: it earns no interest, is not
+- * overdue and takes no payments; that follows from the days it was disputed and resolved.
++ * overdue (a payment reaching it resolves the dispute); that follows from the days it was disputed and resolved.
+  * A sent invoice billed by milestones with nothing owed now but milestones still to be reached is
+  * awaiting a milestone; that follows from its milestones and payments and is never stored.
+  */
