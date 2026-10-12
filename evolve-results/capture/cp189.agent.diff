@@ -1,0 +1,104 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index e63a9c0..a954d6e 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -226,12 +226,12 @@ export interface InvoiceDetail {
+   withholding: string;
+   // The client's withholding percentage (without trailing zeros); "0" when it withholds nothing.
+   withholdingPct: string;
+-  // Whether a draft must be approved before it is sent: its grand total (before any withholding) is
+-  // over the workspace's approval limit, its discount takes off more than a fifth of the subtotal, or its
++  // Whether a draft must be approved before it is sent: its grand total (before any withholding), or its
++  // plan total (with interest and plan fee) when it has an instalment plan, is over the workspace's approval limit, its discount takes off more than a fifth of the subtotal, or its
+   // client is a HIGH payment risk, or sending it would take the client over its credit limit,
+   // and it has not been approved at exactly its total within the last 30 days. Credit notes never need approval.
+   approval: 'NOT_NEEDED' | 'NEEDS_APPROVAL' | 'APPROVED';
+-  // The grand total it was approved at; null when it was not approved.
++  // The grand total (or plan total, for a draft with a plan) it was approved at; null when it was not approved.
+   approvedTotal: string | null;
+   // The day it was approved (yyyy-mm-dd); null when it was not. The approval lapses after 30 days.
+   approvedOn: string | null;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index b04691e..49c057d 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -1265,11 +1265,19 @@ public class Invoice {
+         return currency().divideDownToStep(new BigDecimal(approvalLimitUsd.trim()), usdPerOn(issueDate));
+     }
+ 
++    /**
++     * The total a draft is judged and approved on at the tax rate: the plan total (with its interest and plan fee)
++     * when it has an instalment plan, else the grand total.
++     */
++    public BigDecimal approvalTotal(BigDecimal taxRate) {
++        return hasPlan() ? planTotal(taxRate) : total(taxRate);
++    }
++
+     /** The number of days an approval stays good after the day it was given. */
+     public static final int APPROVAL_DAYS = 30;
+ 
+     /**
+-     * The invoice's approval at the tax rate as of today: a credit note, or an invoice whose grand total
++     * The invoice's approval at the tax rate as of today, judged on its {@link #approvalTotal}: a credit note, or an invoice whose grand total
+      * (before any withholding) is not over the approval limit and whose discount takes off no more than a
+      * fifth of the subtotal, needs none; otherwise it is approved while its grand total is exactly the total
+      * it was approved at and no more than {@link #APPROVAL_DAYS} days have passed since it was approved.
+@@ -1286,7 +1294,7 @@ public class Invoice {
+             return approvedTotal == null ? Approval.NOT_NEEDED : Approval.APPROVED;
+         }
+         BigDecimal limit = approvalLimit();
+-        BigDecimal total = total(taxRate);
++        BigDecimal total = approvalTotal(taxRate);
+         if (!highRisk && !overCreditLimit && !discountIsLarge() && (limit == null || total.compareTo(limit) <= 0)) {
+             return Approval.NOT_NEEDED;
+         }
+@@ -1296,7 +1304,7 @@ public class Invoice {
+     /** The approvals a draft needs: two when its grand total is more than twice the approval limit, else one. */
+     public int approvalsRequired(BigDecimal taxRate) {
+         BigDecimal limit = approvalLimit();
+-        return limit != null && total(taxRate).compareTo(limit.multiply(BigDecimal.valueOf(2))) > 0 ? 2 : 1;
++        return limit != null && approvalTotal(taxRate).compareTo(limit.multiply(BigDecimal.valueOf(2))) > 0 ? 2 : 1;
+     }
+ 
+     /**
+@@ -1316,12 +1324,12 @@ public class Invoice {
+         if (approval != Approval.NEEDS_APPROVAL) {
+             return 0;
+         }
+-        return Math.max(1, approvalsRequired(taxRate) - approvalsAt(total(taxRate), today));
++        return Math.max(1, approvalsRequired(taxRate) - approvalsAt(approvalTotal(taxRate), today));
+     }
+ 
+     /** The approvals that stand for the grand total as of today (see {@link #approvalsNeeded}). */
+     public int approvalsGiven(BigDecimal taxRate, LocalDate today) {
+-        return approvalsAt(total(taxRate), today);
++        return approvalsAt(approvalTotal(taxRate), today);
+     }
+ 
+     public int getApprovals() {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index a4270d9..095fa27 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -163,7 +163,7 @@ public class InvoiceController {
+      * {@code withholding} is what the client withholds for its tax office (0 when none): never owed, so
+      * left out of the amount due; nothing when reverse charged. {@code withholdingPct} (without trailing zeros)
+      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
+-     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not);
++     * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total (the plan total, with a plan) it was approved at and {@code approvedOn} the day (null when it was not);
+      * {@code approvalsNeeded} is how many approvals it still needs before it is sent (0 when none) and {@code approvals} how many it has at its total.
+      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
+      * {@code recurUntil} is the last day it bills for when recurring (null for no end), and {@code recurringSince} the day its plan began
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 5ece59f..2411cda 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1166,7 +1166,7 @@ public class InvoiceService {
+                         ? "This invoice is already approved."
+                         : "This invoice is within the approval limit, its discount is not over 20%, its client is not a HIGH payment risk and it would not take the client over its credit limit, so it needs no approval.");
+             }
+-            BigDecimal total = invoice.total(rate);
++            BigDecimal total = invoice.approvalTotal(rate);
+             invoice.approve(total, on);
+             invoices.saveAndFlush(invoice);
+             audit.record("INVOICE_APPROVED id=" + invoice.getId() + " total=" + total.toPlainString());
