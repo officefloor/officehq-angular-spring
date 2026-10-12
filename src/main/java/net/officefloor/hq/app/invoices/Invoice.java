@@ -1010,12 +1010,14 @@ public class Invoice {
 
     /**
      * The exchange difference in US dollars of an amount applied to the invoice and paid on the date:
-     * its dollar value at the rate on the date less its dollar value at the rate on the issue date, each
-     * rounded half up to the cent (a loss is negative). Nothing for a dollar invoice.
+     * its dollar value at the rate on the date less its dollar value at the rate on the issue date (an adjustment
+     * note's: of the invoice it adjusts, the rate it is converted at), each rounded half up to the cent (a loss is
+     * negative). Nothing for a dollar invoice.
      */
     public BigDecimal fxDifference(BigDecimal applied, LocalDate paidOn) {
         BigDecimal paid = applied.multiply(usdPerOn(paidOn)).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal issued = applied.multiply(usdPerOn(issueDate)).setScale(2, RoundingMode.HALF_UP);
+        LocalDate booked = adjustmentOf != null && creditedIssueDate != null ? creditedIssueDate : issueDate;
+        BigDecimal issued = applied.multiply(usdPerOn(booked)).setScale(2, RoundingMode.HALF_UP);
         return paid.subtract(issued);
     }
 

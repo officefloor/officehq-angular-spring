@@ -132,7 +132,7 @@ public class InvoiceService {
             i.initializeReminders();
             i.priceAsOf(now);
             if (i.isDraft() && !i.isCreditNote()) {
-                repriceWhereRated(i, now);
+                repriceWhereRated(i, ratesDate(i));
             }
             i.accrueLateInterest(found, rate, annual, now);
             i.notePromisePayments(found);
@@ -1662,7 +1662,7 @@ public class InvoiceService {
         if (client == null || client.getCreditLimit() == null) {
             return null;
         }
-        repriceFromRates(invoice, null, today.date());
+        repriceFromRates(invoice, null, ratesDate(invoice));
         BigDecimal after = creditBalance(client.getId()).add(committed(client.getId(), invoice.getId()))
                 .add(invoice.owedTotal(taxRate.percent()));
         BigDecimal limit = creditLimitOf(client);
@@ -2690,10 +2690,14 @@ public class InvoiceService {
     }
 
     /**
-     * The day the invoice's lines are priced as of: today for a draft (not a credit note), which will be dated
-     * today when sent; otherwise its issue date, or today when it has none.
+     * The day the invoice's lines are priced as of: for an adjustment note the issue date of the invoice it
+     * adjusts, so it is in the same money as that invoice's lines; today for a draft (not a credit note), which
+     * will be dated today when sent; otherwise its issue date, or today when it has none.
      */
     private LocalDate ratesDate(Invoice invoice) {
+        if (invoice.isAdjustment() && invoice.pricingDate() != null) {
+            return invoice.pricingDate();
+        }
         return (invoice.isDraft() && !invoice.isCreditNote()) || invoice.getIssueDate() == null ? today.date()
                 : invoice.getIssueDate();
     }
