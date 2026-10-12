@@ -96,7 +96,7 @@ public class InvoiceController {
      * {@code billedQty} (without trailing zeros) is the quantity the line is priced on: its quantity rounded up to the next
      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
      * {@code periodStart} and {@code periodEnd} are the line's service period (null for none): its quantity times unit price is
-     * then a month's price, and its amounts are for the days of the period, month by month.
+     * then a month's price, and its amounts are for the days of the period at 12 / 365 of it a day.
      * {@code percentComplete} (without trailing zeros) is the percentage of a line billed by progress, null for the whole line;
      * {@code billedPct} (without trailing zeros) is the percentage of it already billed by earlier claims, null when none was.
      */

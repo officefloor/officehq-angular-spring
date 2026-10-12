@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import net.officefloor.hq.app.clients.RateTiers;
 
 /**
@@ -117,7 +118,7 @@ public class InvoiceLine {
 
     /**
      * The first day of the service period the line is billed for; null for none. With a period the line's quantity times unit price is
-     * the price of a whole month, charged by calendar month for the days of the period (both ends included).
+     * the price of a whole month, charged by the day (12 / 365 of it a day) for the days of the period (both ends included).
      */
     @Column(name = "period_start")
     private LocalDate periodStart;
@@ -257,21 +258,15 @@ public class InvoiceLine {
     }
 
     /**
-     * The share of a whole month the line's service period comes to: for each calendar month it touches, the days of the period in
-     * that month over the days in that month, added up exactly; null when the line has no period.
+     * The share of a whole month the line's service period comes to, charged by the day the same every month: the days of the
+     * period (both ends included) times a day rate of 12 / 365 of a month, kept exact; null when the line has no period.
      */
     private BigDecimal periodMonths() {
         if (periodStart == null || periodEnd == null) {
             return null;
         }
-        BigDecimal months = BigDecimal.ZERO;
-        for (LocalDate from = periodStart; !from.isAfter(periodEnd); from = from.withDayOfMonth(1).plusMonths(1)) {
-            LocalDate monthEnd = from.withDayOfMonth(from.lengthOfMonth());
-            LocalDate to = periodEnd.isBefore(monthEnd) ? periodEnd : monthEnd;
-            months = months.add(BigDecimal.valueOf(to.getDayOfMonth() - from.getDayOfMonth() + 1)
-                    .divide(BigDecimal.valueOf(from.lengthOfMonth()), MathContext.DECIMAL128));
-        }
-        return months;
+        long days = ChronoUnit.DAYS.between(periodStart, periodEnd) + 1;
+        return BigDecimal.valueOf(days * 12).divide(BigDecimal.valueOf(365), MathContext.DECIMAL128);
     }
 
     /** Whether the line's price comes from its client's rate card. */

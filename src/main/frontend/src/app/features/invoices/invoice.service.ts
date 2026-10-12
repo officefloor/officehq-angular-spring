@@ -84,7 +84,7 @@ export interface InvoiceLineView {
   overtime: boolean;
   basePrice: string;
   // The service period the line is billed for (yyyy-mm-dd, both ends included), null for none: its
-  // quantity x unit price is then a month's price, charged for the period's days month by month.
+  // quantity x unit price is then a month's price, charged by the day at 12 / 365 of it a day.
   periodStart: string | null;
   periodEnd: string | null;
   // The percentage of the line's work done, without trailing zeros, for a line billed by progress
