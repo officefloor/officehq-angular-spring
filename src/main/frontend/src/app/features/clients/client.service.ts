@@ -54,10 +54,10 @@ export interface Client {
   onHold: boolean;
   // Whether the client's balance is over its credit limit: it stays on hold until it is back within it.
   overLimit: boolean;
-  // How slowly the client pays: the days its invoices paid in full took to pay, averaged oldest payment
-  // first with an exponential weight of 0.3, to one decimal; null when nothing is paid in full.
+  // How late the client pays: the days past the due date its invoices paid in full were paid (0 when on
+  // time), averaged oldest payment first with an exponential weight of 0.5, to one decimal; null when nothing is paid in full.
   riskScore: string | null;
-  // The payment risk band: LOW under 15 days, MEDIUM under 30, HIGH from 30. Every invoice of a HIGH
+  // The payment risk band: LOW under 5 days late, MEDIUM under 15, HIGH from 15. Every invoice of a HIGH
   // client needs approval, and deposits held for it worth at least 30% of its grand total, before it is sent.
   riskBand: 'LOW' | 'MEDIUM' | 'HIGH';
   // The client's tier: a tier the workspace gives its own approval limit (in US dollars) uses it
