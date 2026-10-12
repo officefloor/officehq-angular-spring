@@ -380,6 +380,27 @@ public class Invoice {
     @Formula("(SELECT c.withholding_pct FROM client c WHERE c.id = client_id)")
     private BigDecimal withholdingPct;
 
+    /**
+     * The amounts before tax of the other invoices withholding is judged together with (see {@link #judgeWithholdingWith}):
+     * for an invoice, its adjustment notes', credit notes taken off; for a debit note, its invoice's and the other notes';
+     * null when not worked out. Not stored.
+     */
+    @Transient
+    private BigDecimal togetherBeforeTax;
+
+    /** What the adjustment credit notes of this invoice take off its amount before tax; null when not worked out. Not stored. */
+    @Transient
+    private BigDecimal creditedBeforeTax;
+
+    /**
+     * Tells the invoice the amounts before tax it is judged together with for withholding: the others' added up (credit
+     * notes taken off) and what its credit notes take off its own.
+     */
+    public void judgeWithholdingWith(BigDecimal othersBeforeTax, BigDecimal creditedBeforeTax) {
+        this.togetherBeforeTax = othersBeforeTax;
+        this.creditedBeforeTax = creditedBeforeTax;
+    }
+
     /** The percentage of the amount before tax the client withholds for its tax office; 0 when none. */
     public BigDecimal getWithholdingPct() {
         return withholdingPct == null ? BigDecimal.ZERO : withholdingPct;
@@ -804,24 +825,27 @@ public class Invoice {
 
     /**
      * A new, empty draft debit note adjusting this sent invoice, issued on the given date and due on the date given: same
-     * client, no discount or charges, priced and taxed as of this invoice's issue date in its region.
+     * client, billed on this invoice's terms (its percentage discount and its surcharge percentage), priced and taxed as of
+     * this invoice's issue date in its region.
      */
     public Invoice debitNote(LocalDate issueDate, LocalDate dueDate) {
         Invoice note = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         note.adjustmentOf = id;
         note.supplyRegion = supplyRegion;
         note.creditedIssueDate = this.issueDate;
+        note.discountPct = discountPct;
+        note.surchargePct = surchargePct;
         return note;
     }
 
     /**
      * A new, empty draft credit note adjusting this sent invoice, issued on the given date: as {@link #creditNote}, but
-     * with no charges of its own.
+     * on this invoice's terms: its percentage discount comes off what it credits, as its surcharge percentage is added.
      */
     public Invoice adjustmentCreditNote(LocalDate issueDate) {
         Invoice note = creditNote(issueDate);
         note.adjustmentOf = id;
-        note.creditedSurchargePct = null;
+        note.discountPct = discountPct;
         return note;
     }
 
@@ -1297,20 +1321,23 @@ public class Invoice {
     }
 
     /**
-     * The withholding: the client's withholding percentage of the amount before tax, rounded down to
-     * the cent. The client pays it to its tax office instead, so it is never owed. Nothing for a credit
-     * note, nor for a reverse-charged invoice, nor for one whose amount before tax is under the
-     * workspace's withholding threshold: the client pays it all.
+     * The withholding: the client's withholding percentage of the amount before tax, less what its adjustment credit
+     * notes take off it, rounded down to the cent. The client pays it to its tax office instead, so it is never owed.
+     * Nothing for a credit note, nor for a reverse-charged invoice, nor when the amounts before tax of the invoice and
+     * its adjustment notes added up (credit notes taken off) are under the workspace's withholding threshold: the client
+     * pays it all. A debit note withholds on its own amount before tax.
      */
     public BigDecimal withholding(BigDecimal taxRate) {
         if (isCreditNote() || isReverseCharge() || withholdingPct == null || withholdingPct.signum() <= 0) {
             return zero();
         }
         BigDecimal beforeTax = beforeTax(taxRate);
-        if (beforeTax.compareTo(withholdingThreshold()) < 0) {
+        BigDecimal together = togetherBeforeTax == null ? beforeTax : beforeTax.add(togetherBeforeTax);
+        if (together.compareTo(withholdingThreshold()) < 0) {
             return zero();
         }
-        return beforeTax.multiply(withholdingPct).divide(BigDecimal.valueOf(100))
+        BigDecimal base = creditedBeforeTax == null ? beforeTax : beforeTax.subtract(creditedBeforeTax);
+        return base.max(zero()).multiply(withholdingPct).divide(BigDecimal.valueOf(100))
                 .setScale(scale(), RoundingMode.DOWN);
     }
 

@@ -132,6 +132,7 @@ public class InvoiceService {
             }
             i.accrueLateInterest(found, rate, annual, now);
         });
+        judgeWithholdingTogether(all, rate);
         Map<Long, LocalDate> paidOn = new HashMap<>();
         all.forEach(i -> {
             LocalDate on = i.paidOn(found, rate);
@@ -151,6 +152,34 @@ public class InvoiceService {
             }
         });
         return list;
+    }
+
+    /**
+     * Tells each sent invoice and debit note what it is judged together with for withholding (see
+     * {@link Invoice#judgeWithholdingWith}): an invoice with its issued adjustment notes, credit notes taken off.
+     */
+    private static void judgeWithholdingTogether(List<Invoice> all, BigDecimal rate) {
+        Map<Long, BigDecimal> together = new HashMap<>();
+        Map<Long, BigDecimal> credited = new HashMap<>();
+        for (Invoice i : all) {
+            if (i.isDraft() || i.isVoid() || (i.isCreditNote() && !i.isAdjustment())) {
+                continue;
+            }
+            Long group = i.isAdjustment() ? i.getAdjustmentOf() : i.getId();
+            BigDecimal beforeTax = i.beforeTax(rate);
+            together.merge(group, i.isCreditNote() ? beforeTax.negate() : beforeTax, BigDecimal::add);
+            if (i.isCreditNote()) {
+                credited.merge(group, beforeTax, BigDecimal::add);
+            }
+        }
+        for (Invoice i : all) {
+            if (i.isDraft() || i.isVoid() || i.isCreditNote()) {
+                continue;
+            }
+            Long group = i.isAdjustment() ? i.getAdjustmentOf() : i.getId();
+            BigDecimal others = together.getOrDefault(group, BigDecimal.ZERO).subtract(i.beforeTax(rate));
+            i.judgeWithholdingWith(others, i.isAdjustment() ? BigDecimal.ZERO : credited.getOrDefault(group, BigDecimal.ZERO));
+        }
     }
 
     /** The percentage points added to the late-interest rate of a HIGH payment risk client's invoices. */
@@ -1599,6 +1628,10 @@ public class InvoiceService {
         if (invoice.isReverseCharge()) {
             audit.record("REVERSE_CHARGE id=" + invoice.getId() + " number=" + invoice.number()
                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        }
+        if (invoice.isAdjustment()) {
+            // A debit note's withholding is judged together with its invoice and the other notes.
+            withInterest(List.of(invoice));
         }
         BigDecimal withheld = invoice.withholding(taxRate.percent());
         if (withheld.signum() > 0) {
