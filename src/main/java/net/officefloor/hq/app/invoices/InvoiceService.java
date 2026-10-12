@@ -314,7 +314,7 @@ public class InvoiceService {
     @Transactional
     public Optional<Invoice> addLine(Long invoiceId, String description, BigDecimal qty, String unitType,
             BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate,
-            LocalDate periodStart, LocalDate periodEnd) {
+            LocalDate periodStart, LocalDate periodEnd, BigDecimal percentComplete) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             LinePrice price = linePrice(invoice, unitType, unitPrice);
@@ -323,6 +323,7 @@ public class InvoiceService {
                     discountPct, taxRate);
             line.setCardPriced(price.fromCard());
             line.setPeriod(periodStart, periodEnd);
+            line.setPercentComplete(percentComplete);
             invoice.addLine(line);
             invoices.saveAndFlush(invoice);
             if (reopened) {
@@ -364,7 +365,7 @@ public class InvoiceService {
     @Transactional
     public Optional<Invoice> updateLine(Long invoiceId, Long lineId, String description, BigDecimal qty,
             String unitType, BigDecimal unitPrice, boolean overtime, boolean taxExempt, BigDecimal discountPct, BigDecimal taxRate,
-            LocalDate periodStart, LocalDate periodEnd) {
+            LocalDate periodStart, LocalDate periodEnd, BigDecimal percentComplete) {
         Optional<Invoice> found = load(invoiceId);
         if (found.isEmpty()) {
             return found;
@@ -376,7 +377,7 @@ public class InvoiceService {
         LinePrice price = linePrice(invoice, unitType, unitPrice);
         boolean reopened = reopenForChange(invoice, "A paid invoice cannot have lines changed.");
         invoice.updateLine(lineId, description, qty, unitType, price.unitPrice(), price.tiers(), price.increment(), price.minUnits(), overtime, taxExempt,
-                discountPct, taxRate, periodStart, periodEnd);
+                discountPct, taxRate, periodStart, periodEnd, percentComplete);
         invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).forEach(l -> l.setCardPriced(price.fromCard()));
         invoices.saveAndFlush(invoice);
         if (reopened) {

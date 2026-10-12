@@ -87,6 +87,9 @@ export interface InvoiceLineView {
   // quantity x unit price is then a month's price, charged for the period's days month by month.
   periodStart: string | null;
   periodEnd: string | null;
+  // The percentage of the line's work done, without trailing zeros, for a line billed by progress
+  // (its amount is that share of quantity x unit price); null when the whole line is billed.
+  percentComplete: string | null;
 }
 
 // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
@@ -304,6 +307,7 @@ export interface NewLine {
   taxRate?: string;
   periodStart?: string;
   periodEnd?: string;
+  percentComplete?: string;
 }
 
 // A discount to give: either a percentage or a fixed amount, as entered, with an optional cap on

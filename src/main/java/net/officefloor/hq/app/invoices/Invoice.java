@@ -2285,7 +2285,7 @@ public class Invoice {
      */
     public boolean updateLine(Long lineId, String description, BigDecimal qty, String unitType, BigDecimal unitPrice,
             String tiers, BigDecimal increment, BigDecimal minUnits, boolean overtime, boolean taxExempt, BigDecimal discountPct,
-            BigDecimal taxRate, LocalDate periodStart, LocalDate periodEnd) {
+            BigDecimal taxRate, LocalDate periodStart, LocalDate periodEnd, BigDecimal percentComplete) {
         InvoiceLine line = lines.stream().filter(l -> lineId.equals(l.getId())).findFirst().orElse(null);
         if (line == null) {
             return false;
@@ -2293,12 +2293,14 @@ public class Invoice {
         InvoiceLine was = line.copy();
         line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
         line.setPeriod(periodStart, periodEnd);
+        line.setPercentComplete(percentComplete);
         // Changing a tiered line reprices the others of its unit type, so the subtotal is worked out with it changed.
         BigDecimal left = discountableSubtotal();
         if (discountAmount.signum() > 0 && left.compareTo(discountAmount) < 0) {
             line.update(was.getDescription(), was.getQty(), was.getUnitType(), was.getUnitPrice(), was.tiers(), was.getIncrement(), was.getMinUnits(), was.isOvertime(),
                     was.isTaxExempt(), was.getDiscountPct(), was.getTaxRate());
             line.setPeriod(was.getPeriodStart(), was.getPeriodEnd());
+            line.setPercentComplete(was.getPercentComplete());
             throw new InvoiceRejectedException("This line cannot be changed: the "
                     + currency().format(left) + " subtotal would be less than the "
                     + currency().format(discountAmount) + " discount.");

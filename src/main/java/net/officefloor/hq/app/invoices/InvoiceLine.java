@@ -126,6 +126,13 @@ public class InvoiceLine {
     @Column(name = "period_end")
     private LocalDate periodEnd;
 
+    /**
+     * The percentage of the line's work done, more than 0 and at most 100 with up to two decimals, for a line billed by progress:
+     * its gross amount is that percentage of its full amount, rounded half up to the cent; null bills the whole line.
+     */
+    @Column(name = "percent_complete")
+    private BigDecimal percentComplete;
+
     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
@@ -166,6 +173,7 @@ public class InvoiceLine {
         copy.ratePriced = ratePriced;
         copy.periodStart = periodStart;
         copy.periodEnd = periodEnd;
+        copy.percentComplete = percentComplete;
         return copy;
     }
 
@@ -197,6 +205,16 @@ public class InvoiceLine {
     void setPeriod(LocalDate periodStart, LocalDate periodEnd) {
         this.periodStart = periodStart;
         this.periodEnd = periodEnd;
+    }
+
+    /** The percentage of the line's work done; null when the whole line is billed. */
+    public BigDecimal getPercentComplete() {
+        return percentComplete;
+    }
+
+    /** Sets the percentage of the line's work done (null for the whole line); it has already been checked. */
+    void setPercentComplete(BigDecimal percentComplete) {
+        this.percentComplete = percentComplete;
     }
 
     /** Whether the line is billed for a service period. */
@@ -369,6 +387,14 @@ public class InvoiceLine {
      * the line's discount.
      */
     public BigDecimal grossAmount(int scale) {
+        BigDecimal full = fullAmount(scale);
+        // A line billed by progress is charged its percentage of the full amount, rounded half up once more.
+        return percentComplete == null ? full
+                : full.multiply(percentComplete).divide(BigDecimal.valueOf(100)).setScale(scale, RoundingMode.HALF_UP);
+    }
+
+    /** The line's whole amount, before its percent complete and its discount (see {@link #grossAmount(int)}). */
+    private BigDecimal fullAmount(int scale) {
         if (tiers != null) {
             BigDecimal before = creditOfLine != null && creditedUnitsTop != null
                     ? creditedUnitsTop.subtract(invoice == null ? BigDecimal.ZERO : invoice.creditedUnitsBefore(this)).subtract(billedQty()).max(BigDecimal.ZERO)

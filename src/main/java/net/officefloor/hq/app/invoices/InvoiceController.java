@@ -97,11 +97,12 @@ public class InvoiceController {
      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
      * {@code periodStart} and {@code periodEnd} are the line's service period (null for none): its quantity times unit price is
      * then a month's price, and its amounts are for the days of the period, month by month.
+     * {@code percentComplete} (without trailing zeros) is the percentage of a line billed by progress, null for the whole line.
      */
     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
             Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice,
-            LocalDate periodStart, LocalDate periodEnd, boolean disputed) {
+            LocalDate periodStart, LocalDate periodEnd, boolean disputed, String percentComplete) {
         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax,
                 boolean inDispute) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
@@ -113,7 +114,8 @@ public class InvoiceController {
                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
                     l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd(),
-                    inDispute && l.isDisputed());
+                    inDispute && l.isDisputed(),
+                    l.getPercentComplete() == null ? null : l.getPercentComplete().stripTrailingZeros().toPlainString());
         }
     }
 
@@ -281,7 +283,12 @@ public class InvoiceController {
             BigDecimal taxRate,
             // The service period the line is billed for, both ends included; none when both are left out.
             LocalDate periodStart,
-            LocalDate periodEnd) {
+            LocalDate periodEnd,
+            // The percentage of the work done, for a line billed by progress; the whole line when left out.
+            @DecimalMin(value = "0", inclusive = false, message = "The percent complete must be more than 0 and at most 100.")
+            @DecimalMax(value = "100", message = "The percent complete must be more than 0 and at most 100.")
+            @Digits(integer = 3, fraction = 2, message = "The percent complete can have at most two decimals.")
+            BigDecimal percentComplete) {
 
         @AssertTrue(message = "Enter both the start and the end of the service period, or neither.")
         public boolean isPeriodComplete() {
@@ -558,7 +565,7 @@ public class InvoiceController {
         return invoices.addLine(id, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
                 Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate(),
-                body.periodStart(), body.periodEnd())
+                body.periodStart(), body.periodEnd(), body.percentComplete())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
@@ -569,7 +576,7 @@ public class InvoiceController {
         return invoices.updateLine(id, lineId, body.description().trim(), body.qty(), unitType(body), body.unitPrice(),
                 Boolean.TRUE.equals(body.overtime()), Boolean.TRUE.equals(body.taxExempt()),
                 body.discountPct() == null ? BigDecimal.ZERO : body.discountPct(), body.taxRate(),
-                body.periodStart(), body.periodEnd())
+                body.periodStart(), body.periodEnd(), body.percentComplete())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such line."));
     }

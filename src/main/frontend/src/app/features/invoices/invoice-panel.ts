@@ -192,6 +192,15 @@ function problemWith(line: NewLine): string {
       problems.push('The line discount can have at most two decimals.');
     }
   }
+  if (line.percentComplete !== undefined) {
+    if (!/^-?\d+(\.\d+)?$/.test(line.percentComplete)) {
+      problems.push('The percent complete must be a number, like 40 or 33.3.');
+    } else if (Number(line.percentComplete) <= 0 || Number(line.percentComplete) > 100) {
+      problems.push('The percent complete must be more than 0 and at most 100.');
+    } else if (!TWO_DECIMALS.test(line.percentComplete)) {
+      problems.push('The percent complete can have at most two decimals.');
+    }
+  }
   if ((line.periodStart === undefined) !== (line.periodEnd === undefined)) {
     problems.push('Enter both the start and the end of the service period, or neither.');
   } else if (line.periodStart && line.periodEnd && line.periodEnd < line.periodStart) {
@@ -261,6 +270,7 @@ function problemWith(line: NewLine): string {
               <th scope="col">Unit type</th>
               <th scope="col">Unit price</th>
               <th scope="col">Service period</th>
+              <th scope="col">Complete</th>
               <th scope="col">Line discount</th>
               <th scope="col">Amount</th>
               <th scope="col">Discount share</th>
@@ -280,6 +290,7 @@ function problemWith(line: NewLine): string {
                 <td data-testid="line-unit-type">{{ l.unitType ?? '' }}</td>
                 <td data-testid="line-unit-price">{{ l.tiered ? 'Tiered from ' + amount(l.unitPrice) : amount(l.unitPrice) }}</td>
                 <td data-testid="line-period">{{ l.periodStart ? l.periodStart + ' to ' + l.periodEnd : '' }}</td>
+                <td data-testid="line-percent">{{ l.percentComplete === null ? '' : l.percentComplete + '%' }}</td>
                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
@@ -898,6 +909,13 @@ function problemWith(line: NewLine): string {
             data-testid="line-form-period-end"
             formControlName="periodEnd"
           />
+          <label for="line-percent">Percent complete (%, optional, bills that share of the line)</label>
+          <input
+            id="line-percent"
+            data-testid="line-form-percent"
+            inputmode="decimal"
+            formControlName="percentComplete"
+          />
           <label for="line-discount-pct">Line discount (%, optional)</label>
           <input
             id="line-discount-pct"
@@ -1069,6 +1087,7 @@ export class InvoicePanel {
     taxRate: new FormControl('', { nonNullable: true }),
     periodStart: new FormControl('', { nonNullable: true }),
     periodEnd: new FormControl('', { nonNullable: true }),
+    percentComplete: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly discountForm = new FormGroup({
@@ -1170,6 +1189,7 @@ export class InvoicePanel {
       taxRate: line.taxRate ?? '',
       periodStart: line.periodStart ?? '',
       periodEnd: line.periodEnd ?? '',
+      percentComplete: line.percentComplete ?? '',
     });
     this.editingLineId.set(line.id);
     this.error.set('');
@@ -1210,6 +1230,10 @@ export class InvoicePanel {
     }
     if (raw.periodEnd) {
       line.periodEnd = raw.periodEnd;
+    }
+    const percentComplete = raw.percentComplete.trim().replace(/%$/, '').trim();
+    if (percentComplete) {
+      line.percentComplete = percentComplete;
     }
     const problem = problemWith(line);
     if (problem) {
