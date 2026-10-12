@@ -1,0 +1,545 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index 6afa820..5f61a91 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -20,6 +20,7 @@ const MILESTONE_STATUS_LABEL: Record<MilestoneStatus, string> = {
+   PART_PAID: 'Part paid',
+   OVERDUE: 'Overdue',
+   DUE: 'Due',
++  DISPUTED: 'Disputed',
+ };
+ const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
+   PAID: 'Paid',
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index fec2775..ac85bdd 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -6,6 +6,7 @@ import {
+   InvoiceLineView,
+   InvoiceService,
+   InvoiceSummary,
++  MilestoneView,
+   NewDiscount,
+   NewLine,
+ } from './invoice.service';
+@@ -425,6 +426,17 @@ function problemWith(line: NewLine): string {
+                         Reach
+                       </button>
+                     }
++                    @if (canDisputeMilestone(inv, m)) {
++                      <button
++                        type="button"
++                        data-testid="milestone-dispute"
++                        [disabled]="disputing()"
++                        [attr.aria-label]="'Dispute milestone ' + m.description"
++                        (click)="disputeMilestone(inv.id, m.id)"
++                      >
++                        Dispute
++                      </button>
++                    }
+                   </td>
+                 </tr>
+               }
+@@ -750,7 +762,11 @@ function problemWith(line: NewLine): string {
+           <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
+         }
+ 
+-        @if (inv.disputedOn && !inv.disputeResolvedOn) {
++        @if (hasDisputedMilestones(inv)) {
++          <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
++            Resolve dispute
++          </button>
++        } @else if (inv.disputedOn && !inv.disputeResolvedOn) {
+           <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
+             Resolve dispute
+           </button>
+@@ -1606,6 +1622,42 @@ export class InvoicePanel {
+     });
+   }
+ 
++  // A reached milestone still owing can be disputed, unless the invoice itself is already in dispute.
++  protected canDisputeMilestone(inv: InvoiceDetail, m: MilestoneView): boolean {
++    const invoiceDisputed = !!inv.disputedOn && !inv.disputeResolvedOn;
++    return (
++      inv.creditOf === null &&
++      !invoiceDisputed &&
++      m.reachedOn !== null &&
++      m.disputedOn === null &&
++      m.status !== 'PAID' &&
++      m.status !== 'PENDING' &&
++      inv.status !== 'WRITTEN_OFF' &&
++      inv.status !== 'VOID'
++    );
++  }
++
++  protected hasDisputedMilestones(inv: InvoiceDetail): boolean {
++    return inv.milestones.some((m) => m.status === 'DISPUTED');
++  }
++
++  protected disputeMilestone(invoiceId: number, milestoneId: number): void {
++    this.disputing.set(true);
++    this.disputeError.set('');
++    this.service.disputeMilestone(invoiceId, milestoneId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.disputing.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The milestone could not be disputed.');
++        this.disputing.set(false);
++      },
++    });
++  }
++
+   protected resolveDispute(invoiceId: number): void {
+     this.disputing.set(true);
+     this.disputeError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 99bcf8d..665acfd 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -259,8 +259,9 @@ export interface InvoiceDetail {
+ // One milestone: its percentage of what the client pays (without trailing zeros), the day it was
+ // reached and the day it falls due (the client's terms after it, else 14 days; yyyy-mm-dd, null while
+ // pending), its amount, what has been paid off it, its late interest and what of that is unpaid, decimal
+-// strings to the cent (reached milestones are paid in due-date order, amount then interest), and its status.
+-export type MilestoneStatus = 'PENDING' | 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
++// strings to the cent (reached milestones are paid in due-date order, amount then interest, those in dispute
++// last), its status, and the day it was disputed (null when it is not in dispute).
++export type MilestoneStatus = 'PENDING' | 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE' | 'DISPUTED';
+ 
+ export interface MilestoneView {
+   id: number;
+@@ -273,6 +274,7 @@ export interface MilestoneView {
+   lateInterest: string;
+   interestUnpaid: string;
+   status: MilestoneStatus;
++  disputedOn: string | null;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+@@ -439,6 +441,12 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones/${milestoneId}/reach`, null);
+   }
+ 
++  // Puts a reached milestone of a sent invoice in dispute: it earns no interest, is not overdue and takes no
++  // payments until the invoice's dispute is resolved. Refused (409) for one not reached, paid off or in dispute.
++  disputeMilestone(invoiceId: number, milestoneId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones/${milestoneId}/dispute`, null);
++  }
++
+   // Approves a draft whose grand total is over the workspace's approval limit, or whose discount is
+   // more than a fifth of the subtotal. Refused (409) when it
+   // needs no approval.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index dd90ac8..73c1b15 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -57,7 +57,7 @@ public class TestSupportController {
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
+     private static final Set<String> INVOICE_FIELDS =
+             Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "lineItems", "milestones");
+-    private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn");
++    private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn", "disputedOn");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -516,10 +516,11 @@ public class TestSupportController {
+                 }
+                 pctSum = pctSum.add(pct);
+                 insert("invoice_milestone", milestone.get("id"),
+-                        new String[] {"invoice_id", "description", "pct", "reached_on"},
++                        new String[] {"invoice_id", "description", "pct", "reached_on", "disputed_on"},
+                         invoiceId,
+                         text(milestone, "description"), pct,
+-                        milestone.get("reachedOn") == null ? null : date(milestone.get("reachedOn"), "invoices[].milestones[].reachedOn"));
++                        milestone.get("reachedOn") == null ? null : date(milestone.get("reachedOn"), "invoices[].milestones[].reachedOn"),
++                        milestone.get("disputedOn") == null ? null : date(milestone.get("disputedOn"), "invoices[].milestones[].disputedOn"));
+             }
+             if (pctSum.compareTo(BigDecimal.valueOf(100)) > 0) {
+                 throw refuse("invoices[].milestones[].pct must add up to at most 100, not " + pctSum.toPlainString());
+@@ -865,7 +866,7 @@ public class TestSupportController {
+                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
+                     }
+                     row.put("milestones", jdbc.queryForList(
+-                            "SELECT id, description, pct, reached_on FROM invoice_milestone WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, pct, reached_on, disputed_on FROM invoice_milestone WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(m -> {
+                                 Map<String, Object> milestone = new LinkedHashMap<>();
+                                 milestone.put("id", m.get("ID"));
+@@ -874,6 +875,9 @@ public class TestSupportController {
+                                 if (m.get("REACHED_ON") != null) {
+                                     milestone.put("reachedOn", m.get("REACHED_ON").toString());
+                                 }
++                                if (m.get("DISPUTED_ON") != null) {
++                                    milestone.put("disputedOn", m.get("DISPUTED_ON").toString());
++                                }
+                                 return milestone;
+                             }).toList());
+                     row.put("lineItems", jdbc.queryForList(
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index e523d27..dad0437 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -24,6 +24,7 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.Comparator;
+ import java.util.Objects;
+ import java.util.List;
+@@ -888,9 +889,27 @@ public class Invoice {
+      * and is not overdue until the dispute is resolved.
+      */
+     public boolean isDisputed() {
++        return isInvoiceDisputed() || hasDisputedMilestones();
++    }
++
++    /** Whether the invoice itself (wholly or over particular lines) is in an open dispute. */
++    private boolean isInvoiceDisputed() {
+         return disputedOn != null && disputeResolvedOn == null;
+     }
+ 
++    /** Whether any reached milestone of the sent invoice is in dispute. */
++    public boolean hasDisputedMilestones() {
++        return isBilledByMilestones() && milestones.stream().anyMatch(m -> m.isReached() && m.isDisputed());
++    }
++
++    /**
++     * Puts the reached milestone in dispute from the given day: from then it earns no interest, is not overdue
++     * and takes no payments (they go to the other reached milestones) until the dispute is resolved.
++     */
++    public void disputeMilestone(Milestone milestone, LocalDate on) {
++        milestone.dispute(on);
++    }
++
+     /** Whether the dispute is over particular lines rather than the whole invoice. */
+     public boolean hasDisputedLines() {
+         return lines.stream().anyMatch(InvoiceLine::isDisputed);
+@@ -901,7 +920,7 @@ public class Invoice {
+      * payments until the dispute is resolved.
+      */
+     public boolean isWhollyDisputed() {
+-        return isDisputed() && !hasDisputedLines();
++        return isInvoiceDisputed() && !hasDisputedLines();
+     }
+ 
+     /** Puts the whole invoice in dispute from the given day. */
+@@ -967,6 +986,12 @@ public class Invoice {
+         if (!isDisputed() || isCreditNote() || isWrittenOff()) {
+             return zero();
+         }
++        if (!isInvoiceDisputed()) {
++            // Only milestones are in dispute: what is still owed on them, their late interest included.
++            return milestoneProgress(paid, taxRate, LocalDate.MIN).stream()
++                    .filter(p -> p.status() == Milestone.Status.DISPUTED).map(Milestone.Progress::owed)
++                    .reduce(zero(), BigDecimal::add);
++        }
+         BigDecimal due = amountDue(paid, taxRate).max(zero());
+         return isWhollyDisputed() ? due : disputedLinesAmount(taxRate).min(due);
+     }
+@@ -976,6 +1001,10 @@ public class Invoice {
+      * owes the interest it would have earned had it never been disputed, the days in dispute included.
+      */
+     public void resolveDispute(LocalDate on) {
++        milestones.forEach(Milestone::resolveDispute);
++        if (disputedOn == null) {
++            return;
++        }
+         this.disputeResolvedOn = on;
+         this.disputeCredit = false;
+     }
+@@ -1352,7 +1381,8 @@ public class Invoice {
+         }
+         List<Instalment> schedule = schedule(taxRate);
+         List<BigDecimal> charges = chargesInOrder(schedule.stream().map(Instalment::dueDate).toList(),
+-                schedule.stream().map(Instalment::payment).toList(), inOrder.stream().map(Part::on).toList(),
++                schedule.stream().map(Instalment::payment).toList(), Collections.nCopies(schedule.size(), null),
++                inOrder.stream().map(Part::on).toList(),
+                 inOrder.stream().map(Part::amount).toList(), annualRate, today);
+         BigDecimal total = charges.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+         charges = charges.stream().map(c -> c.setScale(scale(), RoundingMode.HALF_UP)).toList();
+@@ -1389,8 +1419,8 @@ public class Invoice {
+         List<BigDecimal> amounts = milestoneAmounts(taxRate);
+         List<Integer> order = reachedInDueOrder();
+         List<BigDecimal> charges = chargesInOrder(order.stream().map(k -> milestoneDueDate(milestones.get(k))).toList(),
+-                order.stream().map(amounts::get).toList(), inOrder.stream().map(Part::on).toList(),
+-                inOrder.stream().map(Part::amount).toList(), annualRate, today);
++                order.stream().map(amounts::get).toList(), order.stream().map(k -> milestones.get(k).getDisputedOn()).toList(),
++                inOrder.stream().map(Part::on).toList(), inOrder.stream().map(Part::amount).toList(), annualRate, today);
+         Map<Long, BigDecimal> byMilestone = new TreeMap<>();
+         BigDecimal total = BigDecimal.ZERO;
+         for (int n = 0; n < order.size(); n++) {
+@@ -1407,9 +1437,11 @@ public class Invoice {
+      * days, in that order) pay each amount itself and then its interest earned so far, earliest first. An
+      * amount still not paid off more than {@link #graceDays()} days after its due date earns interest from
+      * the end of its grace period, compounded daily at rate / 360 (Actual/360), on what is still unpaid of it,
+-     * with each payment after its grace period ending a period.
++     * with each payment after its grace period ending a period. An amount held back from a given day (null when
++     * none is) earns nothing from that day on.
+      */
+-    private List<BigDecimal> chargesInOrder(List<LocalDate> dues, List<BigDecimal> amounts, List<LocalDate> paidOn,
++    private List<BigDecimal> chargesInOrder(List<LocalDate> dues, List<BigDecimal> amounts, List<LocalDate> heldFrom,
++            List<LocalDate> paidOn,
+             List<BigDecimal> paidAmounts, BigDecimal annualRate, LocalDate today) {
+         BigDecimal[] left = paidAmounts.toArray(BigDecimal[]::new);
+         BigDecimal daily = BigDecimal.ONE.add(annualRate.divide(BigDecimal.valueOf(36000), MathContext.DECIMAL128));
+@@ -1433,7 +1465,7 @@ public class Invoice {
+             for (int j = 0; j < left.length; j++) {
+                 LocalDate on = paidOn.get(j);
+                 if (late && on.isAfter(from) && owed.signum() > 0) {
+-                    BigDecimal earned = interestOn(owed, daily, interestDays(from, on));
++                    BigDecimal earned = interestOn(owed, daily, heldDays(interestDays(from, on), from, on, heldFrom.get(k)));
+                     charged = charged.add(earned);
+                     unpaidInterest = unpaidInterest.add(earned);
+                     from = on;
+@@ -1446,13 +1478,22 @@ public class Invoice {
+                 left[j] = left[j].subtract(toInterest);
+             }
+             if (late && owed.signum() > 0) {
+-                charged = charged.add(interestOn(owed, daily, interestDays(from, today)));
++                charged = charged.add(interestOn(owed, daily, heldDays(interestDays(from, today), from, today, heldFrom.get(k))));
+             }
+             charges.add(charged);
+         }
+         return charges;
+     }
+ 
++    /** The days from one day to another that earn interest, less those on or after the day it is held back from (null when none). */
++    private static long heldDays(long days, LocalDate from, LocalDate to, LocalDate heldFrom) {
++        if (heldFrom == null || days <= 0) {
++            return days;
++        }
++        LocalDate start = from.isAfter(heldFrom) ? from : heldFrom;
++        return Math.max(0, days - Math.max(0, ChronoUnit.DAYS.between(start, to)));
++    }
++
+     /**
+      * The interest what the invoice owes earns from one day to another at the daily growth factor. While
+      * disputed lines are in an open dispute (from the day they were disputed) only what is owed besides them
+@@ -1988,7 +2029,10 @@ public class Invoice {
+         return milestone.getReachedOn().plusDays(clientTermsDays == null ? MILESTONE_TERMS_DAYS : clientTermsDays);
+     }
+ 
+-    /** The indexes of the reached milestones, in the order they are paid: by due date, then id. */
++    /**
++     * The indexes of the reached milestones, in the order they are paid: by due date, then id, those in dispute
++     * last (payments go to the others first).
++     */
+     private List<Integer> reachedInDueOrder() {
+         List<Integer> order = new ArrayList<>();
+         for (int k = 0; k < milestones.size(); k++) {
+@@ -1996,7 +2040,8 @@ public class Invoice {
+                 order.add(k);
+             }
+         }
+-        order.sort(Comparator.comparing((Integer k) -> milestoneDueDate(milestones.get(k)))
++        order.sort(Comparator.comparing((Integer k) -> milestones.get(k).isDisputed())
++                .thenComparing(k -> milestoneDueDate(milestones.get(k)))
+                 .thenComparing(k -> milestones.get(k).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
+         return order;
+     }
+@@ -2034,6 +2079,8 @@ public class Invoice {
+                 Milestone.Status st;
+                 if (part.compareTo(amount) >= 0 && interestUnpaid.signum() <= 0) {
+                     st = Milestone.Status.PAID;
++                } else if (m.isDisputed()) {
++                    st = Milestone.Status.DISPUTED;
+                 } else if (today.isAfter(due.plusDays(graceDays()))) {
+                     st = Milestone.Status.OVERDUE;
+                 } else if (part.signum() > 0) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 8f203ce..abda4df 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -374,15 +374,18 @@ public class InvoiceController {
+     /**
+      * One milestone of an invoice: its id, description, percentage (without trailing zeros), the day it was
+      * reached and the day it falls due (null while pending), its amount, what has been paid off it, the late interest
+-     * it has been charged and what of that is unpaid, decimal strings to the cent; and its status.
++     * it has been charged and what of that is unpaid, decimal strings to the cent; its status, and the day it was
++     * disputed (null when it is not in dispute).
+      */
+     public record MilestoneView(Long id, String description, String pct, LocalDate reachedOn, LocalDate dueDate,
+-            String amount, String paid, String lateInterest, String interestUnpaid, Milestone.Status status) {
++            String amount, String paid, String lateInterest, String interestUnpaid, Milestone.Status status,
++            LocalDate disputedOn) {
+         static MilestoneView of(Milestone.Progress p) {
+             Milestone m = p.milestone();
+             return new MilestoneView(m.getId(), m.getDescription(), m.getPct().stripTrailingZeros().toPlainString(),
+                     m.getReachedOn(), p.dueDate(), p.amount().toPlainString(), p.paid().toPlainString(),
+-                    p.lateInterest().toPlainString(), p.interestUnpaid().toPlainString(), p.status());
++                    p.lateInterest().toPlainString(), p.interestUnpaid().toPlainString(), p.status(),
++                    m.getDisputedOn());
+         }
+     }
+ 
+@@ -627,6 +630,14 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Puts a reached milestone of a sent invoice in dispute. */
++    @PostMapping("/api/invoices/{id}/milestones/{milestoneId}/dispute")
++    public InvoiceDetail disputeMilestone(@PathVariable Long id, @PathVariable Long milestoneId) {
++        return invoices.disputeMilestone(id, milestoneId)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Writes off everything still owed on a sent invoice as a bad debt. */
+     @PostMapping("/api/invoices/{id}/write-off")
+     public InvoiceDetail writeOff(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 10dc229..58093d2 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -658,6 +658,51 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Puts a reached milestone of a sent invoice in dispute today, and records it in the audit with what the
++     * milestone owes, its late interest included; empty if no such invoice. From then on it earns no interest,
++     * is not overdue and takes no payments, which go to the other reached milestones instead, until the dispute
++     * is resolved. A milestone not reached, paid off or already in dispute is refused, as is one of an invoice
++     * that is not sent, written off, or itself in dispute.
++     */
++    @Transactional
++    public Optional<Invoice> disputeMilestone(Long invoiceId, Long milestoneId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            Milestone milestone = invoice.milestone(milestoneId);
++            if (milestone == null) {
++                throw new InvoiceRejectedException("The invoice has no such milestone.");
++            }
++            if (invoice.getStatus() != InvoiceStatus.SENT || invoice.isCreditNote() || invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("Only a milestone of a sent invoice can be disputed.");
++            }
++            if (!milestone.isReached()) {
++                throw new InvoiceRejectedException("Only a reached milestone can be disputed.");
++            }
++            if (milestone.isDisputed()) {
++                throw new InvoiceRejectedException("This milestone is already in dispute.");
++            }
++            if (invoice.isDisputed() && !invoice.hasDisputedMilestones()) {
++                throw new InvoiceRejectedException("This invoice is already in dispute.");
++            }
++            BigDecimal rate = taxRate.percent();
++            if (owedOn(invoice, milestone, rate).signum() <= 0) {
++                throw new InvoiceRejectedException("This milestone has been paid off.");
++            }
++            invoice.disputeMilestone(milestone, today.date());
++            invoices.saveAndFlush(invoice);
++            withInterest(List.of(invoice));
++            audit.record("INVOICE_DISPUTED id=" + invoice.getId() + " amount=" + owedOn(invoice, milestone, rate).toPlainString());
++        });
++        return found;
++    }
++
++    /** What is still owed on the milestone of the invoice, its late interest included. */
++    private BigDecimal owedOn(Invoice invoice, Milestone milestone, BigDecimal rate) {
++        return invoice.milestoneProgress(paid(List.of(invoice)).get(invoice.getId()), rate, today.date()).stream()
++                .filter(p -> p.milestone() == milestone).map(Milestone.Progress::owed).findFirst().orElseThrow();
++    }
++
+     /** Why the draft's milestones keep it from being sent, or null when they do not: they must add up to exactly 100%. */
+     private static String milestoneRefusal(Invoice invoice) {
+         if (invoice.getMilestones().isEmpty() || invoice.milestonesPct().compareTo(BigDecimal.valueOf(100)) == 0) {
+@@ -834,6 +879,9 @@ public class InvoiceService {
+             if (invoice.isWhollyDisputed()) {
+                 throw new InvoiceRejectedException("The whole invoice is already in dispute.");
+             }
++            if (invoice.hasDisputedMilestones()) {
++                throw new InvoiceRejectedException("A milestone of this invoice is already in dispute.");
++            }
+             InvoiceLine line = invoice.getLines().stream().filter(l -> lineId.equals(l.getId())).findFirst()
+                     .orElseThrow(() -> new InvoiceRejectedException("There is no such line on this invoice."));
+             if (invoice.isDisputed() && line.isDisputed()) {
+@@ -887,6 +935,9 @@ public class InvoiceService {
+             if (!invoice.isDisputed()) {
+                 throw new InvoiceRejectedException("This invoice is not in dispute.");
+             }
++            if (invoice.hasDisputedMilestones()) {
++                throw new InvoiceRejectedException("A disputed milestone cannot be resolved with a credit note.");
++            }
+             requireCreditable(invoice);
+             LocalDate on = today.date();
+             Invoice note = invoice.creditNote(on);
+@@ -1619,7 +1670,8 @@ public class InvoiceService {
+                     && amount.compareTo(invoice.amountDue(paidSoFar, taxRate.percent())
+                             .subtract(invoice.disputedAmount(paidSoFar, taxRate.percent()))) > 0;
+             if (resolved) {
+-                invoice.resolveDispute(date.isBefore(invoice.getDisputedOn()) ? invoice.getDisputedOn() : date);
++                invoice.resolveDispute(invoice.getDisputedOn() != null && date.isBefore(invoice.getDisputedOn())
++                        ? invoice.getDisputedOn() : date);
+                 invoices.saveAndFlush(invoice);
+                 withInterest(List.of(invoice));
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Milestone.java b/src/main/java/net/officefloor/hq/app/invoices/Milestone.java
+index ada4a61..02d79d5 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Milestone.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Milestone.java
+@@ -18,9 +18,9 @@ import java.time.LocalDate;
+ @Table(name = "invoice_milestone")
+ public class Milestone {
+ 
+-    /** Where a milestone is: not reached yet, or reached and paid off, part paid, overdue or due. */
++    /** Where a milestone is: not reached yet, or reached and paid off, part paid, overdue, due or in dispute. */
+     public enum Status {
+-        PENDING, PAID, PART_PAID, OVERDUE, DUE
++        PENDING, PAID, PART_PAID, OVERDUE, DUE, DISPUTED
+     }
+ 
+     /**
+@@ -48,6 +48,10 @@ public class Milestone {
+     @Column(name = "reached_on")
+     private LocalDate reachedOn;
+ 
++    /** The day the client disputed the reached milestone; null when it is not in dispute. */
++    @Column(name = "disputed_on")
++    private LocalDate disputedOn;
++
+     protected Milestone() {
+     }
+ 
+@@ -76,6 +80,28 @@ public class Milestone {
+         return reachedOn != null;
+     }
+ 
++    public LocalDate getDisputedOn() {
++        return disputedOn;
++    }
++
++    /**
++     * Whether the milestone is in dispute: it then earns no interest from the day it was disputed, is not
++     * overdue and takes no payments until the dispute is resolved.
++     */
++    public boolean isDisputed() {
++        return disputedOn != null;
++    }
++
++    /** Puts the milestone in dispute from the day. */
++    public void dispute(LocalDate on) {
++        this.disputedOn = on;
++    }
++
++    /** Ends the milestone's dispute: the interest it held back is owed, as if it had never been disputed. */
++    public void resolveDispute() {
++        this.disputedOn = null;
++    }
++
+     /** Marks the milestone reached on the day. */
+     public void reach(LocalDate on) {
+         this.reachedOn = on;
+diff --git a/src/main/resources/db/migration/V81__milestone_dispute.sql b/src/main/resources/db/migration/V81__milestone_dispute.sql
+new file mode 100644
+index 0000000..bce52bf
+--- /dev/null
++++ b/src/main/resources/db/migration/V81__milestone_dispute.sql
+@@ -0,0 +1,3 @@
++-- The day the client disputed a reached milestone; null when it is not in dispute. While it is, the milestone
++-- earns no interest, is not overdue and takes no payments; resolving the dispute clears it.
++ALTER TABLE invoice_milestone ADD COLUMN disputed_on DATE;
