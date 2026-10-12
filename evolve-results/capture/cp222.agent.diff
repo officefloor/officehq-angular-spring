@@ -1,0 +1,84 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 32de8ce..d9adb57 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -671,9 +671,16 @@ public class Invoice {
+      * with copies of its lines, its percentage discount, surcharge and purchase order number, worked out afresh. It
+      * remembers which invoice it replaces. It carries on what was going on with this invoice: an open dispute (from the
+      * same day, over the same lines), its milestones (with the days they were reached and disputed) and its recurring plan.
++     * When it has had reminders they move to the replacement, which keeps this invoice's due date (see
++     * {@link #carriesChasing}), so the chasing carries on where it was.
+      */
+     public Invoice rebill(LocalDate issueDate, LocalDate dueDate) {
+-        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        boolean chased = !reminders.isEmpty();
++        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, chased ? this.dueDate : dueDate);
++        if (chased) {
++            next.reminders.addAll(reminders);
++            reminders.clear();
++        }
+         next.supplyRegion = supplyRegion;
+         next.discountPct = discountPct;
+         next.surchargePct = surchargePct;
+@@ -2397,17 +2404,25 @@ public class Invoice {
+ 
+     /**
+      * Marks the invoice sent, issued on the given date and due on the given date, unless its due date
+-     * was set by hand, which is kept.
++     * was set by hand or it carries on the chasing of the invoice it replaces (see {@link #carriesChasing}): that due date is kept.
+      */
+     public void markSent(LocalDate issueDate, LocalDate dueDate) {
+         this.status = InvoiceStatus.SENT;
+         lines.forEach(InvoiceLine::fixPrice);
+         this.issueDate = issueDate;
+-        if (!manualDueDate) {
++        if (!manualDueDate && !carriesChasing()) {
+             this.dueDate = dueDate;
+         }
+     }
+ 
++    /**
++     * Whether this replacement carries on the chasing of the rebilled invoice it replaces: it took over that invoice's
++     * reminders, so it keeps that invoice's due date rather than being dated from the day it is sent.
++     */
++    public boolean carriesChasing() {
++        return replaces != null && !reminders.isEmpty();
++    }
++
+     /** Whether a due date set by hand is already past on the given send date. */
+     public boolean dueDatePassedBy(LocalDate sendDate) {
+         return manualDueDate && dueDate != null && dueDate.isBefore(sendDate);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 17407fd..33c24ec 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -246,8 +246,9 @@ public class InvoiceService {
+      * and is approved already when its grand total is no more than the invoice was sent for plus the late interest it
+      * carries. The late interest the invoice owes (once past any threshold) is carried: it is waived on the invoice today, so
+      * stops there, and the draft bills it as a line of its own (see {@link InvoiceLine#lateInterest}), recorded as
+-     * INTEREST_CARRIED in the audit. Records INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
+-     * refused.
++     * INTEREST_CARRIED in the audit. The invoice's reminders move to the draft, which then keeps the invoice's due date
++     * (see {@link Invoice#carriesChasing}). Records INVOICE_REBILLED in the audit. A draft, a credit note, a void or
++     * written-off invoice, one already credited, or one whose final notice has gone out is refused.
+      */
+     @Transactional
+     public Optional<Invoice> rebill(Long invoiceId) {
+@@ -268,6 +269,9 @@ public class InvoiceService {
+             if (invoice.hasCreditNotesIssued() || invoice.getRebilledOn() != null) {
+                 throw new InvoiceRejectedException("An invoice already credited cannot be rebilled.");
+             }
++            if (invoice.getReminders().size() >= DunningLevel.FINAL.reminders()) {
++                throw new InvoiceRejectedException("The final notice has gone out on this invoice: it cannot be rebilled.");
++            }
+             LocalDate on = today.date();
+             BigDecimal rate = taxRate.percent();
+             withInterest(List.of(invoice));
+@@ -1743,6 +1747,7 @@ public class InvoiceService {
+         LocalDate issued = today.date();
+         // An adjustment note is priced as of the invoice it adjusts.
+         repriceFromRates(invoice, null, invoice.isAdjustment() ? invoice.pricingDate() : issued);
++        // A replacement carrying on the chasing keeps its due date (see Invoice#markSent).
+         invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
+         invoice.keepSentFigures(taxRate.percent());
+         invoices.saveAndFlush(invoice);
