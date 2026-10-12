@@ -1147,7 +1147,16 @@ public class Invoice {
      * written off.
      */
     public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, LocalDate asOf) {
-        annualRate = lateInterestRate(annualRate);
+        accrueLateInterest(payments, taxRate, annualRate, BigDecimal.ZERO, asOf);
+    }
+
+    /**
+     * As {@link #accrueLateInterest(List, BigDecimal, BigDecimal, LocalDate)}, with the premium (percentage
+     * points) added to the rate before the region's legal maximum caps it (see {@link #lateInterestRate}).
+     */
+    public void accrueLateInterest(List<Payment> payments, BigDecimal taxRate, BigDecimal annualRate, BigDecimal premium,
+            LocalDate asOf) {
+        annualRate = lateInterestRate(annualRate, premium);
         LocalDate today = writtenOffOn != null && writtenOffOn.isBefore(asOf) ? writtenOffOn : asOf;
         this.lateInterest = BigDecimal.ZERO;
         this.lateWaived = BigDecimal.ZERO;
@@ -2182,10 +2191,14 @@ public class Invoice {
 
     /**
      * The annual late-interest rate this invoice is charged: its client's own, else the workspace's,
-     * but no more than the legal maximum of the client's region.
+     * plus the premium in percentage points (for a HIGH payment risk client) when it is charged interest at
+     * all, but no more than the legal maximum of the client's region.
      */
-    public BigDecimal lateInterestRate(BigDecimal workspaceRate) {
+    public BigDecimal lateInterestRate(BigDecimal workspaceRate, BigDecimal premium) {
         BigDecimal rate = clientInterestRate == null ? workspaceRate : clientInterestRate;
+        if (rate != null && rate.signum() > 0 && premium != null) {
+            rate = rate.add(premium);
+        }
         if (regionMaxInterest == null || rate == null) {
             return rate;
         }

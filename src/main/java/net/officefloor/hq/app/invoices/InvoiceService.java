@@ -108,11 +108,18 @@ public class InvoiceService {
         if (list.isEmpty()) {
             return list;
         }
-        List<Payment> found = payments.findForInvoices(list.stream().map(Invoice::getId).toList());
+        // Each invoice's risk band is judged on its client's other invoices, so load them all.
+        Map<Long, List<Invoice>> byClient = new LinkedHashMap<>();
+        list.stream().map(Invoice::getClientId).distinct()
+                .forEach(c -> byClient.put(c, invoices.findByClientIdOrderByIdAsc(c)));
+        Set<Long> given = list.stream().map(Invoice::getId).collect(java.util.stream.Collectors.toSet());
+        List<Invoice> all = new ArrayList<>(list);
+        byClient.values().stream().flatMap(List::stream).filter(i -> !given.contains(i.getId())).forEach(all::add);
+        List<Payment> found = payments.findForInvoices(all.stream().map(Invoice::getId).toList());
         BigDecimal rate = taxRate.percent();
         BigDecimal annual = lateInterestRate.percent();
         LocalDate now = today.date();
-        list.forEach(i -> {
+        all.forEach(i -> {
             // Loaded with its lines only: read its milestones now, while the session is open.
             Hibernate.initialize(i.getMilestones());
             i.priceAsOf(now);
@@ -121,8 +128,25 @@ public class InvoiceService {
             }
             i.accrueLateInterest(found, rate, annual, now);
         });
+        Map<Long, LocalDate> paidOn = new HashMap<>();
+        all.forEach(i -> {
+            LocalDate on = i.paidOn(found, rate);
+            if (on != null) {
+                paidOn.put(i.getId(), on);
+            }
+        });
+        list.forEach(i -> {
+            List<Invoice> others = all.stream()
+                    .filter(o -> o.getClientId().equals(i.getClientId()) && !o.getId().equals(i.getId())).toList();
+            if (riskOf(others, paidOn).band() == RiskBand.HIGH) {
+                i.accrueLateInterest(found, rate, annual, HIGH_RISK_INTEREST_PREMIUM, now);
+            }
+        });
         return list;
     }
+
+    /** The percentage points added to the late-interest rate of a HIGH payment risk client's invoices. */
+    static final BigDecimal HIGH_RISK_INTEREST_PREMIUM = BigDecimal.valueOf(3);
 
     @Transactional(readOnly = true)
     public Optional<Invoice> find(Long id) {
@@ -2311,9 +2335,13 @@ public class InvoiceService {
      */
     @Transactional(readOnly = true)
     public Risk riskOf(Long clientId) {
-        List<Invoice> list = loadForClient(clientId).stream()
-                .filter(i -> !i.isCreditNote() && i.getIssueDate() != null).toList();
-        Map<Long, LocalDate> paidOn = paidOn(list);
+        List<Invoice> list = loadForClient(clientId);
+        return riskOf(list, paidOn(list));
+    }
+
+    /** The payment risk the invoices give (see {@link #riskOf(Long)}), each paid in full on its date in paidOn. */
+    private static Risk riskOf(List<Invoice> invoices, Map<Long, LocalDate> paidOn) {
+        List<Invoice> list = invoices.stream().filter(i -> !i.isCreditNote() && i.getIssueDate() != null).toList();
         List<Invoice> paid = list.stream().filter(i -> paidOn.containsKey(i.getId()))
                 .sorted(Comparator.comparing((Invoice i) -> paidOn.get(i.getId())).thenComparing(Invoice::getId))
                 .toList();
