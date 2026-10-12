@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index e286a6e..e63a9c0 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -584,7 +584,7 @@ export class InvoiceService {
+   }
+ 
+   // Records one payment spread automatically over the client's invoices: those whose references are
+-  // quoted (comma separated), or with none all its unpaid invoices, overdue first, then the largest due
++  // quoted (comma separated), or with none all its unpaid invoices, overdue first, then the smallest due
+   // first; refused when a reference is mistyped (400) or not the client's; what they do not owe is held as credit.
+   // Answers the client's invoices with their new statuses.
+   recordSplitPayment(clientId: number, payment: NewPayment): Observable<InvoiceSummary[]> {
+diff --git a/src/main/frontend/src/app/features/invoices/payment-form.ts b/src/main/frontend/src/app/features/invoices/payment-form.ts
+index c77df38..08e23cd 100644
+--- a/src/main/frontend/src/app/features/invoices/payment-form.ts
++++ b/src/main/frontend/src/app/features/invoices/payment-form.ts
+@@ -114,7 +114,7 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
+ 
+ // Records a payment. It goes to the open invoice (`invoiceId`), or, when none is open, to the client's
+ // invoices whose references are quoted (several may be, separated by commas: RF references or invoice
+-// numbers, applied overdue first, then largest due first; one may state the amount it gets after an
++// numbers, applied overdue first, then smallest due first; one may state the amount it gets after an
+ // equals sign, INV-0000018=50, and only the rest goes to those without one), or without one to the client's unpaid
+ // invoices in that order. What is paid beyond
+ // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index cb03ca0..a4270d9 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -828,7 +828,7 @@ public class InvoiceController {
+ 
+     /**
+      * Records one payment spread automatically over several of the client's invoices: applied to the invoices whose references are quoted (several may be, separated by commas) or, with none,
+-     * to all its unpaid invoices, overdue first (earliest due date first), then the largest amount due first; answers the client's invoices
++     * to all its unpaid invoices, overdue first (earliest due date first), then the smallest amount due first; answers the client's invoices
+      * with their new statuses.
+      */
+     @PostMapping("/api/clients/{clientId}/payments")
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index b981fe4..5ece59f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -1818,7 +1818,7 @@ public class InvoiceService {
+     /**
+      * Records one payment of the amount on the date against the client's unpaid sent invoices: the overdue
+      * ones first, earliest due date first (lower id first on the same due date), then the rest from the
+-     * largest amount due to the smallest (lower id first on the same amount), paying each off in full
++     * smallest amount due to the largest (lower id first on the same amount), paying each off in full
+      * before the next; then what is in dispute (see {@link #inDisputeOrder}), which stays in dispute.
+      * What it pays beyond everything the client owes is held on the client's account as credit; the
+      * rest is checked and recorded as a split payment over the invoices it reaches.
+@@ -1989,8 +1989,8 @@ public class InvoiceService {
+ 
+     /**
+      * The sent invoices among these (not drafts, void invoices, credit notes or invoices in dispute) in the payment order:
+-     * the overdue ones first, earliest due date first, then the rest from the largest amount due to the
+-     * smallest; lower id first on a tie. Fills in what each has due.
++     * the overdue ones first, earliest due date first, then the rest from the smallest amount due to the
++     * largest; lower id first on a tie. Fills in what each has due.
+      */
+     private List<Invoice> inPaymentOrder(List<Invoice> candidates, Map<Long, BigDecimal> dues) {
+         List<Invoice> unordered = candidates.stream()
+@@ -2010,12 +2010,11 @@ public class InvoiceService {
+                 overdue.add(invoice.getId());
+             }
+         }
+-        // Overdue first, oldest due date first; then the rest, largest amount due first; lower id on a tie.
++        // Overdue first, oldest due date first; then the rest, smallest amount due first; lower id on a tie.
+         Comparator<Invoice> byPriority = Comparator.<Invoice, Boolean>comparing(i -> !overdue.contains(i.getId()))
+                 .thenComparing(i -> overdue.contains(i.getId()) ? i.getDueDate() : null,
+                         Comparator.nullsLast(Comparator.naturalOrder()))
+-                .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()),
+-                        Comparator.reverseOrder())
++                .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()))
+                 .thenComparing(Invoice::getId);
+         return unordered.stream().sorted(byPriority).toList();
+     }
