@@ -1,0 +1,568 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index 7db8dbe..06f9554 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -211,7 +211,8 @@ function problemWith(line: NewLine): string {
+ // cheque): it is undone on every invoice it was applied to and never counts again. Any invoice can
+ // be duplicated into a new draft for the same client, which then opens. An invoice can be marked as
+ // recurring, until an end date its generated drafts keep; a sent recurring invoice generates the next period's draft once
+-// (its period stopping on the end date), which then opens. A draft's due date can be set
++// (its period stopping on the end date), which then opens. A sent invoice with percent-complete lines makes its
++// next progress claim once: a draft of those lines that bills only the progress since, which then opens. A draft's due date can be set
+ // by hand, from its issue date to 120 days after it; it is kept when the invoice is sent, and the
+ // server refuses to send it once that date is past. A draft can
+ // be spread over 2 to 24 monthly instalments at an annual interest rate (0 to 30); the server
+@@ -241,6 +242,7 @@ function problemWith(line: NewLine): string {
+               <th scope="col">Unit price</th>
+               <th scope="col">Service period</th>
+               <th scope="col">Complete</th>
++              <th scope="col">Billed before</th>
+               <th scope="col">Line discount</th>
+               <th scope="col">Amount</th>
+               <th scope="col">Discount share</th>
+@@ -261,6 +263,7 @@ function problemWith(line: NewLine): string {
+                 <td data-testid="line-unit-price">{{ l.tiered ? 'Tiered from ' + amount(l.unitPrice) : amount(l.unitPrice) }}</td>
+                 <td data-testid="line-period">{{ l.periodStart ? l.periodStart + ' to ' + l.periodEnd : '' }}</td>
+                 <td data-testid="line-percent">{{ l.percentComplete === null ? '' : l.percentComplete + '%' }}</td>
++                <td data-testid="line-billed-pct">{{ l.billedPct === null ? '' : l.billedPct + '%' }}</td>
+                 <td data-testid="line-discount">{{ amount(l.discount) }}</td>
+                 <td data-testid="line-amount">{{ amount(l.amount) }}</td>
+                 <td data-testid="line-discount-share">{{ amount(l.discountShare) }}</td>
+@@ -317,17 +320,17 @@ function problemWith(line: NewLine): string {
+               </tr>
+             } @empty {
+               <tr>
+-                <td colspan="13" data-testid="line-empty">No lines yet.</td>
++                <td colspan="14" data-testid="line-empty">No lines yet.</td>
+               </tr>
+             }
+           </tbody>
+           <tfoot>
+             <tr>
+-              <th scope="row" colspan="10">Subtotal</th>
++              <th scope="row" colspan="11">Subtotal</th>
+               <td data-testid="invoice-subtotal">{{ amount(inv.subtotal) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="10">
++              <th scope="row" colspan="11">
+                 @if (+inv.discountAmount > 0) {
+                   Discount (fixed@if (inv.discountCap !== null) {, max {{ amount(inv.discountCap) }} in all})
+                 } @else {
+@@ -339,16 +342,16 @@ function problemWith(line: NewLine): string {
+             </tr>
+             @if (inv.discountReason) {
+               <tr>
+-                <th scope="row" colspan="10">Discount reason</th>
++                <th scope="row" colspan="11">Discount reason</th>
+                 <td data-testid="invoice-discount-reason">{{ inv.discountReason }}</td>
+               </tr>
+             }
+             <tr>
+-              <th scope="row" colspan="10">Surcharge ({{ inv.surchargePct }}%)</th>
++              <th scope="row" colspan="11">Surcharge ({{ inv.surchargePct }}%)</th>
+               <td data-testid="invoice-surcharge">{{ amount(inv.surcharge) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="10">Minimum charge</th>
++              <th scope="row" colspan="11">Minimum charge</th>
+               <td data-testid="invoice-minimum-charge">{{ amount(inv.minimumCharge) }}</td>
+             </tr>
+             @if (inv.reverseCharge) {
+@@ -357,11 +360,11 @@ function problemWith(line: NewLine): string {
+               </tr>
+             }
+             <tr>
+-              <th scope="row" colspan="10">Amount before tax</th>
++              <th scope="row" colspan="11">Amount before tax</th>
+               <td data-testid="invoice-net">{{ amount(inv.net) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="10">
++              <th scope="row" colspan="11">
+                 @if (inv.pricesIncludeTax && !inv.reverseCharge) {
+                   Tax included (lines at their own rate, otherwise {{ inv.taxRate }}%)
+                 } @else {
+@@ -371,12 +374,12 @@ function problemWith(line: NewLine): string {
+               <td data-testid="invoice-tax">{{ amount(inv.tax) }}</td>
+             </tr>
+             <tr>
+-              <th scope="row" colspan="10">Total</th>
++              <th scope="row" colspan="11">Total</th>
+               <td data-testid="invoice-grand-total">{{ amount(inv.total) }}</td>
+             </tr>
+             @if (+inv.withholdingPct > 0) {
+               <tr>
+-                <th scope="row" colspan="10">Withheld by the client for its tax office</th>
++                <th scope="row" colspan="11">Withheld by the client for its tax office</th>
+                 <td data-testid="invoice-withholding">{{ amount(inv.withholding) }}</td>
+               </tr>
+             }
+@@ -832,6 +835,15 @@ function problemWith(line: NewLine): string {
+           }
+         }
+ 
++        @if (canClaim(inv)) {
++          <button type="button" data-testid="invoice-next-claim" [disabled]="claiming()" (click)="nextClaim(inv.id)">
++            Next claim
++          </button>
++          @if (claimError()) {
++            <p role="alert" data-testid="invoice-next-claim-error">{{ claimError() }}</p>
++          }
++        }
++
+         <button
+           type="button"
+           data-testid="invoice-duplicate"
+@@ -1042,6 +1054,8 @@ export class InvoicePanel {
+   protected readonly recurringError = signal('');
+   protected readonly generating = signal(false);
+   protected readonly generateError = signal('');
++  protected readonly claiming = signal(false);
++  protected readonly claimError = signal('');
+   protected readonly recurUntilForm = new FormGroup({
+     recurUntil: new FormControl('', { nonNullable: true }),
+   });
+@@ -1153,6 +1167,7 @@ export class InvoicePanel {
+       this.recurringError.set('');
+       this.recurUntilForm.reset();
+       this.generateError.set('');
++      this.claimError.set('');
+       this.creditError.set('');
+       this.reverseError.set('');
+       const sub = this.service.open(id).subscribe((detail) => this.invoice.set(detail));
+@@ -1774,6 +1789,33 @@ export class InvoicePanel {
+     });
+   }
+ 
++  // Whether the invoice is sent and has percent-complete lines, so it can make its next progress claim.
++  protected canClaim(inv: InvoiceDetail): boolean {
++    return (
++      inv.creditOf === null &&
++      inv.status !== 'DRAFT' &&
++      inv.status !== 'VOID' &&
++      inv.lines.some((l) => l.percentComplete !== null)
++    );
++  }
++
++  // Makes the next progress claim, which the list then shows and opens (as a duplicate is).
++  protected nextClaim(invoiceId: number): void {
++    this.claiming.set(true);
++    this.claimError.set('');
++    this.service.nextClaim(invoiceId).subscribe({
++      next: (detail) => {
++        this.claiming.set(false);
++        this.duplicated.emit(detail);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.claimError.set(typeof detail === 'string' && detail ? detail : 'The next claim could not be made.');
++        this.claiming.set(false);
++      },
++    });
++  }
++
+   protected creditNote(invoiceId: number): void {
+     this.crediting.set(true);
+     this.creditError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index aa11fcf..9ab9afb 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -90,6 +90,9 @@ export interface InvoiceLineView {
+   // The percentage of the line's work done, without trailing zeros, for a line billed by progress
+   // (its amount is that share of quantity x unit price); null when the whole line is billed.
+   percentComplete: string | null;
++  // For a line copied into a progress claim, the percentage of its work already billed (without trailing
++  // zeros): it bills its percent complete of its full amount less this share; null when none was.
++  billedPct: string | null;
+ }
+ 
+ // A payment made to an opened invoice: the whole amount paid and `allocated`, how much of it went to
+@@ -243,6 +246,8 @@ export interface InvoiceDetail {
+   recurringFrom: number | null;
+   // The last day a recurring invoice bills for (yyyy-mm-dd): a generated period stops on it; null for no end.
+   recurUntil: string | null;
++  // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
++  claimFrom: number | null;
+   // The client's purchase order number for the invoice; null when none was given.
+   poNumber: string | null;
+   // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
+@@ -525,6 +530,12 @@ export class InvoiceService {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/generate`, null);
+   }
+ 
++  // Makes the next progress claim of a sent invoice: a draft for the same client, issued today, with a copy
++  // of each percent-complete line that has billed its percentage so far. Answers the new draft.
++  nextClaim(invoiceId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/next-claim`, null);
++  }
++
+   // Starts an empty draft credit note against a sent invoice, numbered CN-; answers the new draft.
+   creditNote(invoiceId: number): Observable<InvoiceDetail> {
+     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/credit-note`, null);
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index ed4ac23..dd90ac8 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -56,9 +56,9 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "lineItems", "milestones");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "disputeCredit", "poNumber", "claimFrom", "lineItems", "milestones");
+     private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn");
+-    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete");
++    private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete", "billedPct");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+     private static final Set<String> STATUSES = Set.of("DRAFT", "SENT", "VOID", "CREDIT_NOTE");
+@@ -444,7 +444,7 @@ public class TestSupportController {
+                 throw refuse("invoices[].clientId is required");
+             }
+             Long invoiceId = insert("invoice", row.get("id"),
+-                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number"},
++                    new String[] {"client_id", "status", "issue_date", "due_date", "discount_pct", "discount_amount", "discount_cap", "discount_reason", "manual_due_date", "credit_of", "instalments", "instalment_rate", "plan_down_pct", "interest_waived_on", "written_off_on", "skipped_instalment", "surcharge_pct", "supply_region", "plan_fee", "approved_total", "approved_on", "recurring", "recurring_from", "recur_until", "disputed_on", "dispute_resolved_on", "dispute_credit", "po_number", "claim_from"},
+                     id(row.get("clientId")), status,
+                     row.get("issueDate") == null ? null : date(row.get("issueDate"), "invoices[].issueDate"),
+                     row.get("dueDate") == null ? null : date(row.get("dueDate"), "invoices[].dueDate"),
+@@ -475,7 +475,8 @@ public class TestSupportController {
+                     row.get("disputeResolvedOn") == null ? null
+                             : date(row.get("disputeResolvedOn"), "invoices[].disputeResolvedOn"),
+                     flag(row.get("disputeCredit"), "invoices[].disputeCredit"),
+-                    row.get("poNumber") == null ? null : row.get("poNumber").toString());
++                    row.get("poNumber") == null ? null : row.get("poNumber").toString(),
++                    row.get("claimFrom") == null ? null : id(row.get("claimFrom")));
+             for (Map<String, Object> line : rows(row.get("lineItems"), "invoices[].lineItems")) {
+                 only(line, LINE_FIELDS, "invoices[].lineItems[]");
+                 Object[] price = linePrice(invoiceId, line);
+@@ -489,7 +490,7 @@ public class TestSupportController {
+                     throw refuse("invoices[].lineItems[].periodEnd must not be before periodStart");
+                 }
+                 insert("invoice_line", line.get("id"),
+-                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete"},
++                        new String[] {"invoice_id", "description", "qty", "unit_price", "tiers", "tax_exempt", "discount_pct", "tax_rate", "credit_of_line", "unit_type", "billing_increment", "billing_min_units", "overtime", "card_priced", "rate_priced", "period_start", "period_end", "disputed", "percent_complete", "billed_pct"},
+                         invoiceId, text(line, "description"),
+                         cents(line.get("qty"), "invoices[].lineItems[].qty"),
+                         price[0], price[1],
+@@ -503,7 +504,8 @@ public class TestSupportController {
+                         price[2], price[3],
+                         period[0], period[1],
+                         flag(line.get("disputed"), "invoices[].lineItems[].disputed"),
+-                        percentComplete(line.get("percentComplete"), "invoices[].lineItems[].percentComplete"));
++                        percentComplete(line.get("percentComplete"), "invoices[].lineItems[].percentComplete"),
++                        line.get("billedPct") == null ? null : percent(line.get("billedPct"), "invoices[].lineItems[].billedPct"));
+             }
+             BigDecimal pctSum = BigDecimal.ZERO;
+             for (Map<String, Object> milestone : rows(row.get("milestones"), "invoices[].milestones")) {
+@@ -796,7 +798,7 @@ public class TestSupportController {
+                     return row;
+                 }).toList());
+         out.put("invoices", jdbc.queryForList(
+-                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number FROM invoice ORDER BY id").stream()
++                "SELECT id, client_id, status, issue_date, due_date, discount_pct, discount_amount, discount_cap, discount_reason, manual_due_date, credit_of, instalments, instalment_rate, plan_down_pct, interest_waived_on, written_off_on, skipped_instalment, surcharge_pct, supply_region, plan_fee, approved_total, approved_on, recurring, recurring_from, recur_until, disputed_on, dispute_resolved_on, dispute_credit, po_number, claim_from FROM invoice ORDER BY id").stream()
+                 .map(r -> {
+                     Map<String, Object> row = new LinkedHashMap<>();
+                     row.put("id", r.get("ID"));
+@@ -844,6 +846,9 @@ public class TestSupportController {
+                     if (r.get("RECURRING_FROM") != null) {
+                         row.put("recurringFrom", r.get("RECURRING_FROM"));
+                     }
++                    if (r.get("CLAIM_FROM") != null) {
++                        row.put("claimFrom", r.get("CLAIM_FROM"));
++                    }
+                     if (r.get("SKIPPED_INSTALMENT") != null) {
+                         row.put("skippedInstalment", r.get("SKIPPED_INSTALMENT"));
+                     }
+@@ -872,7 +877,7 @@ public class TestSupportController {
+                                 return milestone;
+                             }).toList());
+                     row.put("lineItems", jdbc.queryForList(
+-                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete FROM invoice_line WHERE invoice_id = ? ORDER BY id",
++                            "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete, billed_pct FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+                                 Map<String, Object> line = new LinkedHashMap<>();
+                                 line.put("id", l.get("ID"));
+@@ -899,6 +904,9 @@ public class TestSupportController {
+                                 if (l.get("PERCENT_COMPLETE") != null) {
+                                     line.put("percentComplete", l.get("PERCENT_COMPLETE"));
+                                 }
++                                if (l.get("BILLED_PCT") != null) {
++                                    line.put("billedPct", l.get("BILLED_PCT"));
++                                }
+                                 return line;
+                             }).toList());
+                     return row;
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 1538971..e523d27 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -187,6 +187,10 @@ public class Invoice {
+     @Column(name = "recur_until")
+     private LocalDate recurUntil;
+ 
++    /** The id of the sent invoice this draft was claimed from as its next progress claim (see {@link #nextClaim}); null when it was not. */
++    @Column(name = "claim_from")
++    private Long claimFrom;
++
+     /**
+      * The number of the instalment the client skipped: it pays only its interest and the instalments
+      * after it are worked out again (see {@link #schedule}); null when none was.
+@@ -560,6 +564,32 @@ public class Invoice {
+         return next;
+     }
+ 
++    /**
++     * The next progress claim of this invoice: a draft for the same client, issued and due on the given dates, with a claim copy
++     * of each line billed by progress (see {@link InvoiceLine#claimCopy}) — so nothing more is billed until its percentage is
++     * raised — and this invoice's percentage discount and surcharge. Lines billed whole are not copied. It remembers it was
++     * claimed from this invoice.
++     */
++    public Invoice nextClaim(LocalDate issueDate, LocalDate dueDate) {
++        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
++        next.supplyRegion = supplyRegion;
++        next.discountPct = discountPct;
++        next.surchargePct = surchargePct;
++        next.claimFrom = id;
++        lines.stream().filter(InvoiceLine::isProgress).forEach(line -> next.addLine(line.claimCopy()));
++        return next;
++    }
++
++    /** Whether any line is billed by progress. */
++    public boolean hasProgressLines() {
++        return lines.stream().anyMatch(InvoiceLine::isProgress);
++    }
++
++    /** The id of the sent invoice this draft was claimed from; null when it was not. */
++    public Long getClaimFrom() {
++        return claimFrom;
++    }
++
+     /** The first day of the next period: the first of the month after the latest period end. */
+     public LocalDate nextPeriodStart() {
+         return latestPeriodEnd().plusMonths(1).withDayOfMonth(1);
+@@ -2374,6 +2404,10 @@ public class Invoice {
+         if (line == null) {
+             return false;
+         }
++        if (line.getBilledPct() != null && (percentComplete == null || percentComplete.compareTo(line.getBilledPct()) < 0)) {
++            throw new InvoiceRejectedException("This line has already billed " + line.getBilledPct().stripTrailingZeros().toPlainString()
++                    + "% of its work: its percent complete cannot be less.");
++        }
+         InvoiceLine was = line.copy();
+         line.update(description, qty, unitType, unitPrice, tiers, increment, minUnits, overtime, taxExempt, discountPct, taxRate);
+         line.setPeriod(periodStart, periodEnd);
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index bf823da..0071ceb 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -97,12 +97,13 @@ public class InvoiceController {
+      * whole increment of its unit type's rate card entry (as entered without one), and then at least its minimum units.
+      * {@code periodStart} and {@code periodEnd} are the line's service period (null for none): its quantity times unit price is
+      * then a month's price, and its amounts are for the days of the period, month by month.
+-     * {@code percentComplete} (without trailing zeros) is the percentage of a line billed by progress, null for the whole line.
++     * {@code percentComplete} (without trailing zeros) is the percentage of a line billed by progress, null for the whole line;
++     * {@code billedPct} (without trailing zeros) is the percentage of it already billed by earlier claims, null when none was.
+      */
+     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
+             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
+             Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice,
+-            LocalDate periodStart, LocalDate periodEnd, boolean disputed, String percentComplete) {
++            LocalDate periodStart, LocalDate periodEnd, boolean disputed, String percentComplete, String billedPct) {
+         static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax,
+                 boolean inDispute) {
+             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
+@@ -115,7 +116,8 @@ public class InvoiceController {
+                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
+                     l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd(),
+                     inDispute && l.isDisputed(),
+-                    l.getPercentComplete() == null ? null : l.getPercentComplete().stripTrailingZeros().toPlainString());
++                    l.getPercentComplete() == null ? null : l.getPercentComplete().stripTrailingZeros().toPlainString(),
++                    l.getBilledPct() == null ? null : l.getBilledPct().stripTrailingZeros().toPlainString());
+         }
+     }
+ 
+@@ -158,6 +160,7 @@ public class InvoiceController {
+      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
+      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
+      * {@code recurUntil} is the last day it bills for when recurring (null for no end).
++     * {@code claimFrom} is the id of the invoice it was claimed from as its next progress claim (null when it was not).
+      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
+      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
+      * {@code poNumber} is the client's purchase order number (null when none).
+@@ -174,7 +177,7 @@ public class InvoiceController {
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+             boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+-            List<MilestoneView> milestones, String milestonesPct) {
++            List<MilestoneView> milestones, String milestonesPct, Long claimFrom) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -218,7 +221,7 @@ public class InvoiceController {
+                     i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getDisputedOn(), i.getDisputeResolvedOn(),
+                     i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
+                     i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
+-                    i.milestonesPct().stripTrailingZeros().toPlainString());
++                    i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom());
+         }
+     }
+ 
+@@ -750,6 +753,15 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    /** Makes the next progress claim of a sent invoice billed by percent complete; answers the new draft. */
++    @PostMapping("/api/invoices/{id}/next-claim")
++    @ResponseStatus(HttpStatus.CREATED)
++    public InvoiceDetail nextClaim(@PathVariable Long id) {
++        return invoices.nextClaim(id)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Starts a draft credit note against a sent invoice; answers the new draft. */
+     @PostMapping("/api/invoices/{id}/credit-note")
+     @ResponseStatus(HttpStatus.CREATED)
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+index 14e3982..4e13092 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceLine.java
+@@ -133,6 +133,14 @@ public class InvoiceLine {
+     @Column(name = "percent_complete")
+     private BigDecimal percentComplete;
+ 
++    /**
++     * For a line copied into a progress claim, the percentage of its work already billed (its percent complete on the invoice it
++     * was claimed from): the line bills its percent complete of its full amount less this percentage of it, each rounded half up
++     * to the cent; its percent complete is never below it. Null when nothing was billed before.
++     */
++    @Column(name = "billed_pct")
++    private BigDecimal billedPct;
++
+     /** The invoice the line is on, whose earlier lines of the same tiered unit type it carries on from; null while it is on none. */
+     @ManyToOne(fetch = FetchType.LAZY)
+     @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
+@@ -174,9 +182,17 @@ public class InvoiceLine {
+         copy.periodStart = periodStart;
+         copy.periodEnd = periodEnd;
+         copy.percentComplete = percentComplete;
++        copy.billedPct = billedPct;
+         return copy;
+     }
+ 
++    /** A copy of this line for the next progress claim: its percent complete so far is what it has already billed. */
++    public InvoiceLine claimCopy() {
++        InvoiceLine claim = copy();
++        claim.billedPct = percentComplete;
++        return claim;
++    }
++
+     /** A new credit note line crediting this line, with its description, quantity, price, discount, tax rate and exemption. */
+     public InvoiceLine creditCopy() {
+         InvoiceLine credit = copy();
+@@ -217,6 +233,16 @@ public class InvoiceLine {
+         this.percentComplete = percentComplete;
+     }
+ 
++    /** Whether the line is billed by progress. */
++    public boolean isProgress() {
++        return percentComplete != null;
++    }
++
++    /** The percentage of the line's work already billed by the claims before; null when none was. */
++    public BigDecimal getBilledPct() {
++        return billedPct;
++    }
++
+     /** Whether the line is billed for a service period. */
+     public boolean hasPeriod() {
+         return periodStart != null && periodEnd != null;
+@@ -388,9 +414,18 @@ public class InvoiceLine {
+      */
+     public BigDecimal grossAmount(int scale) {
+         BigDecimal full = fullAmount(scale);
+-        // A line billed by progress is charged its percentage of the full amount, rounded half up once more.
+-        return percentComplete == null ? full
+-                : full.multiply(percentComplete).divide(BigDecimal.valueOf(100)).setScale(scale, RoundingMode.HALF_UP);
++        // A line billed by progress is charged its percentage of the full amount, rounded half up once more,
++        // less what was already billed of it, rounded the same way on its own.
++        if (percentComplete == null) {
++            return full;
++        }
++        BigDecimal toDate = share(full, percentComplete, scale);
++        return billedPct == null ? toDate : toDate.subtract(share(full, billedPct, scale));
++    }
++
++    /** The given percentage of an amount, rounded half up to the given number of decimals. */
++    private static BigDecimal share(BigDecimal amount, BigDecimal pct, int scale) {
++        return amount.multiply(pct).divide(BigDecimal.valueOf(100)).setScale(scale, RoundingMode.HALF_UP);
+     }
+ 
+     /** The line's whole amount, before its percent complete and its discount (see {@link #grossAmount(int)}). */
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
+index b6d18f5..73cfb40 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceRepository.java
+@@ -18,4 +18,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+ 
+     /** Whether a draft has been generated from the recurring invoice as its next period. */
+     boolean existsByRecurringFrom(Long recurringFrom);
++
++    /** Whether the next progress claim has been made from the invoice. */
++    boolean existsByClaimFrom(Long claimFrom);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 7f3155d..f9b9062 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -242,6 +242,37 @@ public class InvoiceService {
+         });
+     }
+ 
++    /**
++     * Makes the next progress claim of a sent invoice (see {@link Invoice#nextClaim}), issued today and due as any new
++     * invoice is, and records it in the audit; empty if no such invoice. A draft, a credit note, a void invoice, one with
++     * no line billed by progress, or one already claimed from is refused.
++     */
++    @Transactional
++    public Optional<Invoice> nextClaim(Long invoiceId) {
++        return load(invoiceId).map(original -> {
++            if (original.isDraft()) {
++                throw new InvoiceRejectedException("Only a sent invoice can be claimed from.");
++            }
++            if (original.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be claimed from.");
++            }
++            if (original.isVoid()) {
++                throw new InvoiceRejectedException("A void invoice cannot be claimed from.");
++            }
++            if (!original.hasProgressLines()) {
++                throw new InvoiceRejectedException("The invoice has no line billed by percent complete.");
++            }
++            if (invoices.existsByClaimFrom(original.getId())) {
++                throw new InvoiceRejectedException("The next claim has already been made from this invoice.");
++            }
++            LocalDate issued = today.date();
++            Invoice next = invoices.saveAndFlush(original.nextClaim(issued, dueDateFor(original.getClientId(), issued)));
++            entityManager.refresh(next);
++            audit.record("PROGRESS_CLAIM from=" + original.number() + " to=" + next.number());
++            return next;
++        });
++    }
++
+     /**
+      * A new, empty draft credit note against the sent invoice, issued today; empty if no such invoice.
+      * A draft, a void invoice or a credit note is refused.
+diff --git a/src/main/resources/db/migration/V80__progress_claim.sql b/src/main/resources/db/migration/V80__progress_claim.sql
+new file mode 100644
+index 0000000..5aff204
+--- /dev/null
++++ b/src/main/resources/db/migration/V80__progress_claim.sql
+@@ -0,0 +1,6 @@
++-- The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
++ALTER TABLE invoice ADD COLUMN claim_from BIGINT;
++-- For a line copied into a progress claim: the percentage of its work already billed by the claims before, at most
++-- its percent complete; the line bills its percent complete of its full amount less this percentage of it, each
++-- rounded half up to the cent. Null when nothing was billed before.
++ALTER TABLE invoice_line ADD COLUMN billed_pct DECIMAL(5, 2);
