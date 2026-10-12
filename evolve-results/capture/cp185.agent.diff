@@ -1,0 +1,72 @@
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index beee8bf..41f2834 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -652,7 +652,7 @@ public class InvoiceService {
+ 
+     /**
+      * Marks a milestone of a sent invoice reached today, records it in the audit with its amount, and
+-     * then uses the client's credit on what is now owed, as sending does (see {@link #applyCredit}); empty
++     * then uses the deposits held for the invoice and the client's other credit on what is now owed, as sending does (see {@link #applyCredit}); empty
+      * if no such invoice. A milestone already reached, or of an invoice that is not sent, void, written off
+      * or a credit note, is refused.
+      */
+@@ -1423,7 +1423,7 @@ public class InvoiceService {
+     /**
+      * Uses the client's credit on the invoice just sent, up to what it has due: deposits held for it
+      * first, then the oldest payment's credit (lower id first on the same date), never a deposit held
+-     * for another of the client's drafts; each part applied today and recorded in the audit. Credit
++     * for another of the client's invoices (see {@link #holdersByReference}); each part applied today and recorded in the audit. Credit
+      * used counts as paying early: while the early window is open only what settles it early is taken,
+      * and when the credit covers that the invoice is settled with the early discount, as an early payment is.
+      */
+@@ -1432,7 +1432,8 @@ public class InvoiceService {
+         BigDecimal due = invoice.amountDue(paidSoFar, taxRate.percent());
+         LocalDate now = today.date();
+         boolean used = false;
+-        Map<String, Long> drafts = draftsByReference(invoice.getClientId());
++        Map<String, Long> drafts = holdersByReference(invoice.getClientId());
++        drafts.put(PaymentReference.of(invoice.getId()), invoice.getId());
+         List<Payment> usable = new ArrayList<>();
+         List<Payment> others = new ArrayList<>();
+         for (Payment payment : payments.findForClient(invoice.getClientId())) {
+@@ -1542,7 +1543,7 @@ public class InvoiceService {
+         List<BigDecimal> parts = new ArrayList<>();
+         BigDecimal left = amount;
+         BigDecimal credit = BigDecimal.ZERO;
+-        Map<String, Long> drafts = draftsByReference(clientId);
++        Map<String, Long> drafts = holdersByReference(clientId);
+         for (Payment payment : payments.findForClient(clientId)) {
+             if (heldFor(payment, drafts) != null) {
+                 continue;
+@@ -2053,7 +2054,7 @@ public class InvoiceService {
+         if (client.get().isOnHold()) {
+             throw new InvoiceRejectedException("The client is on hold: lift the hold before applying their credit.");
+         }
+-        Map<String, Long> drafts = draftsByReference(clientId);
++        Map<String, Long> drafts = holdersByReference(clientId);
+         List<Payment> usable = payments.findForClient(clientId).stream()
+                 .filter(p -> heldFor(p, drafts) == null && p.credit().signum() > 0)
+                 .toList();
+@@ -2302,6 +2303,21 @@ public class InvoiceService {
+         return drafts;
+     }
+ 
++    /**
++     * The RF reference of each of the client's invoices a deposit is held for, to its invoice id: its
++     * drafts, and its sent invoices billed by milestones that still have milestones to be reached (nothing
++     * is owed on those until a milestone is reached, so a deposit held for one stays held for it).
++     */
++    private Map<String, Long> holdersByReference(Long clientId) {
++        Map<String, Long> holders = draftsByReference(clientId);
++        for (Invoice invoice : invoices.findByClientIdOrderByIdAsc(clientId)) {
++            if (invoice.hasPendingMilestones() && !invoice.isWrittenOff()) {
++                holders.put(PaymentReference.of(invoice.getId()), invoice.getId());
++            }
++        }
++        return holders;
++    }
++
+     /**
+      * The draft the payment is held for, or null when it is ordinary credit: a payment whose reference
+      * (an RF reference or invoice number, as stored) is that of one of the client's drafts is a deposit
