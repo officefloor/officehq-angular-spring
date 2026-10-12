@@ -166,7 +166,8 @@ public class InvoiceController {
      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not);
      * {@code approvalsNeeded} is how many approvals it still needs before it is sent (0 when none) and {@code approvals} how many it has at its total.
      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not);
-     * {@code recurUntil} is the last day it bills for when recurring (null for no end).
+     * {@code recurUntil} is the last day it bills for when recurring (null for no end), and {@code recurringSince} the day its plan began
+     * (moved on a year at each yearly price rise; null for none).
      * {@code claimFrom} is the id of the invoice it was claimed from as its next progress claim (null when it was not).
      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
@@ -184,7 +185,7 @@ public class InvoiceController {
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
             int approvalsNeeded, int approvals,
-            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
+            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate recurringSince, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
             List<MilestoneView> milestones, String milestonesPct, Long claimFrom) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
@@ -227,7 +228,7 @@ public class InvoiceController {
                     i.getSupplyRegion(), approval,
                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
                     i.approvalsNeeded(approval, taxRate, today), i.approvalsGiven(taxRate, today),
-                    i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getDisputedOn(), i.getDisputeResolvedOn(),
+                    i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getRecurringSince(), i.getDisputedOn(), i.getDisputeResolvedOn(),
                     i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
                     i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
                     i.milestonesPct().stripTrailingZeros().toPlainString(), i.getClaimFrom());

@@ -252,6 +252,8 @@ export interface InvoiceDetail {
   recurringFrom: number | null;
   // The last day a recurring invoice bills for (yyyy-mm-dd): a generated period stops on it; null for no end.
   recurUntil: string | null;
+  // The day a recurring invoice's plan began (yyyy-mm-dd), moved on a year at each yearly price rise; null for none.
+  recurringSince: string | null;
   // The id of the sent invoice this draft was claimed from as its next progress claim; null when it was not.
   claimFrom: number | null;
   // The client's purchase order number for the invoice; null when none was given.

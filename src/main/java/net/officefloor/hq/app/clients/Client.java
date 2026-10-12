@@ -120,6 +120,13 @@ public class Client {
     @Column(name = "on_hold")
     private boolean onHold;
 
+    /**
+     * The percentage (0 to 100, 0 for none) the typed unit prices of the client's recurring invoices go up by on each
+     * anniversary of the plan.
+     */
+    @Column(name = "uplift_pct")
+    private BigDecimal upliftPct = BigDecimal.ZERO;
+
     /** The client's tier: its approval limit is the tier's when the workspace gives the tier one. */
     @Enumerated(EnumType.STRING)
     private ClientTier tier = ClientTier.STANDARD;
@@ -151,8 +158,9 @@ public class Client {
     public Client(String name, String email, Integer termsDays, BigDecimal discountPct, boolean taxExempt,
             boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             Integer graceDays, BigDecimal interestRate, String region, String taxNumber, BigDecimal withholdingPct, BigDecimal minimumCharge,
-            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit, ClientTier tier) {
+            BigDecimal rateDiscountPct, LocalDate taxExemptUntil, BigDecimal creditLimit, ClientTier tier, BigDecimal upliftPct) {
         this.name = name;
+        this.upliftPct = upliftPct == null ? BigDecimal.ZERO : upliftPct;
         this.tier = tier == null ? ClientTier.STANDARD : tier;
         this.creditLimit = creditLimit;
         this.taxExemptUntil = taxExemptUntil;
@@ -231,6 +239,10 @@ public class Client {
 
     public BigDecimal getCreditLimit() {
         return creditLimit;
+    }
+
+    public BigDecimal getUpliftPct() {
+        return upliftPct;
     }
 
     public ClientTier getTier() {

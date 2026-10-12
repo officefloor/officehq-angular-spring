@@ -63,6 +63,9 @@ export interface Client {
   // The client's tier: a tier the workspace gives its own approval limit (in US dollars) uses it
   // instead of the workspace's approval limit.
   tier: ClientTier;
+  // The percentage (0 to 100) the typed unit prices of the client's recurring invoices go up by on each
+  // anniversary of the plan; 0 is none. Prices from the rate card or price list are not raised.
+  upliftPct: number;
 }
 
 export type ClientTier = 'STANDARD' | 'KEY' | 'NEW';

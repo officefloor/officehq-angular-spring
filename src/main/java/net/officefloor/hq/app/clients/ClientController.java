@@ -33,7 +33,7 @@ public class ClientController {
             boolean taxExempt, boolean pricesIncludeTax, Currency currency, BigDecimal earlyPayPct, Integer earlyPayDays,
             Integer graceDays, BigDecimal interestRate, String region, String taxNumber,
             List<RateView> rates, BigDecimal withholdingPct, BigDecimal minimumCharge, BigDecimal rateDiscountPct,
-            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier) {
+            LocalDate taxExemptUntil, BigDecimal creditLimit, boolean onHold, boolean overLimit, String riskScore, InvoiceService.RiskBand riskBand, ClientTier tier, BigDecimal upliftPct) {
         /**
          * The client, on hold when held by hand or while over its credit limit (overLimit), with its payment risk
          * score (null when nothing is paid in full) and band.
@@ -44,7 +44,7 @@ public class ClientController {
                     c.getGraceDays(), c.getInterestRate(), c.getRegion(), c.getTaxNumber(),
                     c.getRates().stream().map(RateView::of).toList(), c.getWithholdingPct(), c.getMinimumCharge(),
                     c.getRateDiscountPct(), c.getTaxExemptUntil(), c.getCreditLimit(), c.isOnHold() || overLimit, overLimit,
-                    risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier());
+                    risk.score() == null ? null : risk.score().toPlainString(), risk.band(), c.getTier(), c.getUpliftPct());
         }
     }
 
@@ -126,7 +126,12 @@ public class ClientController {
             BigDecimal creditLimit,
             /** The client's tier; STANDARD when left out. */
             @Pattern(regexp = "STANDARD|KEY|NEW", message = "The tier must be STANDARD, KEY or NEW.")
-            String tier) {
+            String tier,
+            /** The yearly percentage rise of the client's typed recurring prices; none when left out. */
+            @DecimalMin(value = "0", message = "The yearly price rise must be from 0 to 100 percent.")
+            @DecimalMax(value = "100", message = "The yearly price rise must be from 0 to 100 percent.")
+            @Digits(integer = 3, fraction = 2, message = "The yearly price rise can have at most two decimals.")
+            BigDecimal upliftPct) {
 
         @AssertTrue(message = "Only a tax-exempt client can have an exemption end date: tick tax exempt or clear the date.")
         public boolean isTaxExemptUntilExempt() {
@@ -174,7 +179,7 @@ public class ClientController {
         return view(clients.add(body.name(), body.email(), body.termsDays(), body.discountPct(),
                 Boolean.TRUE.equals(body.taxExempt()), Boolean.TRUE.equals(body.pricesIncludeTax()), Currency.orUsd(body.currency()), body.earlyPayPct(), body.earlyPayDays(),
                 body.graceDays(), body.interestRate(), body.region(), body.taxNumber(), body.withholdingPct(), body.minimumCharge(),
-                body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit(), ClientTier.orStandard(body.tier())));
+                body.rateDiscountPct(), body.taxExemptUntil(), body.creditLimit(), ClientTier.orStandard(body.tier()), body.upliftPct()));
     }
 
     /**

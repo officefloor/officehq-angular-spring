@@ -259,7 +259,7 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("The client is on hold: nothing is generated for them.");
             }
             LocalDate issued = today.date();
-            Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued)));
+            Invoice next = invoices.saveAndFlush(original.nextPeriod(issued, dueDateFor(original.getClientId(), issued), upliftPct(original.getClientId())));
             // Read again how far through the bands a copied tiered line's units reach.
             entityManager.refresh(next);
             audit.record("INVOICE_GENERATED from=" + original.number() + " to=" + next.number());
@@ -2373,6 +2373,11 @@ public class InvoiceService {
     @Transactional(readOnly = true)
     public boolean onHold(Long clientId) {
         return clients.findById(clientId).map(c -> c.isOnHold() || overLimit(c)).orElse(false);
+    }
+
+    /** The client's yearly percentage rise of its typed recurring prices; zero when none or no such client. */
+    private BigDecimal upliftPct(Long clientId) {
+        return clients.findById(clientId).map(Client::getUpliftPct).orElse(BigDecimal.ZERO);
     }
 
     /** How quickly a client pays: LOW under 15 days, MEDIUM under 30, HIGH from 30. */

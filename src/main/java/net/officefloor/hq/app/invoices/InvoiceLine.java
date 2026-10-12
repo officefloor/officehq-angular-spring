@@ -297,6 +297,18 @@ public class InvoiceLine {
         this.minUnits = minUnits;
     }
 
+    /**
+     * Raises a typed unit price by the percentage, rounded half up to the cent; a price taken from the rates (rate card or
+     * price list) keeps that price.
+     */
+    void raisePrice(BigDecimal pct) {
+        if (ratePriced || cardPriced || unitPrice == null) {
+            return;
+        }
+        unitPrice = unitPrice.multiply(BigDecimal.valueOf(100).add(pct)).divide(BigDecimal.valueOf(100))
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
     /** Puts the line on the given invoice. */
     void placeOn(Invoice invoice) {
         this.invoice = invoice;

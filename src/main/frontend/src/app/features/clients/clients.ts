@@ -187,6 +187,17 @@ function validTaxNumber(taxNumber: string): boolean {
           step="0.01"
           formControlName="creditLimit"
         />
+        <label for="client-uplift">Yearly price rise % on recurring invoices (optional)</label>
+        <input
+          id="client-uplift"
+          data-testid="client-form-uplift-pct"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          max="100"
+          step="0.01"
+          formControlName="upliftPct"
+        />
         <label for="client-rate-discount">Discount on rates % (optional)</label>
         <input
           id="client-rate-discount"
@@ -352,6 +363,7 @@ export class Clients {
     minimumCharge: new FormControl<number | null>(null),
     creditLimit: new FormControl<number | null>(null),
     rateDiscountPct: new FormControl<number | null>(null),
+    upliftPct: new FormControl<number | null>(null),
     graceDays: new FormControl<number | null>(null),
     interestRate: new FormControl<number | null>(null),
     region: new FormControl('', { nonNullable: true }),
@@ -422,6 +434,8 @@ export class Clients {
     const creditLimit = limit === null || (limit as unknown) === '' ? null : Number(limit);
     const rateDiscount = this.form.controls.rateDiscountPct.value;
     const rateDiscountPct = rateDiscount === null || (rateDiscount as unknown) === '' ? null : Number(rateDiscount);
+    const uplift = this.form.controls.upliftPct.value;
+    const upliftPct = uplift === null || (uplift as unknown) === '' ? null : Number(uplift);
     const grace = this.form.controls.graceDays.value;
     const graceDays = grace === null || (grace as unknown) === '' ? null : Number(grace);
     const interest = this.form.controls.interestRate.value;
@@ -446,6 +460,7 @@ export class Clients {
       minimumCharge,
       creditLimit,
       rateDiscountPct,
+      upliftPct,
       graceDays,
       interestRate,
       region,
@@ -469,6 +484,7 @@ export class Clients {
       minimumCharge,
       creditLimit,
       rateDiscountPct,
+      upliftPct,
       graceDays,
       interestRate,
       earlyPayPct,
@@ -497,6 +513,7 @@ export class Clients {
       minimumCharge,
       creditLimit,
       rateDiscountPct: rateDiscountPct ?? 0,
+      upliftPct: upliftPct ?? 0,
       graceDays,
       interestRate,
       region: region || null,
@@ -562,6 +579,7 @@ export class Clients {
     minimumCharge: number | null,
     creditLimit: number | null,
     rateDiscountPct: number | null,
+    upliftPct: number | null,
     graceDays: number | null,
     interestRate: number | null,
     earlyPayPct: number | null,
@@ -615,6 +633,13 @@ export class Clients {
         problems.push('The rate discount must be from 0 to 100 percent.');
       } else if (Math.abs(Math.round(rateDiscountPct * 100) - rateDiscountPct * 100) > 1e-6) {
         problems.push('The rate discount can have at most two decimals.');
+      }
+    }
+    if (upliftPct !== null) {
+      if (!(Number.isFinite(upliftPct) && upliftPct >= 0 && upliftPct <= 100)) {
+        problems.push('The yearly price rise must be from 0 to 100 percent.');
+      } else if (Math.abs(Math.round(upliftPct * 100) - upliftPct * 100) > 1e-6) {
+        problems.push('The yearly price rise can have at most two decimals.');
       }
     }
     if (graceDays !== null && !(Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 30)) {

@@ -188,6 +188,13 @@ public class Invoice {
     @Column(name = "recurring_from")
     private Long recurringFrom;
 
+    /**
+     * The day the recurring invoice's plan began: the first period's start when it was first made recurring, kept by the
+     * drafts it generates and moved on a year at each yearly price rise; null when it has none.
+     */
+    @Column(name = "recurring_since")
+    private LocalDate recurringSince;
+
     /** The last day the recurring invoice bills for: a generated period stops on it; null when it has no end. */
     @Column(name = "recur_until")
     private LocalDate recurUntil;
@@ -544,9 +551,11 @@ public class Invoice {
      * each line with a service period, moved to the whole calendar month after the latest period end on the invoice (lines
      * without a period are one-off charges and are not copied), with this invoice's percentage discount and surcharge.
      * The period stops on the end date when it falls inside that month (and is prorated as usual).
-     * The draft is recurring too, keeps the end date and remembers it was generated from this invoice.
+     * The draft is recurring too, keeps the end date and plan date and remembers it was generated from this invoice.
+     * When the period starts on or after the next anniversary of the plan date, each typed unit price (not one priced from
+     * the rates) goes up by the client's yearly percentage, rounded half up to the cent, and the draft's plan date moves on a year.
      */
-    public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate) {
+    public Invoice nextPeriod(LocalDate issueDate, LocalDate dueDate, BigDecimal upliftPct) {
         Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
         next.supplyRegion = supplyRegion;
         next.discountPct = discountPct;
@@ -554,7 +563,12 @@ public class Invoice {
         next.recurring = true;
         next.recurringFrom = id;
         next.recurUntil = recurUntil;
+        next.recurringSince = recurringSince;
         LocalDate start = nextPeriodStart();
+        boolean rise = recurringSince != null && !start.isBefore(recurringSince.plusYears(1));
+        if (rise) {
+            next.recurringSince = recurringSince.plusYears(1);
+        }
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
         if (recurUntil != null && recurUntil.isBefore(end)) {
             end = recurUntil;
@@ -563,6 +577,9 @@ public class Invoice {
             if (line.hasPeriod()) {
                 InvoiceLine copy = line.copy();
                 copy.setPeriod(start, end);
+                if (rise && upliftPct != null && upliftPct.signum() > 0) {
+                    copy.raisePrice(upliftPct);
+                }
                 next.addLine(copy);
             }
         }
@@ -611,8 +628,21 @@ public class Invoice {
         return recurring;
     }
 
+    /**
+     * Makes the invoice recurring, or not. When first made recurring its plan begins on its first period's start
+     * (the earliest service period start of its lines).
+     */
     public void setRecurring(boolean recurring) {
         this.recurring = recurring;
+        if (recurring && recurringSince == null) {
+            recurringSince = lines.stream().filter(InvoiceLine::hasPeriod).map(InvoiceLine::getPeriodStart)
+                    .min(LocalDate::compareTo).orElse(null);
+        }
+    }
+
+    /** The day the recurring invoice's plan began (moved on a year at each price rise); null when it has none. */
+    public LocalDate getRecurringSince() {
+        return recurringSince;
     }
 
     /** The last day the recurring invoice bills for; null when it has no end. */

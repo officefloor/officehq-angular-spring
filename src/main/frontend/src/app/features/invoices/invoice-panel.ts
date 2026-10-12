@@ -831,6 +831,9 @@ function problemWith(line: NewLine): string {
             />
             Recurring
           </label>
+          @if (inv.recurring && inv.recurringSince) {
+            <p data-testid="invoice-recurring-since">Plan since {{ inv.recurringSince }}</p>
+          }
           @if (recurringError()) {
             <p role="alert" data-testid="invoice-recurring-error">{{ recurringError() }}</p>
           }
