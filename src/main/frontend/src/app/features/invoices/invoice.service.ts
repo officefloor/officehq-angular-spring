@@ -584,7 +584,7 @@ export class InvoiceService {
   }
 
   // Records one payment spread automatically over the client's invoices: those whose references are
-  // quoted (comma separated), or with none all its unpaid invoices, overdue first, then the largest due
+  // quoted (comma separated), or with none all its unpaid invoices, overdue first, then the smallest due
   // first; refused when a reference is mistyped (400) or not the client's; what they do not owe is held as credit.
   // Answers the client's invoices with their new statuses.
   recordSplitPayment(clientId: number, payment: NewPayment): Observable<InvoiceSummary[]> {

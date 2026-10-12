@@ -1818,7 +1818,7 @@ public class InvoiceService {
     /**
      * Records one payment of the amount on the date against the client's unpaid sent invoices: the overdue
      * ones first, earliest due date first (lower id first on the same due date), then the rest from the
-     * largest amount due to the smallest (lower id first on the same amount), paying each off in full
+     * smallest amount due to the largest (lower id first on the same amount), paying each off in full
      * before the next; then what is in dispute (see {@link #inDisputeOrder}), which stays in dispute.
      * What it pays beyond everything the client owes is held on the client's account as credit; the
      * rest is checked and recorded as a split payment over the invoices it reaches.
@@ -1989,8 +1989,8 @@ public class InvoiceService {
 
     /**
      * The sent invoices among these (not drafts, void invoices, credit notes or invoices in dispute) in the payment order:
-     * the overdue ones first, earliest due date first, then the rest from the largest amount due to the
-     * smallest; lower id first on a tie. Fills in what each has due.
+     * the overdue ones first, earliest due date first, then the rest from the smallest amount due to the
+     * largest; lower id first on a tie. Fills in what each has due.
      */
     private List<Invoice> inPaymentOrder(List<Invoice> candidates, Map<Long, BigDecimal> dues) {
         List<Invoice> unordered = candidates.stream()
@@ -2010,12 +2010,11 @@ public class InvoiceService {
                 overdue.add(invoice.getId());
             }
         }
-        // Overdue first, oldest due date first; then the rest, largest amount due first; lower id on a tie.
+        // Overdue first, oldest due date first; then the rest, smallest amount due first; lower id on a tie.
         Comparator<Invoice> byPriority = Comparator.<Invoice, Boolean>comparing(i -> !overdue.contains(i.getId()))
                 .thenComparing(i -> overdue.contains(i.getId()) ? i.getDueDate() : null,
                         Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()),
-                        Comparator.reverseOrder())
+                .thenComparing(i -> overdue.contains(i.getId()) ? BigDecimal.ZERO : dues.get(i.getId()))
                 .thenComparing(Invoice::getId);
         return unordered.stream().sorted(byPriority).toList();
     }

@@ -114,7 +114,7 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
 
 // Records a payment. It goes to the open invoice (`invoiceId`), or, when none is open, to the client's
 // invoices whose references are quoted (several may be, separated by commas: RF references or invoice
-// numbers, applied overdue first, then largest due first; one may state the amount it gets after an
+// numbers, applied overdue first, then smallest due first; one may state the amount it gets after an
 // equals sign, INV-0000018=50, and only the rest goes to those without one), or without one to the client's unpaid
 // invoices in that order. What is paid beyond
 // what is due is held on the client's account as credit. The server refuses a payment on a draft, or dated after today
