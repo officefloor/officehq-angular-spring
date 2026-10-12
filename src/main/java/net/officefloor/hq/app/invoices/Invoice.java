@@ -2334,6 +2334,39 @@ public class Invoice {
     }
 
     /**
+     * The invoice's tax broken down by rate (a percentage), the lower rate first: for each rate, the amount
+     * before tax of the lines and of the surcharge and minimum charge taxed at it, after the discounts (the
+     * net when the client's prices include tax), and the tax worked out for that rate, as {@link #tax} does.
+     * Untaxed lines and charges come under rate 0, and a reverse-charged invoice puts everything there. The
+     * surcharge and minimum charge add no rate of their own when there are none.
+     */
+    public Map<BigDecimal, BigDecimal[]> taxByRate(BigDecimal taxRate) {
+        Map<BigDecimal, BigDecimal[]> result = new TreeMap<>();
+        if (clientPricesIncludeTax && isReverseCharge()) {
+            result.put(BigDecimal.ZERO, new BigDecimal[] { beforeTax(taxRate), zero() });
+            return result;
+        }
+        List<BigDecimal> amounts = inclusiveAmounts();
+        List<BigDecimal> exact = clientPricesIncludeTax ? null : exactLineTaxes(taxRate);
+        for (Map.Entry<BigDecimal, List<Integer>> group : byRate(taxRate, !clientPricesIncludeTax).entrySet()) {
+            List<Integer> indexes = group.getValue();
+            BigDecimal amount = zero();
+            for (int i : indexes) {
+                amount = amount.add(amounts.get(i));
+            }
+            if (indexes.size() == 1 && indexes.get(0) == lines.size() && amount.signum() == 0) {
+                continue;
+            }
+            BigDecimal rate = group.getKey();
+            BigDecimal tax = clientPricesIncludeTax
+                    ? (rate.signum() == 0 ? zero() : inclusiveRateTax(amounts, rate, indexes))
+                    : roundTax(indexes.stream().map(exact::get).toList());
+            result.put(rate, new BigDecimal[] { clientPricesIncludeTax ? amount.subtract(tax) : amount, tax });
+        }
+        return result;
+    }
+
+    /**
      * Each line's tax taken out of tax-inclusive prices, in the order of the lines; none when the prices
      * do not include tax. A reverse-charged invoice has it taken out as usual, though it is not charged.
      */

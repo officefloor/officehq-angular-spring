@@ -874,6 +874,9 @@ public class InvoiceService {
         invoices.saveAndFlush(invoice);
         audit.record("INVOICE_SENT id=" + invoice.getId() + " number=" + invoice.number()
                 + " total=" + invoice.total(taxRate.percent()).toPlainString());
+        invoice.taxByRate(taxRate.percent()).forEach((rate, amounts) -> audit.record("TAX_CHARGED id="
+                + invoice.getId() + " rate=" + rate.stripTrailingZeros().toPlainString() + " net="
+                + amounts[0].toPlainString() + " tax=" + amounts[1].toPlainString()));
         if (invoice.isReverseCharge()) {
             audit.record("REVERSE_CHARGE id=" + invoice.getId() + " number=" + invoice.number()
                     + " total=" + invoice.total(taxRate.percent()).toPlainString());
