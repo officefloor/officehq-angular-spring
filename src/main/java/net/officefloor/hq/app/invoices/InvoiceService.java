@@ -2186,7 +2186,7 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("This invoice has already been paid.");
             }
             BigDecimal early = BigDecimal.ZERO;
-            BigDecimal settle = date.isAfter(now) ? null : invoice.settleAmount(paidSoFar, taxRate.percent(), date);
+            BigDecimal settle = date.isAfter(now) ? null : invoice.settleAmount(paidSoFar, taxRate.percent(), invoice.received(date));
             if (settle != null && amount.compareTo(settle) >= 0) {
                 early = invoice.earlyDiscount(taxRate.percent());
                 invoice.takeEarlyDiscount(early);

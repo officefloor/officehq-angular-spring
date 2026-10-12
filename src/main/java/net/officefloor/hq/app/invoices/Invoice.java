@@ -1913,7 +1913,7 @@ public class Invoice {
         List<Part> inOrder = new ArrayList<>();
         payments.stream().filter(p -> !p.isReversed())
                 .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
-                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount(), false)))
+                        .map(a -> new Part(received(a.getDate() == null ? p.getDate() : a.getDate()), p.getId(), a.getAmount(), false)))
                 .filter(p -> !p.on().isAfter(today))
                 .forEach(inOrder::add);
         // What a credit note took off what the invoice owed counts only from its issue date: until then
@@ -2035,7 +2035,7 @@ public class Invoice {
         }
         payments.stream().filter(p -> !p.isReversed())
                 .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
-                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                        .map(a -> new Part(received(a.getDate() == null ? p.getDate() : a.getDate()), p.getId(), a.getAmount())))
                 .filter(p -> !p.on().isAfter(today))
                 .forEach(inOrder::add);
         inOrder.sort(Comparator.comparing(Part::on).thenComparing(Part::paymentId));
@@ -2646,9 +2646,22 @@ public class Invoice {
      * calendar, else calendar days.
      */
     private LocalDate afterDays(LocalDate from, int days) {
-        Set<LocalDate> calendar = holidays == null ? null : holidays.isBlank() ? Set.of()
+        return Holidays.after(from, days, calendar());
+    }
+
+    /**
+     * The day a payment dated on the given day counts as received: with a holiday calendar, the next business
+     * day when it falls on a Saturday, a Sunday or a holiday (as observed); the day itself without one.
+     */
+    public LocalDate received(LocalDate on) {
+        Set<LocalDate> calendar = calendar();
+        return calendar == null ? on : Holidays.onBusinessDay(on, calendar);
+    }
+
+    /** The workspace's holidays when it keeps a holiday calendar; null when it keeps none. */
+    private Set<LocalDate> calendar() {
+        return holidays == null ? null : holidays.isBlank() ? Set.of()
                 : Arrays.stream(holidays.split(",")).map(d -> LocalDate.parse(d.trim())).collect(Collectors.toSet());
-        return Holidays.after(from, days, calendar);
     }
 
     /**
@@ -2723,7 +2736,7 @@ public class Invoice {
         }
         List<Part> inOrder = payments.stream().filter(p -> !p.isReversed())
                 .flatMap(p -> p.getAllocations().stream().filter(a -> a.getInvoiceId().equals(id))
-                        .map(a -> new Part(a.getDate() == null ? p.getDate() : a.getDate(), p.getId(), a.getAmount())))
+                        .map(a -> new Part(received(a.getDate() == null ? p.getDate() : a.getDate()), p.getId(), a.getAmount())))
                 .sorted(Comparator.comparing(Part::on).thenComparing(Part::paymentId)).toList();
         BigDecimal sum = BigDecimal.ZERO;
         for (Part p : inOrder) {
