@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/clients/client.service.ts b/src/main/frontend/src/app/features/clients/client.service.ts
+index 9183beb..87cf578 100644
+--- a/src/main/frontend/src/app/features/clients/client.service.ts
++++ b/src/main/frontend/src/app/features/clients/client.service.ts
+@@ -54,10 +54,10 @@ export interface Client {
+   onHold: boolean;
+   // Whether the client's balance is over its credit limit: it stays on hold until it is back within it.
+   overLimit: boolean;
+-  // How slowly the client pays: the days its invoices paid in full took to pay, averaged oldest payment
+-  // first with an exponential weight of 0.3, to one decimal; null when nothing is paid in full.
++  // How late the client pays: the days past the due date its invoices paid in full were paid (0 when on
++  // time), averaged oldest payment first with an exponential weight of 0.5, to one decimal; null when nothing is paid in full.
+   riskScore: string | null;
+-  // The payment risk band: LOW under 15 days, MEDIUM under 30, HIGH from 30. Every invoice of a HIGH
++  // The payment risk band: LOW under 5 days late, MEDIUM under 15, HIGH from 15. Every invoice of a HIGH
+   // client needs approval, and deposits held for it worth at least 30% of its grand total, before it is sent.
+   riskBand: 'LOW' | 'MEDIUM' | 'HIGH';
+   // The client's tier: a tier the workspace gives its own approval limit (in US dollars) uses it
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index 9b3b102..a6653a6 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -2401,7 +2401,7 @@ public class InvoiceService {
+         return clients.findById(clientId).map(Client::getUpliftPct).orElse(BigDecimal.ZERO);
+     }
+ 
+-    /** How quickly a client pays: LOW under 15 days, MEDIUM under 30, HIGH from 30. */
++    /** How late a client pays: LOW under 5 days late, MEDIUM under 15, HIGH from 15. */
+     public enum RiskBand {
+         LOW, MEDIUM, HIGH
+     }
+@@ -2410,13 +2410,14 @@ public class InvoiceService {
+     public record Risk(BigDecimal score, RiskBand band) {
+     }
+ 
+-    /** The weight each next payment's days count in the payment risk score. */
+-    private static final BigDecimal RISK_WEIGHT = new BigDecimal("0.3");
++    /** The weight each next payment's days late count in the payment risk score. */
++    private static final BigDecimal RISK_WEIGHT = new BigDecimal("0.5");
+ 
+     /**
+-     * The client's payment risk: the days from issue to payment of each of its invoices paid in full (see
+-     * {@link Invoice#paidOn}), oldest payment first, averaged with an exponential weight of 0.3 (the first
+-     * as it is, then 0.3 of each next and 0.7 of the average so far), rounded half up to one decimal. Part-paid
++     * The client's payment risk: how many days late each of its invoices paid in full was paid (its paid date,
++     * see {@link Invoice#paidOn}, less its due date; 0 when paid by the due date), oldest payment first, averaged
++     * with an exponential weight of 0.5 (the first as it is, then 0.5 of each next and 0.5 of the average so far),
++     * rounded half up to one decimal. Part-paid
+      * invoices, credit notes and invoices cleared without a payment do not count; with none the score is null
+      * and the band LOW.
+      */
+@@ -2428,13 +2429,13 @@ public class InvoiceService {
+ 
+     /** The payment risk the invoices give (see {@link #riskOf(Long)}), each paid in full on its date in paidOn. */
+     private static Risk riskOf(List<Invoice> invoices, Map<Long, LocalDate> paidOn) {
+-        List<Invoice> list = invoices.stream().filter(i -> !i.isCreditNote() && i.getIssueDate() != null).toList();
++        List<Invoice> list = invoices.stream().filter(i -> !i.isCreditNote() && i.getDueDate() != null).toList();
+         List<Invoice> paid = list.stream().filter(i -> paidOn.containsKey(i.getId()))
+                 .sorted(Comparator.comparing((Invoice i) -> paidOn.get(i.getId())).thenComparing(Invoice::getId))
+                 .toList();
+         BigDecimal average = null;
+         for (Invoice i : paid) {
+-            BigDecimal days = BigDecimal.valueOf(java.time.temporal.ChronoUnit.DAYS.between(i.getIssueDate(), paidOn.get(i.getId())));
++            BigDecimal days = BigDecimal.valueOf(Math.max(0, java.time.temporal.ChronoUnit.DAYS.between(i.getDueDate(), paidOn.get(i.getId()))));
+             average = average == null ? days
+                     : RISK_WEIGHT.multiply(days).add(BigDecimal.ONE.subtract(RISK_WEIGHT).multiply(average));
+         }
+@@ -2442,8 +2443,8 @@ public class InvoiceService {
+             return new Risk(null, RiskBand.LOW);
+         }
+         BigDecimal score = average.setScale(1, RoundingMode.HALF_UP);
+-        RiskBand band = score.compareTo(BigDecimal.valueOf(15)) < 0 ? RiskBand.LOW
+-                : score.compareTo(BigDecimal.valueOf(30)) < 0 ? RiskBand.MEDIUM : RiskBand.HIGH;
++        RiskBand band = score.compareTo(BigDecimal.valueOf(5)) < 0 ? RiskBand.LOW
++                : score.compareTo(BigDecimal.valueOf(15)) < 0 ? RiskBand.MEDIUM : RiskBand.HIGH;
+         return new Risk(score, band);
+     }
+ 
