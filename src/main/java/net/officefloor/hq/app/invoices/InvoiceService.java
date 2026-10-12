@@ -1151,19 +1151,21 @@ public class InvoiceService {
     }
 
     /**
-     * Sends today the reminder for the dunning level an invoice has reached, charging the level's reminder fee (see
-     * {@link Invoice#reminderFee}), and records both in the audit; empty if
-     * no such invoice. Refused when the invoice is at NONE (too little overdue included) or the reminder for its level has already gone out.
+     * Sends today the reminder for the dunning level an invoice has reached (see {@link #dunningLevel}), charging the
+     * level's reminder fee (see {@link Invoice#reminderFee}), and records both in the audit; the same reminder goes out
+     * for each of its overdue debit adjustment notes (REMINDER_SENT for each), which are charged no fee. Empty if no
+     * such invoice. Refused for a debit adjustment note, which is chased with its invoice, when the invoice is at NONE
+     * (too little overdue included) or the reminder for its level has already gone out.
      */
     @Transactional
     public Optional<Invoice> remind(Long invoiceId) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
+            if (isDebitNote(invoice)) {
+                throw new InvoiceRejectedException("An adjustment note is chased with its invoice; remind the invoice instead.");
+            }
             LocalDate now = today.date();
-            List<Invoice> one = List.of(invoice);
-            BigDecimal paid = paid(one).get(invoice.getId());
-            InvoiceStatus status = invoice.statusWhenPaid(paid, paidOn(one).get(invoice.getId()), taxRate.percent(), now);
-            DunningLevel level = invoice.dunningLevel(status, invoice.overdueAmount(paid, taxRate.percent(), now), now);
+            DunningLevel level = dunningLevel(invoice);
             if (level == DunningLevel.NONE) {
                 throw new InvoiceRejectedException("This invoice is not far enough overdue to be chased.");
             }
@@ -1173,12 +1175,56 @@ public class InvoiceService {
             invoice.remind(now);
             invoices.saveAndFlush(invoice);
             audit.record("REMINDER_SENT id=" + invoice.getId() + " level=" + level);
+            overdueDebitNotes(invoice).keySet()
+                    .forEach(note -> audit.record("REMINDER_SENT id=" + note.getId() + " level=" + level));
             BigDecimal fee = invoice.reminderFee(level, now);
             if (fee.signum() > 0) {
                 audit.record("REMINDER_FEE id=" + invoice.getId() + " amount=" + fee.toPlainString());
             }
         });
         return found;
+    }
+
+    /**
+     * The dunning level the invoice has reached today (see {@link Invoice#dunningLevel}), judged on what is overdue on
+     * it and its overdue debit adjustment notes together. A debit adjustment note is chased with its invoice: while
+     * overdue it is at its invoice's level, otherwise at NONE.
+     */
+    @Transactional(readOnly = true)
+    public DunningLevel dunningLevel(Invoice invoice) {
+        LocalDate now = today.date();
+        List<Invoice> one = List.of(invoice);
+        BigDecimal paid = paid(one).get(invoice.getId());
+        InvoiceStatus status = invoice.statusWhenPaid(paid, paidOn(one).get(invoice.getId()), taxRate.percent(), now);
+        if (isDebitNote(invoice)) {
+            return status == InvoiceStatus.OVERDUE
+                    ? load(invoice.getAdjustmentOf()).map(this::dunningLevel).orElse(DunningLevel.NONE)
+                    : DunningLevel.NONE;
+        }
+        BigDecimal overdue = overdueDebitNotes(invoice).values().stream()
+                .reduce(invoice.overdueAmount(paid, taxRate.percent(), now), BigDecimal::add);
+        return invoice.dunningLevel(status, overdue, now);
+    }
+
+    /** The invoice's issued debit adjustment notes that are overdue today, oldest first, with what is overdue on each. */
+    private Map<Invoice, BigDecimal> overdueDebitNotes(Invoice invoice) {
+        Map<Invoice, BigDecimal> overdue = new LinkedHashMap<>();
+        if (invoice.getId() == null || invoice.isAdjustment() || invoice.isCreditNote()) {
+            return overdue;
+        }
+        List<Invoice> notes = loadForClient(invoice.getClientId()).stream()
+                .filter(i -> isDebitNote(i) && invoice.getId().equals(i.getAdjustmentOf()) && !i.isDraft() && !i.isVoid())
+                .sorted(oldestFirst())
+                .toList();
+        Map<Long, BigDecimal> paid = paid(notes);
+        LocalDate now = today.date();
+        for (Invoice note : notes) {
+            BigDecimal amount = note.overdueAmount(paid.get(note.getId()), taxRate.percent(), now);
+            if (amount.signum() > 0) {
+                overdue.put(note, amount);
+            }
+        }
+        return overdue;
     }
 
     /** The most days ahead a promise to pay can be kept by. */

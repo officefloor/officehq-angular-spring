@@ -191,7 +191,7 @@ public class InvoiceController {
             String fingerprint, String duplicateOf, LocalDate rebilledOn, String replaces, String replacedBy,
             Long adjustmentOf, String adjusted, DunningLevel dunning, List<LocalDate> reminders) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval,
-                List<Invoice> duplicates) {
+                List<Invoice> duplicates, DunningLevel dunning) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
             LocalDate paidOn = i.paidOn(payments, taxRate);
@@ -241,7 +241,7 @@ public class InvoiceController {
                             : duplicates.stream().map(Invoice::number).collect(java.util.stream.Collectors.joining(", ")),
                     i.getRebilledOn(), i.getReplaces() == null ? null : InvoiceNumber.of(i.getReplaces()),
                     i.getReplacedBy() == null ? null : InvoiceNumber.of(i.getReplacedBy()),
-                    i.getAdjustmentOf(), i.getAdjusted().toPlainString(), i.dunningLevel(status, i.overdueAmount(paid, taxRate, today), today), i.getReminders());
+                    i.getAdjustmentOf(), i.getAdjusted().toPlainString(), dunning, i.getReminders());
         }
     }
 
@@ -473,7 +473,7 @@ public class InvoiceController {
     private InvoiceDetail detail(Invoice i) {
         invoices.adjustFingerprint(i);
         return InvoiceDetail.of(i, taxRate.percent(), invoices.payments(i.getId()), today.date(), invoices.approval(i),
-                invoices.possibleDuplicateOf(i));
+                invoices.possibleDuplicateOf(i), invoices.dunningLevel(i));
     }
 
     @GetMapping("/api/clients/{clientId}/invoices")
