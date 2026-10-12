@@ -1,0 +1,894 @@
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-format.ts b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+index 3288b5b..6afa820 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-format.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-format.ts
+@@ -1,4 +1,4 @@
+-import { InstalmentStatus, InvoiceStatus } from './invoice.service';
++import { InstalmentStatus, InvoiceStatus, MilestoneStatus } from './invoice.service';
+ 
+ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   DRAFT: 'Draft',
+@@ -12,6 +12,14 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
+   CREDITED: 'Credited',
+   WRITTEN_OFF: 'Written off',
+   DISPUTED: 'Disputed',
++  AWAITING_MILESTONE: 'Awaiting milestone',
++};
++const MILESTONE_STATUS_LABEL: Record<MilestoneStatus, string> = {
++  PENDING: 'Pending',
++  PAID: 'Paid',
++  PART_PAID: 'Part paid',
++  OVERDUE: 'Overdue',
++  DUE: 'Due',
+ };
+ const INSTALMENT_STATUS_LABEL: Record<InstalmentStatus, string> = {
+   PAID: 'Paid',
+@@ -38,6 +46,10 @@ export function statusLabel(status: InvoiceStatus): string {
+   return STATUS_LABEL[status];
+ }
+ 
++export function milestoneStatusLabel(status: MilestoneStatus): string {
++  return MILESTONE_STATUS_LABEL[status];
++}
++
+ export function instalmentStatusLabel(status: InstalmentStatus): string {
+   return INSTALMENT_STATUS_LABEL[status];
+ }
+diff --git a/src/main/frontend/src/app/features/invoices/invoice-panel.ts b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+index f81e887..2039c7a 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice-panel.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice-panel.ts
+@@ -9,7 +9,7 @@ import {
+   NewDiscount,
+   NewLine,
+ } from './invoice.service';
+-import { TWO_DECIMALS, instalmentStatusLabel, money, statusLabel, symbolOf } from './invoice-format';
++import { TWO_DECIMALS, instalmentStatusLabel, milestoneStatusLabel, money, statusLabel, symbolOf } from './invoice-format';
+ import { PaymentForm } from './payment-form';
+ 
+ // A percentage from 0 to 100 with at most two decimals, e.g. 15 or 12.5; the server checks it again.
+@@ -43,6 +43,24 @@ function problemWithSurcharge(pct: string): string {
+ // A plan of 2 to 24 monthly instalments at an annual rate from 0 to 30 with at most two decimals,
+ // after an optional down payment from 0 to 50 percent with at most two decimals; the server checks
+ // them again.
++// A milestone needs a description and a percentage over 0 and at most 100 with at most two decimals;
++// the server also refuses one that would take the milestones over 100%.
++function problemWithMilestone(description: string, pct: string): string {
++  if (!description.trim()) {
++    return 'Enter a description.';
++  }
++  if (!/^-?\d+(\.\d+)?$/.test(pct)) {
++    return 'The percentage must be a number, like 30 or 12.5.';
++  }
++  if (Number(pct) <= 0 || Number(pct) > 100) {
++    return 'The percentage must be more than 0 and at most 100.';
++  }
++  if (!TWO_DECIMALS.test(pct)) {
++    return 'The percentage can have at most two decimals.';
++  }
++  return '';
++}
++
+ function problemWithPlan(count: string, rate: string, down: string): string {
+   if (!/^\d+$/.test(count)) {
+     return 'The number of instalments must be a whole number, like 3 or 12.';
+@@ -365,6 +383,51 @@ function problemWith(line: NewLine): string {
+           </tfoot>
+         </table>
+ 
++        @if (inv.milestones.length > 0) {
++          <table aria-label="Milestones">
++            <caption>Billed by milestones ({{ inv.milestonesPct }}% planned)</caption>
++            <thead>
++              <tr>
++                <th scope="col">Milestone</th>
++                <th scope="col">Share</th>
++                <th scope="col">Amount</th>
++                <th scope="col">Reached</th>
++                <th scope="col">Paid</th>
++                <th scope="col">Status</th>
++                <th scope="col">Actions</th>
++              </tr>
++            </thead>
++            <tbody>
++              @for (m of inv.milestones; track m.id) {
++                <tr [attr.data-testid]="'milestone-row-' + m.id">
++                  <td data-testid="milestone-description">{{ m.description }}</td>
++                  <td data-testid="milestone-pct">{{ m.pct }}%</td>
++                  <td data-testid="milestone-amount">{{ amount(m.amount) }}</td>
++                  <td data-testid="milestone-reached-on">{{ m.reachedOn ?? '' }}</td>
++                  <td data-testid="milestone-paid">{{ amount(m.paid) }}</td>
++                  <td data-testid="milestone-status">{{ milestoneStatusLabel(m.status) }}</td>
++                  <td>
++                    @if (m.reachedOn === null && inv.status !== 'DRAFT' && inv.status !== 'VOID' && inv.status !== 'WRITTEN_OFF') {
++                      <button
++                        type="button"
++                        data-testid="milestone-reach"
++                        [disabled]="reaching()"
++                        [attr.aria-label]="'Reach milestone ' + m.description"
++                        (click)="reachMilestone(inv.id, m.id)"
++                      >
++                        Reach
++                      </button>
++                    }
++                  </td>
++                </tr>
++              }
++            </tbody>
++          </table>
++          @if (reachError()) {
++            <p role="alert" data-testid="milestone-reach-error">{{ reachError() }}</p>
++          }
++        }
++
+         @if (inv.instalments !== null) {
+           <table aria-label="Instalments">
+             <caption>
+@@ -629,6 +692,19 @@ function problemWith(line: NewLine): string {
+           </form>
+         }
+ 
++        @if (inv.status === 'DRAFT' && inv.creditOf === null && inv.instalments === null) {
++          <form [formGroup]="milestoneForm" (ngSubmit)="addMilestone(inv.id)" aria-label="Milestone" novalidate>
++            <label for="milestone-description">Milestone</label>
++            <input id="milestone-description" data-testid="milestone-form-description" formControlName="description" [readonly]="savingMilestone()" />
++            <label for="milestone-pct">Share (% of what the client pays)</label>
++            <input id="milestone-pct" data-testid="milestone-form-pct" inputmode="decimal" formControlName="pct" [readonly]="savingMilestone()" />
++            <button type="submit" data-testid="milestone-form-submit" [disabled]="savingMilestone()">Add milestone</button>
++            @if (milestoneError()) {
++              <p role="alert" data-testid="milestone-form-error">{{ milestoneError() }}</p>
++            }
++          </form>
++        }
++
+         @if (inv.status === 'DRAFT' && inv.creditOf === null) {
+           <form [formGroup]="planForm" (ngSubmit)="setPlan(inv.id)" aria-label="Instalment plan" novalidate>
+             <label for="plan-count">Monthly instalments (2 to 24)</label>
+@@ -929,6 +1005,10 @@ export class InvoicePanel {
+   protected readonly surchargeError = signal('');
+   protected readonly savingPlan = signal(false);
+   protected readonly planError = signal('');
++  protected readonly savingMilestone = signal(false);
++  protected readonly milestoneError = signal('');
++  protected readonly reaching = signal(false);
++  protected readonly reachError = signal('');
+   protected readonly waiving = signal(false);
+   protected readonly skipping = signal(false);
+   protected readonly skipError = signal('');
+@@ -962,6 +1042,7 @@ export class InvoicePanel {
+   // A payment's amount is shown in the currency it was paid in.
+   protected readonly money = money;
+   protected readonly instalmentStatusLabel = instalmentStatusLabel;
++  protected readonly milestoneStatusLabel = milestoneStatusLabel;
+   // An amount shown in the currency of the open invoice's client.
+   protected amount(value: string): string {
+     return money(value, this.invoice()?.currency ?? 'USD');
+@@ -1002,6 +1083,11 @@ export class InvoicePanel {
+     down: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly milestoneForm = new FormGroup({
++    description: new FormControl('', { nonNullable: true }),
++    pct: new FormControl('', { nonNullable: true }),
++  });
++
+   protected readonly dueForm = new FormGroup({
+     dueDate: new FormControl('', { nonNullable: true }),
+   });
+@@ -1038,6 +1124,9 @@ export class InvoicePanel {
+       this.surchargeError.set('');
+       this.planForm.reset();
+       this.planError.set('');
++      this.milestoneForm.reset();
++      this.milestoneError.set('');
++      this.reachError.set('');
+       this.waiveError.set('');
+       this.skipError.set('');
+       this.writeOffError.set('');
+@@ -1342,6 +1431,52 @@ export class InvoicePanel {
+     });
+   }
+ 
++  protected addMilestone(invoiceId: number): void {
++    const { description, pct } = this.milestoneForm.getRawValue();
++    const problem = problemWithMilestone(description, pct.trim());
++    if (problem) {
++      this.milestoneForm.markAllAsTouched();
++      this.milestoneError.set(problem);
++      return;
++    }
++    this.savingMilestone.set(true);
++    this.milestoneError.set('');
++    this.service.addMilestone(invoiceId, description.trim(), pct.trim()).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.milestoneForm.reset();
++        this.savingMilestone.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.milestoneError.set(
++          typeof detail === 'string' && detail ? detail : 'The milestone could not be added.',
++        );
++        this.savingMilestone.set(false);
++      },
++    });
++  }
++
++  protected reachMilestone(invoiceId: number, milestoneId: number): void {
++    this.reaching.set(true);
++    this.reachError.set('');
++    this.service.reachMilestone(invoiceId, milestoneId).subscribe({
++      next: (detail) => {
++        this.invoice.set(detail);
++        this.changed.emit(detail);
++        this.reaching.set(false);
++      },
++      error: (e: HttpErrorResponse) => {
++        const detail: unknown = e.error?.detail;
++        this.reachError.set(
++          typeof detail === 'string' && detail ? detail : 'The milestone could not be marked reached.',
++        );
++        this.reaching.set(false);
++      },
++    });
++  }
++
+   protected waiveInterest(invoiceId: number): void {
+     this.waiving.set(true);
+     this.waiveError.set('');
+diff --git a/src/main/frontend/src/app/features/invoices/invoice.service.ts b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+index 96ff92c..61d9804 100644
+--- a/src/main/frontend/src/app/features/invoices/invoice.service.ts
++++ b/src/main/frontend/src/app/features/invoices/invoice.service.ts
+@@ -13,7 +13,8 @@ import { Currency } from './invoice-format';
+ // credit notes leave nothing due, with nothing paid, is CREDITED. A sent invoice written off as a bad
+ // debt is WRITTEN_OFF for good: it owes nothing, earns no more interest and takes no payments.
+ // A sent invoice in dispute is DISPUTED until the dispute is resolved: it earns no interest, is not
+-// overdue and takes no payments.
++// overdue and takes no payments. A sent invoice billed by milestones with nothing owed now but
++// milestones still to be reached is AWAITING_MILESTONE.
+ export type InvoiceStatus =
+   | 'DRAFT'
+   | 'SENT'
+@@ -25,7 +26,8 @@ export type InvoiceStatus =
+   | 'CREDIT_NOTE'
+   | 'CREDITED'
+   | 'WRITTEN_OFF'
+-  | 'DISPUTED';
++  | 'DISPUTED'
++  | 'AWAITING_MILESTONE';
+ 
+ // An invoice as listed for its client. `total` is a decimal string to the cent, worked out by the
+ // server: the grand total — the lines' subtotal less any discount plus tax.
+@@ -243,6 +245,25 @@ export interface InvoiceDetail {
+   recurUntil: string | null;
+   // The client's purchase order number for the invoice; null when none was given.
+   poNumber: string | null;
++  // The milestones it is billed by (empty when it is billed whole), and what their percentages add up
++  // to (without trailing zeros). Once sent only the reached ones are owed.
++  milestones: MilestoneView[];
++  milestonesPct: string;
++}
++
++// One milestone: its percentage of what the client pays (without trailing zeros), the day it was
++// reached (yyyy-mm-dd; null while pending), its amount and what has been paid off it, decimal strings to
++// the cent (reached milestones are paid in order), and its status.
++export type MilestoneStatus = 'PENDING' | 'PAID' | 'PART_PAID' | 'OVERDUE' | 'DUE';
++
++export interface MilestoneView {
++  id: number;
++  description: string;
++  pct: string;
++  reachedOn: string | null;
++  amount: string;
++  paid: string;
++  status: MilestoneStatus;
+ }
+ 
+ // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
+@@ -398,6 +419,17 @@ export class InvoiceService {
+     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/plan`, { instalments, instalmentRate, planDownPct });
+   }
+ 
++  // Adds a milestone (a description and a percentage over 0 with at most two decimals) to a draft;
++  // refused (409) when the milestones would add up to more than 100%.
++  addMilestone(invoiceId: number, description: string, pct: string): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones`, { description, pct });
++  }
++
++  // Marks a milestone of a sent invoice reached: it is owed from today, and the client's credit is used on it.
++  reachMilestone(invoiceId: number, milestoneId: number): Observable<InvoiceDetail> {
++    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/milestones/${milestoneId}/reach`, null);
++  }
++
+   // Approves a draft whose grand total is over the workspace's approval limit, or whose discount is
+   // more than a fifth of the subtotal. Refused (409) when it
+   // needs no approval.
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 41b4e9c..d321f31 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -56,7 +56,8 @@ public class TestSupportController {
+     private static final Set<String> FX_RATE_FIELDS = Set.of("from", "currency", "usdPer");
+     private static final Set<String> CLIENT_FIELDS = Set.of("id", "name", "email", "termsDays", "discountPct", "taxExempt", "pricesIncludeTax", "currency", "earlyPayPct", "earlyPayDays", "graceDays", "interestRate", "region", "taxNumber", "rates", "withholdingPct", "minimumCharge", "rateDiscountPct", "taxExemptUntil", "creditLimit", "onHold", "tier");
+     private static final Set<String> INVOICE_FIELDS =
+-            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems");
++            Set.of("id", "clientId", "status", "issueDate", "dueDate", "discountPct", "discountAmount", "discountCap", "discountReason", "manualDueDate", "creditOf", "instalments", "instalmentRate", "planDownPct", "interestWaivedOn", "writtenOffOn", "skippedInstalment", "surchargePct", "supplyRegion", "planFee", "approvedTotal", "approvedOn", "recurring", "recurringFrom", "recurUntil", "disputedOn", "disputeResolvedOn", "poNumber", "lineItems", "milestones");
++    private static final Set<String> MILESTONE_FIELDS = Set.of("id", "description", "pct", "reachedOn");
+     private static final Set<String> LINE_FIELDS = Set.of("id", "description", "qty", "unitPrice", "taxExempt", "discountPct", "taxRate", "creditOfLine", "unitType", "overtime", "periodStart", "periodEnd", "disputed", "percentComplete");
+     private static final Set<String> PAYMENT_FIELDS = Set.of("id", "clientId", "amount", "date", "reference", "reversed", "refunded", "creditNote", "allocations", "currency", "method", "remittance");
+     private static final Set<String> ALLOCATION_FIELDS = Set.of("invoiceId", "amount", "date");
+@@ -119,7 +120,7 @@ public class TestSupportController {
+         jdbc.execute("DELETE FROM payment_allocation");
+         jdbc.execute("DELETE FROM client_rate");
+         jdbc.execute("DELETE FROM price_list_rate");
+-        for (String table : List.of("payment", "invoice_line", "invoice", "client")) {
++        for (String table : List.of("payment", "invoice_milestone", "invoice_line", "invoice", "client")) {
+             jdbc.execute("DELETE FROM " + table);
+             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH 1");
+         }
+@@ -503,6 +504,23 @@ public class TestSupportController {
+                         flag(line.get("disputed"), "invoices[].lineItems[].disputed"),
+                         percentComplete(line.get("percentComplete"), "invoices[].lineItems[].percentComplete"));
+             }
++            BigDecimal pctSum = BigDecimal.ZERO;
++            for (Map<String, Object> milestone : rows(row.get("milestones"), "invoices[].milestones")) {
++                only(milestone, MILESTONE_FIELDS, "invoices[].milestones[]");
++                BigDecimal pct = percent(milestone.get("pct"), "invoices[].milestones[].pct");
++                if (milestone.get("pct") == null || pct.signum() <= 0) {
++                    throw refuse("invoices[].milestones[].pct must be more than 0 and at most 100, not " + milestone.get("pct"));
++                }
++                pctSum = pctSum.add(pct);
++                insert("invoice_milestone", milestone.get("id"),
++                        new String[] {"invoice_id", "description", "pct", "reached_on"},
++                        invoiceId,
++                        text(milestone, "description"), pct,
++                        milestone.get("reachedOn") == null ? null : date(milestone.get("reachedOn"), "invoices[].milestones[].reachedOn"));
++            }
++            if (pctSum.compareTo(BigDecimal.valueOf(100)) > 0) {
++                throw refuse("invoices[].milestones[].pct must add up to at most 100, not " + pctSum.toPlainString());
++            }
+         }
+         for (Map<String, Object> row : rows(fixture.get("payments"), "payments")) {
+             only(row, PAYMENT_FIELDS, "payments[]");
+@@ -573,7 +591,7 @@ public class TestSupportController {
+                     total, applied, noteId);
+         }
+         // Keep generated ids clear of the seeded ones.
+-        for (String table : List.of("client", "invoice", "invoice_line", "payment")) {
++        for (String table : List.of("client", "invoice", "invoice_line", "invoice_milestone", "payment")) {
+             Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
+             jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
+         }
+@@ -839,6 +857,18 @@ public class TestSupportController {
+                     if (r.get("SUPPLY_REGION") != null) {
+                         row.put("supplyRegion", r.get("SUPPLY_REGION"));
+                     }
++                    row.put("milestones", jdbc.queryForList(
++                            "SELECT id, description, pct, reached_on FROM invoice_milestone WHERE invoice_id = ? ORDER BY id",
++                            r.get("ID")).stream().map(m -> {
++                                Map<String, Object> milestone = new LinkedHashMap<>();
++                                milestone.put("id", m.get("ID"));
++                                milestone.put("description", m.get("DESCRIPTION"));
++                                milestone.put("pct", m.get("PCT"));
++                                if (m.get("REACHED_ON") != null) {
++                                    milestone.put("reachedOn", m.get("REACHED_ON").toString());
++                                }
++                                return milestone;
++                            }).toList());
+                     row.put("lineItems", jdbc.queryForList(
+                             "SELECT id, description, qty, unit_type, unit_price, tax_exempt, discount_pct, tax_rate, credit_of_line, overtime, period_start, period_end, disputed, percent_complete FROM invoice_line WHERE invoice_id = ? ORDER BY id",
+                             r.get("ID")).stream().map(l -> {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+index 0e1dc32..679bcd8 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/Invoice.java
+@@ -5,6 +5,7 @@ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+ import jakarta.persistence.Enumerated;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+@@ -13,6 +14,8 @@ import jakarta.persistence.OneToMany;
+ import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Transient;
++import org.hibernate.annotations.Fetch;
++import org.hibernate.annotations.FetchMode;
+ import org.hibernate.annotations.Formula;
+ import java.math.BigDecimal;
+ import java.math.BigInteger;
+@@ -457,6 +460,13 @@ public class Invoice {
+     @OrderBy("id")
+     private List<InvoiceLine> lines = new ArrayList<>();
+ 
++    /** The milestones the invoice is billed by, lowest id first; empty when it is billed whole. */
++    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
++    @Fetch(FetchMode.SUBSELECT)
++    @JoinColumn(name = "invoice_id", nullable = false)
++    @OrderBy("id")
++    private List<Milestone> milestones = new ArrayList<>();
++
+     protected Invoice() {
+     }
+ 
+@@ -982,7 +992,8 @@ public class Invoice {
+      * already come off its plan total.
+      */
+     private BigDecimal payableBeforeInterest(BigDecimal taxRate) {
+-        BigDecimal owed = hasPlan() ? planTotal(taxRate) : owedTotal(taxRate).subtract(getCredited());
++        BigDecimal owed = hasPlan() ? planTotal(taxRate)
++                : (isBilledByMilestones() ? reachedTotal(taxRate) : owedTotal(taxRate)).subtract(getCredited());
+         return owed.subtract(getEarlyDiscountTaken())
+                 .subtract(getInterestSaved()).add(getCashRounding());
+     }
+@@ -1707,6 +1718,120 @@ public class Invoice {
+                 .findFirst().orElse(zero());
+     }
+ 
++    public List<Milestone> getMilestones() {
++        return milestones;
++    }
++
++    /** Adds a milestone to the end of the invoice. */
++    public void addMilestone(Milestone milestone) {
++        milestones.add(milestone);
++    }
++
++    /** The milestone with the id; null when the invoice has none. */
++    public Milestone milestone(Long milestoneId) {
++        return milestones.stream().filter(m -> m.getId().equals(milestoneId)).findFirst().orElse(null);
++    }
++
++    /** What the milestones' percentages add up to; 0 when there are none. */
++    public BigDecimal milestonesPct() {
++        return milestones.stream().map(Milestone::getPct).reduce(BigDecimal.ZERO, BigDecimal::add);
++    }
++
++    /** Whether the invoice is billed by milestones once sent: only its reached milestones are then owed. */
++    public boolean isBilledByMilestones() {
++        return !milestones.isEmpty() && status == InvoiceStatus.SENT;
++    }
++
++    /** Whether the sent invoice has milestones still to be reached. */
++    public boolean hasPendingMilestones() {
++        return isBilledByMilestones() && milestones.stream().anyMatch(m -> !m.isReached());
++    }
++
++    /**
++     * Each milestone's amount at the tax rate, in the order of the milestones: its percentage of what the
++     * client pays ({@link #owedTotal}, the grand total less the withholding), rounded down to the cent, with
++     * the cents left over (of the milestones' share of it, rounded half up) going one each to the largest
++     * remainders, the lower id first on a tie, so they add up exactly.
++     */
++    public List<BigDecimal> milestoneAmounts(BigDecimal taxRate) {
++        int scale = scale();
++        BigDecimal units = owedTotal(taxRate).movePointRight(scale);
++        BigDecimal hundred = BigDecimal.valueOf(100);
++        int n = milestones.size();
++        BigInteger[] floors = new BigInteger[n];
++        BigDecimal[] remainders = new BigDecimal[n];
++        BigInteger sum = BigInteger.ZERO;
++        for (int k = 0; k < n; k++) {
++            BigDecimal exact = units.multiply(milestones.get(k).getPct()).divide(hundred);
++            floors[k] = exact.setScale(0, RoundingMode.FLOOR).toBigInteger();
++            remainders[k] = exact.subtract(new BigDecimal(floors[k]));
++            sum = sum.add(floors[k]);
++        }
++        BigInteger target = units.multiply(milestonesPct()).divide(hundred).setScale(0, RoundingMode.HALF_UP)
++                .toBigInteger();
++        List<Integer> order = new ArrayList<>();
++        for (int k = 0; k < n; k++) {
++            order.add(k);
++        }
++        order.sort(Comparator.comparing((Integer k) -> remainders[k]).reversed()
++                .thenComparing(k -> milestones.get(k).getId(), Comparator.nullsLast(Comparator.naturalOrder())));
++        int left = target.subtract(sum).intValue();
++        for (int k = 0; k < left && k < n; k++) {
++            floors[order.get(k)] = floors[order.get(k)].add(BigInteger.ONE);
++        }
++        List<BigDecimal> amounts = new ArrayList<>(n);
++        for (BigInteger f : floors) {
++            amounts.add(new BigDecimal(f).movePointLeft(scale).setScale(scale));
++        }
++        return amounts;
++    }
++
++    /** What the reached milestones add up to at the tax rate. */
++    public BigDecimal reachedTotal(BigDecimal taxRate) {
++        List<BigDecimal> amounts = milestoneAmounts(taxRate);
++        BigDecimal sum = zero();
++        for (int k = 0; k < milestones.size(); k++) {
++            if (milestones.get(k).isReached()) {
++                sum = sum.add(amounts.get(k));
++            }
++        }
++        return sum;
++    }
++
++    /**
++     * Each milestone with its amount at the tax rate, what is paid off it once the given amount has been
++     * paid, and its status on the day: a milestone not reached (or on a draft) is pending; payments pay
++     * the reached milestones in order, each paid off before the next; a reached one is due on the
++     * invoice's due date, and overdue more than the grace period after it.
++     */
++    public List<Milestone.Progress> milestoneProgress(BigDecimal paid, BigDecimal taxRate, LocalDate today) {
++        List<BigDecimal> amounts = milestoneAmounts(taxRate);
++        BigDecimal left = paid.add(writtenOff(paid, taxRate)).add(getCredited());
++        List<Milestone.Progress> progress = new ArrayList<>();
++        for (int k = 0; k < milestones.size(); k++) {
++            Milestone m = milestones.get(k);
++            BigDecimal amount = amounts.get(k);
++            if (status != InvoiceStatus.SENT || !m.isReached()) {
++                progress.add(new Milestone.Progress(m, amount, zero(), Milestone.Status.PENDING));
++                continue;
++            }
++            BigDecimal part = left.min(amount).max(BigDecimal.ZERO).setScale(scale(), RoundingMode.HALF_UP);
++            left = left.subtract(part);
++            Milestone.Status st;
++            if (part.compareTo(amount) >= 0) {
++                st = Milestone.Status.PAID;
++            } else if (dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
++                st = Milestone.Status.OVERDUE;
++            } else if (part.signum() > 0) {
++                st = Milestone.Status.PART_PAID;
++            } else {
++                st = Milestone.Status.DUE;
++            }
++            progress.add(new Milestone.Progress(m, amount, part, st));
++        }
++        return progress;
++    }
++
+     public List<InvoiceLine> getLines() {
+         return lines;
+     }
+@@ -1849,6 +1974,9 @@ public class Invoice {
+         } else if (restDue && dueDate != null && today.isAfter(dueDate.plusDays(graceDays()))) {
+             return InvoiceStatus.OVERDUE;
+         }
++        if (!due && hasPendingMilestones()) {
++            return InvoiceStatus.AWAITING_MILESTONE;
++        }
+         if (paid.signum() <= 0) {
+             return !due && getCredited().signum() > 0 ? InvoiceStatus.CREDITED : status;
+         }
+@@ -1868,7 +1996,7 @@ public class Invoice {
+      */
+     public LocalDate paidOn(List<Payment> payments, BigDecimal taxRate) {
+         BigDecimal total = payable(taxRate);
+-        if (status != InvoiceStatus.SENT || isWrittenOff() || total.signum() <= 0) {
++        if (status != InvoiceStatus.SENT || isWrittenOff() || total.signum() <= 0 || hasPendingMilestones()) {
+             return null;
+         }
+         record Part(LocalDate on, Long paymentId, BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+index 6429737..5f0104f 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceController.java
+@@ -161,6 +161,8 @@ public class InvoiceController {
+      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
+      * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
+      * {@code poNumber} is the client's purchase order number (null when none).
++     * {@code milestones} are the milestones it is billed by (empty when it is billed whole), each with its
++     * amount and status (see {@link Invoice#milestoneProgress}); {@code milestonesPct} is what their percentages add up to.
+      */
+     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
+             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
+@@ -171,7 +173,8 @@ public class InvoiceController {
+             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
+             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
+             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
+-            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber) {
++            boolean recurring, Long recurringFrom, LocalDate recurUntil, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber,
++            List<MilestoneView> milestones, String milestonesPct) {
+         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
+             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
+                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+@@ -213,7 +216,9 @@ public class InvoiceController {
+                     i.getSupplyRegion(), approval,
+                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
+                     i.isRecurring(), i.getRecurringFrom(), i.getRecurUntil(), i.getDisputedOn(), i.getDisputeResolvedOn(),
+-                    i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber());
++                    i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber(),
++                    i.milestoneProgress(paid, taxRate, today).stream().map(MilestoneView::of).toList(),
++                    i.milestonesPct().stripTrailingZeros().toPlainString());
+         }
+     }
+ 
+@@ -363,6 +368,31 @@ public class InvoiceController {
+             LocalDate date) {
+     }
+ 
++    /**
++     * One milestone of an invoice: its id, description, percentage (without trailing zeros), the day it was
++     * reached (null while pending), its amount and what has been paid off it, decimal strings to the cent; and its status.
++     */
++    public record MilestoneView(Long id, String description, String pct, LocalDate reachedOn, String amount,
++            String paid, Milestone.Status status) {
++        static MilestoneView of(Milestone.Progress p) {
++            Milestone m = p.milestone();
++            return new MilestoneView(m.getId(), m.getDescription(), m.getPct().stripTrailingZeros().toPlainString(),
++                    m.getReachedOn(), p.amount().toPlainString(), p.paid().toPlainString(), p.status());
++        }
++    }
++
++    /** A milestone to add to a draft: a description and a percentage over 0 and at most 100 with at most two decimals. */
++    public record NewMilestone(
++            @NotBlank(message = "Enter a description.")
++            @Size(max = 255, message = "The description must be at most 255 characters.")
++            String description,
++            @NotNull(message = "Enter a percentage.")
++            @DecimalMin(value = "0", inclusive = false, message = "The percentage must be more than 0 and at most 100.")
++            @DecimalMax(value = "100", message = "The percentage must be more than 0 and at most 100.")
++            @Digits(integer = 3, fraction = 2, message = "The percentage can have at most two decimals.")
++            BigDecimal pct) {
++    }
++
+     /** A rush surcharge on a draft: a percentage from 0 to 25 with at most two decimals. */
+     public record NewSurcharge(
+             @NotNull(message = "Enter a surcharge percentage.")
+@@ -577,6 +607,21 @@ public class InvoiceController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+     }
+ 
++    @PostMapping("/api/invoices/{id}/milestones")
++    public InvoiceDetail addMilestone(@PathVariable Long id, @Valid @RequestBody NewMilestone body) {
++        return invoices.addMilestone(id, body.description().trim(), body.pct())
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
++    /** Marks a milestone of a sent invoice reached: it is owed from today. */
++    @PostMapping("/api/invoices/{id}/milestones/{milestoneId}/reach")
++    public InvoiceDetail reachMilestone(@PathVariable Long id, @PathVariable Long milestoneId) {
++        return invoices.reachMilestone(id, milestoneId)
++                .map(this::detail)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
++    }
++
+     /** Writes off everything still owed on a sent invoice as a bad debt. */
+     @PostMapping("/api/invoices/{id}/write-off")
+     public InvoiceDetail writeOff(@PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+index c42d409..309f67a 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.invoices;
+ 
+ import jakarta.persistence.EntityManager;
+ import java.math.BigDecimal;
++import org.hibernate.Hibernate;
+ import java.time.LocalDate;
+ import java.math.RoundingMode;
+ import java.util.ArrayList;
+@@ -111,6 +112,8 @@ public class InvoiceService {
+         BigDecimal annual = lateInterestRate.percent();
+         LocalDate now = today.date();
+         list.forEach(i -> {
++            // Loaded with its lines only: read its milestones now, while the session is open.
++            Hibernate.initialize(i.getMilestones());
+             i.priceAsOf(now);
+             if (i.isDraft() && !i.isCreditNote()) {
+                 repriceWhereRated(i, now);
+@@ -507,6 +510,9 @@ public class InvoiceService {
+             if (!invoice.isDraft()) {
+                 throw new InvoiceRejectedException("Only a draft can be spread over instalments.");
+             }
++            if (!invoice.getMilestones().isEmpty()) {
++                throw new InvoiceRejectedException("An invoice billed by milestones cannot be spread over instalments.");
++            }
+             invoice.setPlan(instalments, instalmentRate, planDownPct);
+             if (invoice.isInstalmentTooSmall(taxRate.percent(), today.date())) {
+                 throw new InvoiceRejectedException("The monthly instalment must be worth at least $"
+@@ -517,6 +523,76 @@ public class InvoiceService {
+         return found;
+     }
+ 
++    /**
++     * Adds a milestone of the percentage to a draft; empty if no such invoice. The percentage has already
++     * been checked to be over 0; one that would take the milestones over 100% is refused, as is any invoice
++     * that is not a draft, a credit note, or one spread over instalments.
++     */
++    @Transactional
++    public Optional<Invoice> addMilestone(Long invoiceId, String description, BigDecimal pct) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            if (invoice.isCreditNote()) {
++                throw new InvoiceRejectedException("A credit note cannot be billed by milestones.");
++            }
++            if (!invoice.isDraft()) {
++                throw new InvoiceRejectedException("Only a draft can have milestones added.");
++            }
++            if (invoice.hasPlan()) {
++                throw new InvoiceRejectedException("An invoice spread over instalments cannot be billed by milestones.");
++            }
++            BigDecimal after = invoice.milestonesPct().add(pct);
++            if (after.compareTo(BigDecimal.valueOf(100)) > 0) {
++                throw new InvoiceRejectedException("The milestones would add up to "
++                        + after.stripTrailingZeros().toPlainString() + "%, over 100%.");
++            }
++            invoice.addMilestone(new Milestone(description, pct));
++            invoices.saveAndFlush(invoice);
++        });
++        return found;
++    }
++
++    /**
++     * Marks a milestone of a sent invoice reached today, records it in the audit with its amount, and
++     * then uses the client's credit on what is now owed, as sending does (see {@link #applyCredit}); empty
++     * if no such invoice. A milestone already reached, or of an invoice that is not sent, void, written off
++     * or a credit note, is refused.
++     */
++    @Transactional
++    public Optional<Invoice> reachMilestone(Long invoiceId, Long milestoneId) {
++        Optional<Invoice> found = load(invoiceId);
++        found.ifPresent(invoice -> {
++            Milestone milestone = invoice.milestone(milestoneId);
++            if (milestone == null) {
++                throw new InvoiceRejectedException("The invoice has no such milestone.");
++            }
++            if (invoice.getStatus() != InvoiceStatus.SENT || invoice.isCreditNote() || invoice.isWrittenOff()) {
++                throw new InvoiceRejectedException("Only a milestone of a sent invoice can be reached.");
++            }
++            if (milestone.isReached()) {
++                throw new InvoiceRejectedException("This milestone has already been reached.");
++            }
++            milestone.reach(today.date());
++            invoices.saveAndFlush(invoice);
++            BigDecimal amount = invoice.milestoneAmounts(taxRate.percent())
++                    .get(invoice.getMilestones().indexOf(milestone));
++            audit.record("MILESTONE_REACHED id=" + invoice.getId() + " milestone=" + milestone.getId()
++                    + " amount=" + amount.toPlainString());
++            withInterest(List.of(invoice));
++            applyCredit(invoice);
++        });
++        return found;
++    }
++
++    /** Why the draft's milestones keep it from being sent, or null when they do not: they must add up to exactly 100%. */
++    private static String milestoneRefusal(Invoice invoice) {
++        if (invoice.getMilestones().isEmpty() || invoice.milestonesPct().compareTo(BigDecimal.valueOf(100)) == 0) {
++            return null;
++        }
++        return "The milestones add up to " + invoice.milestonesPct().stripTrailingZeros().toPlainString()
++                + "%; they must add up to exactly 100% before the invoice is sent.";
++    }
++
+     /**
+      * Waives the late interest still unpaid on a sent invoice today, writing it off, and
+      * records what was waived in the audit; empty if no such invoice. Interest starts again from today on
+@@ -846,6 +922,10 @@ public class InvoiceService {
+                 issue(invoice);
+                 return;
+             }
++            String milestones = milestoneRefusal(invoice);
++            if (milestones != null) {
++                throw new InvoiceRejectedException(milestones);
++            }
+             if (invoice.dueDatePassedBy(today.date())) {
+                 throw new InvoiceRejectedException("The due date (" + invoice.getDueDate()
+                         + ") is already past; set a later due date before sending the invoice.");
+@@ -915,6 +995,7 @@ public class InvoiceService {
+                 .filter(invoice -> invoice.isDraft() && !invoice.getLines().isEmpty()
+                         && !invoice.dueDatePassedBy(today.date())
+                         && approval(invoice) != Invoice.Approval.NEEDS_APPROVAL
++                        && milestoneRefusal(invoice) == null
+                         && (invoice.isCreditNote() || depositRefusal(invoice) == null))
+                 .forEach(invoice -> {
+                     if (!invoice.isCreditNote()) {
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+index 6bf8d8f..aa7975b 100644
+--- a/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
++++ b/src/main/java/net/officefloor/hq/app/invoices/InvoiceStatus.java
+@@ -17,7 +17,9 @@ package net.officefloor.hq.app.invoices;
+  * interest and takes no payments; that follows from the day it was written off.
+  * A sent invoice in dispute is disputed until the dispute is resolved: it earns no interest, is not
+  * overdue and takes no payments; that follows from the days it was disputed and resolved.
++ * A sent invoice billed by milestones with nothing owed now but milestones still to be reached is
++ * awaiting a milestone; that follows from its milestones and payments and is never stored.
+  */
+ public enum InvoiceStatus {
+-    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, WRITTEN_OFF, DISPUTED
++    DRAFT, SENT, PART_PAID, PAID, PAID_LATE, OVERDUE, VOID, CREDIT_NOTE, CREDITED, WRITTEN_OFF, DISPUTED, AWAITING_MILESTONE
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/invoices/Milestone.java b/src/main/java/net/officefloor/hq/app/invoices/Milestone.java
+new file mode 100644
+index 0000000..c8701e2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/invoices/Milestone.java
+@@ -0,0 +1,74 @@
++package net.officefloor.hq.app.invoices;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * One milestone of an invoice billed by milestones: a description and the percentage (over 0, up to two
++ * decimals) of what the client pays that it is worth. Once the invoice is sent it is owed only from the
++ * day it is reached.
++ */
++@Entity
++@Table(name = "invoice_milestone")
++public class Milestone {
++
++    /** Where a milestone is: not reached yet, or reached and paid off, part paid, overdue or due. */
++    public enum Status {
++        PENDING, PAID, PART_PAID, OVERDUE, DUE
++    }
++
++    /** A milestone's amount, what has been paid off it and its status on a day. */
++    public record Progress(Milestone milestone, BigDecimal amount, BigDecimal paid, Status status) {
++    }
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String description;
++
++    private BigDecimal pct;
++
++    /** The day the milestone was reached; null while it is pending. */
++    @Column(name = "reached_on")
++    private LocalDate reachedOn;
++
++    protected Milestone() {
++    }
++
++    public Milestone(String description, BigDecimal pct) {
++        this.description = description;
++        this.pct = pct;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getDescription() {
++        return description;
++    }
++
++    public BigDecimal getPct() {
++        return pct;
++    }
++
++    public LocalDate getReachedOn() {
++        return reachedOn;
++    }
++
++    public boolean isReached() {
++        return reachedOn != null;
++    }
++
++    /** Marks the milestone reached on the day. */
++    public void reach(LocalDate on) {
++        this.reachedOn = on;
++    }
++}
+diff --git a/src/main/resources/db/migration/V78__invoice_milestone.sql b/src/main/resources/db/migration/V78__invoice_milestone.sql
+new file mode 100644
+index 0000000..89db743
+--- /dev/null
++++ b/src/main/resources/db/migration/V78__invoice_milestone.sql
+@@ -0,0 +1,10 @@
++-- A draft billed by milestones: each a description and a percentage (over 0, together at most 100 and
++-- exactly 100 to be sent) of what the client pays. Once sent a milestone is owed only from the day it
++-- was reached; null while it is pending.
++CREATE TABLE invoice_milestone (
++    id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    invoice_id  BIGINT        NOT NULL REFERENCES invoice (id) ON DELETE CASCADE,
++    description VARCHAR(255)  NOT NULL DEFAULT '',
++    pct         DECIMAL(5, 2) NOT NULL,
++    reached_on  DATE
++);
