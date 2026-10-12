@@ -95,6 +95,12 @@ public class InvoiceLine {
     private boolean overtime;
 
     /**
+     * Whether the client disputes the line: from its invoice's dispute date until the dispute is resolved, the
+     * line (after its share of the invoice discount, with its tax) earns no interest and is not overdue.
+     */
+    private boolean disputed;
+
+    /**
      * Whether the line's price comes from the rates for its unit type (its client's rate card, or else the price
      * list): on a draft it follows the card when that rate is changed, and sending reprices it at the rates in force
      * on the day it is sent, then fixes the price on the line and clears it.
@@ -276,6 +282,16 @@ public class InvoiceLine {
     /** The price the line was given (from the rate card, the price list or typed in), before any overtime. */
     public BigDecimal getUnitPrice() {
         return unitPrice;
+    }
+
+    /** Whether the client disputes the line. */
+    public boolean isDisputed() {
+        return disputed;
+    }
+
+    /** Puts the line in dispute, or takes it out. */
+    public void setDisputed(boolean disputed) {
+        this.disputed = disputed;
     }
 
     /** Whether the line is charged at time and a half. */

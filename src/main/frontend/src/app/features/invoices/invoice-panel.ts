@@ -316,6 +316,21 @@ function problemWith(line: NewLine): string {
                       Credit
                     </button>
                   }
+                  @if (canDisputeLines(inv)) {
+                    @if (l.disputed) {
+                      <span data-testid="line-disputed">In dispute</span>
+                    } @else {
+                      <button
+                        type="button"
+                        data-testid="line-dispute"
+                        [disabled]="disputing()"
+                        [attr.aria-label]="'Dispute line ' + l.description"
+                        (click)="disputeLine(inv.id, l.id)"
+                      >
+                        Dispute
+                      </button>
+                    }
+                  }
                 </td>
               </tr>
             } @empty {
@@ -545,6 +560,12 @@ function problemWith(line: NewLine): string {
             </tr>
             @if (inv.creditOf === null) {
               <tr>
+                <th scope="row" colspan="5">In dispute</th>
+                <td data-testid="invoice-disputed">{{ amount(inv.disputed) }}</td>
+              </tr>
+            }
+            @if (inv.creditOf === null) {
+              <tr>
                 <th scope="row" colspan="5">Amount due in cash (rounded down to the coin below)</th>
                 <td data-testid="invoice-cash-due">{{ amount(inv.cashDue) }}</td>
               </tr>
@@ -735,7 +756,7 @@ function problemWith(line: NewLine): string {
           <p role="alert" data-testid="invoice-write-off-error">{{ writeOffError() }}</p>
         }
 
-        @if (inv.status === 'DISPUTED') {
+        @if (inv.disputedOn && !inv.disputeResolvedOn) {
           <button type="button" data-testid="invoice-resolve" [disabled]="disputing()" (click)="resolveDispute(inv.id)">
             Resolve dispute
           </button>
@@ -1526,6 +1547,29 @@ export class InvoicePanel {
       error: (e: HttpErrorResponse) => {
         const detail: unknown = e.error?.detail;
         this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The invoice could not be disputed.');
+        this.disputing.set(false);
+      },
+    });
+  }
+
+  // Lines of a sent invoice (not a credit note) can be disputed unless the whole invoice already is.
+  protected canDisputeLines(inv: InvoiceDetail): boolean {
+    const wholly = !!inv.disputedOn && !inv.disputeResolvedOn && !inv.lines.some((l) => l.disputed);
+    return inv.creditOf === null && !wholly && !['DRAFT', 'VOID', 'WRITTEN_OFF', 'PAID', 'PAID_LATE', 'CREDITED'].includes(inv.status);
+  }
+
+  protected disputeLine(invoiceId: number, lineId: number): void {
+    this.disputing.set(true);
+    this.disputeError.set('');
+    this.service.disputeLine(invoiceId, lineId).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.disputing.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.disputeError.set(typeof detail === 'string' && detail ? detail : 'The line could not be disputed.');
         this.disputing.set(false);
       },
     });

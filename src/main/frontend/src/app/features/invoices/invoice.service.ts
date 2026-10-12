@@ -54,6 +54,8 @@ export interface InvoiceSummary {
 // `amount` is after it. `unitType` is the unit the line is billed in (hour, day, ...), null when none.
 export interface InvoiceLineView {
   id: number;
+  // Whether the line is in the invoice's open dispute.
+  disputed: boolean;
   description: string;
   qty: string;
   unitType: string | null;
@@ -208,6 +210,9 @@ export interface InvoiceDetail {
   // null while it is open.
   disputedOn: string | null;
   disputeResolvedOn: string | null;
+  // The amount in dispute: the disputed lines after their share of the invoice discount, with their tax
+  // (all that is due when the whole invoice is disputed), never more than is due; "0.00" with no open dispute.
+  disputed: string;
   // Whether it is reverse charged: its client is registered (a valid tax number whose two letters are
   // their region's code) outside the workspace's home region and accounts for the tax itself, so no line is taxed.
   reverseCharge: boolean;
@@ -430,6 +435,13 @@ export class InvoiceService {
   // with nothing due or one already in dispute.
   dispute(invoiceId: number): Observable<InvoiceDetail> {
     return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/dispute`, null);
+  }
+
+  // Puts one line of a sent invoice in dispute: from the dispute date it earns no interest and is not
+  // overdue, while the rest of the invoice is owed as usual. Refused (409) as `dispute` is, and for a line
+  // already in dispute.
+  disputeLine(invoiceId: number, lineId: number): Observable<InvoiceDetail> {
+    return this.http.post<InvoiceDetail>(`/api/invoices/${invoiceId}/lines/${lineId}/dispute`, null);
   }
 
   // Ends the dispute on an invoice; interest runs again from today on what is still owed.

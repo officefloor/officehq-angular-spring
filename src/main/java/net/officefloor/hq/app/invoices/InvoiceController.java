@@ -101,8 +101,9 @@ public class InvoiceController {
     public record LineView(Long id, String description, String qty, String unitType, String unitPrice, String discountPct,
             String discount, String amount, String discountShare, String tax, String net, boolean taxExempt, String taxRate,
             Long creditOfLine, boolean tiered, String billedQty, boolean overtime, String basePrice,
-            LocalDate periodStart, LocalDate periodEnd) {
-        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax) {
+            LocalDate periodStart, LocalDate periodEnd, boolean disputed) {
+        static LineView of(InvoiceLine l, int scale, BigDecimal discountShare, BigDecimal tax, BigDecimal includedTax,
+                boolean inDispute) {
             return new LineView(l.getId(), l.getDescription(), l.getQty().stripTrailingZeros().toPlainString(),
                     l.getUnitType(), l.chargedUnitPrice().setScale(2).toPlainString(),
                     l.getDiscountPct().stripTrailingZeros().toPlainString(), l.discount(scale).toPlainString(),
@@ -111,7 +112,8 @@ public class InvoiceController {
                     l.isTaxExempt(),
                     l.getTaxRate() == null ? null : l.getTaxRate().stripTrailingZeros().toPlainString(),
                     l.getCreditOfLine(), l.isTiered(), l.billedQty().stripTrailingZeros().toPlainString(), l.isOvertime(),
-                    l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd());
+                    l.getUnitPrice().setScale(2).toPlainString(), l.getPeriodStart(), l.getPeriodEnd(),
+                    inDispute && l.isDisputed());
         }
     }
 
@@ -156,7 +158,8 @@ public class InvoiceController {
      * is the client's withholding percentage. {@code approval} is whether it needs approval before it is sent
      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not).
-     * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open).
+     * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open);
+     * {@code disputed} is the amount in dispute (see {@link Invoice#disputedAmount}), 0 when none is.
      * {@code poNumber} is the client's purchase order number (null when none).
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
@@ -169,7 +172,7 @@ public class InvoiceController {
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
-            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn, String poNumber) {
+            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn, String disputed, String poNumber) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today, Invoice.Approval approval) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -179,7 +182,7 @@ public class InvoiceController {
             List<BigDecimal> inside = i.lineTaxesInside(taxRate);
             List<LineView> lines = IntStream.range(0, shares.size())
                     .mapToObj(n -> LineView.of(i.getLines().get(n), i.scale(), shares.get(n), taxes.get(n),
-                            inside.get(n))).toList();
+                            inside.get(n), i.isDisputed())).toList();
             return new InvoiceDetail(i.getId(), i.number(),
                     PaymentReference.grouped(PaymentReference.of(i.getId())), i.getClientId(),
                     i.statusWhenPaid(paid, paidOn, taxRate, today), i.getIssueDate(), i.getDueDate(),
@@ -214,7 +217,8 @@ public class InvoiceController {
                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
                     i.getSupplyRegion(), approval,
                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
-                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn(), i.getPoNumber());
+                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn(),
+                    i.disputedAmount(paid, taxRate).toPlainString(), i.getPoNumber());
         }
     }
 
@@ -629,6 +633,14 @@ public class InvoiceController {
     @PostMapping("/api/invoices/{id}/dispute")
     public InvoiceDetail dispute(@PathVariable Long id) {
         return invoices.dispute(id)
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
+    /** Puts one line of a sent invoice in dispute. */
+    @PostMapping("/api/invoices/{id}/lines/{lineId}/dispute")
+    public InvoiceDetail disputeLine(@PathVariable Long id, @PathVariable Long lineId) {
+        return invoices.disputeLine(id, lineId)
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
