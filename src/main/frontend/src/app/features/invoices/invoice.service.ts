@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, ReplaySubject, of, switchMap, tap } from 'rxjs';
 import { Currency } from './invoice-format';
 
 // A sent invoice is PART_PAID while some of it has been paid and some is still due, and PAID once
@@ -93,7 +93,9 @@ export interface InvoiceLineView {
 // A payment to an opened invoice: `amount` is in the `currency` it was paid in, `allocated` (the
 // part applied to this invoice) in the client's currency. `surcharge` is the part of the amount that
 // was the card surcharge, in the client's currency ("0.00" unless paid by card), and `fxFee` the part
-// that was the conversion fee ("0.00" unless paid in another currency).
+// that was the conversion fee ("0.00" unless paid in another currency). `remittance` is the client's
+// remittance text (null when none); `matchedInvoice` is the number of the invoice whose purchase order
+// it matched and `matchScore` the similarity to three decimals (both null when none).
 export interface InvoicePaymentView {
   id: number;
   amount: string;
@@ -104,6 +106,9 @@ export interface InvoicePaymentView {
   method: PaymentMethod;
   surcharge: string;
   fxFee: string;
+  remittance: string | null;
+  matchedInvoice: string | null;
+  matchScore: string | null;
 }
 
 // An opened invoice with its lines and totals, all worked out by the server. `discountPct` is the
@@ -238,6 +243,8 @@ export interface InvoiceDetail {
   recurring: boolean;
   // The id of the recurring invoice this draft was generated from as its next period; null when it was not.
   recurringFrom: number | null;
+  // The client's purchase order number for the invoice; null when none was given.
+  poNumber: string | null;
 }
 
 // One instalment of a plan: its number (from 1, or 0 for a down payment), the day it falls due (yyyy-mm-dd), and its payment,
@@ -270,6 +277,9 @@ export interface NewPayment {
   date: string;
   reference: string;
   method: PaymentMethod;
+  // The client's remittance text ('' when none): with no invoice open and no reference, it first pays
+  // the open invoice whose purchase order number is most like it.
+  remittance: string;
 }
 
 // A line to add to a draft: quantity, unit type, unit price, the line's own discount percentage and
@@ -306,9 +316,14 @@ export interface ClientBalance {
 @Injectable({ providedIn: 'root' })
 export class InvoiceService {
   private readonly http = inject(HttpClient);
+  // Completes once the latest payment spread over a client's invoices has been answered, so an
+  // invoice opened meanwhile is read with it.
+  private paymentSettled: Observable<unknown> = of(null);
 
   forClient(clientId: number): Observable<InvoiceSummary[]> {
-    return this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`);
+    return this.paymentSettled.pipe(
+      switchMap(() => this.http.get<InvoiceSummary[]>(`/api/clients/${clientId}/invoices`)),
+    );
   }
 
   // The balance of each client with a sent invoice; a client not listed owes nothing.
@@ -322,7 +337,7 @@ export class InvoiceService {
   }
 
   open(id: number): Observable<InvoiceDetail> {
-    return this.http.get<InvoiceDetail>(`/api/invoices/${id}`);
+    return this.paymentSettled.pipe(switchMap(() => this.http.get<InvoiceDetail>(`/api/invoices/${id}`)));
   }
 
   // Opens the invoice with a typed number; refused (400) when its check digit does not match.
@@ -358,6 +373,11 @@ export class InvoiceService {
 
   // Sets a draft's due date (yyyy-mm-dd) by hand; refused (409) when it is before the issue date or
   // more than 120 days after it. Answers the invoice with its new due date.
+  // Sets the client's purchase order number on an invoice ('' for none).
+  setPoNumber(invoiceId: number, poNumber: string): Observable<InvoiceDetail> {
+    return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/po-number`, { poNumber });
+  }
+
   setSupplyRegion(invoiceId: number, supplyRegion: string): Observable<InvoiceDetail> {
     return this.http.put<InvoiceDetail>(`/api/invoices/${invoiceId}/supply-region`, { supplyRegion });
   }
@@ -494,7 +514,15 @@ export class InvoiceService {
   // first; refused when a reference is mistyped (400) or not the client's; what they do not owe is held as credit.
   // Answers the client's invoices with their new statuses.
   recordSplitPayment(clientId: number, payment: NewPayment): Observable<InvoiceSummary[]> {
-    return this.http.post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment);
+    const settled = new ReplaySubject<null>(1);
+    this.paymentSettled = settled;
+    const done = () => {
+      settled.next(null);
+      settled.complete();
+    };
+    return this.http
+      .post<InvoiceSummary[]>(`/api/clients/${clientId}/payments`, payment)
+      .pipe(tap({ next: done, error: done, unsubscribe: done }));
   }
 
   // Records a deposit: the whole amount held on the client's account as credit, applied to no invoice

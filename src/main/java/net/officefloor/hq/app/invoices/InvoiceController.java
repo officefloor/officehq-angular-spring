@@ -64,15 +64,20 @@ public class InvoiceController {
      * how much of it went to this invoice (to the cent) in the client's currency, its date and the
      * reference it quoted in groups of four (null when none). {@code surcharge} is the part of it that
      * was the card surcharge, in the client's currency ("0.00" unless paid by card), and {@code fxFee} the
-     * part that was the conversion fee ("0.00" unless paid in another currency).
+     * part that was the conversion fee ("0.00" unless paid in another currency). {@code remittance} is the
+     * remittance text (null when none), {@code matchedInvoice} the number of the invoice whose purchase order
+     * number it matched and {@code matchScore} the similarity to three decimals (both null when none).
      */
     public record PaymentView(Long id, String amount, Currency currency, String allocated, LocalDate date,
-            String reference, PaymentMethod method, String surcharge, String fxFee) {
+            String reference, PaymentMethod method, String surcharge, String fxFee, String remittance, String matchedInvoice,
+            String matchScore) {
         static PaymentView of(Payment p, Long invoiceId, Currency clientCurrency) {
             return new PaymentView(p.getId(), p.paidAmount().setScale(2).toPlainString(),
                     p.paidCurrency(clientCurrency), p.amountTo(invoiceId).setScale(2).toPlainString(), p.getDate(),
                     p.getReference() == null ? null : PaymentReference.grouped(p.getReference()), p.getMethod(),
-                    p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString());
+                    p.getSurcharge().setScale(2).toPlainString(), p.getFxFee().setScale(2).toPlainString(),
+                    p.getRemittance(), p.getMatchedInvoice() == null ? null : InvoiceNumber.of(p.getMatchedInvoice()),
+                    p.getMatchScore() == null ? null : p.getMatchScore().setScale(3).toPlainString());
         }
     }
 
@@ -152,6 +157,7 @@ public class InvoiceController {
      * (see {@link Invoice#approval}), and {@code approvedTotal} the grand total it was approved at and {@code approvedOn} the day (null when it was not).
      * {@code recurring} is whether it repeats every period, and {@code recurringFrom} the id of the recurring invoice it was generated from (null when it was not).
      * {@code disputedOn} is the day it was last disputed (null when never) and {@code disputeResolvedOn} the day that dispute was resolved (null while it is open).
+     * {@code poNumber} is the client's purchase order number (null when none).
      */
     public record InvoiceDetail(Long id, String number, String reference, Long clientId, InvoiceStatus status, LocalDate issueDate,
             LocalDate dueDate, List<LineView> lines, String subtotal, String discountPct, String discountAmount,
@@ -163,7 +169,7 @@ public class InvoiceController {
             String payoff, String interestSaved, String fxDifference, LocalDate writtenOffOn, boolean reverseCharge,
             String minimumCharge, String cashDue, String cashRounding, String surchargePct, String surcharge, String withholding,
             String withholdingPct, String supplyRegion, Invoice.Approval approval, String approvedTotal, LocalDate approvedOn,
-            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn) {
+            boolean recurring, Long recurringFrom, LocalDate disputedOn, LocalDate disputeResolvedOn, String poNumber) {
         static InvoiceDetail of(Invoice i, BigDecimal taxRate, List<Payment> payments, LocalDate today) {
             BigDecimal paid = payments.stream().map(p -> p.amountTo(i.getId()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
@@ -208,7 +214,7 @@ public class InvoiceController {
                     i.withholding(taxRate).toPlainString(), i.getWithholdingPct().stripTrailingZeros().toPlainString(),
                     i.getSupplyRegion(), i.approval(taxRate, today),
                     i.getApprovedTotal() == null ? null : i.getApprovedTotal().toPlainString(), i.getApprovedOn(),
-                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn());
+                    i.isRecurring(), i.getRecurringFrom(), i.getDisputedOn(), i.getDisputeResolvedOn(), i.getPoNumber());
         }
     }
 
@@ -299,7 +305,9 @@ public class InvoiceController {
             @Size(max = 64, message = "The reference must be at most 64 characters.")
             String reference,
             // How it was paid; a bank transfer when left out.
-            PaymentMethod method) {
+            PaymentMethod method,
+            @Size(max = 255, message = "The remittance text must be at most 255 characters.")
+            String remittance) {
     }
 
     /**
@@ -319,7 +327,10 @@ public class InvoiceController {
             @Size(max = 64, message = "The reference must be at most 64 characters.")
             String reference,
             // How it was paid; a bank transfer when left out. Cash is taken only against an open invoice.
-            PaymentMethod method) {
+            PaymentMethod method,
+            // The client's remittance text: with no reference, it first pays the invoice whose purchase order is most like it.
+            @Size(max = 255, message = "The remittance text must be at most 255 characters.")
+            String remittance) {
     }
 
     /**
@@ -438,7 +449,10 @@ public class InvoiceController {
             @Size(max = 255, message = "The references must be at most 255 characters.")
             String reference,
             // How it was paid; a bank transfer when left out. Cash is taken only against an open invoice.
-            PaymentMethod method) {
+            PaymentMethod method,
+            // The client's remittance text: with no reference, it first pays the invoice whose purchase order is most like it.
+            @Size(max = 255, message = "The remittance text must be at most 255 characters.")
+            String remittance) {
     }
 
     private final InvoiceService invoices;
@@ -650,6 +664,18 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }
 
+    /** The client's purchase order number for an invoice; blank for none. */
+    public record NewPoNumber(
+            @Size(max = 100, message = "The purchase order number can be at most 100 characters.") String poNumber) {
+    }
+
+    @PutMapping("/api/invoices/{id}/po-number")
+    public InvoiceDetail setPoNumber(@PathVariable Long id, @Valid @RequestBody NewPoNumber body) {
+        return invoices.setPoNumber(id, body.poNumber())
+                .map(this::detail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
+    }
+
     /** The region where a draft's work is done; blank for none, so the client's region applies. */
     public record NewSupplyRegion(
             @Size(max = 50, message = "The region can be at most 50 characters.") String supplyRegion) {
@@ -742,7 +768,7 @@ public class InvoiceController {
     public List<InvoiceSummary> recordSplitPayment(@PathVariable Long clientId, @Valid @RequestBody NewSplitPayment body) {
         refuseCashWithoutInvoice(body.method());
         invoices.recordAutoPayment(clientId, body.amount(), body.currency(), body.date(), references(body.reference()),
-                body.method());
+                body.method(), body.remittance());
         return forClient(clientId);
     }
 
@@ -851,7 +877,7 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public InvoiceDetail recordPayment(@PathVariable Long id, @Valid @RequestBody NewPayment body) {
         return invoices.recordPayment(id, body.amount(), body.currency(), body.date(), reference(body.reference()),
-                body.method())
+                body.method(), body.remittance())
                 .map(this::detail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such invoice."));
     }

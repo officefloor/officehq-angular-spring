@@ -474,6 +474,9 @@ function problemWith(line: NewLine): string {
               <th scope="col">Card surcharge</th>
               <th scope="col">To this invoice</th>
               <th scope="col">Reference</th>
+              <th scope="col">Remittance</th>
+              <th scope="col">Matched invoice</th>
+              <th scope="col">Match</th>
               <th scope="col">Actions</th>
             </tr>
           </thead>
@@ -486,6 +489,9 @@ function problemWith(line: NewLine): string {
                 <td data-testid="payment-surcharge">{{ amount(p.surcharge) }}</td>
                 <td data-testid="payment-allocated">{{ amount(p.allocated) }}</td>
                 <td data-testid="payment-reference">{{ p.reference ?? '' }}</td>
+                <td data-testid="payment-remittance">{{ p.remittance ?? '' }}</td>
+                <td data-testid="payment-match">{{ p.matchedInvoice ?? '' }}</td>
+                <td data-testid="payment-match-score">{{ p.matchScore ?? '' }}</td>
                 <td>
                   <button
                     type="button"
@@ -607,6 +613,18 @@ function problemWith(line: NewLine): string {
             <button type="submit" data-testid="invoice-due-submit" [disabled]="savingDue()">Set due date</button>
             @if (dueError()) {
               <p role="alert" data-testid="invoice-due-error">{{ dueError() }}</p>
+            }
+          </form>
+        }
+
+        @if (inv.creditOf === null) {
+          <p>Purchase order: <span data-testid="invoice-po">{{ inv.poNumber ?? '' }}</span></p>
+          <form [formGroup]="poForm" (ngSubmit)="setPoNumber(inv.id)" aria-label="Purchase order" novalidate>
+            <label for="invoice-po-input">Client's purchase order number (leave blank for none)</label>
+            <input id="invoice-po-input" data-testid="invoice-po-input" formControlName="poNumber" />
+            <button type="submit" data-testid="invoice-po-submit" [disabled]="savingPo()">Set purchase order</button>
+            @if (poError()) {
+              <p role="alert" data-testid="invoice-po-error">{{ poError() }}</p>
             }
           </form>
         }
@@ -1055,6 +1073,12 @@ export class InvoicePanel {
   protected readonly savingSupply = signal(false);
   protected readonly supplyError = signal('');
 
+  protected readonly poForm = new FormGroup({
+    poNumber: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly savingPo = signal(false);
+  protected readonly poError = signal('');
+
   constructor() {
     effect((onCleanup) => {
       const id = this.invoiceId();
@@ -1069,6 +1093,8 @@ export class InvoicePanel {
       this.dueError.set('');
       this.supplyForm.reset();
       this.supplyError.set('');
+      this.poForm.reset();
+      this.poError.set('');
       this.retentionForm.reset();
       this.retentionError.set('');
       this.surchargeForm.reset();
@@ -1250,6 +1276,26 @@ export class InvoicePanel {
   protected splitRecorded(invoiceId: number, list: InvoiceSummary[]): void {
     this.split.emit(list);
     this.service.open(invoiceId).subscribe((detail) => this.invoice.set(detail));
+  }
+
+  protected setPoNumber(invoiceId: number): void {
+    this.savingPo.set(true);
+    this.poError.set('');
+    this.service.setPoNumber(invoiceId, this.poForm.getRawValue().poNumber.trim()).subscribe({
+      next: (detail) => {
+        this.invoice.set(detail);
+        this.changed.emit(detail);
+        this.poForm.reset();
+        this.savingPo.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        const detail: unknown = e.error?.detail;
+        this.poError.set(
+          typeof detail === 'string' && detail ? detail : 'The purchase order number could not be set.',
+        );
+        this.savingPo.set(false);
+      },
+    });
   }
 
   protected setSupplyRegion(invoiceId: number): void {

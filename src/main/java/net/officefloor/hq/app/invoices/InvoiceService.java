@@ -435,6 +435,17 @@ public class InvoiceService {
         return found;
     }
 
+    /** Sets the client's purchase order number on an invoice (blank for none); empty if no such invoice. */
+    @Transactional
+    public Optional<Invoice> setPoNumber(Long invoiceId, String poNumber) {
+        Optional<Invoice> found = load(invoiceId);
+        found.ifPresent(invoice -> {
+            invoice.setPoNumber(poNumber);
+            invoices.saveAndFlush(invoice);
+        });
+        return found;
+    }
+
     /**
      * Sets the rush surcharge of a draft, a percentage of its amount after its discounts; empty if no
      * such invoice. The percentage has already been checked; any invoice that is not a draft, or a
@@ -1338,7 +1349,7 @@ public class InvoiceService {
      */
     @Transactional
     public Optional<Invoice> recordPayment(Long invoiceId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
-            String reference, PaymentMethod method) {
+            String reference, PaymentMethod method, String remittance) {
         Optional<Invoice> found = load(invoiceId);
         found.ifPresent(invoice -> {
             if (invoice.isDraft()) {
@@ -1426,7 +1437,8 @@ public class InvoiceService {
                 invoices.saveAndFlush(invoice);
             }
             Payment payment = payments.saveAndFlush(Payment.against(invoice, received, applied, date, reference)
-                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge).feeCharged(fee));
+                    .paidIn(paidIn, paidAmount, invoice.currency()).by(method).surcharged(surcharge).feeCharged(fee)
+                    .remitted(remittance));
             recordFee(payment, invoice.currency());
             recordSurcharge(payment, invoice.currency());
             audit.record("PAYMENT_RECORDED id=" + payment.getId() + " invoice=" + invoice.getId() + " amount="
@@ -1469,12 +1481,16 @@ public class InvoiceService {
      * each be more than zero and together no more than the payment; each must be no more than its
      * invoice has due and at least its minimum part payment (both checked with the other parts).
      * The payment keeps the reference of the first invoice it reaches.
+     * With no reference, remittance text (null or blank when none) first pays the open invoice whose
+     * purchase order number is most like it: a Jaro-Winkler similarity (see {@link RemittanceMatch}) of at least
+     * 0.85, the earlier due date then the lower id on a tie, among invoices that take payments and have something
+     * due. The rest goes in the same order.
      */
     @Transactional
     public Payment recordAutoPayment(Long clientId, BigDecimal paidAmount, Currency paidIn, LocalDate date,
-            List<QuotedReference> references, PaymentMethod method) {
+            List<QuotedReference> references, PaymentMethod method, String remittance) {
         if (onHold(clientId)) {
-            return holdAsCredit(clientId, paidAmount, paidIn, date, method);
+            return holdAsCredit(clientId, paidAmount, paidIn, date, method).remitted(remittance);
         }
         Currency currency = currencyOf(clientId);
         BigDecimal received = converted(paidAmount, paidIn, currency, date);
@@ -1486,9 +1502,10 @@ public class InvoiceService {
         List<Invoice> candidates = ofClient;
         List<PaymentAllocation> parts = new ArrayList<>();
         BigDecimal left = amount;
+        // The invoices whose amounts were stated; the rest of the payment is applied automatically.
+        Set<Long> stated = new HashSet<>();
         if (!references.isEmpty()) {
             Set<Long> named = new HashSet<>();
-            Set<Long> stated = new HashSet<>();
             for (QuotedReference quoted : references) {
                 String reference = quoted.reference();
                 Invoice invoice = ofClient.stream()
@@ -1532,6 +1549,30 @@ public class InvoiceService {
         }
         Map<Long, BigDecimal> dues = new HashMap<>();
         List<Invoice> sent = inPaymentOrder(candidates, dues);
+        Invoice matched = null;
+        double score = 0;
+        if (references.isEmpty() && remittance != null && !remittance.isBlank()) {
+            for (Invoice invoice : sent) {
+                if (dues.get(invoice.getId()).signum() <= 0 || invoice.getPoNumber() == null) {
+                    continue;
+                }
+                double similarity = RemittanceMatch.similarity(remittance.trim(), invoice.getPoNumber());
+                if (similarity < RemittanceMatch.THRESHOLD) {
+                    continue;
+                }
+                if (matched == null || similarity > score || (similarity == score && earlierMatch(invoice, matched))) {
+                    matched = invoice;
+                    score = similarity;
+                }
+            }
+            if (matched != null) {
+                List<Invoice> reordered = new ArrayList<>();
+                reordered.add(matched);
+                Long matchedId = matched.getId();
+                sent.stream().filter(i -> !i.getId().equals(matchedId)).forEach(reordered::add);
+                sent = reordered;
+            }
+        }
         for (Invoice invoice : sent) {
             BigDecimal due = dues.get(invoice.getId());
             if (due.signum() <= 0) {
@@ -1548,7 +1589,20 @@ public class InvoiceService {
                     : "Those invoices have already been paid.");
         }
         String reference = references.isEmpty() ? null : PaymentReference.of(parts.get(0).getInvoiceId());
-        return recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee);
+        Payment payment = recordSpread(clientId, amount, paidAmount, paidIn, date, reference, parts, method, surcharge, fee,
+                        stated)
+                .remitted(remittance);
+        if (matched != null) {
+            payment.matched(matched.getId(), score);
+        }
+        return payments.saveAndFlush(payment);
+    }
+
+    /** Of two equally good remittance matches, whether this one is taken first: the earlier due date, then the lower id. */
+    private static boolean earlierMatch(Invoice invoice, Invoice than) {
+        Comparator<Invoice> order = Comparator.comparing(Invoice::getDueDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(Invoice::getId);
+        return order.compare(invoice, than) < 0;
     }
 
     /**
@@ -1645,12 +1699,13 @@ public class InvoiceService {
      * must add up to no more than the payment: the rest is
      * held on the client's account as credit and recorded in the audit. Each must go to a different
      * sent invoice of the client and be no more than what it still has due. The date must be no later
-     * than today nor before any of the invoices' issue dates. The reference (null when none) has
+     * than today nor before any of the invoices' issue dates. Only the parts going to the stated invoices
+     * must be at least their minimum part payment. The reference (null when none) has
      * already been checked; it must be the reference of one of the invoices.
      */
     private Payment recordSpread(Long clientId, BigDecimal amount, BigDecimal paidAmount, Currency paidIn,
             LocalDate date, String reference, List<PaymentAllocation> parts, PaymentMethod method,
-            BigDecimal surcharge, BigDecimal fee) {
+            BigDecimal surcharge, BigDecimal fee, Set<Long> stated) {
         if (parts.isEmpty()) {
             throw new InvoiceRejectedException("Enter how much of the payment goes to each invoice.");
         }
@@ -1696,12 +1751,14 @@ public class InvoiceService {
                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
                         + number + " is more than the " + currency.format(due) + " it has due.");
             }
-            if (invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+            // Only a stated amount must be at least the minimum part: what is applied automatically is whatever is left.
+            boolean checked = stated.contains(invoice.getId());
+            if (checked && invoice.hasPlan() && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
                         + number + " is less than the " + currency.format(invoice.earliestUnpaid(paidSoFar, taxRate.percent()))
                         + " still unpaid on its earliest unpaid instalment, unless it settles the plan.");
             }
-            if (invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
+            if (checked && invoice.isTooSmallPart(part.getAmount(), paidSoFar, taxRate.percent())) {
                 throw new InvoiceRejectedException("The " + currency.format(part.getAmount()) + " for "
                         + number + " is less than " + currency.format(invoice.minimumPart(paidSoFar, taxRate.percent()))
                         + " (10% of what it still has due), unless it settles the invoice.");

@@ -97,6 +97,10 @@ public class Invoice {
     @Column(name = "supply_region")
     private String supplyRegion;
 
+    /** The client's purchase order number for the invoice; null when none was given. */
+    @Column(name = "po_number")
+    private String poNumber;
+
     @Column(name = "discount_pct")
     private BigDecimal discountPct = BigDecimal.ZERO;
 
@@ -1833,6 +1837,16 @@ public class Invoice {
     /** Whether the due date was set by hand; it is then kept when the invoice is sent. */
     public String getSupplyRegion() {
         return supplyRegion;
+    }
+
+    /** The client's purchase order number for the invoice; null when none was given. */
+    public String getPoNumber() {
+        return poNumber;
+    }
+
+    /** Sets the client's purchase order number; blank for none. */
+    public void setPoNumber(String poNumber) {
+        this.poNumber = poNumber == null || poNumber.isBlank() ? null : poNumber.trim();
     }
 
     /** Sets the place of supply; blank for none, so the client's region applies. */

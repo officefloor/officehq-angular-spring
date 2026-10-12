@@ -170,6 +170,8 @@ function problemWithCash(payment: NewPayment, invoiceOpen: boolean, clientCurren
         autocapitalize="characters"
         placeholder="RF16 0000 075"
       />
+      <label for="payment-remittance">Remittance text (optional)</label>
+      <input id="payment-remittance" data-testid="payment-form-remittance" formControlName="remittance" />
       <input
         id="payment-deposit"
         type="checkbox"
@@ -214,6 +216,7 @@ export class PaymentForm {
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
     reference: new FormControl('', { nonNullable: true }),
+    remittance: new FormControl('', { nonNullable: true }),
     deposit: new FormControl(false, { nonNullable: true }),
     currency: new FormControl<Currency>('USD', { nonNullable: true }),
     method: new FormControl<PaymentMethod>('BANK', { nonNullable: true }),
@@ -240,6 +243,7 @@ export class PaymentForm {
       date: raw.date.trim(),
       reference: raw.reference.replace(/\s/g, '').toUpperCase(),
       method: raw.method,
+      remittance: raw.remittance.trim(),
     };
     if (raw.deposit) {
       this.recordDeposit(payment);

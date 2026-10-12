@@ -37,6 +37,17 @@ public class Payment {
     /** The payment reference the client quoted, or null when none was. */
     private String reference;
 
+    /** The remittance text the client wrote on the payment, or null when none was. */
+    private String remittance;
+
+    /** The invoice whose purchase order number the remittance matched; null when none did. */
+    @Column(name = "matched_invoice")
+    private Long matchedInvoice;
+
+    /** How closely the remittance matched that invoice's purchase order number (Jaro-Winkler); null when none did. */
+    @Column(name = "match_score")
+    private BigDecimal matchScore;
+
     /** Whether the payment has been reversed (a bounced cheque): it then no longer counts. */
     private boolean reversed;
 
@@ -142,6 +153,31 @@ public class Payment {
             paidAmount = paid;
         }
         return this;
+    }
+
+    /** Notes the remittance text (blank for none). */
+    public Payment remitted(String remittance) {
+        this.remittance = remittance == null || remittance.isBlank() ? null : remittance.trim();
+        return this;
+    }
+
+    /** Notes the invoice the remittance matched and the similarity, rounded half up to three decimals. */
+    public Payment matched(Long invoiceId, double score) {
+        this.matchedInvoice = invoiceId;
+        this.matchScore = BigDecimal.valueOf(score).setScale(3, java.math.RoundingMode.HALF_UP);
+        return this;
+    }
+
+    public String getRemittance() {
+        return remittance;
+    }
+
+    public Long getMatchedInvoice() {
+        return matchedInvoice;
+    }
+
+    public BigDecimal getMatchScore() {
+        return matchScore;
     }
 
     /** Notes how the payment was made (null for a bank transfer). */
