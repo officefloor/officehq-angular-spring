@@ -671,9 +671,16 @@ public class Invoice {
      * with copies of its lines, its percentage discount, surcharge and purchase order number, worked out afresh. It
      * remembers which invoice it replaces. It carries on what was going on with this invoice: an open dispute (from the
      * same day, over the same lines), its milestones (with the days they were reached and disputed) and its recurring plan.
+     * When it has had reminders they move to the replacement, which keeps this invoice's due date (see
+     * {@link #carriesChasing}), so the chasing carries on where it was.
      */
     public Invoice rebill(LocalDate issueDate, LocalDate dueDate) {
-        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, dueDate);
+        boolean chased = !reminders.isEmpty();
+        Invoice next = draft(clientId, clientTaxExempt, clientTaxExemptUntil, clientPricesIncludeTax, regionTaxRate, regionRateChanges, regionRoundsDown, outOfRegionTaxNumber, currency(), issueDate, chased ? this.dueDate : dueDate);
+        if (chased) {
+            next.reminders.addAll(reminders);
+            reminders.clear();
+        }
         next.supplyRegion = supplyRegion;
         next.discountPct = discountPct;
         next.surchargePct = surchargePct;
@@ -2397,15 +2404,23 @@ public class Invoice {
 
     /**
      * Marks the invoice sent, issued on the given date and due on the given date, unless its due date
-     * was set by hand, which is kept.
+     * was set by hand or it carries on the chasing of the invoice it replaces (see {@link #carriesChasing}): that due date is kept.
      */
     public void markSent(LocalDate issueDate, LocalDate dueDate) {
         this.status = InvoiceStatus.SENT;
         lines.forEach(InvoiceLine::fixPrice);
         this.issueDate = issueDate;
-        if (!manualDueDate) {
+        if (!manualDueDate && !carriesChasing()) {
             this.dueDate = dueDate;
         }
+    }
+
+    /**
+     * Whether this replacement carries on the chasing of the rebilled invoice it replaces: it took over that invoice's
+     * reminders, so it keeps that invoice's due date rather than being dated from the day it is sent.
+     */
+    public boolean carriesChasing() {
+        return replaces != null && !reminders.isEmpty();
     }
 
     /** Whether a due date set by hand is already past on the given send date. */

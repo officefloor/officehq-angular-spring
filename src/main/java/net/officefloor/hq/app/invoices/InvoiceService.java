@@ -246,8 +246,9 @@ public class InvoiceService {
      * and is approved already when its grand total is no more than the invoice was sent for plus the late interest it
      * carries. The late interest the invoice owes (once past any threshold) is carried: it is waived on the invoice today, so
      * stops there, and the draft bills it as a line of its own (see {@link InvoiceLine#lateInterest}), recorded as
-     * INTEREST_CARRIED in the audit. Records INVOICE_REBILLED in the audit. A draft, a credit note, a void or written-off invoice, or one already credited is
-     * refused.
+     * INTEREST_CARRIED in the audit. The invoice's reminders move to the draft, which then keeps the invoice's due date
+     * (see {@link Invoice#carriesChasing}). Records INVOICE_REBILLED in the audit. A draft, a credit note, a void or
+     * written-off invoice, one already credited, or one whose final notice has gone out is refused.
      */
     @Transactional
     public Optional<Invoice> rebill(Long invoiceId) {
@@ -267,6 +268,9 @@ public class InvoiceService {
             }
             if (invoice.hasCreditNotesIssued() || invoice.getRebilledOn() != null) {
                 throw new InvoiceRejectedException("An invoice already credited cannot be rebilled.");
+            }
+            if (invoice.getReminders().size() >= DunningLevel.FINAL.reminders()) {
+                throw new InvoiceRejectedException("The final notice has gone out on this invoice: it cannot be rebilled.");
             }
             LocalDate on = today.date();
             BigDecimal rate = taxRate.percent();
@@ -1743,6 +1747,7 @@ public class InvoiceService {
         LocalDate issued = today.date();
         // An adjustment note is priced as of the invoice it adjusts.
         repriceFromRates(invoice, null, invoice.isAdjustment() ? invoice.pricingDate() : issued);
+        // A replacement carrying on the chasing keeps its due date (see Invoice#markSent).
         invoice.markSent(issued, cappedForRisk(invoice.getClientId(), issued, dueDateFor(invoice.getClientId(), issued)));
         invoice.keepSentFigures(taxRate.percent());
         invoices.saveAndFlush(invoice);
