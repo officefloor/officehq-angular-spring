@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 11d8143..d7626cd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -49,8 +49,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // without one) and their quality is their score ("n/a" without one).
+ // Their adjusted is their combined plus their quality, counting quality as zero without a score ("n/a" while
+ // combined is "n/a").
+-// Their band classifies their adjusted: E below 0, D from 0 to 49, C from 50 to 149, B from 150 to 299 and
+-// A from 300 ("n/a" while adjusted is "n/a").
++// Their band classifies their adjusted: E below 0, D from 0 to 99, C from 100 to 249, B from 250 to 499 and
++// A from 500 ("n/a" while adjusted is "n/a").
+ // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
+ // adjusted is "n/a").
+ // The sheet's band counts show how many of its people are in each band, A through E (zero when none
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index b5bc1cf..375839c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -371,13 +371,13 @@ public class Person {
+         return momentum < 0 ? "SINK" : momentum <= 199 ? "STEADY" : "SURGE";
+     }
+ 
+-    /** Band classifies adjusted: E below 0, D up to 49, C up to 149, B up to 299, A from 300; absent with adjusted. */
++    /** Band classifies adjusted: E below 0, D up to 99, C up to 249, B up to 499, A from 500; absent with adjusted. */
+     public String getBand() {
+         Integer adjusted = getAdjusted();
+         if (adjusted == null) {
+             return null;
+         }
+-        return adjusted < 0 ? "E" : adjusted <= 49 ? "D" : adjusted <= 149 ? "C" : adjusted <= 299 ? "B" : "A";
++        return adjusted < 0 ? "E" : adjusted <= 99 ? "D" : adjusted <= 249 ? "C" : adjusted <= 499 ? "B" : "A";
+     }
+ 
+     /** Scaled is adjusted times the band's multiplier: A 4, B 3, C 2, D 1, E 0; absent with adjusted. */
