@@ -123,7 +123,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // ("n/a" when none of its people have an effective).
 // Each group shows its apex: the name of the person in it with the highest scaled, ties going to the name
 // earlier in the alphabet ("n/a" when none of its people have a scaled).
-// Each person shows their share: their scaled as a percentage of their group's strength, rounded down
+// Each person shows their share: their scaled as a percentage of their group's strength, rounded to the nearest whole percent
 // ("n/a" when their group's strength is zero, they have no group or their scaled is "n/a").
 // Each person shows their standing: their place within their group by scaled, highest first (1), with
 // equal scaled placed by higher alpha first, then by name ("n/a" when they have no group or no scaled).
@@ -839,7 +839,7 @@ export class People {
   });
   protected shareOf(p: Person): number | null {
     const strength = p.groupId === null ? 0 : (this.groupStrengths().get(p.groupId) ?? 0);
-    return p.scaled === null || strength === 0 ? null : Math.floor((p.scaled * 100) / strength);
+    return p.scaled === null || strength === 0 ? null : Math.round((p.scaled * 100) / strength);
   }
   protected belongingOf(p: Person): number | null {
     if (p.groupId === null || p.scaled === null) return null;
