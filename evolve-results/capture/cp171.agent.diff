@@ -1,0 +1,31 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ee1258ec..31d71079 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -128,6 +128,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // the two middle values ("n/a" when there are no groups).
+ // The sheet's strength range is the strongest group's strength minus the weakest's ("n/a" when there
+ // are no groups).
++// The sheet's groups above shows how many of its groups have a strength above 200 (0 when there are none).
+ // Each group shows its rank: its place among the sheet's groups by strength, highest first (1), with
+ // equal strength placed by the group name earlier in the alphabet.
+ // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
+@@ -319,6 +320,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+     <p>Average group size: <strong data-testid="rollup-mean-size">{{ meanSize() ?? 'n/a' }}</strong></p>
+     <p>Median strength: <strong data-testid="rollup-median-strength">{{ medianStrength() ?? 'n/a' }}</strong></p>
+     <p>Strength range: <strong data-testid="rollup-strength-range">{{ strengthRange() ?? 'n/a' }}</strong></p>
++    <p>Groups above 200: <strong data-testid="rollup-groups-above">{{ groupsAbove() }}</strong></p>
+     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
+     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
+     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
+@@ -964,6 +966,10 @@ export class People {
+     const values = this.groups().map((g) => strengths.get(g.id) ?? 0);
+     return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
+   });
++  protected readonly groupsAbove = computed(() => {
++    const strengths = this.groupStrengths();
++    return this.groups().filter((g) => (strengths.get(g.id) ?? 0) > 200).length;
++  });
+   protected readonly groupRanks = computed(() => {
+     const strengths = this.groupStrengths();
+     const ranked = [...this.groups()].sort(
