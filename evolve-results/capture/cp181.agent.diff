@@ -1,0 +1,37 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7b05eee3..bf7a25ba 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -180,6 +180,9 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // first (1), with equal scaled placed by name ("n/a" while their scaled is "n/a").
+ // The sheet's strongest member is the name of the person with the highest scaled anywhere on the sheet,
+ // ties going to the name earlier in the alphabet ("n/a" when nobody has a scaled).
++// The sheet's apex name is the name of the person with the highest scaled anywhere on the sheet, and its
++// runner-up the name of the second highest, ties going to the name earlier in the alphabet ("n/a" when
++// there is no such person).
+ // A person may be in several groups; a group's figures count every person in it. Where a person's own
+ // figure depends on "their group", it is the group, of those they are in, whose name comes first
+ // alphabetically.
+@@ -353,6 +356,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+     <p>Strays: <strong data-testid="rollup-stray-count">{{ strayCount() }}</strong></p>
+     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
+     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
++    <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
++    <p>Runner-up: <strong data-testid="rollup-runnerup">{{ runnerUp() ?? 'n/a' }}</strong></p>
+     <section aria-labelledby="region-counts-heading">
+       <h2 id="region-counts-heading">People per region</h2>
+       @if (regionCounts().length === 0) {
+@@ -1268,6 +1273,13 @@ export class People {
+       .sort((a, b) => b.scaled! - a.scaled! || a.name.localeCompare(b.name));
+     return new Map(ranked.map((p, i) => [p.id, i + 1]));
+   });
++  private readonly scaledOrder = computed(() =>
++    this.people()
++      .filter((p) => p.scaled !== null)
++      .sort((a, b) => b.scaled! - a.scaled! || a.name.localeCompare(b.name)),
++  );
++  protected readonly apexName = computed(() => this.scaledOrder()[0]?.name ?? null);
++  protected readonly runnerUp = computed(() => this.scaledOrder()[1]?.name ?? null);
+   protected readonly strongestMember = computed(() => {
+     let top: Person | null = null;
+     for (const p of this.people()) {
