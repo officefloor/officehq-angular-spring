@@ -1,0 +1,270 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 95b01ef..fe81609 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -50,7 +50,7 @@ export interface Patron {
+   name: string;
+ }
+ 
+-// An ally: being allies goes both ways, so each of two allies lists the other.
++// An ally: a person this person follows; following is one-directional.
+ export interface Ally {
+   id: number;
+   name: string;
+@@ -123,7 +123,7 @@ export class PeopleService {
+     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
+   }
+ 
+-  // Sets a person's allies by id; each ally then also has this person as an ally.
++  // Sets the people a person follows (their allies) by id; it does not make them follow back.
+   setAllies(sheet: string | null, id: number, allyIds: number[]): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { allyIds }, { params: sheetParams(sheet) });
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b112492..29a181e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -41,8 +41,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
+ // The sheet's region counts show, for each region its people have, how many of them are in it
+ // (a person counts once in every region they belong to), ordered by region code.
+-// Each person may have any number of allies (other people), chosen on the row; being allies goes both
+-// ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are,
++// Each person may follow any number of other people, chosen on the row; following is one-directional,
++// so A following B does not make B follow A. A person's allies are the people they follow, listed by name, with how many there are,
+ // and their synergy: the allies' thrust added together (zero without allies).
+ // Their combined is their influence plus their synergy ("n/a" while either is "n/a").
+ @Component({
+@@ -323,7 +323,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             </td>
+             <td>
+               <label class="visually-hidden" [for]="'person-ally-edit-' + p.id">
+-                Allies for {{ p.name }}
++                People {{ p.name }} follows
+               </label>
+               <select
+                 multiple
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 6d060ec..af2b526 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,9 +36,9 @@ public class TestSupportController {
+ 
+     private static final Set<String> REGION_FIELDS = Set.of("personId", "region");
+ 
+-    private static final Set<String> ALLY_FIELDS = Set.of("a", "b");
++    private static final Set<String> FOLLOW_FIELDS = Set.of("from", "to");
+ 
+-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "allies");
++    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -55,7 +55,7 @@ public class TestSupportController {
+         audit.clear();
+         // Person is referenced by its patrons, so delete rather than truncate.
+         jdbc.update("DELETE FROM person_patron");
+-        jdbc.update("DELETE FROM person_ally");
++        jdbc.update("DELETE FROM person_follow");
+         jdbc.update("DELETE FROM person_region");
+         jdbc.update("DELETE FROM person");
+         jdbc.update("DELETE FROM sheet");
+@@ -72,7 +72,7 @@ public class TestSupportController {
+     public void seed(@RequestBody Map<String, Object> fixture) {
+         for (String key : fixture.keySet()) {
+             if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
+-                    && !key.equals("allies") && !key.equals("sheets")) {
++                    && !key.equals("follows") && !key.equals("sheets")) {
+                 throw badRequest("unknown fixture key: " + key);
+             }
+         }
+@@ -82,7 +82,7 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
+         }
+         // People, patrons and regions at the top level are on the unnamed sheet.
+-        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("allies"), "");
++        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), "");
+         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
+             for (String field : sheet.keySet()) {
+                 if (!SHEET_FIELDS.contains(field)) {
+@@ -93,7 +93,7 @@ public class TestSupportController {
+                 throw badRequest("sheets.id is required");
+             }
+             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
+-            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("allies"), "sheets.");
++            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), "sheets.");
+         }
+     }
+ 
+@@ -125,8 +125,8 @@ public class TestSupportController {
+         return ids.get(0);
+     }
+ 
+-    /** Inserts one sheet's people and then their patrons, regions and allies; a null sheet id is the unnamed sheet. */
+-    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, Object allyRows,
++    /** Inserts one sheet's people and then their patrons, regions and follows; a null sheet id is the unnamed sheet. */
++    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, Object followRows,
+             String prefix) {
+         for (Map<String, Object> row : rows(peopleRows, prefix + "people")) {
+             for (String field : row.keySet()) {
+@@ -181,23 +181,23 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO person_region (person_id, region) VALUES (?, ?)",
+                     internalId(sheetId, personId, prefix + "regions.personId"), region);
+         }
+-        // Allies link two people by id, both ways; each pair is stored once as given.
+-        for (Map<String, Object> row : rows(allyRows, prefix + "allies")) {
++        // Follows link a follower to the person they follow, by id; one direction only.
++        for (Map<String, Object> row : rows(followRows, prefix + "follows")) {
+             for (String field : row.keySet()) {
+-                if (!ALLY_FIELDS.contains(field)) {
+-                    throw badRequest("cannot store " + prefix + "allies." + field);
++                if (!FOLLOW_FIELDS.contains(field)) {
++                    throw badRequest("cannot store " + prefix + "follows." + field);
+                 }
+             }
+-            Integer a = integer(row.get("a"), prefix + "allies.a");
+-            Integer b = integer(row.get("b"), prefix + "allies.b");
+-            if (a == null || b == null) {
+-                throw badRequest(prefix + "allies rows need a and b");
++            Integer from = integer(row.get("from"), prefix + "follows.from");
++            Integer to = integer(row.get("to"), prefix + "follows.to");
++            if (from == null || to == null) {
++                throw badRequest(prefix + "follows rows need from and to");
+             }
+-            if (a.equals(b)) {
+-                throw badRequest(prefix + "allies: a person cannot be their own ally");
++            if (from.equals(to)) {
++                throw badRequest(prefix + "follows: a person cannot follow themselves");
+             }
+-            jdbc.update("INSERT INTO person_ally (person_id, ally_id) VALUES (?, ?)",
+-                    internalId(sheetId, a, prefix + "allies.a"), internalId(sheetId, b, prefix + "allies.b"));
++            jdbc.update("INSERT INTO person_follow (follower_id, followed_id) VALUES (?, ?)",
++                    internalId(sheetId, from, prefix + "follows.from"), internalId(sheetId, to, prefix + "follows.to"));
+         }
+     }
+ 
+@@ -242,8 +242,8 @@ public class TestSupportController {
+         out.put("regions", jdbc.queryForList("SELECT p.local_id AS \"personId\", pr.region AS \"region\" "
+                 + "FROM person_region pr JOIN person p ON p.id = pr.person_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, pr.region", args));
+-        out.put("allies", jdbc.queryForList("SELECT p.local_id AS \"a\", o.local_id AS \"b\" "
+-                + "FROM person_ally pa JOIN person p ON p.id = pa.person_id JOIN person o ON o.id = pa.ally_id "
++        out.put("follows", jdbc.queryForList("SELECT p.local_id AS \"from\", o.local_id AS \"to\" "
++                + "FROM person_follow pf JOIN person p ON p.id = pf.follower_id JOIN person o ON o.id = pf.followed_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+         return out;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 7efa67b..26d7354 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -33,9 +33,9 @@ import java.util.Set;
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
+  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+- * person's regions, of momentum times that region's multiplier. A person may have any number of "allies":
+- * other people on the list, where being allies goes both ways. "Synergy" is the allies' thrust added
+- * together (zero without allies). "Combined" is influence plus synergy. */
++ * person's regions, of momentum times that region's multiplier. A person may follow any number of other people on
++ * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
++ * allies' thrust added together (zero without allies). "Combined" is influence plus synergy. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -75,15 +75,11 @@ public class Person {
+             inverseJoinColumns = @JoinColumn(name = "patron_id"))
+     private Set<Person> patrons = new HashSet<>();
+ 
+-    /** Allies linked from this person; each pair is stored once, on whichever side it was made from. */
++    /** The people this person follows: their allies. Following is one-directional. */
+     @ManyToMany(fetch = FetchType.EAGER)
+-    @JoinTable(name = "person_ally", joinColumns = @JoinColumn(name = "person_id"),
+-            inverseJoinColumns = @JoinColumn(name = "ally_id"))
+-    private Set<Person> alliesMade = new HashSet<>();
+-
+-    /** Allies linked to this person from the other side. */
+-    @ManyToMany(mappedBy = "alliesMade", fetch = FetchType.EAGER)
+-    private Set<Person> alliesOf = new HashSet<>();
++    @JoinTable(name = "person_follow", joinColumns = @JoinColumn(name = "follower_id"),
++            inverseJoinColumns = @JoinColumn(name = "followed_id"))
++    private Set<Person> follows = new HashSet<>();
+ 
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "person_region", joinColumns = @JoinColumn(name = "person_id"))
+@@ -200,30 +196,16 @@ public class Person {
+         this.patrons = new HashSet<>(patrons);
+     }
+ 
+-    /** The allies, from either side of the link, sorted by name. */
++    /** The allies: the people this person follows, sorted by name. */
+     public List<Person> getAllies() {
+-        Set<Person> allies = new HashSet<>(alliesMade);
+-        allies.addAll(alliesOf);
+-        return allies.stream()
++        return follows.stream()
+                 .sorted(Comparator.comparing(Person::getName).thenComparing(Person::getId))
+                 .toList();
+     }
+ 
+-    /** Replaces the allies, unlinking any no longer given from both sides and linking new ones from this side. */
++    /** Replaces the people this person follows; whether they follow this person back is unchanged. */
+     public void setAllies(Set<Person> allies) {
+-        for (Person other : new HashSet<>(alliesOf)) {
+-            if (!allies.contains(other)) {
+-                other.alliesMade.remove(this);
+-                alliesOf.remove(other);
+-            }
+-        }
+-        alliesMade.retainAll(allies);
+-        for (Person ally : allies) {
+-            if (!alliesMade.contains(ally) && !alliesOf.contains(ally)) {
+-                alliesMade.add(ally);
+-                ally.alliesOf.add(this);
+-            }
+-        }
++        this.follows = new HashSet<>(allies);
+     }
+ 
+     /** The derived values exist only once alpha, beta and gamma are all given. */
+@@ -289,7 +271,7 @@ public class Person {
+         return sum;
+     }
+ 
+-    /** Synergy is the sum of the allies' thrust; zero without allies, absent while any ally's thrust is absent. */
++    /** Synergy is the sum of the thrust of the people followed; zero without allies, absent while any ally's thrust is absent. */
+     public Integer getSynergy() {
+         int sum = 0;
+         for (Person ally : getAllies()) {
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index 48e6d11..0e7e434 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -150,7 +150,7 @@ public class PersonService {
+         });
+     }
+ 
+-    /** Sets the allies (other people on the same sheet) by their id on that sheet, both ways; an empty list clears them. Refuses oneself or an unknown person. */
++    /** Sets the allies (the other people on the same sheet this person follows) by their id on that sheet; an empty list clears them. Following is one-directional. Refuses oneself or an unknown person. */
+     @Transactional
+     public Optional<Person> setAllies(String sheetId, long id, Collection<Long> allyIds) {
+         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+diff --git a/src/main/resources/db/migration/V14__person_follows.sql b/src/main/resources/db/migration/V14__person_follows.sql
+new file mode 100644
+index 0000000..b58ce8d
+--- /dev/null
++++ b/src/main/resources/db/migration/V14__person_follows.sql
+@@ -0,0 +1,14 @@
++-- Allies are now one-directional: a person follows another without being followed back. Each former
++-- (two-way) ally pair becomes a follow in both directions, so everyone keeps the allies they had.
++CREATE TABLE person_follow (
++    follower_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    followed_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    PRIMARY KEY (follower_id, followed_id)
++);
++
++INSERT INTO person_follow (follower_id, followed_id) SELECT person_id, ally_id FROM person_ally;
++INSERT INTO person_follow (follower_id, followed_id)
++    SELECT ally_id, person_id FROM person_ally pa
++    WHERE NOT EXISTS (SELECT 1 FROM person_ally r WHERE r.person_id = pa.ally_id AND r.ally_id = pa.person_id);
++
++DROP TABLE person_ally;
