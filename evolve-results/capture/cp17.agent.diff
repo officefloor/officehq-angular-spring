@@ -1,0 +1,127 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 5e65baf..861a4ac 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -15,6 +15,7 @@ export interface Person {
+   patrons: Patron[];
+   backing: number | null;
+   net: number | null;
++  rank: number | null;
+ }
+ 
+ export interface Patron {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 49c5f00..8a2b836 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,6 +9,8 @@ import { PeopleService, Person } from './people.service';
+ // their alpha, beta and gamma instead of adding. Each person may have any number of patrons (other
+ // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
+ // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
++// Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
++// by name; without a momentum the rank shows "n/a".
+ // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
+ // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
+ // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
+@@ -85,6 +87,7 @@ import { PeopleService, Person } from './people.service';
+           <th scope="col">Patrons</th>
+           <th scope="col">Backing</th>
+           <th scope="col">Net</th>
++          <th scope="col">Rank</th>
+           <th scope="col">Set alpha</th>
+           <th scope="col">Set beta</th>
+           <th scope="col">Set gamma</th>
+@@ -106,6 +109,7 @@ import { PeopleService, Person } from './people.service';
+             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
++            <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td>
+               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
+                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 85edbe4..3c268e0 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -3,6 +3,8 @@ package net.officefloor.hq.app.people;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+@@ -24,15 +26,21 @@ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
+-            Integer backing, Integer net) {
+-        static PersonView of(Person p) {
++            Integer backing, Integer net, Integer rank) {
++        static PersonView of(Person p, Integer rank) {
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getBacking(), p.getNet());
++                    p.getBacking(), p.getNet(), rank);
+         }
+     }
+ 
++    /** Highest momentum first; equal momentum by name, earlier in the alphabet first. */
++    private static final Comparator<Person> RANK_ORDER = Comparator
++            .comparing(Person::getMomentum, Comparator.reverseOrder())
++            .thenComparing(Person::getName)
++            .thenComparing(Person::getLocalId);
++
+     public record PatronView(Long id, String name) {
+     }
+ 
+@@ -47,13 +55,15 @@ public class PersonController {
+ 
+     @GetMapping
+     public List<PersonView> list(@RequestParam(required = false) String sheet) {
+-        return service.list(sheetId(sheet)).stream().map(PersonView::of).toList();
++        List<Person> people = service.list(sheetId(sheet));
++        Map<Long, Integer> ranks = ranks(people);
++        return people.stream().map(p -> PersonView.of(p, ranks.get(p.getLocalId()))).toList();
+     }
+ 
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
+-        return PersonView.of(service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma()));
++        return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma()));
+     }
+ 
+     /**
+@@ -89,10 +99,28 @@ public class PersonController {
+                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+             }
+         }
+-        return person.map(PersonView::of)
++        return person.map(p -> view(sheetId, p))
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+     }
+ 
++    /** A person's view, ranked among the people on their sheet. */
++    private PersonView view(String sheetId, Person person) {
++        return PersonView.of(person, ranks(service.list(sheetId)).get(person.getLocalId()));
++    }
++
++    /**
++     * Each person's rank by local id: 1 for the highest momentum, then 2, 3, ... with equal momentum
++     * ordered by name. People without a momentum are not ranked.
++     */
++    private static Map<Long, Integer> ranks(List<Person> people) {
++        List<Person> ranked = people.stream().filter(p -> p.getMomentum() != null).sorted(RANK_ORDER).toList();
++        Map<Long, Integer> ranks = new HashMap<>();
++        for (int i = 0; i < ranked.size(); i++) {
++            ranks.put(ranked.get(i).getLocalId(), i + 1);
++        }
++        return ranks;
++    }
++
+     /** The sheet named by the request, trimmed; blank or absent means the unnamed sheet. */
+     private static String sheetId(String sheet) {
+         return sheet == null || sheet.isBlank() ? null : sheet.trim();
