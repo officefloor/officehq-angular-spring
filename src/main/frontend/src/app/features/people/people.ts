@@ -120,6 +120,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // none do); people whose pulse is "n/a" are not counted.
 // The sheet's bracket counts show how many of its people are in each bracket, Q4 down to Q1 (zero when
 // none are); people whose bracket is "n/a" are not counted.
+// The sheet's grade tally shows how many of its people have each grade, HIGH, MID and LOW (zero when
+// none do); people without a grade are not counted.
 // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
 // add, through Edit or on the row, and the row shows its name.
 // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
@@ -416,6 +418,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
         @for (t of tierTally(); track t.tier) {
           <li>
             {{ t.tier }}: <strong [attr.data-testid]="'tier-tally-' + t.tier">{{ t.count }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="grade-tally-heading">
+      <h2 id="grade-tally-heading">People per grade</h2>
+      <ul>
+        @for (g of gradeTally(); track g.grade) {
+          <li>
+            {{ g.grade }}: <strong [attr.data-testid]="'grade-tally-' + g.grade">{{ g.count }}</strong>
           </li>
         }
       </ul>
@@ -1295,6 +1307,9 @@ export class People {
   });
   protected readonly tierTally = computed(() =>
     TIERS.map((tier) => ({ tier, count: this.people().filter((p) => p.tier === tier).length })),
+  );
+  protected readonly gradeTally = computed(() =>
+    [...GRADES].reverse().map((grade) => ({ grade, count: this.people().filter((p) => p.grade === grade).length })),
   );
   protected readonly bandCounts = computed(() =>
     BANDS.map((band) => ({ band, count: this.people().filter((p) => p.band === band).length })),
