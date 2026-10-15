@@ -9,6 +9,8 @@ import { PeopleService, Person } from './people.service';
 // their alpha, beta and gamma instead of adding. Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
+// Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
+// by name; without a momentum the rank shows "n/a".
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
@@ -85,6 +87,7 @@ import { PeopleService, Person } from './people.service';
           <th scope="col">Patrons</th>
           <th scope="col">Backing</th>
           <th scope="col">Net</th>
+          <th scope="col">Rank</th>
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
@@ -106,6 +109,7 @@ import { PeopleService, Person } from './people.service';
             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
+            <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td>
               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">

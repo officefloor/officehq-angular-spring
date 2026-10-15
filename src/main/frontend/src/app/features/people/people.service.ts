@@ -15,6 +15,7 @@ export interface Person {
   patrons: Patron[];
   backing: number | null;
   net: number | null;
+  rank: number | null;
 }
 
 export interface Patron {

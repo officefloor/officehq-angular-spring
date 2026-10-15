@@ -3,6 +3,8 @@ package net.officefloor.hq.app.people;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,14 +26,20 @@ public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
-            Integer backing, Integer net) {
-        static PersonView of(Person p) {
+            Integer backing, Integer net, Integer rank) {
+        static PersonView of(Person p, Integer rank) {
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
-                    p.getBacking(), p.getNet());
+                    p.getBacking(), p.getNet(), rank);
         }
     }
+
+    /** Highest momentum first; equal momentum by name, earlier in the alphabet first. */
+    private static final Comparator<Person> RANK_ORDER = Comparator
+            .comparing(Person::getMomentum, Comparator.reverseOrder())
+            .thenComparing(Person::getName)
+            .thenComparing(Person::getLocalId);
 
     public record PatronView(Long id, String name) {
     }
@@ -47,13 +55,15 @@ public class PersonController {
 
     @GetMapping
     public List<PersonView> list(@RequestParam(required = false) String sheet) {
-        return service.list(sheetId(sheet)).stream().map(PersonView::of).toList();
+        List<Person> people = service.list(sheetId(sheet));
+        Map<Long, Integer> ranks = ranks(people);
+        return people.stream().map(p -> PersonView.of(p, ranks.get(p.getLocalId()))).toList();
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
-        return PersonView.of(service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma()));
+        return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma()));
     }
 
     /**
@@ -89,8 +99,26 @@ public class PersonController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }
         }
-        return person.map(PersonView::of)
+        return person.map(p -> view(sheetId, p))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    /** A person's view, ranked among the people on their sheet. */
+    private PersonView view(String sheetId, Person person) {
+        return PersonView.of(person, ranks(service.list(sheetId)).get(person.getLocalId()));
+    }
+
+    /**
+     * Each person's rank by local id: 1 for the highest momentum, then 2, 3, ... with equal momentum
+     * ordered by name. People without a momentum are not ranked.
+     */
+    private static Map<Long, Integer> ranks(List<Person> people) {
+        List<Person> ranked = people.stream().filter(p -> p.getMomentum() != null).sorted(RANK_ORDER).toList();
+        Map<Long, Integer> ranks = new HashMap<>();
+        for (int i = 0; i < ranked.size(); i++) {
+            ranks.put(ranked.get(i).getLocalId(), i + 1);
+        }
+        return ranks;
     }
 
     /** The sheet named by the request, trimmed; blank or absent means the unnamed sheet. */
