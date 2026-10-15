@@ -1,0 +1,77 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index f2729b36..a680b89c 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -80,6 +80,8 @@ export interface Person {
+   flow: number | null;
+   norm: number | null;
+   outlier: boolean;
++  // TOP when scaled is at or above the sheet's median scaled, otherwise BOT; absent without a scaled.
++  stratum: 'TOP' | 'BOT' | null;
+   ebb: number | null;
+   stray: boolean;
+   // "Their group": the id and name of the group, of those they are in, whose name comes first
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 848cba3d..c51a62aa 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -102,6 +102,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
+ // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
+ // otherwise "no" (also "no" while their norm is "n/a").
++// Their stratum is TOP when their scaled is at or above the sheet's median scaled, otherwise BOT
++// ("n/a" while their scaled is "n/a").
+ // The sheet's outlier count is how many of its people are outliers.
+ // Their ebb is their blend minus the mean blend of everyone on the sheet whose blend can be worked
+ // out, rounded down ("n/a" while their blend is "n/a").
+@@ -565,6 +567,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+           <th scope="col">Flow</th>
+           <th scope="col">Norm</th>
+           <th scope="col">Outlier</th>
++          <th scope="col">Stratum</th>
+           <th scope="col">Ebb</th>
+           <th scope="col">Stray</th>
+           <th scope="col">Share</th>
+@@ -684,6 +687,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+             <td data-testid="concept-flow">{{ p.flow ?? 'n/a' }}</td>
+             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
++            <td data-testid="concept-stratum">{{ p.stratum ?? 'n/a' }}</td>
+             <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
+             <td data-testid="concept-stray">{{ p.stray ? 'yes' : 'no' }}</td>
+             <td data-testid="concept-share">{{ shareOf(p) ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index b4d829a4..262f5615 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -33,7 +33,7 @@ public class PersonController {
+             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, Integer vector, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, boolean quota, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, State state, Integer ebb, boolean stray,
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, String stratum, State state, Integer ebb, boolean stray,
+             Long groupId, String groupName, List<GroupController.GroupView> groups) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer meanBlend, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+@@ -46,7 +46,8 @@ public class PersonController {
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(), p.getFlow(),
+                     PersonController.norm(p.getScaled(), medianScaled),
+-                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState(),
++                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)),
++                    PersonController.stratum(PersonController.norm(p.getScaled(), medianScaled)), p.getState(),
+                     PersonController.ebb(p.getBlend(), meanBlend),
+                     PersonController.stray(PersonController.ebb(p.getBlend(), meanBlend)),
+                     p.getGroup() == null ? null : p.getGroup().getLocalId(),
+@@ -82,6 +83,11 @@ public class PersonController {
+         return scaled == null || medianScaled == null ? null : scaled - medianScaled;
+     }
+ 
++    /** Stratum is TOP when scaled is at or above the sheet's median scaled (norm not negative), otherwise BOT; absent without a norm. */
++    static String stratum(Integer norm) {
++        return norm == null ? null : norm >= 0 ? "TOP" : "BOT";
++    }
++
+     /** Ebb is blend minus the sheet's mean blend (rounded down); absent while either is absent. */
+     static Integer ebb(Integer blend, Integer meanBlend) {
+         return blend == null || meanBlend == null ? null : blend - meanBlend;
