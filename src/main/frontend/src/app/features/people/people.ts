@@ -208,6 +208,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's coverage is how many of its people have a scaled of at least 500 (0 when nobody does).
 // The sheet's concentration is the scaled of its three highest-scaled people added together as a percentage
 // of its ledger, rounded down ("n/a" when the ledger is zero).
+// The sheet's skew is the average scaled, rounded down, minus its median scaled, of everyone whose scaled
+// can be worked out ("n/a" when nobody has a scaled).
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
 // figure depends on "their group", it is the group, of those they are in, whose name comes first
 // alphabetically.
@@ -391,6 +393,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
     <p>Median scaled: <strong data-testid="rollup-median-scaled">{{ medianScaled() ?? 'n/a' }}</strong></p>
     <p>Coverage (scaled 500 or more): <strong data-testid="rollup-coverage">{{ coverage() }}</strong></p>
     <p>Concentration (top three share %): <strong data-testid="rollup-concentration">{{ concentration() ?? 'n/a' }}</strong></p>
+    <p>Skew (average minus median scaled): <strong data-testid="rollup-skewval">{{ skewVal() ?? 'n/a' }}</strong></p>
     <section aria-labelledby="region-counts-heading">
       <h2 id="region-counts-heading">People per region</h2>
       @if (regionCounts().length === 0) {
@@ -1405,6 +1408,13 @@ export class People {
   protected readonly medianScaled = computed(() => {
     const order = this.scaledOrder();
     return order.length > 0 ? order[Math.floor(order.length / 2)].scaled! : null;
+  });
+  protected readonly skewVal = computed(() => {
+    const order = this.scaledOrder();
+    const median = this.medianScaled();
+    if (median === null) return null;
+    const total = order.reduce((sum, p) => sum + p.scaled!, 0);
+    return Math.floor(total / order.length) - median;
   });
   protected readonly concentration = computed(() => {
     const total = this.ledger();
