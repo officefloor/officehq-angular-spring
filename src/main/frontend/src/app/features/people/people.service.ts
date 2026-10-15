@@ -27,7 +27,7 @@ export interface Person {
   effective: number | null;
   clout: number | null;
   influence: number | null;
-  region: string | null;
+  regions: string[];
   reach: number | null;
 }
 
@@ -52,7 +52,7 @@ export interface NewPerson {
   beta: number | null;
   gamma: number | null;
   grade: Grade | null;
-  region: string | null;
+  regions: string[];
 }
 
 // The people REST API (/api/people).
@@ -101,8 +101,8 @@ export class PeopleService {
     return this.http.patch<Person>(`/api/people/${id}`, { grade }, { params: sheetParams(sheet) });
   }
 
-  setRegion(sheet: string | null, id: number, region: string | null): Observable<Person> {
-    return this.http.patch<Person>(`/api/people/${id}`, { region }, { params: sheetParams(sheet) });
+  setRegions(sheet: string | null, id: number, regions: string[]): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { regions }, { params: sheetParams(sheet) });
   }
 
   setActive(sheet: string | null, id: number, active: boolean): Observable<Person> {

@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.people;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -14,6 +16,7 @@ import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -28,8 +31,9 @@ import java.util.Set;
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
- * A person may have a "region": a short code typed in, like N1 or S2 (absent until given). The region's
- * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is momentum times multiplier. */
+ * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+ * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+ * person's regions, of momentum times that region's multiplier. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -58,8 +62,6 @@ public class Person {
 
     private LocalDate onset;
 
-    private String region;
-
     private boolean active = true;
 
     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
@@ -70,6 +72,11 @@ public class Person {
     @JoinTable(name = "person_patron", joinColumns = @JoinColumn(name = "person_id"),
             inverseJoinColumns = @JoinColumn(name = "patron_id"))
     private Set<Person> patrons = new HashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_region", joinColumns = @JoinColumn(name = "person_id"))
+    @Column(name = "region")
+    private Set<String> regions = new HashSet<>();
 
     protected Person() {
     }
@@ -139,12 +146,13 @@ public class Person {
         this.active = active;
     }
 
-    public String getRegion() {
-        return region;
+    /** The regions, sorted ascending. */
+    public List<String> getRegions() {
+        return regions.stream().sorted().toList();
     }
 
-    public void setRegion(String region) {
-        this.region = region;
+    public void setRegions(Collection<String> regions) {
+        this.regions = new HashSet<>(regions);
     }
 
     public LocalDate getOnset() {
@@ -209,23 +217,22 @@ public class Person {
         return momentum == null || weight == null ? null : momentum * weight;
     }
 
-    /** The region multiplier from its first letter: N is 2, S is 3, any other is 1; absent without a region. */
-    public Integer getRegionMultiplier() {
-        if (region == null || region.isEmpty()) {
-            return null;
-        }
-        return switch (Character.toUpperCase(region.charAt(0))) {
+    /** A region's multiplier from its first letter: N is 2, S is 3, any other is 1. */
+    static int regionMultiplier(String region) {
+        return switch (region.isEmpty() ? ' ' : Character.toUpperCase(region.charAt(0))) {
             case 'N' -> 2;
             case 'S' -> 3;
             default -> 1;
         };
     }
 
-    /** Reach is momentum times the region multiplier; absent while either is absent. */
+    /** Reach is the sum over the regions of momentum times the region's multiplier; absent without momentum or regions. */
     public Integer getReach() {
         Integer momentum = getMomentum();
-        Integer multiplier = getRegionMultiplier();
-        return momentum == null || multiplier == null ? null : momentum * multiplier;
+        if (momentum == null || regions.isEmpty()) {
+            return null;
+        }
+        return regions.stream().mapToInt(r -> momentum * regionMultiplier(r)).sum();
     }
 
     /** Backing is the sum of the patrons' thrust; absent without patrons or while any patron's thrust is absent. */

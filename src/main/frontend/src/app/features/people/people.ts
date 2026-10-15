@@ -34,12 +34,13 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // Their influence is their effective plus their clout ("n/a" while either is "n/a").
 // The sheet's top influence is the name of the person with the highest influence, ties going to the
 // name that comes first alphabetically ("n/a" when nobody has an influence).
-// Each person may have a region: a short code typed in (like N1 or S2), given on add, in the edit form
-// or on the row; clearing it removes it.
-// Their reach is momentum times the region's multiplier, from its first letter: N 2, S 3, any other 1
-// ("n/a" while momentum or region is missing).
+// Each person may belong to any number of regions: short codes typed in (like N1 or S2), separated by
+// commas, given on add, in the edit form or on the row; clearing them removes them. They are listed
+// sorted ascending.
+// Their reach is the sum, over their regions, of momentum times the region's multiplier, from its first
+// letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
 // The sheet's region counts show, for each region its people have, how many of them are in it
-// (people without a region are left out), ordered by region code.
+// (a person counts once in every region they belong to), ordered by region code.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -95,11 +96,10 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <option [ngValue]="g">{{ g }}</option>
         }
       </select>
-      <label for="person-region">Region</label>
+      <label for="person-region">Regions (comma-separated)</label>
       <input
         id="person-region"
         formControlName="region"
-        maxlength="16"
         data-testid="person-form-region"
       />
       <button type="submit" [disabled]="form.invalid || saving()" data-testid="person-form-submit">
@@ -141,7 +141,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Beta</th>
           <th scope="col">Gamma</th>
           <th scope="col">Grade</th>
-          <th scope="col">Region</th>
+          <th scope="col">Regions</th>
           <th scope="col">Active</th>
           <th scope="col">Onset</th>
           <th scope="col">Age</th>
@@ -165,7 +165,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
           <th scope="col">Set grade</th>
-          <th scope="col">Set region</th>
+          <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
           <th scope="col">Set patrons</th>
           <th scope="col">Edit</th>
@@ -179,7 +179,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-beta">{{ p.beta }}</td>
             <td data-testid="person-gamma">{{ p.gamma }}</td>
             <td data-testid="person-grade">{{ p.grade }}</td>
-            <td data-testid="person-region">{{ p.region }}</td>
+            <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
             <td data-testid="person-onset">{{ p.onset }}</td>
             <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
@@ -264,15 +264,14 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
               </select>
             </td>
             <td>
-              <form (submit)="$event.preventDefault(); setRegion(p, regionInput.value)">
+              <form (submit)="$event.preventDefault(); setRegions(p, regionInput.value)">
                 <label class="visually-hidden" [for]="'person-region-edit-' + p.id">
-                  Region for {{ p.name }}
+                  Regions for {{ p.name }}
                 </label>
                 <input
                   #regionInput
                   [id]="'person-region-edit-' + p.id"
-                  maxlength="16"
-                  [value]="p.region ?? ''"
+                  [value]="p.regions.join(', ')"
                   data-testid="person-region-input"
                 />
                 <button type="submit" data-testid="person-region-save">Save</button>
@@ -345,7 +344,7 @@ export class People {
   protected readonly regionCounts = computed(() => {
     const counts = new Map<string, number>();
     for (const p of this.people()) {
-      if (p.region) counts.set(p.region, (counts.get(p.region) ?? 0) + 1);
+      for (const region of p.regions) counts.set(region, (counts.get(region) ?? 0) + 1);
     }
     return [...counts.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -372,7 +371,7 @@ export class People {
     beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     gamma: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     grade: [null as Grade | null],
-    region: ['', [Validators.maxLength(16)]],
+    region: [''],
   });
 
   constructor() {
@@ -395,7 +394,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.editing.set(person);
-    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, grade: person.grade, region: person.region ?? '' });
+    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, grade: person.grade, region: person.regions.join(', ') });
     this.form.controls.name.disable();
   }
 
@@ -407,12 +406,12 @@ export class People {
 
   protected submit(): void {
     const { name, alpha, beta, gamma, grade, region: regionText } = this.form.getRawValue();
-    const region = toRegion(regionText);
+    const regions = toRegions(regionText);
     if (this.form.invalid) return;
     const editing = this.editing();
     const request = editing
-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), grade, region })
-      : this.service.add(this.sheet(), { name, alpha, beta, gamma, grade, region });
+      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), grade, regions })
+      : this.service.add(this.sheet(), { name, alpha, beta, gamma, grade, regions });
     this.saving.set(true);
     request.subscribe({
       next: () => {
@@ -450,8 +449,8 @@ export class People {
     this.service.setGrade(this.sheet(), person.id, grade).subscribe(() => this.load());
   }
 
-  protected setRegion(person: Person, value: string): void {
-    this.service.setRegion(this.sheet(), person.id, toRegion(value)).subscribe(() => this.load());
+  protected setRegions(person: Person, value: string): void {
+    this.service.setRegions(this.sheet(), person.id, toRegions(value)).subscribe(() => this.load());
   }
 
   protected setActive(person: Person, active: boolean): void {
@@ -487,8 +486,7 @@ function toNumber(value: number | string | null): number | null {
   return value === null || value === '' ? null : Number(value);
 }
 
-// A typed region, trimmed, or null when it is blank.
-function toRegion(value: string): string | null {
-  const region = value.trim();
-  return region === '' ? null : region;
+// Typed regions, separated by commas, each trimmed, leaving out blanks and repeats.
+function toRegions(value: string): string[] {
+  return [...new Set(value.split(',').map((r) => r.trim()).filter((r) => r !== ''))];
 }

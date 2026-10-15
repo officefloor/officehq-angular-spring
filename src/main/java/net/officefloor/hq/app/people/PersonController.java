@@ -6,9 +6,11 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,7 +30,7 @@ public class PersonController {
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
-            Integer clout, Integer influence, String region, Integer reach) {
+            Integer clout, Integer influence, List<String> regions, Integer reach) {
         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
@@ -36,7 +38,7 @@ public class PersonController {
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
-                    p.getInfluence(), p.getRegion(), p.getReach());
+                    p.getInfluence(), p.getRegions(), p.getReach());
         }
     }
 
@@ -64,7 +66,7 @@ public class PersonController {
     public record PatronView(Long id, String name) {
     }
 
-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade, String region) {
+    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade, List<String> regions) {
     }
 
     private final PersonService service;
@@ -86,11 +88,11 @@ public class PersonController {
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
         return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
-                person.grade(), region(person.region())));
+                person.grade(), regions(person.regions())));
     }
 
     /**
-     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, region, active
+     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, regions (a list of codes), active
      * (true or false) and patronIds (a list of ids on that sheet) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
@@ -110,11 +112,19 @@ public class PersonController {
         if (update.containsKey("grade")) {
             person = service.setGrade(sheetId, id, grade(update.get("grade")));
         }
-        if (update.containsKey("region")) {
-            if (update.get("region") != null && !(update.get("region") instanceof String)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "region must be text");
+        if (update.containsKey("regions")) {
+            List<String> regions = new ArrayList<>();
+            if (update.get("regions") instanceof List<?> values) {
+                for (Object region : values) {
+                    if (!(region instanceof String text)) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "regions must be text");
+                    }
+                    regions.add(text);
+                }
+            } else if (update.get("regions") != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "regions must be a list");
             }
-            person = service.setRegion(sheetId, id, region((String) update.get("region")));
+            person = service.setRegions(sheetId, id, regions(regions));
         }
         if (update.containsKey("active")) {
             if (!(update.get("active") instanceof Boolean active)) {
@@ -162,6 +172,20 @@ public class PersonController {
     /** The sheet named by the request, trimmed; blank or absent means the unnamed sheet. */
     private static String sheetId(String sheet) {
         return sheet == null || sheet.isBlank() ? null : sheet.trim();
+    }
+
+    /** Regions as typed, each trimmed, leaving out blanks and repeats; none when absent. */
+    static Set<String> regions(List<String> values) {
+        Set<String> regions = new LinkedHashSet<>();
+        if (values != null) {
+            for (String value : values) {
+                String region = region(value);
+                if (region != null) {
+                    regions.add(region);
+                }
+            }
+        }
+        return regions;
     }
 
     /** A region as typed, trimmed; blank means none. Refuses one longer than {@link Person#REGION_MAX_LENGTH}. */

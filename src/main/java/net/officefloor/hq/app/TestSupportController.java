@@ -30,11 +30,13 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active", "region");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active");
 
     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons");
+    private static final Set<String> REGION_FIELDS = Set.of("personId", "region");
+
+    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -51,6 +53,7 @@ public class TestSupportController {
         audit.clear();
         // Person is referenced by its patrons, so delete rather than truncate.
         jdbc.update("DELETE FROM person_patron");
+        jdbc.update("DELETE FROM person_region");
         jdbc.update("DELETE FROM person");
         jdbc.update("DELETE FROM sheet");
         jdbc.update("DELETE FROM unnamed_sheet");
@@ -65,7 +68,8 @@ public class TestSupportController {
     @Transactional
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
-            if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("sheets")) {
+            if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
+                    && !key.equals("sheets")) {
                 throw badRequest("unknown fixture key: " + key);
             }
         }
@@ -74,8 +78,8 @@ public class TestSupportController {
         if (anchor != null) {
             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
         }
-        // People and patrons at the top level are on the unnamed sheet.
-        seedSheet(null, fixture.get("people"), fixture.get("patrons"), "");
+        // People, patrons and regions at the top level are on the unnamed sheet.
+        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), "");
         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
             for (String field : sheet.keySet()) {
                 if (!SHEET_FIELDS.contains(field)) {
@@ -86,7 +90,7 @@ public class TestSupportController {
                 throw badRequest("sheets.id is required");
             }
             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
-            seedSheet(id, sheet.get("people"), sheet.get("patrons"), "sheets.");
+            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), "sheets.");
         }
     }
 
@@ -118,8 +122,8 @@ public class TestSupportController {
         return ids.get(0);
     }
 
-    /** Inserts one sheet's people and then their patrons; a null sheet id is the unnamed sheet. */
-    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, String prefix) {
+    /** Inserts one sheet's people and then their patrons and regions; a null sheet id is the unnamed sheet. */
+    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, String prefix) {
         for (Map<String, Object> row : rows(peopleRows, prefix + "people")) {
             for (String field : row.keySet()) {
                 if (!PERSON_FIELDS.contains(field)) {
@@ -135,13 +139,12 @@ public class TestSupportController {
             String grade = grade(row.get("grade"), prefix + "people.grade");
             LocalDate onset = date(row.get("onset"), prefix + "people.onset");
             Boolean active = bool(row.get("active"), prefix + "people.active");
-            String region = text(row.get("region"), prefix + "people.region");
             // A person's id is their id within the sheet; the internal key is generated.
             Integer localId = integer(row.get("id"), prefix + "people.id");
-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active, region) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset,
-                    active != null ? active : true, region);
+                    active != null ? active : true);
         }
         // Patrons link people by id, so add them once every person exists.
         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
@@ -158,6 +161,21 @@ public class TestSupportController {
             jdbc.update("INSERT INTO person_patron (person_id, patron_id) VALUES (?, ?)",
                     internalId(sheetId, personId, prefix + "patrons.personId"),
                     internalId(sheetId, patronId, prefix + "patrons.patronId"));
+        }
+        // Regions link a person by id to each region they belong to.
+        for (Map<String, Object> row : rows(regionRows, prefix + "regions")) {
+            for (String field : row.keySet()) {
+                if (!REGION_FIELDS.contains(field)) {
+                    throw badRequest("cannot store " + prefix + "regions." + field);
+                }
+            }
+            Integer personId = integer(row.get("personId"), prefix + "regions.personId");
+            String region = text(row.get("region"), prefix + "regions.region");
+            if (personId == null || region == null) {
+                throw badRequest(prefix + "regions rows need personId and region");
+            }
+            jdbc.update("INSERT INTO person_region (person_id, region) VALUES (?, ?)",
+                    internalId(sheetId, personId, prefix + "regions.personId"), region);
         }
     }
 
@@ -195,10 +213,13 @@ public class TestSupportController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
                 + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\", "
-                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", region AS \"region\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\" FROM person p WHERE " + where + " ORDER BY local_id", args));
         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+        out.put("regions", jdbc.queryForList("SELECT p.local_id AS \"personId\", pr.region AS \"region\" "
+                + "FROM person_region pr JOIN person p ON p.id = pr.person_id "
+                + "WHERE " + where + " ORDER BY p.local_id, pr.region", args));
         return out;
     }
 
