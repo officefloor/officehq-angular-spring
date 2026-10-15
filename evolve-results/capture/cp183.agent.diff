@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 88ba2717..ea090996 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -109,6 +109,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // The sheet's stray count is how many of its people are strays.
+ // The sheet's final total is the sum of the scaled of its people whose state is FINAL, counting
+ // "n/a" as zero.
++// The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a".
+ // The sheet's band counts show how many of its people are in each band, A through E (zero when none
+ // are); people whose band is "n/a" are not counted.
+ // The sheet's drag counts show how many of its people are in each drag level, L0 through L3 (zero when
+@@ -357,6 +358,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
+     <p>Strays: <strong data-testid="rollup-stray-count">{{ strayCount() }}</strong></p>
+     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
++    <p>Ledger: <strong data-testid="rollup-ledger">{{ ledger() }}</strong></p>
+     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
+     <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
+     <p>Runner-up: <strong data-testid="rollup-runnerup">{{ runnerUp() ?? 'n/a' }}</strong></p>
+@@ -963,6 +965,9 @@ export class People {
+       .filter((p) => p.state === 'FINAL')
+       .reduce((total, p) => total + (p.scaled ?? 0), 0),
+   );
++  protected readonly ledger = computed(() =>
++    this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
++  );
+   protected readonly groupStrengths = computed(() => {
+     const strengths = new Map<number, number>();
+     for (const p of this.people()) {
