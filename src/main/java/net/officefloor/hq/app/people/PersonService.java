@@ -69,8 +69,8 @@ public class PersonService {
 
     @Transactional
     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
-    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Grade grade,
-            Collection<String> regions) {
+    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
+            Grade grade, Collection<String> regions) {
         if (sheetId != null && !sheets.existsById(sheetId)) {
             sheets.save(new Sheet(sheetId));
         }
@@ -78,6 +78,7 @@ public class PersonService {
         Person person = new Person(sheetId, id, name.trim(), alpha, beta, gamma);
         person.setDelta(delta);
         person.setEpsilon(epsilon);
+        person.setZeta(zeta);
         person.setGrade(grade);
         person.setRegions(regions);
         return people.save(person);
@@ -124,6 +125,14 @@ public class PersonService {
     public Optional<Person> setEpsilon(String sheetId, long id, Integer epsilon) {
         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
             p.setEpsilon(epsilon);
+            return p;
+        });
+    }
+
+    @Transactional
+    public Optional<Person> setZeta(String sheetId, long id, Integer zeta) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            p.setZeta(zeta);
             return p;
         });
     }

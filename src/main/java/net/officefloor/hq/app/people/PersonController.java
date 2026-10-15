@@ -28,15 +28,15 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/people")
 public class PersonController {
 
-    public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon,
-            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer force, Integer load, String tier, List<PatronView> patrons,
+    public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
+            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, List<String> regions, Integer reach,
             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier, State state) {
         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
-            return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(),
-                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getLoad(), p.getTier(),
+            return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getLoad(), p.getTier(),
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
@@ -94,7 +94,7 @@ public class PersonController {
     public record PatronView(Long id, String name) {
     }
 
-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Grade grade, List<String> regions) {
+    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta, Grade grade, List<String> regions) {
     }
 
     private final PersonService service;
@@ -117,7 +117,7 @@ public class PersonController {
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
         return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
-                person.delta(), person.epsilon(), person.grade(), regions(person.regions())));
+                person.delta(), person.epsilon(), person.zeta(), person.grade(), regions(person.regions())));
     }
 
     /** Moves the person with this id on the request's sheet forward to their next state (REWORK back to FINAL); refused once FINAL. */
@@ -157,7 +157,7 @@ public class PersonController {
     }
 
     /**
-     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, delta, epsilon, score, grade, regions (a list of codes), active
+     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, delta, epsilon, zeta, score, grade, regions (a list of codes), active
      * (true or false), patronIds and allyIds (lists of ids on that sheet) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
@@ -179,6 +179,9 @@ public class PersonController {
         }
         if (update.containsKey("epsilon")) {
             person = service.setEpsilon(sheetId, id, integer(update.get("epsilon")));
+        }
+        if (update.containsKey("zeta")) {
+            person = service.setZeta(sheetId, id, integer(update.get("zeta")));
         }
         if (update.containsKey("score")) {
             person = service.setScore(sheetId, id, integer(update.get("score")));

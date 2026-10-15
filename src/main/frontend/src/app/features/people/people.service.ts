@@ -14,12 +14,15 @@ export interface Person {
   gamma: number | null;
   delta: number | null;
   epsilon: number | null;
+  zeta: number | null;
   grade: Grade | null;
   weight: number | null;
   thrust: number | null;
   drift: number | null;
   momentum: number | null;
   force: number | null;
+  sway: number | null;
+  torque: number | null;
   load: number | null;
   tier: string | null;
   patrons: Patron[];
@@ -79,6 +82,7 @@ export interface NewPerson {
   gamma: number | null;
   delta: number | null;
   epsilon: number | null;
+  zeta: number | null;
   grade: Grade | null;
   regions: string[];
 }
@@ -131,6 +135,10 @@ export class PeopleService {
 
   setEpsilon(sheet: string | null, id: number, epsilon: number | null): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { epsilon }, { params: sheetParams(sheet) });
+  }
+
+  setZeta(sheet: string | null, id: number, zeta: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { zeta }, { params: sheetParams(sheet) });
   }
 
   setGrade(sheet: string | null, id: number, grade: Grade | null): Observable<Person> {

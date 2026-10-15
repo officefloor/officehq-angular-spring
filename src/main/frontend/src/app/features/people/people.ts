@@ -8,7 +8,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
 // their alpha, beta and gamma instead of adding. Each person also has whole-number delta and epsilon
 // (a second raw axis, blank until given), set on add, on the row or through Edit; their force is delta × epsilon
-// ("n/a" while either is missing). Each person may have any number of patrons (other
+// ("n/a" while either is missing). Each person also has a whole-number zeta (blank until given), set the same
+// way; their sway is zeta − delta and their torque is force + 2 × sway ("n/a" while any part is missing).
+// Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 // Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
@@ -133,6 +135,14 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
         formControlName="epsilon"
         data-testid="person-form-epsilon"
       />
+      <label for="person-zeta">Zeta</label>
+      <input
+        id="person-zeta"
+        type="number"
+        step="1"
+        formControlName="zeta"
+        data-testid="person-form-zeta"
+      />
       <label for="person-grade">Grade</label>
       <select id="person-grade" formControlName="grade" data-testid="person-form-grade">
         <option [ngValue]="null">none</option>
@@ -201,6 +211,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Gamma</th>
           <th scope="col">Delta</th>
           <th scope="col">Epsilon</th>
+          <th scope="col">Zeta</th>
           <th scope="col">Grade</th>
           <th scope="col">Regions</th>
           <th scope="col">Active</th>
@@ -213,6 +224,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Drift</th>
           <th scope="col">Momentum</th>
           <th scope="col">Force</th>
+          <th scope="col">Sway</th>
+          <th scope="col">Torque</th>
           <th scope="col">Reach</th>
           <th scope="col">Load</th>
           <th scope="col">Tier</th>
@@ -241,6 +254,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set gamma</th>
           <th scope="col">Set delta</th>
           <th scope="col">Set epsilon</th>
+          <th scope="col">Set zeta</th>
           <th scope="col">Set grade</th>
           <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
@@ -262,6 +276,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-gamma">{{ p.gamma }}</td>
             <td data-testid="person-delta">{{ p.delta }}</td>
             <td data-testid="person-epsilon">{{ p.epsilon }}</td>
+            <td data-testid="person-zeta">{{ p.zeta }}</td>
             <td data-testid="person-grade">{{ p.grade }}</td>
             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
@@ -274,6 +289,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
             <td data-testid="concept-force">{{ p.force ?? 'n/a' }}</td>
+            <td data-testid="concept-sway">{{ p.sway ?? 'n/a' }}</td>
+            <td data-testid="concept-torque">{{ p.torque ?? 'n/a' }}</td>
             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
@@ -375,6 +392,22 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
                   data-testid="person-epsilon-input"
                 />
                 <button type="submit" data-testid="person-epsilon-save">Save</button>
+              </form>
+            </td>
+            <td>
+              <form (submit)="$event.preventDefault(); setZeta(p, zetaInput.value)">
+                <label class="visually-hidden" [for]="'person-zeta-edit-' + p.id">
+                  Zeta for {{ p.name }}
+                </label>
+                <input
+                  #zetaInput
+                  [id]="'person-zeta-edit-' + p.id"
+                  type="number"
+                  step="1"
+                  [value]="p.zeta ?? ''"
+                  data-testid="person-zeta-input"
+                />
+                <button type="submit" data-testid="person-zeta-save">Save</button>
               </form>
             </td>
             <td>
@@ -582,6 +615,7 @@ export class People {
     gamma: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     delta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     epsilon: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+    zeta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     grade: [null as Grade | null],
     region: [''],
   });
@@ -606,7 +640,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.editing.set(person);
-    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, delta: person.delta, epsilon: person.epsilon, grade: person.grade, region: person.regions.join(', ') });
+    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, delta: person.delta, epsilon: person.epsilon, zeta: person.zeta, grade: person.grade, region: person.regions.join(', ') });
     this.form.controls.name.disable();
   }
 
@@ -617,13 +651,13 @@ export class People {
   }
 
   protected submit(): void {
-    const { name, alpha, beta, gamma, delta, epsilon, grade, region: regionText } = this.form.getRawValue();
+    const { name, alpha, beta, gamma, delta, epsilon, zeta, grade, region: regionText } = this.form.getRawValue();
     const regions = toRegions(regionText);
     if (this.form.invalid) return;
     const editing = this.editing();
     const request = editing
-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), grade, regions })
-      : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, grade, regions });
+      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, regions })
+      : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, zeta, grade, regions });
     this.saving.set(true);
     request.subscribe({
       next: () => {
@@ -668,6 +702,13 @@ export class People {
     if (text !== '' && !/^-?\d+$/.test(text)) return;
     const epsilon = text === '' ? null : Number(text);
     this.service.setEpsilon(this.sheet(), person.id, epsilon).subscribe(() => this.load());
+  }
+
+  protected setZeta(person: Person, value: string): void {
+    const text = value.trim();
+    if (text !== '' && !/^-?\d+$/.test(text)) return;
+    const zeta = text === '' ? null : Number(text);
+    this.service.setZeta(this.sheet(), person.id, zeta).subscribe(() => this.load());
   }
 
   protected setGrade(person: Person, value: string): void {
