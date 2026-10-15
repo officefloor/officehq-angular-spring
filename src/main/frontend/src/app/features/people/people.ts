@@ -51,7 +51,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their clout is the average of their patrons' effective, rounded down (zero without patrons; "n/a" while any
 // patron's effective is "n/a").
 // Their influence is their effective plus their clout ("n/a" while either is "n/a").
-// Their brace is their influence plus their force ("n/a" while either is "n/a").
+// Their brace is their influence plus two times their force ("n/a" while either is "n/a").
 // The sheet's top influence is the name of the person with the highest influence, ties going to the
 // name that comes first alphabetically ("n/a" when nobody has an influence).
 // Each person may belong to any number of regions: short codes typed in (like N1 or S2), separated by
