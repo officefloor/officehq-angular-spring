@@ -150,8 +150,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // ("n/a" when none of its people have a scaled).
 // Each person shows their share: their scaled as a percentage of their group's strength, rounded to the nearest whole percent
 // ("n/a" when their group's strength is zero, they have no group or their scaled is "n/a").
-// Each person shows their contribution: their scaled as a percentage of the sheet's total strength, rounded
-// down ("n/a" when the total strength is zero or their scaled is "n/a").
+// Each person shows their contribution: their scaled as a percentage of the sheet's total strength, rounded to the nearest
+// whole percent ("n/a" when the total strength is zero or their scaled is "n/a").
 // Each person shows their standing: their place within their group by scaled, highest first (1), with
 // equal scaled placed by higher alpha first, then by name ("n/a" when they have no group or no scaled).
 // Each person shows their belonging: their group's strength minus their scaled ("n/a" when they have no
@@ -1009,7 +1009,7 @@ export class People {
   }
   protected contributionOf(p: Person): number | null {
     const total = this.totalStrength();
-    return p.scaled === null || total === 0 ? null : Math.floor((p.scaled * 100) / total);
+    return p.scaled === null || total === 0 ? null : Math.round((p.scaled * 100) / total);
   }
   protected anchorStrengthOf(p: Person): number | null {
     return p.groupId === null ? null : (this.groupStrengths().get(p.groupId) ?? 0);
