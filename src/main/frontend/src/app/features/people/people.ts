@@ -125,6 +125,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // earlier in the alphabet ("n/a" when none of its people have a scaled).
 // Each person shows their share: their scaled as a percentage of their group's strength, rounded down
 // ("n/a" when their group's strength is zero, they have no group or their scaled is "n/a").
+// Each person shows their standing: their place within their group by scaled, highest first (1), with
+// equal scaled placed by higher alpha first, then by name ("n/a" when they have no group or no scaled).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -401,6 +403,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Ebb</th>
           <th scope="col">Stray</th>
           <th scope="col">Share</th>
+          <th scope="col">Standing</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -497,6 +500,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
             <td data-testid="concept-stray">{{ p.stray ? 'yes' : 'no' }}</td>
             <td data-testid="concept-share">{{ shareOf(p) ?? 'n/a' }}</td>
+            <td data-testid="concept-standing">{{ standings().get(p.id) ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>
@@ -872,6 +876,24 @@ export class People {
       }
     }
     return apexes;
+  });
+  protected readonly standings = computed(() => {
+    const ranked = this.people()
+      .filter((p) => p.groupId !== null && p.scaled !== null)
+      .sort(
+        (a, b) =>
+          b.scaled! - a.scaled! ||
+          (b.alpha ?? -Infinity) - (a.alpha ?? -Infinity) ||
+          a.name.localeCompare(b.name),
+      );
+    const places = new Map<number, number>();
+    const standings = new Map<number, number>();
+    for (const p of ranked) {
+      const place = (places.get(p.groupId!) ?? 0) + 1;
+      places.set(p.groupId!, place);
+      standings.set(p.id, place);
+    }
+    return standings;
   });
   protected readonly regionCounts = computed(() => {
     const counts = new Map<string, number>();
