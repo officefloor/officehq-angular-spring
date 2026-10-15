@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 08687650..ced80f05 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -25,6 +25,7 @@ export interface Person {
+   force: number | null;
+   sway: number | null;
+   torque: number | null;
++  pivot: number | null;
+   blend: number | null;
+   flux: number | null;
+   crest: number | null;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0c7515d8..6a7d56cd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -30,7 +30,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
+ // out anyone whose load is "n/a".
+ // Each person may have a kind (A, B or C), chosen on add, in the edit form or on the row; their verge
+-// comes from it (A 1, B 2, C 4, "n/a" without a kind).
++// comes from it (A 1, B 2, C 4, "n/a" without a kind). Their pivot is torque × verge ("n/a" while either is missing).
+ // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
+ // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
+ // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
+@@ -247,6 +247,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+           <th scope="col">Force</th>
+           <th scope="col">Sway</th>
+           <th scope="col">Torque</th>
++          <th scope="col">Pivot</th>
+           <th scope="col">Blend</th>
+           <th scope="col">Flux</th>
+           <th scope="col">Crest</th>
+@@ -321,6 +322,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+             <td data-testid="concept-force">{{ p.force ?? 'n/a' }}</td>
+             <td data-testid="concept-sway">{{ p.sway ?? 'n/a' }}</td>
+             <td data-testid="concept-torque">{{ p.torque ?? 'n/a' }}</td>
++            <td data-testid="concept-pivot">{{ p.pivot ?? 'n/a' }}</td>
+             <td data-testid="concept-blend">{{ p.blend ?? 'n/a' }}</td>
+             <td data-testid="concept-flux">{{ p.flux ?? 'n/a' }}</td>
+             <td data-testid="concept-crest">{{ p.crest ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index a3e92531..842909b8 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -31,6 +31,7 @@ import java.util.Set;
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+  * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 1, 2 or 4.
++ * "Pivot" is torque times verge, absent while either is.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
+@@ -343,6 +344,13 @@ public class Person {
+         return force == null || sway == null ? null : force + 3 * sway;
+     }
+ 
++    /** Pivot is torque times verge; absent while either is absent. */
++    public Integer getPivot() {
++        Integer torque = getTorque();
++        Integer verge = getVerge();
++        return torque == null || verge == null ? null : torque * verge;
++    }
++
+     /** Blend is momentum plus torque; absent while either is absent. */
+     public Integer getBlend() {
+         Integer momentum = getMomentum();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 56a85a29..dab1cee1 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -29,14 +29,14 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
+-            Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, String phase, Integer load, String tier, List<PatronView> patrons,
++            Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+-                    p.getGrade(), p.getWeight(), p.getKind(), p.getVerge(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getHaul(), p.getPhase(), p.getLoad(), p.getTier(),
++                    p.getGrade(), p.getWeight(), p.getKind(), p.getVerge(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getPivot(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getHaul(), p.getPhase(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
