@@ -133,6 +133,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // ("n/a" when none of its people have an effective).
 // Each group shows its apex: the name of the person in it with the highest scaled, ties going to the name
 // earlier in the alphabet ("n/a" when none of its people have a scaled).
+// Each group shows its apex scaled: the scaled of its apex ("n/a" when it has no apex).
 // Each group shows its density: how many of its people have an effective at or above its cohesion, not
 // counting anyone whose effective is "n/a" (0 when empty).
 // Each group shows its min: the lowest effective of the people in it, ignoring "n/a" ("n/a" when none of its
@@ -294,6 +295,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
               — vigor <span data-testid="group-concept-vigor">{{ groupVigors().get(g.id) ?? 0 }}</span>
               — spread <span data-testid="group-concept-spread">{{ groupSpreads().get(g.id) ?? 'n/a' }}</span>
               — apex <span data-testid="group-concept-apex">{{ groupApexes().get(g.id)?.name ?? 'n/a' }}</span>
+              — apex scaled <span data-testid="group-concept-apex-scaled">{{ groupApexes().get(g.id)?.scaled ?? 'n/a' }}</span>
               — density <span data-testid="group-concept-density">{{ groupDensities().get(g.id) ?? 0 }}</span>
               — min <span data-testid="group-concept-min">{{ groupMins().get(g.id) ?? 'n/a' }}</span>
               — max <span data-testid="group-concept-max">{{ groupMaxes().get(g.id) ?? 'n/a' }}</span>
