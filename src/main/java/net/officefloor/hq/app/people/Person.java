@@ -530,6 +530,21 @@ public class Person {
         return blend < 0 ? "L0" : blend <= 99 ? "L1" : blend <= 199 ? "L2" : "L3";
     }
 
+    /** Lift is blend times the drag's multiplier: L0 0, L1 1, L2 2, L3 3; absent with blend. */
+    public Integer getLift() {
+        Integer blend = getBlend();
+        if (blend == null) {
+            return null;
+        }
+        int multiplier = switch (getDrag()) {
+            case "L3" -> 3;
+            case "L2" -> 2;
+            case "L1" -> 1;
+            default -> 0;
+        };
+        return blend * multiplier;
+    }
+
     /** Band classifies adjusted: E below 0, D up to 99, C up to 249, B up to 499, A from 500; absent with adjusted. */
     public String getBand() {
         Integer adjusted = getAdjusted();

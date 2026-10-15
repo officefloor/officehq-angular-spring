@@ -62,6 +62,7 @@ export interface Person {
   thrum: number | null;
   spool: number | null;
   drag: string | null;
+  lift: number | null;
   norm: number | null;
   outlier: boolean;
 }

@@ -77,6 +77,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // comes first alphabetically ("n/a" when nobody has a thrum).
 // Their spool is their thrum minus their blend ("n/a" while either is "n/a").
 // Their drag classifies blend: L0 below zero, L1 up to 99, L2 up to 199, L3 from 200 ("n/a" while blend is).
+// Their lift is their blend times their drag's multiplier: L0 0, L1 1, L2 2, L3 3 ("n/a" while blend is).
 // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
@@ -283,6 +284,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Thrum</th>
           <th scope="col">Spool</th>
           <th scope="col">Drag</th>
+          <th scope="col">Lift</th>
           <th scope="col">Norm</th>
           <th scope="col">Outlier</th>
           <th scope="col">Rank</th>
@@ -361,6 +363,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-thrum">{{ p.thrum ?? 'n/a' }}</td>
             <td data-testid="concept-spool">{{ p.spool ?? 'n/a' }}</td>
             <td data-testid="concept-drag">{{ p.drag ?? 'n/a' }}</td>
+            <td data-testid="concept-lift">{{ p.lift ?? 'n/a' }}</td>
             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
