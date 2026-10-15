@@ -25,6 +25,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
 // Their decay is momentum minus age ("n/a" while either is missing).
 // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
+// Their effective is their net while active ("n/a" while net is), and 0 while not active.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -115,6 +116,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Patrons</th>
           <th scope="col">Backing</th>
           <th scope="col">Net</th>
+          <th scope="col">Effective</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -147,6 +149,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
+            <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>

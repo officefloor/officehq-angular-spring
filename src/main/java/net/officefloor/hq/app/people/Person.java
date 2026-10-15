@@ -221,6 +221,11 @@ public class Person {
         Integer backing = getBacking();
         return backing == null ? null : momentum + backing;
     }
+
+    /** Effective is net while active (absent while net is), and zero while not active. */
+    public Integer getEffective() {
+        return active ? getNet() : Integer.valueOf(0);
+    }
     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
     public String getTier() {
         Integer momentum = getMomentum();
