@@ -25,7 +25,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
 // Their decay is momentum minus age ("n/a" while either is missing).
 // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
-// Their effective is their net while active ("n/a" while net is), and 0 while not active.
+// Their effective is their net while active, and half their net rounded down while not active
+// ("n/a" while net is).
 // The sheet's active count is how many of its people are active, and its total effective is everyone's
 // effective added together, leaving out anyone whose effective is "n/a".
 @Component({
