@@ -17,6 +17,8 @@ export interface Person {
   zeta: number | null;
   grade: Grade | null;
   weight: number | null;
+  kind: Kind | null;
+  verge: number | null;
   thrust: number | null;
   drift: number | null;
   momentum: number | null;
@@ -70,6 +72,10 @@ export type Grade = 'LOW' | 'MID' | 'HIGH';
 
 export const GRADES: readonly Grade[] = ['LOW', 'MID', 'HIGH'];
 
+export type Kind = 'A' | 'B' | 'C';
+
+export const KINDS: readonly Kind[] = ['A', 'B', 'C'];
+
 export interface Patron {
   id: number;
   name: string;
@@ -90,6 +96,7 @@ export interface NewPerson {
   epsilon: number | null;
   zeta: number | null;
   grade: Grade | null;
+  kind: Kind | null;
   regions: string[];
 }
 
@@ -149,6 +156,10 @@ export class PeopleService {
 
   setGrade(sheet: string | null, id: number, grade: Grade | null): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { grade }, { params: sheetParams(sheet) });
+  }
+
+  setKind(sheet: string | null, id: number, kind: Kind | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { kind }, { params: sheetParams(sheet) });
   }
 
   setRegions(sheet: string | null, id: number, regions: string[]): Observable<Person> {

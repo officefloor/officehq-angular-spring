@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { GRADES, Grade, PeopleService, Person } from './people.service';
+import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.service';
 
 // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
 // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
@@ -29,6 +29,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // weight comes from it (LOW 1, MID 3, HIGH 5, "n/a" without a grade). Their load is momentum × weight
 // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
 // out anyone whose load is "n/a".
+// Each person may have a kind (A, B or C), chosen on add, in the edit form or on the row; their verge
+// comes from it (A 1, B 2, C 4, "n/a" without a kind).
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
@@ -158,6 +160,13 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <option [ngValue]="g">{{ g }}</option>
         }
       </select>
+      <label for="person-kind">Kind</label>
+      <select id="person-kind" formControlName="kind" data-testid="person-form-kind">
+        <option [ngValue]="null">none</option>
+        @for (k of kinds; track k) {
+          <option [ngValue]="k">{{ k }}</option>
+        }
+      </select>
       <label for="person-region">Regions (comma-separated)</label>
       <input
         id="person-region"
@@ -223,6 +232,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Epsilon</th>
           <th scope="col">Zeta</th>
           <th scope="col">Grade</th>
+          <th scope="col">Kind</th>
           <th scope="col">Regions</th>
           <th scope="col">Active</th>
           <th scope="col">State</th>
@@ -230,6 +240,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Age</th>
           <th scope="col">Decay</th>
           <th scope="col">Weight</th>
+          <th scope="col">Verge</th>
           <th scope="col">Thrust</th>
           <th scope="col">Drift</th>
           <th scope="col">Momentum</th>
@@ -272,6 +283,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set epsilon</th>
           <th scope="col">Set zeta</th>
           <th scope="col">Set grade</th>
+          <th scope="col">Set kind</th>
           <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
           <th scope="col">Advance</th>
@@ -294,6 +306,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-epsilon">{{ p.epsilon }}</td>
             <td data-testid="person-zeta">{{ p.zeta }}</td>
             <td data-testid="person-grade">{{ p.grade }}</td>
+            <td data-testid="person-kind">{{ p.kind }}</td>
             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
             <td data-testid="person-state">{{ p.state }}</td>
@@ -301,6 +314,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
             <td data-testid="concept-decay">{{ p.decay ?? 'n/a' }}</td>
             <td data-testid="concept-weight">{{ p.weight ?? 'n/a' }}</td>
+            <td data-testid="concept-verge">{{ p.verge ?? 'n/a' }}</td>
             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
@@ -449,6 +463,22 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
               </select>
             </td>
             <td>
+              <label class="visually-hidden" [for]="'person-kind-edit-' + p.id">
+                Kind for {{ p.name }}
+              </label>
+              <select
+                [id]="'person-kind-edit-' + p.id"
+                (change)="setKind(p, kindSelect.value)"
+                #kindSelect
+                data-testid="person-kind-select"
+              >
+                <option value="" [selected]="p.kind === null">none</option>
+                @for (k of kinds; track k) {
+                  <option [value]="k" [selected]="p.kind === k">{{ k }}</option>
+                }
+              </select>
+            </td>
+            <td>
               <form (submit)="$event.preventDefault(); setRegions(p, regionInput.value)">
                 <label class="visually-hidden" [for]="'person-region-edit-' + p.id">
                   Regions for {{ p.name }}
@@ -583,6 +613,7 @@ export class People {
   private readonly service = inject(PeopleService);
 
   protected readonly grades = GRADES;
+  protected readonly kinds = KINDS;
   protected readonly people = signal<Person[]>([]);
   protected readonly sheet = signal<string | null>(null);
   protected readonly anchor = signal('');
@@ -656,6 +687,7 @@ export class People {
     epsilon: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     zeta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     grade: [null as Grade | null],
+    kind: [null as Kind | null],
     region: [''],
   });
 
@@ -679,7 +711,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.editing.set(person);
-    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, delta: person.delta, epsilon: person.epsilon, zeta: person.zeta, grade: person.grade, region: person.regions.join(', ') });
+    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, delta: person.delta, epsilon: person.epsilon, zeta: person.zeta, grade: person.grade, kind: person.kind, region: person.regions.join(', ') });
     this.form.controls.name.disable();
   }
 
@@ -690,13 +722,13 @@ export class People {
   }
 
   protected submit(): void {
-    const { name, alpha, beta, gamma, delta, epsilon, zeta, grade, region: regionText } = this.form.getRawValue();
+    const { name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, region: regionText } = this.form.getRawValue();
     const regions = toRegions(regionText);
     if (this.form.invalid) return;
     const editing = this.editing();
     const request = editing
-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, regions })
-      : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, zeta, grade, regions });
+      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, kind, regions })
+      : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, regions });
     this.saving.set(true);
     request.subscribe({
       next: () => {
@@ -753,6 +785,11 @@ export class People {
   protected setGrade(person: Person, value: string): void {
     const grade = GRADES.find((g) => g === value) ?? null;
     this.service.setGrade(this.sheet(), person.id, grade).subscribe(() => this.load());
+  }
+
+  protected setKind(person: Person, value: string): void {
+    const kind = KINDS.find((k) => k === value) ?? null;
+    this.service.setKind(this.sheet(), person.id, kind).subscribe(() => this.load());
   }
 
   protected setRegions(person: Person, value: string): void {

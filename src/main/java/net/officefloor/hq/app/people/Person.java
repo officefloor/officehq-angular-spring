@@ -30,6 +30,7 @@ import java.util.Set;
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+ * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 1, 2 or 4.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
@@ -73,6 +74,9 @@ public class Person {
 
     @Enumerated(EnumType.STRING)
     private Grade grade;
+
+    @Enumerated(EnumType.STRING)
+    private Kind kind;
 
     private LocalDate onset;
 
@@ -187,6 +191,14 @@ public class Person {
         this.grade = grade;
     }
 
+    public Kind getKind() {
+        return kind;
+    }
+
+    public void setKind(Kind kind) {
+        this.kind = kind;
+    }
+
     public boolean isActive() {
         return active;
     }
@@ -257,6 +269,11 @@ public class Person {
     /** Weight comes from the grade: LOW 1, MID 3, HIGH 5; absent without a grade. */
     public Integer getWeight() {
         return grade == null ? null : grade.weight();
+    }
+
+    /** Verge comes from the kind: A 1, B 2, C 4; absent without a kind. */
+    public Integer getVerge() {
+        return kind == null ? null : kind.verge();
     }
 
     /** The patrons, sorted by name. */

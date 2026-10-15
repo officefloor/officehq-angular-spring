@@ -70,7 +70,7 @@ public class PersonService {
     @Transactional
     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
     public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
-            Grade grade, Collection<String> regions) {
+            Grade grade, Kind kind, Collection<String> regions) {
         if (sheetId != null && !sheets.existsById(sheetId)) {
             sheets.save(new Sheet(sheetId));
         }
@@ -80,6 +80,7 @@ public class PersonService {
         person.setEpsilon(epsilon);
         person.setZeta(zeta);
         person.setGrade(grade);
+        person.setKind(kind);
         person.setRegions(regions);
         return people.save(person);
     }
@@ -141,6 +142,14 @@ public class PersonService {
     public Optional<Person> setGrade(String sheetId, long id, Grade grade) {
         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
             p.setGrade(grade);
+            return p;
+        });
+    }
+
+    @Transactional
+    public Optional<Person> setKind(String sheetId, long id, Kind kind) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            p.setKind(kind);
             return p;
         });
     }

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.people.Grade;
+import net.officefloor.hq.app.people.Kind;
 import net.officefloor.hq.app.people.State;
 import net.officefloor.hq.app.people.Person;
 import org.springframework.context.annotation.Profile;
@@ -31,7 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "grade", "onset", "active", "score", "state");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "grade", "kind", "onset", "active", "score", "state");
 
     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
@@ -145,15 +146,16 @@ public class TestSupportController {
             Integer epsilon = integer(row.get("epsilon"), prefix + "people.epsilon");
             Integer zeta = integer(row.get("zeta"), prefix + "people.zeta");
             String grade = grade(row.get("grade"), prefix + "people.grade");
+            String kind = kind(row.get("kind"), prefix + "people.kind");
             LocalDate onset = date(row.get("onset"), prefix + "people.onset");
             Boolean active = bool(row.get("active"), prefix + "people.active");
             Integer score = integer(row.get("score"), prefix + "people.score");
             String state = state(row.get("state"), prefix + "people.state");
             // A person's id is their id within the sheet; the internal key is generated.
             Integer localId = integer(row.get("id"), prefix + "people.id");
-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, onset, active, score, state) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, delta, epsilon, zeta, grade, onset,
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset, active, score, state) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset,
                     active != null ? active : true, score, state != null ? state : State.DRAFT.name());
         }
         // Patrons link people by id, so add them once every person exists.
@@ -240,7 +242,7 @@ public class TestSupportController {
         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
-                + "beta AS \"beta\", gamma AS \"gamma\", delta AS \"delta\", epsilon AS \"epsilon\", zeta AS \"zeta\", grade AS \"grade\", "
+                + "beta AS \"beta\", gamma AS \"gamma\", delta AS \"delta\", epsilon AS \"epsilon\", zeta AS \"zeta\", grade AS \"grade\", kind AS \"kind\", "
                 + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\" FROM person p WHERE " + where + " ORDER BY local_id", args));
         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
@@ -284,6 +286,17 @@ public class TestSupportController {
         }
         try {
             return Grade.parse(String.valueOf(value)).name();
+        } catch (IllegalArgumentException e) {
+            throw badRequest(field + ": " + e.getMessage());
+        }
+    }
+
+    private static String kind(Object value, String field) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Kind.parse(String.valueOf(value)).name();
         } catch (IllegalArgumentException e) {
             throw badRequest(field + ": " + e.getMessage());
         }
