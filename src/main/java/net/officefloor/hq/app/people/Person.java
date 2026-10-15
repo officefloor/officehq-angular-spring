@@ -31,7 +31,7 @@ import java.util.Set;
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
  * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 2, 3 or 5.
- * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus lift, absent while either is. "Grip" is yield minus coil, absent while either is.
+ * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus two times lift, absent while either is. "Grip" is yield minus coil, absent while either is.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force.
@@ -552,11 +552,11 @@ public class Person {
         return blend * multiplier;
     }
 
-    /** Yield is pivot plus lift; absent while either is absent. */
+    /** Yield is pivot plus two times lift; absent while either is absent. */
     public Integer getYield() {
         Integer pivot = getPivot();
         Integer lift = getLift();
-        return pivot == null || lift == null ? null : pivot + lift;
+        return pivot == null || lift == null ? null : pivot + 2 * lift;
     }
 
     /** Band classifies adjusted: E below 0, D up to 99, C up to 249, B up to 499, A from 500; absent with adjusted. */
