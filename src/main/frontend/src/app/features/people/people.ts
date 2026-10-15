@@ -7,7 +7,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
 // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
 // their alpha, beta and gamma instead of adding. Each person also has whole-number delta and epsilon
-// (a second raw axis, blank until given), set on add, on the row or through Edit. Each person may have any number of patrons (other
+// (a second raw axis, blank until given), set on add, on the row or through Edit; their force is delta × epsilon
+// ("n/a" while either is missing). Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 // Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
@@ -211,6 +212,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Thrust</th>
           <th scope="col">Drift</th>
           <th scope="col">Momentum</th>
+          <th scope="col">Force</th>
           <th scope="col">Reach</th>
           <th scope="col">Load</th>
           <th scope="col">Tier</th>
@@ -271,6 +273,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+            <td data-testid="concept-force">{{ p.force ?? 'n/a' }}</td>
             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
