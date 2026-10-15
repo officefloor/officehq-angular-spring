@@ -73,6 +73,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
 // adjusted is "n/a").
 // Their thrum is their scaled plus their torque ("n/a" while either is "n/a").
+// The sheet's max thrum is the name of the person with the highest thrum, ties going to the name that
+// comes first alphabetically ("n/a" when nobody has a thrum).
 // Their spool is their thrum minus their blend ("n/a" while either is "n/a").
 // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
@@ -189,6 +191,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
     <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
     <p>Top influence: <strong data-testid="rollup-top-influence">{{ topInfluence() ?? 'n/a' }}</strong></p>
     <p>Top crest: <strong data-testid="rollup-top-crest">{{ topCrest() ?? 'n/a' }}</strong></p>
+    <p>Max thrum: <strong data-testid="rollup-max-thrum">{{ maxThrum() ?? 'n/a' }}</strong></p>
     <p>Total haul: <strong data-testid="rollup-total-haul">{{ totalHaul() }}</strong></p>
     <p>Total pivot: <strong data-testid="rollup-total-pivot">{{ totalPivot() }}</strong></p>
     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
@@ -683,6 +686,20 @@ export class People {
         top === null ||
         p.crest > top.crest! ||
         (p.crest === top.crest && p.name.localeCompare(top.name) < 0)
+      ) {
+        top = p;
+      }
+    }
+    return top?.name ?? null;
+  });
+  protected readonly maxThrum = computed(() => {
+    let top: Person | null = null;
+    for (const p of this.people()) {
+      if (p.thrum === null) continue;
+      if (
+        top === null ||
+        p.thrum > top.thrum! ||
+        (p.thrum === top.thrum && p.name.localeCompare(top.name) < 0)
       ) {
         top = p;
       }
