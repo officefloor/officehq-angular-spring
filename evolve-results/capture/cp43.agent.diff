@@ -1,0 +1,89 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 409f774..95b01ef 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -32,6 +32,7 @@ export interface Person {
+   allies: Ally[];
+   allyCount: number;
+   synergy: number | null;
++  combined: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1362a0d..b112492 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -44,6 +44,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // Each person may have any number of allies (other people), chosen on the row; being allies goes both
+ // ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are,
+ // and their synergy: the allies' thrust added together (zero without allies).
++// Their combined is their influence plus their synergy ("n/a" while either is "n/a").
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -165,6 +166,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Effective</th>
+           <th scope="col">Clout</th>
+           <th scope="col">Influence</th>
++          <th scope="col">Combined</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -207,6 +209,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
+             <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
+             <td data-testid="concept-influence">{{ p.influence ?? 'n/a' }}</td>
++            <td data-testid="concept-combined">{{ p.combined ?? 'n/a' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index bfb3b1b..7efa67b 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -35,7 +35,7 @@ import java.util.Set;
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+  * person's regions, of momentum times that region's multiplier. A person may have any number of "allies":
+  * other people on the list, where being allies goes both ways. "Synergy" is the allies' thrust added
+- * together (zero without allies). */
++ * together (zero without allies). "Combined" is influence plus synergy. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -344,6 +344,13 @@ public class Person {
+         return effective == null || clout == null ? null : effective + clout;
+     }
+ 
++    /** Combined is influence plus synergy; absent while either is. */
++    public Integer getCombined() {
++        Integer influence = getInfluence();
++        Integer synergy = getSynergy();
++        return influence == null || synergy == null ? null : influence + synergy;
++    }
++
+     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
+     public String getTier() {
+         Integer momentum = getMomentum();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index ce0ba2a..bcd9587 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -31,7 +31,7 @@ public class PersonController {
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+-            List<PatronView> allies, int allyCount, Integer synergy) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -41,7 +41,7 @@ public class PersonController {
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+                     p.getInfluence(), p.getRegions(), p.getReach(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getAllies().size(), p.getSynergy());
++                    p.getAllies().size(), p.getSynergy(), p.getCombined());
+         }
+     }
+ 
