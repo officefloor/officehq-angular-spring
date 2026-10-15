@@ -27,6 +27,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
 // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100. Their quota is "yes" when their
 // rank is in the top third of the ranked people (the third rounded down, dropping any remainder).
+// The sheet's quota count is how many people meet the quota.
 // Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
 // weight comes from it (LOW 1, MID 3, HIGH 5, "n/a" without a grade). Their load is momentum × weight
 // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
@@ -393,6 +394,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
     <p>Top flow: <strong data-testid="rollup-top-flow">{{ topFlow() ?? 'n/a' }}</strong></p>
     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
     <p>Strays: <strong data-testid="rollup-stray-count">{{ strayCount() }}</strong></p>
+    <p>Meeting quota: <strong data-testid="rollup-quota-count">{{ quotaCount() }}</strong></p>
     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
     <p>Ledger: <strong data-testid="rollup-ledger">{{ ledger() }}</strong></p>
     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
@@ -1060,6 +1062,7 @@ export class People {
   protected readonly activeCount = computed(() => this.people().filter((p) => p.active).length);
   protected readonly outlierCount = computed(() => this.people().filter((p) => p.outlier).length);
   protected readonly strayCount = computed(() => this.people().filter((p) => p.stray).length);
+  protected readonly quotaCount = computed(() => this.people().filter((p) => p.quota).length);
   protected readonly totalEffective = computed(() =>
     this.people().reduce((total, p) => total + (p.effective ?? 0), 0),
   );
