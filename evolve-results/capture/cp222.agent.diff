@@ -1,0 +1,48 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 71330505..26914cf4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -139,6 +139,9 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // The sheet's grade tally shows how many of its people have each grade, HIGH and LOW (zero when none
+ // do), with MID folded into HIGH; MID is still listed but always counts zero. People without a grade
+ // are not counted.
++// The sheet's grade share shows, for each grade, LOW, MID and HIGH, how many of its people have it (MID
++// counted as itself) as a percentage of the sheet's headcount, rounded down ("n/a" when the sheet has
++// nobody on it).
+ // The sheet's grade ledger shows the total scaled of its people with each grade, LOW, MID and HIGH (zero
+ // when none do), counting "n/a" as zero; people without a grade add nothing.
+ // The sheet's state tally shows how many of its people are in each state, DRAFT, REVIEW, FINAL and
+@@ -527,6 +530,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+         }
+       </ul>
+     </section>
++    <section aria-labelledby="grade-share-heading">
++      <h2 id="grade-share-heading">Share per grade (%)</h2>
++      <ul>
++        @for (g of gradeShare(); track g.grade) {
++          <li>
++            {{ g.grade }}: <strong [attr.data-testid]="'grade-share-' + g.grade">{{ g.percent ?? 'n/a' }}</strong>
++          </li>
++        }
++      </ul>
++    </section>
+     <section aria-labelledby="grade-ledger-heading">
+       <h2 id="grade-ledger-heading">Ledger per grade</h2>
+       <ul>
+@@ -1507,6 +1520,16 @@ export class People {
+       count: this.people().filter((p) => p.grade !== null && TALLIED_GRADE[p.grade] === grade).length,
+     })),
+   );
++  protected readonly gradeShare = computed(() => {
++    const headcount = this.headcount();
++    return GRADES.map((grade) => ({
++      grade,
++      percent:
++        headcount === 0
++          ? null
++          : Math.floor((this.people().filter((p) => p.grade === grade).length * 100) / headcount),
++    }));
++  });
+   protected readonly gradeLedger = computed(() =>
+     GRADES.map((grade) => ({
+       grade,
