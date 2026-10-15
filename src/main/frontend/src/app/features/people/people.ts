@@ -9,11 +9,27 @@ import { PeopleService, Person } from './people.service';
 // their alpha, beta and gamma instead of adding. Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
+// The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
+// shown, and people added belong to it. Until one is opened the unnamed sheet is shown.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
   template: `
     <h1>People</h1>
+
+    <form (submit)="$event.preventDefault(); openSheet(sheetInput.value)" data-testid="sheet-form">
+      <label for="sheet-id">Sheet</label>
+      <input #sheetInput id="sheet-id" data-testid="sheet-id-input" />
+      <button type="submit" data-testid="sheet-load">Open sheet</button>
+    </form>
+    <p>
+      Open sheet:
+      @if (sheet() !== null) {
+        <strong data-testid="sheet-current-id">{{ sheet() }}</strong>
+      } @else {
+        <span data-testid="sheet-none">none</span>
+      }
+    </p>
 
     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
       <label for="person-name">Name</label>
@@ -174,6 +190,7 @@ export class People {
   private readonly service = inject(PeopleService);
 
   protected readonly people = signal<Person[]>([]);
+  protected readonly sheet = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly editing = signal<Person | null>(null);
 
@@ -185,6 +202,13 @@ export class People {
   });
 
   constructor() {
+    this.load();
+  }
+
+  protected openSheet(value: string): void {
+    const id = value.trim();
+    this.sheet.set(id === '' ? null : id);
+    this.cancelEdit();
     this.load();
   }
 
@@ -206,7 +230,7 @@ export class People {
     const editing = this.editing();
     const request = editing
       ? this.service.update(editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma) })
-      : this.service.add({ name, alpha, beta, gamma });
+      : this.service.add(this.sheet(), { name, alpha, beta, gamma });
     this.saving.set(true);
     request.subscribe({
       next: () => {
@@ -253,7 +277,10 @@ export class People {
   }
 
   private load(): void {
-    this.service.list().subscribe((people) => this.people.set(people));
+    const sheet = this.sheet();
+    this.service.list(sheet).subscribe((people) => {
+      if (this.sheet() === sheet) this.people.set(people);
+    });
   }
 }
 

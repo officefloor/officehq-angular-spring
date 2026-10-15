@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.people;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -18,7 +19,7 @@ import java.util.Set;
  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
- * "backing". "Net" is momentum plus backing (backing counted as zero without patrons). */
+ * "backing". A person belongs to one sheet (null for the unnamed sheet). "Net" is momentum plus backing (backing counted as zero without patrons). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -35,6 +36,10 @@ public class Person {
 
     private Integer gamma;
 
+    /** The id of the sheet the person belongs to; null for the unnamed sheet. */
+    @Column(name = "sheet_id")
+    private String sheetId;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "person_patron", joinColumns = @JoinColumn(name = "person_id"),
             inverseJoinColumns = @JoinColumn(name = "patron_id"))
@@ -43,7 +48,8 @@ public class Person {
     protected Person() {
     }
 
-    public Person(String name, Integer alpha, Integer beta, Integer gamma) {
+    public Person(String sheetId, String name, Integer alpha, Integer beta, Integer gamma) {
+        this.sheetId = sheetId;
         this.name = name;
         this.alpha = alpha;
         this.beta = beta;
@@ -52,6 +58,10 @@ public class Person {
 
     public Long getId() {
         return id;
+    }
+
+    public String getSheetId() {
+        return sheetId;
     }
 
     public String getName() {

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -45,14 +46,14 @@ public class PersonController {
     }
 
     @GetMapping
-    public List<PersonView> list() {
-        return service.list().stream().map(PersonView::of).toList();
+    public List<PersonView> list(@RequestParam(required = false) String sheet) {
+        return service.list(sheetId(sheet)).stream().map(PersonView::of).toList();
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public PersonView add(@Valid @RequestBody NewPerson person) {
-        return PersonView.of(service.add(person.name(), person.alpha(), person.beta(), person.gamma()));
+    public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
+        return PersonView.of(service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma()));
     }
 
     /**
@@ -88,6 +89,11 @@ public class PersonController {
         }
         return person.map(PersonView::of)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    /** The sheet named by the request, trimmed; blank or absent means the unnamed sheet. */
+    private static String sheetId(String sheet) {
+        return sheet == null || sheet.isBlank() ? null : sheet.trim();
     }
 
     private static Integer integer(Object value) {

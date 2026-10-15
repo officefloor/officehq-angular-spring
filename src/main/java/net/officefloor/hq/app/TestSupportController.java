@@ -1,5 +1,6 @@
 package net.officefloor.hq.app;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,8 @@ public class TestSupportController {
 
     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
+    private static final Set<String> SHEET_FIELDS = Set.of("id", "people", "patrons");
+
     private final Audit audit;
     private final JdbcTemplate jdbc;
 
@@ -45,6 +48,7 @@ public class TestSupportController {
         // Person is referenced by its patrons, so delete rather than truncate.
         jdbc.update("DELETE FROM person_patron");
         jdbc.update("DELETE FROM person");
+        jdbc.update("DELETE FROM sheet");
         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
     }
 
@@ -56,62 +60,96 @@ public class TestSupportController {
     @Transactional
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
-            if (!key.equals("people") && !key.equals("patrons")) {
+            if (!key.equals("people") && !key.equals("patrons") && !key.equals("sheets")) {
                 throw badRequest("unknown fixture key: " + key);
             }
         }
-        List<Map<String, Object>> people = rows(fixture.get("people"), "people");
-        for (Map<String, Object> row : people) {
-            for (String field : row.keySet()) {
-                if (!PERSON_FIELDS.contains(field)) {
-                    throw badRequest("cannot store people." + field);
+        // People and patrons at the top level are on the unnamed sheet.
+        seedSheet(null, fixture.get("people"), fixture.get("patrons"), "");
+        for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
+            for (String field : sheet.keySet()) {
+                if (!SHEET_FIELDS.contains(field)) {
+                    throw badRequest("cannot store sheets." + field);
                 }
             }
-            if (!(row.get("name") instanceof String name)) {
-                throw badRequest("people.name is required");
+            if (!(sheet.get("id") instanceof String id) || id.isBlank()) {
+                throw badRequest("sheets.id is required");
             }
-            Object id = row.get("id");
-            Integer alpha = integer(row.get("alpha"), "people.alpha");
-            Integer beta = integer(row.get("beta"), "people.beta");
-            Integer gamma = integer(row.get("gamma"), "people.gamma");
-            if (id == null) {
-                jdbc.update("INSERT INTO person (name, alpha, beta, gamma) VALUES (?, ?, ?, ?)",
-                        name, alpha, beta, gamma);
-            } else {
-                jdbc.update("INSERT INTO person (id, name, alpha, beta, gamma) VALUES (?, ?, ?, ?, ?)",
-                        integer(id, "people.id"), name, alpha, beta, gamma);
-            }
-        }
-        // Patrons link people by id, so add them once every person exists.
-        for (Map<String, Object> row : rows(fixture.get("patrons"), "patrons")) {
-            for (String field : row.keySet()) {
-                if (!PATRON_FIELDS.contains(field)) {
-                    throw badRequest("cannot store patrons." + field);
-                }
-            }
-            Integer personId = integer(row.get("personId"), "patrons.personId");
-            Integer patronId = integer(row.get("patronId"), "patrons.patronId");
-            if (personId == null || patronId == null) {
-                throw badRequest("patrons rows need personId and patronId");
-            }
-            jdbc.update("INSERT INTO person_patron (person_id, patron_id) VALUES (?, ?)", personId, patronId);
+            jdbc.update("INSERT INTO sheet (id) VALUES (?)", id);
+            seedSheet(id, sheet.get("people"), sheet.get("patrons"), "sheets.");
         }
         // Keep generated ids clear of the seeded ones.
         Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM person", Long.class);
         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH " + next);
     }
 
+    /** Inserts one sheet's people and then their patrons; a null sheet id is the unnamed sheet. */
+    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, String prefix) {
+        for (Map<String, Object> row : rows(peopleRows, prefix + "people")) {
+            for (String field : row.keySet()) {
+                if (!PERSON_FIELDS.contains(field)) {
+                    throw badRequest("cannot store " + prefix + "people." + field);
+                }
+            }
+            if (!(row.get("name") instanceof String name)) {
+                throw badRequest(prefix + "people.name is required");
+            }
+            Object id = row.get("id");
+            Integer alpha = integer(row.get("alpha"), prefix + "people.alpha");
+            Integer beta = integer(row.get("beta"), prefix + "people.beta");
+            Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
+            if (id == null) {
+                jdbc.update("INSERT INTO person (sheet_id, name, alpha, beta, gamma) VALUES (?, ?, ?, ?, ?)",
+                        sheetId, name, alpha, beta, gamma);
+            } else {
+                jdbc.update("INSERT INTO person (id, sheet_id, name, alpha, beta, gamma) VALUES (?, ?, ?, ?, ?, ?)",
+                        integer(id, prefix + "people.id"), sheetId, name, alpha, beta, gamma);
+            }
+        }
+        // Patrons link people by id, so add them once every person exists.
+        for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
+            for (String field : row.keySet()) {
+                if (!PATRON_FIELDS.contains(field)) {
+                    throw badRequest("cannot store " + prefix + "patrons." + field);
+                }
+            }
+            Integer personId = integer(row.get("personId"), prefix + "patrons.personId");
+            Integer patronId = integer(row.get("patronId"), prefix + "patrons.patronId");
+            if (personId == null || patronId == null) {
+                throw badRequest(prefix + "patrons rows need personId and patronId");
+            }
+            jdbc.update("INSERT INTO person_patron (person_id, patron_id) VALUES (?, ?)", personId, patronId);
+        }
+    }
+
     /**
      * Read back what is stored, in the same shape and with the same field names the fixtures use,
-     * so earlier checkpoints' test data can be replayed and checked (AGENTS.md §4.3, §4.4).
+     * so earlier checkpoints' test data can be replayed and checked (AGENTS.md §4.3, §4.4). The
+     * unnamed sheet's people are at the top level; each named sheet nests its own.
      */
     @GetMapping("/fixture")
     public Map<String, Object> fixture() {
+        Map<String, Object> out = new LinkedHashMap<>(sheetContents(null));
+        List<Map<String, Object>> sheets = new ArrayList<>();
+        for (String id : jdbc.queryForList("SELECT id FROM sheet ORDER BY id", String.class)) {
+            Map<String, Object> sheet = new LinkedHashMap<>();
+            sheet.put("id", id);
+            sheet.putAll(sheetContents(id));
+            sheets.add(sheet);
+        }
+        out.put("sheets", sheets);
+        return out;
+    }
+
+    private Map<String, Object> sheetContents(String sheetId) {
+        String where = sheetId == null ? "p.sheet_id IS NULL" : "p.sheet_id = ?";
+        Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
-                + "beta AS \"beta\", gamma AS \"gamma\" FROM person ORDER BY id"));
-        out.put("patrons", jdbc.queryForList("SELECT person_id AS \"personId\", patron_id AS \"patronId\" "
-                + "FROM person_patron ORDER BY person_id, patron_id"));
+                + "beta AS \"beta\", gamma AS \"gamma\" FROM person p WHERE " + where + " ORDER BY id", args));
+        out.put("patrons", jdbc.queryForList("SELECT pp.person_id AS \"personId\", pp.patron_id AS \"patronId\" "
+                + "FROM person_patron pp JOIN person p ON p.id = pp.person_id WHERE " + where
+                + " ORDER BY pp.person_id, pp.patron_id", args));
         return out;
     }
 

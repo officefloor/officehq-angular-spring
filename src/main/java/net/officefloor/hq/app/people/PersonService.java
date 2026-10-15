@@ -16,16 +16,20 @@ public class PersonService {
 
     private final PersonRepository people;
 
+    private final SheetRepository sheets;
+
     private final Audit audit;
 
-    public PersonService(PersonRepository people, Audit audit) {
+    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
         this.people = people;
+        this.sheets = sheets;
         this.audit = audit;
     }
 
     @Transactional(readOnly = true)
-    public List<Person> list() {
-        return people.findAll(Sort.by("id"));
+    /** The people on a sheet; a null sheet id is the unnamed sheet. */
+    public List<Person> list(String sheetId) {
+        return people.findBySheetId(sheetId, Sort.by("id"));
     }
 
     @Transactional(readOnly = true)
@@ -34,8 +38,12 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String name, Integer alpha, Integer beta, Integer gamma) {
-        return people.save(new Person(name.trim(), alpha, beta, gamma));
+    /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
+    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma) {
+        if (sheetId != null && !sheets.existsById(sheetId)) {
+            sheets.save(new Sheet(sheetId));
+        }
+        return people.save(new Person(sheetId, name.trim(), alpha, beta, gamma));
     }
 
     @Transactional
@@ -67,7 +75,7 @@ public class PersonService {
         });
     }
 
-    /** Sets the patrons (other people) by id; an empty list clears them. Refuses oneself or an unknown person. */
+    /** Sets the patrons (other people on the same sheet) by id; an empty list clears them. Refuses oneself or an unknown person. */
     @Transactional
     public Optional<Person> setPatrons(long id, Collection<Long> patronIds) {
         return people.findById(id).map(p -> {
@@ -77,7 +85,8 @@ public class PersonService {
                     throw new IllegalArgumentException("a person cannot be their own patron");
                 }
                 patrons.add(people.findById(patronId)
-                        .orElseThrow(() -> new IllegalArgumentException("no person " + patronId)));
+                        .filter(patron -> Objects.equals(patron.getSheetId(), p.getSheetId()))
+                        .orElseThrow(() -> new IllegalArgumentException("no person " + patronId + " on this sheet")));
             }
             p.setPatrons(patrons);
             return p;

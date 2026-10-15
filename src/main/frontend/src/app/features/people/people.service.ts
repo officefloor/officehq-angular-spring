@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -34,12 +34,14 @@ export interface NewPerson {
 export class PeopleService {
   private readonly http = inject(HttpClient);
 
-  list(): Observable<Person[]> {
-    return this.http.get<Person[]>('/api/people');
+  // The people on a sheet; null is the unnamed sheet.
+  list(sheet: string | null): Observable<Person[]> {
+    return this.http.get<Person[]>('/api/people', { params: sheetParams(sheet) });
   }
 
-  add(person: NewPerson): Observable<Person> {
-    return this.http.post<Person>('/api/people', person);
+  // Adds a person to a sheet; null is the unnamed sheet.
+  add(sheet: string | null, person: NewPerson): Observable<Person> {
+    return this.http.post<Person>('/api/people', person, { params: sheetParams(sheet) });
   }
 
   update(id: number, values: Omit<NewPerson, 'name'>): Observable<Person> {
@@ -61,4 +63,8 @@ export class PeopleService {
   setPatrons(id: number, patronIds: number[]): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { patronIds });
   }
+}
+
+function sheetParams(sheet: string | null): HttpParams {
+  return sheet === null ? new HttpParams() : new HttpParams().set('sheet', sheet);
 }
