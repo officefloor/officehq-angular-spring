@@ -142,8 +142,9 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's grade share shows, for each grade, LOW, MID and HIGH, how many of its people have it (MID
 // counted as itself) as a percentage of the sheet's headcount, rounded down ("n/a" when the sheet has
 // nobody on it).
-// The sheet's grade ledger shows the total scaled of its people with each grade, LOW, MID and HIGH (zero
-// when none do), counting "n/a" as zero; people without a grade add nothing.
+// The sheet's grade ledger shows the total scaled of its people with each grade, HIGH and LOW (zero
+// when none do), with MID folded into HIGH; MID is still listed but always totals zero. It counts "n/a"
+// as zero; people without a grade add nothing.
 // The sheet's top per grade shows, for each grade, LOW, MID and HIGH, the name of the person with it with
 // the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them have a scaled).
 // The sheet's state tally shows how many of its people are in each state, DRAFT, REVIEW, FINAL and
@@ -1546,7 +1547,7 @@ export class People {
     GRADES.map((grade) => ({
       grade,
       total: this.people()
-        .filter((p) => p.grade === grade)
+        .filter((p) => p.grade !== null && TALLIED_GRADE[p.grade] === grade)
         .reduce((total, p) => total + (p.scaled ?? 0), 0),
     })),
   );
