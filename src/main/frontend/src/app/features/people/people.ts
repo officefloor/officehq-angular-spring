@@ -31,6 +31,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // effective added together, leaving out anyone whose effective is "n/a".
 // Their clout is their patrons' effective added together (zero without patrons; "n/a" while any
 // patron's effective is "n/a").
+// Their influence is their effective plus their clout ("n/a" while either is "n/a").
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -125,6 +126,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Net</th>
           <th scope="col">Effective</th>
           <th scope="col">Clout</th>
+          <th scope="col">Influence</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -159,6 +161,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
             <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
+            <td data-testid="concept-influence">{{ p.influence ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>

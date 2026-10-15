@@ -26,6 +26,7 @@ export interface Person {
   active: boolean;
   effective: number | null;
   clout: number | null;
+  influence: number | null;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).

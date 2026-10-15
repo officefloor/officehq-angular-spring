@@ -27,7 +27,7 @@ import java.util.Set;
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the sum of the
- * patrons' effective (zero without patrons). */
+ * patrons' effective (zero without patrons). "Influence" is effective plus clout. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -243,6 +243,13 @@ public class Person {
             sum += effective;
         }
         return sum;
+    }
+
+    /** Influence is effective plus clout; absent while either is. */
+    public Integer getInfluence() {
+        Integer effective = getEffective();
+        Integer clout = getClout();
+        return effective == null || clout == null ? null : effective + clout;
     }
 
     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
