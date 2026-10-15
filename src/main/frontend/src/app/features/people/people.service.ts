@@ -14,6 +14,7 @@ export interface Person {
   tier: string | null;
   patronId: number | null;
   patronName: string | null;
+  backing: number | null;
 }
 
 export interface NewPerson {

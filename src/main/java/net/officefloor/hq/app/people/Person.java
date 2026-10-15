@@ -11,7 +11,7 @@ import jakarta.persistence.Table;
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
- * a "patron": another person on the list. */
+ * a "patron": another person on the list, whose thrust is the person's "backing". */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -102,6 +102,11 @@ public class Person {
         Integer thrust = getThrust();
         Integer drift = getDrift();
         return thrust == null || drift == null ? null : thrust + 3 * drift;
+    }
+
+    /** Backing is the patron's thrust; absent without a patron or while the patron's thrust is absent. */
+    public Integer getBacking() {
+        return patron == null ? null : patron.getThrust();
     }
 
     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
