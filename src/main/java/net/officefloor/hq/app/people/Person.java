@@ -25,7 +25,7 @@ import java.util.Set;
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
  * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given) with the derived "force"
  * (delta × epsilon), a whole-number "zeta" (absent until given) with the derived "sway"
- * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+ * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the patrons' force added together, zero without patrons), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
@@ -370,6 +370,19 @@ public class Person {
                 return null;
             }
             sum += thrust;
+        }
+        return sum;
+    }
+
+    /** Flux is the sum of the patrons' force; zero without patrons, absent while any patron's force is absent. */
+    public Integer getFlux() {
+        int sum = 0;
+        for (Person patron : patrons) {
+            Integer force = patron.getForce();
+            if (force == null) {
+                return null;
+            }
+            sum += force;
         }
         return sum;
     }

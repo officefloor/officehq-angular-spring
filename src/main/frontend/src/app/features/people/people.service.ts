@@ -24,6 +24,7 @@ export interface Person {
   sway: number | null;
   torque: number | null;
   blend: number | null;
+  flux: number | null;
   phase: string | null;
   load: number | null;
   tier: string | null;
