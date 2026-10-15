@@ -14,7 +14,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // momentum + torque ("n/a" while either is missing). Their flux is the average of their patrons' force, rounded down (0 without
 // patrons, "n/a" while any patron's force is missing). Their crest is blend + flux ("n/a" while either is missing).
 // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
-// comes first alphabetically ("n/a" when nobody has a crest).
+// comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the torque of the people
+// they follow (0 when they follow no one, "n/a" while any followed person's torque is missing).
 // Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
@@ -235,6 +236,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Blend</th>
           <th scope="col">Flux</th>
           <th scope="col">Crest</th>
+          <th scope="col">Swing</th>
           <th scope="col">Phase</th>
           <th scope="col">Reach</th>
           <th scope="col">Load</th>
@@ -304,6 +306,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-blend">{{ p.blend ?? 'n/a' }}</td>
             <td data-testid="concept-flux">{{ p.flux ?? 'n/a' }}</td>
             <td data-testid="concept-crest">{{ p.crest ?? 'n/a' }}</td>
+            <td data-testid="concept-swing">{{ p.swing ?? 'n/a' }}</td>
             <td data-testid="concept-phase">{{ p.phase ?? 'n/a' }}</td>
             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>

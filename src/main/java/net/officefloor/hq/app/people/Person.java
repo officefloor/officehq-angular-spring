@@ -25,7 +25,7 @@ import java.util.Set;
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
  * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given) with the derived "force"
  * (delta × epsilon), a whole-number "zeta" (absent until given) with the derived "sway"
- * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the average of the patrons' force, rounded down, zero without patrons), "crest" (blend + flux, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+ * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the average of the patrons' force, rounded down, zero without patrons), "crest" (blend + flux, absent while either is), "swing" (the torque of the people followed added together, zero without any), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
@@ -392,6 +392,19 @@ public class Person {
         Integer blend = getBlend();
         Integer flux = getFlux();
         return blend == null || flux == null ? null : blend + flux;
+    }
+
+    /** Swing is the sum of the torque of the people followed; zero without allies, absent while any ally's torque is absent. */
+    public Integer getSwing() {
+        int sum = 0;
+        for (Person ally : getAllies()) {
+            Integer torque = ally.getTorque();
+            if (torque == null) {
+                return null;
+            }
+            sum += torque;
+        }
+        return sum;
     }
 
     /** Synergy is the sum of the thrust of the people followed; zero without allies, absent while any ally's thrust is absent. */
