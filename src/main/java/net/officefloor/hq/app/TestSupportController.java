@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "patronId");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -40,7 +40,9 @@ public class TestSupportController {
     @Transactional
     public void reset() {
         audit.clear();
-        jdbc.execute("TRUNCATE TABLE person RESTART IDENTITY");
+        // Person references itself (patron), so delete rather than truncate.
+        jdbc.update("DELETE FROM person");
+        jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
     }
 
     /**
@@ -55,7 +57,8 @@ public class TestSupportController {
                 throw badRequest("unknown fixture key: " + key);
             }
         }
-        for (Map<String, Object> row : rows(fixture.get("people"), "people")) {
+        List<Map<String, Object>> people = rows(fixture.get("people"), "people");
+        for (Map<String, Object> row : people) {
             for (String field : row.keySet()) {
                 if (!PERSON_FIELDS.contains(field)) {
                     throw badRequest("cannot store people." + field);
@@ -76,6 +79,17 @@ public class TestSupportController {
                         integer(id, "people.id"), name, alpha, beta, gamma);
             }
         }
+        // Patrons link people by id, so set them once every person exists.
+        for (Map<String, Object> row : people) {
+            Integer patronId = integer(row.get("patronId"), "people.patronId");
+            if (patronId != null) {
+                if (row.get("id") == null) {
+                    throw badRequest("people.patronId needs the person's id");
+                }
+                jdbc.update("UPDATE person SET patron_id = ? WHERE id = ?", patronId,
+                        integer(row.get("id"), "people.id"));
+            }
+        }
         // Keep generated ids clear of the seeded ones.
         Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM person", Long.class);
         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH " + next);
@@ -89,7 +103,7 @@ public class TestSupportController {
     public Map<String, Object> fixture() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
-                + "beta AS \"beta\", gamma AS \"gamma\" "
+                + "beta AS \"beta\", gamma AS \"gamma\", patron_id AS \"patronId\" "
                 + "FROM person ORDER BY id"));
         return out;
     }

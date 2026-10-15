@@ -6,7 +6,8 @@ import { PeopleService, Person } from './people.service';
 // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
 // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
 // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
-// their alpha, beta and gamma instead of adding.
+// their alpha, beta and gamma instead of adding. Each person may have a patron (another person), shown
+// by name and chosen on the row.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -62,9 +63,11 @@ import { PeopleService, Person } from './people.service';
           <th scope="col">Drift</th>
           <th scope="col">Momentum</th>
           <th scope="col">Tier</th>
+          <th scope="col">Patron</th>
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
+          <th scope="col">Set patron</th>
           <th scope="col">Edit</th>
         </tr>
       </thead>
@@ -79,6 +82,7 @@ import { PeopleService, Person } from './people.service';
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+            <td data-testid="person-patrons">{{ p.patronName ?? '' }}</td>
             <td>
               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">
@@ -126,6 +130,24 @@ import { PeopleService, Person } from './people.service';
                 />
                 <button type="submit" data-testid="person-gamma-save">Save</button>
               </form>
+            </td>
+            <td>
+              <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
+                Patron for {{ p.name }}
+              </label>
+              <select
+                [id]="'person-patron-edit-' + p.id"
+                (change)="setPatron(p, patronSelect.value)"
+                #patronSelect
+                data-testid="person-patron-select"
+              >
+                <option value="" [selected]="p.patronId === null">No patron</option>
+                @for (other of people(); track other.id) {
+                  @if (other.id !== p.id) {
+                    <option [value]="other.id" [selected]="p.patronId === other.id">{{ other.name }}</option>
+                  }
+                }
+              </select>
             </td>
             <td>
               <button
@@ -210,6 +232,11 @@ export class People {
     if (text !== '' && !/^-?\d+$/.test(text)) return;
     const gamma = text === '' ? null : Number(text);
     this.service.setGamma(person.id, gamma).subscribe(() => this.load());
+  }
+
+  protected setPatron(person: Person, value: string): void {
+    const patronId = value === '' ? null : Number(value);
+    this.service.setPatron(person.id, patronId).subscribe(() => this.load());
   }
 
   private load(): void {

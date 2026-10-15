@@ -4,11 +4,14 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
- * (thrust + 3 × drift), which are absent until all three raw values are given. */
+ * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+ * a "patron": another person on the list. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -24,6 +27,10 @@ public class Person {
     private Integer beta;
 
     private Integer gamma;
+
+    @ManyToOne
+    @JoinColumn(name = "patron_id")
+    private Person patron;
 
     protected Person() {
     }
@@ -65,6 +72,14 @@ public class Person {
 
     public void setGamma(Integer gamma) {
         this.gamma = gamma;
+    }
+
+    public Person getPatron() {
+        return patron;
+    }
+
+    public void setPatron(Person patron) {
+        this.patron = patron;
     }
 
     /** The derived values exist only once alpha, beta and gamma are all given. */

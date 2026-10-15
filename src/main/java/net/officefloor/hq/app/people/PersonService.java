@@ -63,4 +63,21 @@ public class PersonService {
             return p;
         });
     }
+
+    /** Sets the patron (another person) by id; null clears it. Refuses oneself or an unknown person. */
+    @Transactional
+    public Optional<Person> setPatron(long id, Long patronId) {
+        return people.findById(id).map(p -> {
+            if (patronId == null) {
+                p.setPatron(null);
+            } else {
+                if (patronId == id) {
+                    throw new IllegalArgumentException("a person cannot be their own patron");
+                }
+                p.setPatron(people.findById(patronId)
+                        .orElseThrow(() -> new IllegalArgumentException("no person " + patronId)));
+            }
+            return p;
+        });
+    }
 }
