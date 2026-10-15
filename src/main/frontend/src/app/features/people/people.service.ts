@@ -48,6 +48,7 @@ export interface Person {
   clout: number | null;
   influence: number | null;
   brace: number | null;
+  strain: number | null;
   regions: string[];
   reach: number | null;
   gust: number | null;
