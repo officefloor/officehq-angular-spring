@@ -1,0 +1,46 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fd72c3d1..61434260 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -14,7 +14,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // momentum + torque ("n/a" while either is missing). Their flux is the average of their patrons' force, rounded down (0 without
+ // patrons, "n/a" while any patron's force is missing). Their crest is blend + flux ("n/a" while either is missing).
+ // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
+-// comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the torque of the people
++// comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the positive torque of the people
+ // they follow (0 when they follow no one, "n/a" while any followed person's torque is missing). Their haul is
+ // crest + swing ("n/a" while either is missing). The sheet's total haul is everyone's haul added together,
+ // leaving out anyone whose haul is "n/a".
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index a7679c24..2c21d3af 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -25,7 +25,7 @@ import java.util.Set;
+ /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
+  * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given) with the derived "force"
+  * (delta × epsilon), a whole-number "zeta" (absent until given) with the derived "sway"
+- * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the average of the patrons' force, rounded down, zero without patrons), "crest" (blend + flux, absent while either is), "swing" (the torque of the people followed added together, zero without any), "haul" (crest + swing, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
++ * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the average of the patrons' force, rounded down, zero without patrons), "crest" (blend + flux, absent while either is), "swing" (the positive torque of the people followed added together, zero without any), "haul" (crest + swing, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+@@ -394,7 +394,7 @@ public class Person {
+         return blend == null || flux == null ? null : blend + flux;
+     }
+ 
+-    /** Swing is the sum of the torque of the people followed; zero without allies, absent while any ally's torque is absent. */
++    /** Swing is the sum of the positive torque of the people followed (zero or below is dropped); zero without allies, absent while any ally's torque is absent. */
+     public Integer getSwing() {
+         int sum = 0;
+         for (Person ally : getAllies()) {
+@@ -402,7 +402,9 @@ public class Person {
+             if (torque == null) {
+                 return null;
+             }
+-            sum += torque;
++            if (torque > 0) {
++                sum += torque;
++            }
+         }
+         return sum;
+     }
