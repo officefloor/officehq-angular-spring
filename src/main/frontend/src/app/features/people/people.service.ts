@@ -6,6 +6,8 @@ import { Observable, map } from 'rxjs';
 // reopened to REWORK and moved forward to FINAL again.
 export type State = 'DRAFT' | 'REVIEW' | 'FINAL' | 'REWORK';
 
+export const STATES: readonly State[] = ['DRAFT', 'REVIEW', 'FINAL', 'REWORK'];
+
 export interface Person {
   id: number;
   name: string;
