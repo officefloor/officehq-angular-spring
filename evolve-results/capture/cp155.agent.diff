@@ -1,0 +1,38 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 39ad303d..6d1205a6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -153,6 +153,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // Each person shows their anchorage: how many groups they belong to (0 without one).
+ // Each person shows their home group: the name of their group ("n/a" without one).
+ // Each person shows their anchor strength: the strength of their home group ("n/a" without one).
++// Each person shows their group rank: the rank of their home group by strength ("n/a" without one).
+ // The sheet's strongest member is the name of the person with the highest scaled anywhere on the sheet,
+ // ties going to the name earlier in the alphabet ("n/a" when nobody has a scaled).
+ // A person may be in several groups; a group's figures count every person in it. Where a person's own
+@@ -452,6 +453,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+           <th scope="col">Breadth</th>
+           <th scope="col">Home group</th>
+           <th scope="col">Anchor strength</th>
++          <th scope="col">Group rank</th>
+           <th scope="col">Rung</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+@@ -559,6 +561,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+             <td data-testid="concept-breadth">{{ breadthOf(p) }}</td>
+             <td data-testid="concept-home-group">{{ p.groupName ?? 'n/a' }}</td>
+             <td data-testid="concept-anchor-strength">{{ anchorStrengthOf(p) ?? 'n/a' }}</td>
++            <td data-testid="concept-group-rank">{{ groupRankOf(p) ?? 'n/a' }}</td>
+             <td data-testid="concept-rung">{{ rungs().get(p.id) ?? 'n/a' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+@@ -939,6 +942,9 @@ export class People {
+   protected anchorStrengthOf(p: Person): number | null {
+     return p.groupId === null ? null : (this.groupStrengths().get(p.groupId) ?? 0);
+   }
++  protected groupRankOf(p: Person): number | null {
++    return p.groupId === null ? null : (this.groupRanks().get(p.groupId) ?? null);
++  }
+   protected belongingOf(p: Person): number | null {
+     if (p.groupId === null || p.scaled === null) return null;
+     return (this.groupStrengths().get(p.groupId) ?? 0) - p.scaled;
