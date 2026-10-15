@@ -1,0 +1,134 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 217e1df4..1fabe334 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -76,6 +76,7 @@ export interface Person {
+   churn: number | null;
+   norm: number | null;
+   outlier: boolean;
++  ebb: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index aa30ad37..19779b7d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -98,6 +98,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
+ // otherwise "no" (also "no" while their norm is "n/a").
+ // The sheet's outlier count is how many of its people are outliers.
++// Their ebb is their blend minus the median blend of everyone on the sheet whose blend can be worked
++// out; for an even count, the lower of the two middle values ("n/a" while their blend is "n/a").
+ // The sheet's final total is the sum of the scaled of its people whose state is FINAL, counting
+ // "n/a" as zero.
+ // The sheet's band counts show how many of its people are in each band, A through E (zero when none
+@@ -343,6 +345,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+           <th scope="col">Churn</th>
+           <th scope="col">Norm</th>
+           <th scope="col">Outlier</th>
++          <th scope="col">Ebb</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -433,6 +436,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+             <td data-testid="concept-churn">{{ p.churn ?? 'n/a' }}</td>
+             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
++            <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index e83df014..2ec52c18 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -12,6 +12,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.Set;
++import java.util.function.Function;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PatchMapping;
+@@ -32,8 +33,8 @@ public class PersonController {
+             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, Integer vector, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer norm, boolean outlier, State state) {
+-        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer norm, boolean outlier, State state, Integer ebb) {
++        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer medianBlend, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+                     p.getGrade(), p.getWeight(), p.getKind(), p.getVerge(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getPivot(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getHaul(), p.getVector(), p.getPhase(), p.getLoad(), p.getTier(),
+@@ -44,7 +45,8 @@ public class PersonController {
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(),
+                     PersonController.norm(p.getScaled(), medianScaled),
+-                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState());
++                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState(),
++                    PersonController.ebb(p.getBlend(), medianBlend));
+         }
+     }
+ 
+@@ -67,6 +69,11 @@ public class PersonController {
+         return scaled == null || medianScaled == null ? null : scaled - medianScaled;
+     }
+ 
++    /** Ebb is blend minus the sheet's median blend; absent while either is absent. */
++    static Integer ebb(Integer blend, Integer medianBlend) {
++        return blend == null || medianBlend == null ? null : blend - medianBlend;
++    }
++
+     /** An outlier has a norm more than 100 away from zero in either direction; without a norm, not an outlier. */
+     static boolean outlier(Integer norm) {
+         return norm != null && Math.abs(norm) > 100;
+@@ -77,11 +84,24 @@ public class PersonController {
+      * the two middle values. Absent when there are none.
+      */
+     private static Integer medianScaled(List<Person> people) {
+-        List<Integer> scaled = people.stream().map(Person::getScaled).filter(s -> s != null).sorted().toList();
+-        if (scaled.isEmpty()) {
++        return median(people, Person::getScaled);
++    }
++
++    /**
++     * The median blend of the people whose blend can be worked out; for an even count, the lower of
++     * the two middle values. Absent when there are none.
++     */
++    private static Integer medianBlend(List<Person> people) {
++        return median(people, Person::getBlend);
++    }
++
++    /** The median of a value over the people who have it, the lower middle for an even count; absent when none do. */
++    private static Integer median(List<Person> people, Function<Person, Integer> value) {
++        List<Integer> values = people.stream().map(value).filter(v -> v != null).sorted().toList();
++        if (values.isEmpty()) {
+             return null;
+         }
+-        return scaled.get((scaled.size() - 1) / 2);
++        return values.get((values.size() - 1) / 2);
+     }
+ 
+     /** Highest momentum first; equal momentum by higher alpha, then by name, earlier in the alphabet first. */
+@@ -109,8 +129,9 @@ public class PersonController {
+         List<Person> people = service.list(sheetId);
+         Map<Long, Integer> ranks = ranks(people);
+         Integer medianScaled = medianScaled(people);
++        Integer medianBlend = medianBlend(people);
+         LocalDate anchor = service.anchor(sheetId);
+-        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, anchor)).toList();
++        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, medianBlend, anchor)).toList();
+     }
+ 
+     @PostMapping
+@@ -249,7 +270,7 @@ public class PersonController {
+     /** A person's view, ranked among the people on their sheet. */
+     private PersonView view(String sheetId, Person person) {
+         List<Person> people = service.list(sheetId);
+-        return PersonView.of(person, ranks(people), medianScaled(people), service.anchor(sheetId));
++        return PersonView.of(person, ranks(people), medianScaled(people), medianBlend(people), service.anchor(sheetId));
+     }
+ 
+     /**
