@@ -95,6 +95,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // that comes first alphabetically ("n/a" when nobody has a charge).
 // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
 // The sheet's grand flow is everyone's flow added together, leaving out anyone whose flow is "n/a".
+// The sheet's top flow is the name of the person with the highest flow, ties going to the name
+// that comes first alphabetically ("n/a" when nobody has a flow).
 // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
@@ -229,6 +231,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
     <p>Total yield: <strong data-testid="rollup-total-yield">{{ totalYield() }}</strong></p>
     <p>Total tide: <strong data-testid="rollup-total-tide">{{ totalTide() }}</strong></p>
     <p>Grand flow: <strong data-testid="rollup-grand-flow">{{ grandFlow() }}</strong></p>
+    <p>Top flow: <strong data-testid="rollup-top-flow">{{ topFlow() ?? 'n/a' }}</strong></p>
     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
     <p>Strays: <strong data-testid="rollup-stray-count">{{ strayCount() }}</strong></p>
     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
@@ -816,6 +819,21 @@ export class People {
     }
     return top?.name ?? null;
   });
+  protected readonly topFlow = computed(() => {
+    let top: Person | null = null;
+    for (const p of this.people()) {
+      if (p.flow === null) continue;
+      if (
+        top === null ||
+        p.flow > top.flow! ||
+        (p.flow === top.flow && p.name.localeCompare(top.name) < 0)
+      ) {
+        top = p;
+      }
+    }
+    return top?.name ?? null;
+  });
+
   protected readonly topCharge = computed(() => {
     let top: Person | null = null;
     for (const p of this.people()) {
