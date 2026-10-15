@@ -53,8 +53,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // A from 500 ("n/a" while adjusted is "n/a").
 // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
 // adjusted is "n/a").
-// Their norm is their scaled minus the average scaled, rounded down, of everyone on the sheet whose
-// scaled can be worked out ("n/a" while their scaled is "n/a").
+// Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
+// worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
 // otherwise "no" (also "no" while their norm is "n/a").
 // The sheet's outlier count is how many of its people are outliers.
