@@ -14,7 +14,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // momentum + torque ("n/a" while either is missing). Their flux is the average of their patrons' force, rounded down (0 without
 // patrons, "n/a" while any patron's force is missing). Their crest is blend + flux ("n/a" while either is missing).
 // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
-// comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the torque of the people
+// comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the positive torque of the people
 // they follow (0 when they follow no one, "n/a" while any followed person's torque is missing). Their haul is
 // crest + swing ("n/a" while either is missing). The sheet's total haul is everyone's haul added together,
 // leaving out anyone whose haul is "n/a".
