@@ -1,0 +1,42 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e3e78905..d5419414 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -13,6 +13,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // and their phase classifies torque: EBB below zero, RUN up to 199, PEAK from 200. Their blend is
+ // momentum + torque ("n/a" while either is missing). Their flux is the sum of their patrons' force (0 without
+ // patrons, "n/a" while any patron's force is missing). Their crest is blend + flux ("n/a" while either is missing).
++// The sheet's top crest is the name of the person with the highest crest, ties going to the name that
++// comes first alphabetically ("n/a" when nobody has a crest).
+ // Each person may have any number of patrons (other
+ // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
+ // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
+@@ -172,6 +174,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
+     <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
+     <p>Top influence: <strong data-testid="rollup-top-influence">{{ topInfluence() ?? 'n/a' }}</strong></p>
++    <p>Top crest: <strong data-testid="rollup-top-crest">{{ topCrest() ?? 'n/a' }}</strong></p>
+     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
+     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
+     <section aria-labelledby="region-counts-heading">
+@@ -618,6 +621,20 @@ export class People {
+     }
+     return top?.name ?? null;
+   });
++  protected readonly topCrest = computed(() => {
++    let top: Person | null = null;
++    for (const p of this.people()) {
++      if (p.crest === null) continue;
++      if (
++        top === null ||
++        p.crest > top.crest! ||
++        (p.crest === top.crest && p.name.localeCompare(top.name) < 0)
++      ) {
++        top = p;
++      }
++    }
++    return top?.name ?? null;
++  });
+ 
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.pattern(/\S/)]],
