@@ -1,0 +1,377 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 6fc5b41..d1e2123 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -29,6 +29,8 @@ export interface Person {
+   influence: number | null;
+   regions: string[];
+   reach: number | null;
++  allies: Ally[];
++  allyCount: number;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+@@ -46,6 +48,12 @@ export interface Patron {
+   name: string;
+ }
+ 
++// An ally: being allies goes both ways, so each of two allies lists the other.
++export interface Ally {
++  id: number;
++  name: string;
++}
++
+ export interface NewPerson {
+   name: string;
+   alpha: number | null;
+@@ -112,6 +120,11 @@ export class PeopleService {
+   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
+   }
++
++  // Sets a person's allies by id; each ally then also has this person as an ally.
++  setAllies(sheet: string | null, id: number, allyIds: number[]): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { allyIds }, { params: sheetParams(sheet) });
++  }
+ }
+ 
+ function sheetParams(sheet: string | null): HttpParams {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index eba347b..f2c23e3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -41,6 +41,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
+ // The sheet's region counts show, for each region its people have, how many of them are in it
+ // (a person counts once in every region they belong to), ordered by region code.
++// Each person may have any number of allies (other people), chosen on the row; being allies goes both
++// ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -154,6 +156,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Load</th>
+           <th scope="col">Tier</th>
+           <th scope="col">Patrons</th>
++          <th scope="col">Allies</th>
++          <th scope="col">Ally count</th>
+           <th scope="col">Backing</th>
+           <th scope="col">Net</th>
+           <th scope="col">Effective</th>
+@@ -168,6 +172,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Set regions</th>
+           <th scope="col">Set active</th>
+           <th scope="col">Set patrons</th>
++          <th scope="col">Set allies</th>
+           <th scope="col">Edit</th>
+         </tr>
+       </thead>
+@@ -192,6 +197,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
+             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
++            <td data-testid="person-allies">{{ allyNames(p) }}</td>
++            <td data-testid="person-ally-count">{{ p.allyCount }}</td>
+             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
+             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
+@@ -308,6 +315,24 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+                 }
+               </select>
+             </td>
++            <td>
++              <label class="visually-hidden" [for]="'person-ally-edit-' + p.id">
++                Allies for {{ p.name }}
++              </label>
++              <select
++                multiple
++                [id]="'person-ally-edit-' + p.id"
++                (change)="setAllies(p, allySelect)"
++                #allySelect
++                data-testid="person-ally-select"
++              >
++                @for (other of people(); track other.id) {
++                  @if (other.id !== p.id) {
++                    <option [value]="other.id" [selected]="hasAlly(p, other)">{{ other.name }}</option>
++                  }
++                }
++              </select>
++            </td>
+             <td>
+               <button
+                 type="button"
+@@ -470,6 +495,19 @@ export class People {
+     this.service.setPatrons(this.sheet(), person.id, patronIds).subscribe(() => this.load());
+   }
+ 
++  protected allyNames(person: Person): string {
++    return person.allies.map((ally) => ally.name).join(', ');
++  }
++
++  protected hasAlly(person: Person, other: Person): boolean {
++    return person.allies.some((ally) => ally.id === other.id);
++  }
++
++  protected setAllies(person: Person, select: HTMLSelectElement): void {
++    const allyIds = Array.from(select.selectedOptions, (option) => Number(option.value));
++    this.service.setAllies(this.sheet(), person.id, allyIds).subscribe(() => this.load());
++  }
++
+   private load(): void {
+     const sheet = this.sheet();
+     this.service.sheet(sheet).subscribe((s) => {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1f8fc13..6d060ec 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -36,7 +36,9 @@ public class TestSupportController {
+ 
+     private static final Set<String> REGION_FIELDS = Set.of("personId", "region");
+ 
+-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions");
++    private static final Set<String> ALLY_FIELDS = Set.of("a", "b");
++
++    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "allies");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -53,6 +55,7 @@ public class TestSupportController {
+         audit.clear();
+         // Person is referenced by its patrons, so delete rather than truncate.
+         jdbc.update("DELETE FROM person_patron");
++        jdbc.update("DELETE FROM person_ally");
+         jdbc.update("DELETE FROM person_region");
+         jdbc.update("DELETE FROM person");
+         jdbc.update("DELETE FROM sheet");
+@@ -69,7 +72,7 @@ public class TestSupportController {
+     public void seed(@RequestBody Map<String, Object> fixture) {
+         for (String key : fixture.keySet()) {
+             if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
+-                    && !key.equals("sheets")) {
++                    && !key.equals("allies") && !key.equals("sheets")) {
+                 throw badRequest("unknown fixture key: " + key);
+             }
+         }
+@@ -79,7 +82,7 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
+         }
+         // People, patrons and regions at the top level are on the unnamed sheet.
+-        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), "");
++        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("allies"), "");
+         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
+             for (String field : sheet.keySet()) {
+                 if (!SHEET_FIELDS.contains(field)) {
+@@ -90,7 +93,7 @@ public class TestSupportController {
+                 throw badRequest("sheets.id is required");
+             }
+             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
+-            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), "sheets.");
++            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("allies"), "sheets.");
+         }
+     }
+ 
+@@ -122,8 +125,9 @@ public class TestSupportController {
+         return ids.get(0);
+     }
+ 
+-    /** Inserts one sheet's people and then their patrons and regions; a null sheet id is the unnamed sheet. */
+-    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, String prefix) {
++    /** Inserts one sheet's people and then their patrons, regions and allies; a null sheet id is the unnamed sheet. */
++    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, Object allyRows,
++            String prefix) {
+         for (Map<String, Object> row : rows(peopleRows, prefix + "people")) {
+             for (String field : row.keySet()) {
+                 if (!PERSON_FIELDS.contains(field)) {
+@@ -177,6 +181,24 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO person_region (person_id, region) VALUES (?, ?)",
+                     internalId(sheetId, personId, prefix + "regions.personId"), region);
+         }
++        // Allies link two people by id, both ways; each pair is stored once as given.
++        for (Map<String, Object> row : rows(allyRows, prefix + "allies")) {
++            for (String field : row.keySet()) {
++                if (!ALLY_FIELDS.contains(field)) {
++                    throw badRequest("cannot store " + prefix + "allies." + field);
++                }
++            }
++            Integer a = integer(row.get("a"), prefix + "allies.a");
++            Integer b = integer(row.get("b"), prefix + "allies.b");
++            if (a == null || b == null) {
++                throw badRequest(prefix + "allies rows need a and b");
++            }
++            if (a.equals(b)) {
++                throw badRequest(prefix + "allies: a person cannot be their own ally");
++            }
++            jdbc.update("INSERT INTO person_ally (person_id, ally_id) VALUES (?, ?)",
++                    internalId(sheetId, a, prefix + "allies.a"), internalId(sheetId, b, prefix + "allies.b"));
++        }
+     }
+ 
+     /**
+@@ -220,6 +242,9 @@ public class TestSupportController {
+         out.put("regions", jdbc.queryForList("SELECT p.local_id AS \"personId\", pr.region AS \"region\" "
+                 + "FROM person_region pr JOIN person p ON p.id = pr.person_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, pr.region", args));
++        out.put("allies", jdbc.queryForList("SELECT p.local_id AS \"a\", o.local_id AS \"b\" "
++                + "FROM person_ally pa JOIN person p ON p.id = pa.person_id JOIN person o ON o.id = pa.ally_id "
++                + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+         return out;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 8dd5783..0bdc5c1 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -33,7 +33,8 @@ import java.util.Set;
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
+  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+- * person's regions, of momentum times that region's multiplier. */
++ * person's regions, of momentum times that region's multiplier. A person may have any number of "allies":
++ * other people on the list, where being allies goes both ways. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -73,6 +74,16 @@ public class Person {
+             inverseJoinColumns = @JoinColumn(name = "patron_id"))
+     private Set<Person> patrons = new HashSet<>();
+ 
++    /** Allies linked from this person; each pair is stored once, on whichever side it was made from. */
++    @ManyToMany(fetch = FetchType.EAGER)
++    @JoinTable(name = "person_ally", joinColumns = @JoinColumn(name = "person_id"),
++            inverseJoinColumns = @JoinColumn(name = "ally_id"))
++    private Set<Person> alliesMade = new HashSet<>();
++
++    /** Allies linked to this person from the other side. */
++    @ManyToMany(mappedBy = "alliesMade", fetch = FetchType.EAGER)
++    private Set<Person> alliesOf = new HashSet<>();
++
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "person_region", joinColumns = @JoinColumn(name = "person_id"))
+     @Column(name = "region")
+@@ -188,6 +199,32 @@ public class Person {
+         this.patrons = new HashSet<>(patrons);
+     }
+ 
++    /** The allies, from either side of the link, sorted by name. */
++    public List<Person> getAllies() {
++        Set<Person> allies = new HashSet<>(alliesMade);
++        allies.addAll(alliesOf);
++        return allies.stream()
++                .sorted(Comparator.comparing(Person::getName).thenComparing(Person::getId))
++                .toList();
++    }
++
++    /** Replaces the allies, unlinking any no longer given from both sides and linking new ones from this side. */
++    public void setAllies(Set<Person> allies) {
++        for (Person other : new HashSet<>(alliesOf)) {
++            if (!allies.contains(other)) {
++                other.alliesMade.remove(this);
++                alliesOf.remove(other);
++            }
++        }
++        alliesMade.retainAll(allies);
++        for (Person ally : allies) {
++            if (!alliesMade.contains(ally) && !alliesOf.contains(ally)) {
++                alliesMade.add(ally);
++                ally.alliesOf.add(this);
++            }
++        }
++    }
++
+     /** The derived values exist only once alpha, beta and gamma are all given. */
+     private boolean complete() {
+         return alpha != null && beta != null && gamma != null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 547c347..51e8eb6 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -30,7 +30,8 @@ public class PersonController {
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+-            Integer clout, Integer influence, List<String> regions, Integer reach) {
++            Integer clout, Integer influence, List<String> regions, Integer reach,
++            List<PatronView> allies, int allyCount) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -38,7 +39,9 @@ public class PersonController {
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+-                    p.getInfluence(), p.getRegions(), p.getReach());
++                    p.getInfluence(), p.getRegions(), p.getReach(),
++                    p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
++                    p.getAllies().size());
+         }
+     }
+ 
+@@ -93,7 +96,7 @@ public class PersonController {
+ 
+     /**
+      * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, regions (a list of codes), active
+-     * (true or false) and patronIds (a list of ids on that sheet) the body names; a null value clears it.
++     * (true or false), patronIds and allyIds (lists of ids on that sheet) the body names; a null value clears it.
+      */
+     @PatchMapping("/{id}")
+     public PersonView update(@RequestParam(required = false) String sheet, @PathVariable long id,
+@@ -147,6 +150,21 @@ public class PersonController {
+                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+             }
+         }
++        if (update.containsKey("allyIds")) {
++            List<Long> allyIds = new ArrayList<>();
++            if (update.get("allyIds") instanceof List<?> ids) {
++                for (Object allyId : ids) {
++                    allyIds.add(integer(allyId).longValue());
++                }
++            } else if (update.get("allyIds") != null) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "allyIds must be a list");
++            }
++            try {
++                person = service.setAllies(sheetId, id, allyIds);
++            } catch (IllegalArgumentException e) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
++            }
++        }
+         return person.map(p -> view(sheetId, p))
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index cc04973..48e6d11 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -149,4 +149,21 @@ public class PersonService {
+             return p;
+         });
+     }
++
++    /** Sets the allies (other people on the same sheet) by their id on that sheet, both ways; an empty list clears them. Refuses oneself or an unknown person. */
++    @Transactional
++    public Optional<Person> setAllies(String sheetId, long id, Collection<Long> allyIds) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            Set<Person> allies = new HashSet<>();
++            for (Long allyId : allyIds) {
++                if (allyId == id) {
++                    throw new IllegalArgumentException("a person cannot be their own ally");
++                }
++                allies.add(people.findBySheetIdAndLocalId(sheetId, allyId)
++                        .orElseThrow(() -> new IllegalArgumentException("no person " + allyId + " on this sheet")));
++            }
++            p.setAllies(allies);
++            return p;
++        });
++    }
+ }
+diff --git a/src/main/resources/db/migration/V13__person_allies.sql b/src/main/resources/db/migration/V13__person_allies.sql
+new file mode 100644
+index 0000000..9cecffa
+--- /dev/null
++++ b/src/main/resources/db/migration/V13__person_allies.sql
+@@ -0,0 +1,6 @@
++-- Two people may be allies; the link goes both ways, so each pair is stored once, in the order it was given.
++CREATE TABLE person_ally (
++    person_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    ally_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    PRIMARY KEY (person_id, ally_id)
++);
