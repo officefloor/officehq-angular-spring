@@ -176,6 +176,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // Each person shows their group rank: the rank of their home group by strength ("n/a" without one).
 // Each person shows their anchor cohesion: the cohesion of their home group ("n/a" without one).
 // Each person shows their reach span: their home group's strength plus its cohesion ("n/a" without one).
+// Each person shows their global rank: their place among everyone on the sheet by scaled, highest
+// first (1), with equal scaled placed by name ("n/a" while their scaled is "n/a").
 // The sheet's strongest member is the name of the person with the highest scaled anywhere on the sheet,
 // ties going to the name earlier in the alphabet ("n/a" when nobody has a scaled).
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
@@ -496,6 +498,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Depth</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
+          <th scope="col">Global rank</th>
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
@@ -611,6 +614,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-depth">{{ depthOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+            <td data-testid="concept-rank-global">{{ globalRanks().get(p.id) ?? 'n/a' }}</td>
             <td>
               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">
@@ -1259,6 +1263,12 @@ export class People {
       }
     }
     return top?.name ?? null;
+  });
+  protected readonly globalRanks = computed(() => {
+    const ranked = this.people()
+      .filter((p) => p.scaled !== null)
+      .sort((a, b) => b.scaled! - a.scaled! || a.name.localeCompare(b.name));
+    return new Map(ranked.map((p, i) => [p.id, i + 1]));
   });
   protected readonly strongestMember = computed(() => {
     let top: Person | null = null;
