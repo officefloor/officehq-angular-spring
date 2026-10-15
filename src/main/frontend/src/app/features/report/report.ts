@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { PeopleService, Person } from '../people/people.service';
 
 // The report: the unnamed sheet's ledger (the grand total of everyone's scaled, leaving out anyone
-// whose scaled is "n/a") and its headcount, the same figures the worksheet shows. It reads them from
+// whose scaled is "n/a"), its headcount and the mean (the ledger per person, rounded down), the same figures the worksheet shows. It reads them from
 // the server itself and re-reads them whenever the people change.
 @Component({
   selector: 'app-report',
@@ -11,6 +11,7 @@ import { PeopleService, Person } from '../people/people.service';
       <h2 id="report-title">Report</h2>
       <p>Grand total: <strong data-testid="report-ledger">{{ ledger() }}</strong></p>
       <p>People: <strong data-testid="report-headcount">{{ headcount() }}</strong></p>
+      <p>Average per person: <strong data-testid="report-mean">{{ mean() }}</strong></p>
     </section>
   `,
 })
@@ -22,6 +23,9 @@ export class Report {
     this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
   );
   protected readonly headcount = computed(() => this.people().length);
+  protected readonly mean = computed(() =>
+    this.headcount() === 0 ? 0 : Math.floor(this.ledger() / this.headcount()),
+  );
 
   constructor() {
     effect(() => {
