@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PeopleService, Person } from './people.service';
 
@@ -10,7 +10,8 @@ import { PeopleService, Person } from './people.service';
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 // Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
-// by name; without a momentum the rank shows "n/a".
+// by name; without a momentum the rank shows "n/a". The sheet's leader is the name of the rank-1
+// person ("n/a" when nobody is ranked).
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
@@ -69,6 +70,8 @@ import { PeopleService, Person } from './people.service';
         <button type="button" (click)="cancelEdit()" data-testid="person-form-cancel">Cancel</button>
       }
     </form>
+
+    <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
 
     @if (people().length === 0) {
       <p data-testid="people-empty">No people yet.</p>
@@ -199,6 +202,7 @@ export class People {
   protected readonly sheet = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly editing = signal<Person | null>(null);
+  protected readonly leader = computed(() => this.people().find((p) => p.rank === 1)?.name ?? null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
