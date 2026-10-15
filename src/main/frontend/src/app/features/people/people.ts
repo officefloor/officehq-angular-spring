@@ -90,7 +90,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their grip is their yield minus their coil ("n/a" while either is "n/a").
 // Their charge is their vector plus their yield ("n/a" while either is "n/a").
 // Their churn is their tide minus their vector ("n/a" while either is "n/a").
-// Their flow is their yield plus their charge plus their tide ("n/a" while any is "n/a").
+// Their flow is their yield plus their charge ("n/a" while either is "n/a").
 // The sheet's top charge is the name of the person with the highest charge, ties going to the name
 // that comes first alphabetically ("n/a" when nobody has a charge).
 // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
