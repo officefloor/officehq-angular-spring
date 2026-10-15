@@ -1,0 +1,23 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 31d71079..8b283c17 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -161,7 +161,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // Each person shows their uplift: their weave minus their tether ("n/a" when either is "n/a").
+ // Each person shows their mesh: their scaled multiplied by their group's size ("n/a" when they have no
+ // group or their scaled is "n/a").
+-// Each person shows their footprint: their scaled plus their mesh ("n/a" while their mesh is "n/a").
++// Each person shows their footprint: twice their scaled ("n/a" while their scaled is "n/a").
+ // Each person shows their rung: (their group's size less their standing in it) over the group's size, as a
+ // percentage, rounded; a group of one is 100 ("n/a" without a standing).
+ // Each person shows their depth: their standing in their group less one ("n/a" without a standing).
+@@ -1032,8 +1032,7 @@ export class People {
+     return p.scaled * (this.groupSizes().get(p.groupId) ?? 0);
+   }
+   protected footprintOf(p: Person): number | null {
+-    const mesh = this.meshOf(p);
+-    return mesh === null || p.scaled === null ? null : p.scaled + mesh;
++    return p.scaled === null ? null : 2 * p.scaled;
+   }
+   protected depthOf(p: Person): number | null {
+     const standing = this.standings().get(p.id);
