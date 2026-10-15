@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6d1205a6..4dbe49ba 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -135,7 +135,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // people have an effective).
+ // Each group shows its max: the highest scaled of the people in it, ignoring "n/a" ("n/a" when none of its
+ // people have a scaled).
+-// Each group shows its headroom: its max minus its cohesion ("n/a" while either is "n/a").
++// Each group shows its headroom: the highest scaled of the people in it minus the lowest, ignoring "n/a"
++// ("n/a" when none of its people have a scaled).
+ // Each person shows their share: their scaled as a percentage of their group's strength, rounded to the nearest whole percent
+ // ("n/a" when their group's strength is zero, they have no group or their scaled is "n/a").
+ // Each person shows their standing: their place within their group by scaled, highest first (1), with
+@@ -1048,12 +1049,13 @@ export class People {
+     return maxes;
+   });
+   protected readonly groupHeadrooms = computed(() => {
+-    const cohesions = this.groupCohesions();
+-    const headrooms = new Map<number, number>();
+-    for (const [groupId, max] of this.groupMaxes()) {
+-      const cohesion = cohesions.get(groupId);
+-      if (cohesion !== undefined) headrooms.set(groupId, max - cohesion);
++    const lows = new Map<number, number>();
++    for (const p of this.people()) {
++      if (p.scaled === null) continue;
++      for (const g of p.groups) lows.set(g.id, Math.min(lows.get(g.id) ?? p.scaled, p.scaled));
+     }
++    const headrooms = new Map<number, number>();
++    for (const [groupId, max] of this.groupMaxes()) headrooms.set(groupId, max - lows.get(groupId)!);
+     return headrooms;
+   });
+   protected readonly standings = computed(() => {
