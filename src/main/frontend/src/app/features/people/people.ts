@@ -21,6 +21,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
 // its own people, and a sheet only ever shows (and edits) its own.
+// The sheet shows its anchor date (today when none is set), and each person their onset date.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -40,6 +41,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
         <span data-testid="sheet-none">none</span>
       }
     </p>
+    <p>Anchor: <strong data-testid="sheet-anchor">{{ anchor() }}</strong></p>
 
     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
       <label for="person-name">Name</label>
@@ -97,6 +99,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Beta</th>
           <th scope="col">Gamma</th>
           <th scope="col">Grade</th>
+          <th scope="col">Onset</th>
           <th scope="col">Weight</th>
           <th scope="col">Thrust</th>
           <th scope="col">Drift</th>
@@ -124,6 +127,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-beta">{{ p.beta }}</td>
             <td data-testid="person-gamma">{{ p.gamma }}</td>
             <td data-testid="person-grade">{{ p.grade }}</td>
+            <td data-testid="person-onset">{{ p.onset }}</td>
             <td data-testid="concept-weight">{{ p.weight ?? 'n/a' }}</td>
             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
@@ -239,6 +243,7 @@ export class People {
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
   protected readonly sheet = signal<string | null>(null);
+  protected readonly anchor = signal('');
   protected readonly saving = signal(false);
   protected readonly editing = signal<Person | null>(null);
   protected readonly leader = computed(() => this.people().find((p) => p.rank === 1)?.name ?? null);
@@ -343,6 +348,9 @@ export class People {
 
   private load(): void {
     const sheet = this.sheet();
+    this.service.sheet(sheet).subscribe((s) => {
+      if (this.sheet() === sheet) this.anchor.set(s.anchor);
+    });
     this.service.list(sheet).subscribe((people) => {
       if (this.sheet() === sheet) this.people.set(people);
     });

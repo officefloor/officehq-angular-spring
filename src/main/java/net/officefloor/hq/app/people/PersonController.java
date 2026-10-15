@@ -2,6 +2,7 @@ package net.officefloor.hq.app.people;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -26,13 +27,13 @@ public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
-            Integer backing, Integer net, Integer rank, Integer percentile) {
+            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset) {
         static PersonView of(Person p, Map<Long, Integer> ranks) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
-                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()));
+                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset());
         }
     }
 

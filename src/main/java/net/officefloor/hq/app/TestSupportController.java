@@ -1,5 +1,7 @@
 package net.officefloor.hq.app;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,11 +29,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset");
 
     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
-    private static final Set<String> SHEET_FIELDS = Set.of("id", "people", "patrons");
+    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -50,6 +52,7 @@ public class TestSupportController {
         jdbc.update("DELETE FROM person_patron");
         jdbc.update("DELETE FROM person");
         jdbc.update("DELETE FROM sheet");
+        jdbc.update("DELETE FROM unnamed_sheet");
         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
     }
 
@@ -61,9 +64,14 @@ public class TestSupportController {
     @Transactional
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
-            if (!key.equals("people") && !key.equals("patrons") && !key.equals("sheets")) {
+            if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("sheets")) {
                 throw badRequest("unknown fixture key: " + key);
             }
+        }
+        // The top-level anchor, people and patrons are the unnamed sheet's.
+        LocalDate anchor = date(fixture.get("anchor"), "anchor");
+        if (anchor != null) {
+            jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
         }
         // People and patrons at the top level are on the unnamed sheet.
         seedSheet(null, fixture.get("people"), fixture.get("patrons"), "");
@@ -76,7 +84,7 @@ public class TestSupportController {
             if (!(sheet.get("id") instanceof String id) || id.isBlank()) {
                 throw badRequest("sheets.id is required");
             }
-            jdbc.update("INSERT INTO sheet (id) VALUES (?)", id);
+            jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
             seedSheet(id, sheet.get("people"), sheet.get("patrons"), "sheets.");
         }
     }
@@ -124,10 +132,12 @@ public class TestSupportController {
             Integer beta = integer(row.get("beta"), prefix + "people.beta");
             Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
             String grade = grade(row.get("grade"), prefix + "people.grade");
+            LocalDate onset = date(row.get("onset"), prefix + "people.onset");
             // A person's id is their id within the sheet; the internal key is generated.
             Integer localId = integer(row.get("id"), prefix + "people.id");
-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade);
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset);
         }
         // Patrons link people by id, so add them once every person exists.
         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
@@ -154,11 +164,20 @@ public class TestSupportController {
      */
     @GetMapping("/fixture")
     public Map<String, Object> fixture() {
-        Map<String, Object> out = new LinkedHashMap<>(sheetContents(null));
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (String anchor : jdbc.queryForList("SELECT CAST(anchor AS VARCHAR) FROM unnamed_sheet WHERE anchor IS NOT NULL",
+                String.class)) {
+            out.put("anchor", anchor);
+        }
+        out.putAll(sheetContents(null));
         List<Map<String, Object>> sheets = new ArrayList<>();
-        for (String id : jdbc.queryForList("SELECT id FROM sheet ORDER BY id", String.class)) {
+        for (Map<String, Object> row : jdbc.queryForList("SELECT id, CAST(anchor AS VARCHAR) AS anchor FROM sheet ORDER BY id")) {
             Map<String, Object> sheet = new LinkedHashMap<>();
-            sheet.put("id", id);
+            sheet.put("id", row.get("id"));
+            if (row.get("anchor") != null) {
+                sheet.put("anchor", row.get("anchor"));
+            }
+            String id = (String) row.get("id");
             sheet.putAll(sheetContents(id));
             sheets.add(sheet);
         }
@@ -171,7 +190,8 @@ public class TestSupportController {
         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
-                + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+                + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\", "
+                + "CAST(onset AS VARCHAR) AS \"onset\" FROM person p WHERE " + where + " ORDER BY local_id", args));
         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
@@ -210,6 +230,17 @@ public class TestSupportController {
             return Grade.parse(String.valueOf(value)).name();
         } catch (IllegalArgumentException e) {
             throw badRequest(field + ": " + e.getMessage());
+        }
+    }
+
+    private static LocalDate date(Object value, String field) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(String.valueOf(value));
+        } catch (DateTimeParseException e) {
+            throw badRequest(field + " must be a date as yyyy-mm-dd, got " + value);
         }
     }
 

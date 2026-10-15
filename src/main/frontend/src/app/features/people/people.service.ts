@@ -20,6 +20,13 @@ export interface Person {
   net: number | null;
   rank: number | null;
   percentile: number | null;
+  onset: string | null;
+}
+
+// A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+export interface Sheet {
+  id: string | null;
+  anchor: string;
 }
 
 export type Grade = 'LOW' | 'MID' | 'HIGH';
@@ -47,6 +54,11 @@ export class PeopleService {
   // The people on a sheet; null is the unnamed sheet.
   list(sheet: string | null): Observable<Person[]> {
     return this.http.get<Person[]>('/api/people', { params: sheetParams(sheet) });
+  }
+
+  // A sheet (with its anchor); null is the unnamed sheet.
+  sheet(sheet: string | null): Observable<Sheet> {
+    return this.http.get<Sheet>('/api/sheet', { params: sheetParams(sheet) });
   }
 
   // Opens a named sheet, starting a new empty one when no sheet has that id yet.

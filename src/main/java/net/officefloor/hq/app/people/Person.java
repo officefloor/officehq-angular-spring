@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -22,7 +23,8 @@ import java.util.Set;
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
- * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight. */
+ * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+ * A person may have an "onset" date (absent until given). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -45,6 +47,8 @@ public class Person {
 
     @Enumerated(EnumType.STRING)
     private Grade grade;
+
+    private LocalDate onset;
 
     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
     @Column(name = "sheet_id")
@@ -113,6 +117,10 @@ public class Person {
 
     public void setGrade(Grade grade) {
         this.grade = grade;
+    }
+
+    public LocalDate getOnset() {
+        return onset;
     }
 
     /** Weight comes from the grade: LOW 1, MID 3, HIGH 5; absent without a grade. */

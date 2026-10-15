@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.people;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -18,11 +19,15 @@ public class PersonService {
 
     private final SheetRepository sheets;
 
+    private final UnnamedSheetRepository unnamedSheet;
+
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetRepository sheets, UnnamedSheetRepository unnamedSheet,
+            Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.unnamedSheet = unnamedSheet;
         this.audit = audit;
     }
 
@@ -36,6 +41,18 @@ public class PersonService {
     @Transactional(readOnly = true)
     public boolean sheetExists(String sheetId) {
         return sheets.existsById(sheetId);
+    }
+
+    /**
+     * A sheet's anchor date: the one set on it, or today when none is set; a null sheet id is the
+     * unnamed sheet.
+     */
+    @Transactional(readOnly = true)
+    public LocalDate anchor(String sheetId) {
+        Optional<LocalDate> anchor = sheetId == null
+                ? unnamedSheet.findById(UnnamedSheet.ID).map(UnnamedSheet::getAnchor)
+                : sheets.findById(sheetId).map(Sheet::getAnchor);
+        return anchor.orElseGet(LocalDate::now);
     }
 
     /** Opens a named sheet, storing it as a new empty sheet when it does not exist yet. */
