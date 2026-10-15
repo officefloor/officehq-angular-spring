@@ -29,7 +29,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // ("n/a" while net is).
 // The sheet's active count is how many of its people are active, and its total effective is everyone's
 // effective added together, leaving out anyone whose effective is "n/a".
-// Their clout is their patrons' effective added together (zero without patrons; "n/a" while any
+// Their clout is the average of their patrons' effective, rounded down (zero without patrons; "n/a" while any
 // patron's effective is "n/a").
 // Their influence is their effective plus their clout ("n/a" while either is "n/a").
 // The sheet's top influence is the name of the person with the highest influence, ties going to the
