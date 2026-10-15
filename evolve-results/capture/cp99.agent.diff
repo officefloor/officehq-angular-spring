@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b6c9d6d6..21a3ceb3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -83,6 +83,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their lift is their blend times their drag's multiplier: L0 0, L1 1, L2 2, L3 3 ("n/a" while blend is).
+ // Their yield is their pivot plus their lift ("n/a" while either is "n/a").
+ // Their grip is their yield minus their coil ("n/a" while either is "n/a").
++// The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
+ // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
+ // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
+ // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
+@@ -206,6 +207,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+     <p>Total pivot: <strong data-testid="rollup-total-pivot">{{ totalPivot() }}</strong></p>
+     <p>Total gust: <strong data-testid="rollup-total-gust">{{ totalGust() }}</strong></p>
+     <p>Total brace: <strong data-testid="rollup-total-brace">{{ totalBrace() }}</strong></p>
++    <p>Total yield: <strong data-testid="rollup-total-yield">{{ totalYield() }}</strong></p>
+     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
+     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
+     <section aria-labelledby="region-counts-heading">
+@@ -689,6 +691,9 @@ export class People {
+   protected readonly totalBrace = computed(() =>
+     this.people().reduce((total, p) => total + (p.brace ?? 0), 0),
+   );
++  protected readonly totalYield = computed(() =>
++    this.people().reduce((total, p) => total + (p.yield ?? 0), 0),
++  );
+   protected readonly finalTotal = computed(() =>
+     this.people()
+       .filter((p) => p.state === 'FINAL')
