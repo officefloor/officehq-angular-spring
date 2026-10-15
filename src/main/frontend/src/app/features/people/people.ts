@@ -188,6 +188,9 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // The sheet's apex name is the name of the person with the highest scaled anywhere on the sheet, and its
 // runner-up the name of the second highest, ties going to the name earlier in the alphabet ("n/a" when
 // there is no such person).
+// The sheet's top set is the names of the three people with the highest scaled, highest first, ties
+// going to the name earlier in the alphabet, joined by commas (fewer when fewer have a scaled; "n/a"
+// when nobody has one).
 // The sheet's gap is the highest scaled on the sheet minus the lowest ("n/a" when fewer than two
 // people have a scaled).
 // The sheet's range is the highest scaled on the sheet minus the lowest ("n/a" when nobody has a scaled).
@@ -369,6 +372,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
     <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
     <p>Runner-up: <strong data-testid="rollup-runnerup">{{ runnerUp() ?? 'n/a' }}</strong></p>
+    <p>Top three: <strong data-testid="rollup-topset">{{ topSet() ?? 'n/a' }}</strong></p>
     <p>Gap: <strong data-testid="rollup-gapval">{{ gapVal() ?? 'n/a' }}</strong></p>
     <p>Range: <strong data-testid="rollup-range-scaled">{{ rangeScaled() ?? 'n/a' }}</strong></p>
     <p>Coverage (scaled 500 or more): <strong data-testid="rollup-coverage">{{ coverage() }}</strong></p>
@@ -1323,6 +1327,10 @@ export class People {
   );
   protected readonly apexName = computed(() => this.scaledOrder()[0]?.name ?? null);
   protected readonly runnerUp = computed(() => this.scaledOrder()[1]?.name ?? null);
+  protected readonly topSet = computed(() => {
+    const top = this.scaledOrder().slice(0, 3);
+    return top.length > 0 ? top.map((p) => p.name).join(', ') : null;
+  });
   protected readonly gapVal = computed(() => {
     const order = this.scaledOrder();
     return order.length >= 2 ? order[0].scaled! - order[order.length - 1].scaled! : null;
