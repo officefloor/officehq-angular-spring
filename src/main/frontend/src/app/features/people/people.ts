@@ -100,6 +100,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // The sheet's outlier count is how many of its people are outliers.
 // Their ebb is their blend minus the median blend of everyone on the sheet whose blend can be worked
 // out; for an even count, the lower of the two middle values ("n/a" while their blend is "n/a").
+// They are a stray ("yes") when their ebb is more than 100 away from zero in either direction, and
+// otherwise "no" (also "no" while their ebb is "n/a").
 // The sheet's final total is the sum of the scaled of its people whose state is FINAL, counting
 // "n/a" as zero.
 // The sheet's band counts show how many of its people are in each band, A through E (zero when none
@@ -346,6 +348,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Norm</th>
           <th scope="col">Outlier</th>
           <th scope="col">Ebb</th>
+          <th scope="col">Stray</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -437,6 +440,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
             <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
+            <td data-testid="concept-stray">{{ p.stray ? 'yes' : 'no' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>

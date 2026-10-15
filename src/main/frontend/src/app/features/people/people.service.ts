@@ -77,6 +77,7 @@ export interface Person {
   norm: number | null;
   outlier: boolean;
   ebb: number | null;
+  stray: boolean;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
