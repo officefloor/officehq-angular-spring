@@ -20,15 +20,28 @@ public class PersonService {
         return people.findAll(Sort.by("id"));
     }
 
+    @Transactional(readOnly = true)
+    public Optional<Person> find(long id) {
+        return people.findById(id);
+    }
+
     @Transactional
-    public Person add(String name, int alpha, Integer beta) {
-        return people.save(new Person(name.trim(), alpha, beta));
+    public Person add(String name, int alpha, Integer beta, Integer gamma) {
+        return people.save(new Person(name.trim(), alpha, beta, gamma));
     }
 
     @Transactional
     public Optional<Person> setBeta(long id, Integer beta) {
         return people.findById(id).map(p -> {
             p.setBeta(beta);
+            return p;
+        });
+    }
+
+    @Transactional
+    public Optional<Person> setGamma(long id, Integer gamma) {
+        return people.findById(id).map(p -> {
+            p.setGamma(gamma);
             return p;
         });
     }

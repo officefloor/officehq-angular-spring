@@ -2,8 +2,9 @@ import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PeopleService, Person } from './people.service';
 
-// The people list: every person with their name, alpha, beta and thrust (alpha × beta), plus a
-// form to add one. Beta is optional on add and can be filled in (or changed) on the row later.
+// The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
+// (gamma − alpha) and momentum (thrust + 2 × drift), plus a form to add one. Beta and gamma are
+// optional on add and can be filled in (or changed) on the row later.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -29,6 +30,14 @@ import { PeopleService, Person } from './people.service';
         formControlName="beta"
         data-testid="person-form-beta"
       />
+      <label for="person-gamma">Gamma</label>
+      <input
+        id="person-gamma"
+        type="number"
+        step="1"
+        formControlName="gamma"
+        data-testid="person-form-gamma"
+      />
       <button type="submit" [disabled]="form.invalid || saving()" data-testid="person-form-submit">
         Add person
       </button>
@@ -43,8 +52,12 @@ import { PeopleService, Person } from './people.service';
           <th scope="col">Name</th>
           <th scope="col">Alpha</th>
           <th scope="col">Beta</th>
+          <th scope="col">Gamma</th>
           <th scope="col">Thrust</th>
+          <th scope="col">Drift</th>
+          <th scope="col">Momentum</th>
           <th scope="col">Set beta</th>
+          <th scope="col">Set gamma</th>
         </tr>
       </thead>
       <tbody>
@@ -53,7 +66,10 @@ import { PeopleService, Person } from './people.service';
             <td data-testid="person-name">{{ p.name }}</td>
             <td data-testid="person-alpha">{{ p.alpha }}</td>
             <td data-testid="person-beta">{{ p.beta }}</td>
+            <td data-testid="person-gamma">{{ p.gamma }}</td>
             <td data-testid="concept-thrust">{{ p.thrust }}</td>
+            <td data-testid="concept-drift">{{ p.drift }}</td>
+            <td data-testid="concept-momentum">{{ p.momentum }}</td>
             <td>
               <form (submit)="$event.preventDefault(); setBeta(p, betaInput.value)">
                 <label class="visually-hidden" [for]="'person-beta-edit-' + p.id">
@@ -68,6 +84,22 @@ import { PeopleService, Person } from './people.service';
                   data-testid="person-beta-input"
                 />
                 <button type="submit" data-testid="person-beta-save">Save</button>
+              </form>
+            </td>
+            <td>
+              <form (submit)="$event.preventDefault(); setGamma(p, gammaInput.value)">
+                <label class="visually-hidden" [for]="'person-gamma-edit-' + p.id">
+                  Gamma for {{ p.name }}
+                </label>
+                <input
+                  #gammaInput
+                  [id]="'person-gamma-edit-' + p.id"
+                  type="number"
+                  step="1"
+                  [value]="p.gamma ?? ''"
+                  data-testid="person-gamma-input"
+                />
+                <button type="submit" data-testid="person-gamma-save">Save</button>
               </form>
             </td>
           </tr>
@@ -86,6 +118,7 @@ export class People {
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
     alpha: [null as number | null, [Validators.required, Validators.pattern(/^-?\d+$/)]],
     beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+    gamma: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
   });
 
   constructor() {
@@ -93,10 +126,10 @@ export class People {
   }
 
   protected add(): void {
-    const { name, alpha, beta } = this.form.getRawValue();
+    const { name, alpha, beta, gamma } = this.form.getRawValue();
     if (this.form.invalid || alpha === null) return;
     this.saving.set(true);
-    this.service.add({ name, alpha, beta }).subscribe({
+    this.service.add({ name, alpha, beta, gamma }).subscribe({
       next: () => {
         this.form.reset();
         this.saving.set(false);
@@ -111,6 +144,13 @@ export class People {
     if (text !== '' && !/^-?\d+$/.test(text)) return;
     const beta = text === '' ? null : Number(text);
     this.service.setBeta(person.id, beta).subscribe(() => this.load());
+  }
+
+  protected setGamma(person: Person, value: string): void {
+    const text = value.trim();
+    if (text !== '' && !/^-?\d+$/.test(text)) return;
+    const gamma = text === '' ? null : Number(text);
+    this.service.setGamma(person.id, gamma).subscribe(() => this.load());
   }
 
   private load(): void {

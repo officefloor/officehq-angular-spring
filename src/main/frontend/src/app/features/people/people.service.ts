@@ -7,13 +7,17 @@ export interface Person {
   name: string;
   alpha: number | null;
   beta: number | null;
+  gamma: number | null;
   thrust: number | null;
+  drift: number | null;
+  momentum: number | null;
 }
 
 export interface NewPerson {
   name: string;
   alpha: number;
   beta: number | null;
+  gamma: number | null;
 }
 
 // The people REST API (/api/people).
@@ -31,5 +35,9 @@ export class PeopleService {
 
   setBeta(id: number, beta: number | null): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { beta });
+  }
+
+  setGamma(id: number, gamma: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { gamma });
   }
 }
