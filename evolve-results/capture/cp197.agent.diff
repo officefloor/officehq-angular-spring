@@ -1,0 +1,48 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e314db9d..c860a177 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -110,6 +110,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // The sheet's final total is the sum of the scaled of its people whose state is FINAL, counting
+ // "n/a" as zero.
+ // The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a".
++// The sheet's tier tally shows how many of its people are in each tier, SURGE, STEADY and SINK (zero when
++// none are); people without a tier are not counted.
+ // The sheet's band counts show how many of its people are in each band, A through E (zero when none
+ // are); people whose band is "n/a" are not counted.
+ // The sheet's drag counts show how many of its people are in each drag level, L0 through L3 (zero when
+@@ -408,6 +410,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+         }
+       </ul>
+     </section>
++    <section aria-labelledby="tier-tally-heading">
++      <h2 id="tier-tally-heading">People per tier</h2>
++      <ul>
++        @for (t of tierTally(); track t.tier) {
++          <li>
++            {{ t.tier }}: <strong [attr.data-testid]="'tier-tally-' + t.tier">{{ t.count }}</strong>
++          </li>
++        }
++      </ul>
++    </section>
+     <section aria-labelledby="drag-counts-heading">
+       <h2 id="drag-counts-heading">People per drag level</h2>
+       <ul>
+@@ -1281,6 +1293,9 @@ export class People {
+       .sort(([a], [b]) => a.localeCompare(b))
+       .map(([region, count]) => ({ region, count }));
+   });
++  protected readonly tierTally = computed(() =>
++    TIERS.map((tier) => ({ tier, count: this.people().filter((p) => p.tier === tier).length })),
++  );
+   protected readonly bandCounts = computed(() =>
+     BANDS.map((band) => ({ band, count: this.people().filter((p) => p.band === band).length })),
+   );
+@@ -1651,6 +1666,7 @@ export class People {
+ }
+ 
+ // The bands, best first.
++const TIERS = ['SURGE', 'STEADY', 'SINK'] as const;
+ const BANDS = ['A', 'B', 'C', 'D', 'E'] as const;
+ 
+ // The drag levels, lowest first.
