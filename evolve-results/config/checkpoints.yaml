@@ -1,0 +1,1985 @@
+# The ordered, cumulative checkpoint stream. Each is applied on top of the committed result of the
+# previous one, GROWING ONE APP FROM A NEAR-EMPTY BASE (no tables at cp01) via plain-English change
+# requests. Domain: NONE. The app tracks arbitrary PEOPLE (arbitrary names) carrying arbitrary raw
+# attribute VALUES, with named CONCEPTS computed from those values and from other concepts, and
+# RELATIONSHIPS between people whose cardinality changes as the system evolves. This is deliberate:
+# the task carries no real-world meaning, so the agent cannot lean on domain understanding, and the
+# only thing under test is whether the stack absorbs interwoven definitions and changing data models
+# without eroding. See DESIGN.md and acceptance/support/README.md (the data-testid contract).
+#
+# EACH CHECKPOINT:
+#   request : the plain-English change request, as a non-technical user would type it (given to the
+#             agent, self-contained, no checkpoint numbers).
+#   test    : the experimenter-authored Playwright spec — the OBJECTIVE gate — also shown to the
+#             agent so it knows the exact data-testid anchors, values, and audit records to satisfy.
+#   type    : additive | mutative.  mutates : the prior checkpoint numbers a mutative revises.
+#   area    : the pressure region (inline). `calc` is the on-spine concept pipeline (raw -> concept ->
+#             concept-on-concept -> rollup); it carries the erosion pressure. `entity` / `relation` /
+#             `persist` / `status` are the off-spine regions.
+#
+# CADENCE: a repeating cycle of THREE additive checkpoints then ONE mutative (3:1). Each cycle
+# introduces one densely interwoven algorithm, and its mutative reworks a concept DEFINITION or
+# migrates a RELATIONSHIP / ATTRIBUTE cardinality underneath a higher concept whose contract is held
+# stable. The relationship migrations (1-1 <-> 1-many <-> many-many, attribute promotion to a child
+# entity, folding children back to a parent attribute) are the core plasticity pressure.
+#
+# TWO ASSERTION CHANNELS (DESIGN.md §3): the UI (data-testid) for user-visible behaviour, and the
+# known AUDIT FILE for side-effects (support/audit.ts). Data is arranged per-spec via resetAndSeed
+# (reset+seed; reset also clears the audit file). Each spec uses a FRESH worksheet id, so tests are
+# isolated. Once introduced, a data-testid is immutable public API — never renamed/removed except by
+# a mutative checkpoint that ships the updated prior specs.
+#
+# MUTATIVE checkpoints ship updated copies of the prior specs they break in a sibling
+# `acceptance/specs/cp<NN>/` folder (auto-discovered; installed by basename so they WIN over the
+# prior originals in the cumulative gate suite). Each updated copy must carry forward ALL earlier
+# mutations to that basename. A regression on a checkpoint listed in `mutates` is INTENDED; breakage
+# on any other prior is a true regression.
+#
+# BLIND: each checkpoint runs a fresh agent with no memory of prior checkpoints and WITHOUT the prior
+# specs — only the current code, its request, and its own spec.
+
+checkpoints:
+
+  # ===================================================================================================
+  # ACT I (cp01-60): "concepts upon concepts" — raw values, concepts built on them, concepts built on
+  # concepts, the first relationships, and the first migrations that change the model underneath.
+  # ===================================================================================================
+
+  # ---- Cycle 1 (cp01-04): the first concept chain --------------------------------------------------
+  - id: cp01_people_alpha
+    type: additive
+    area: entity
+    test: acceptance/specs/cp01_people_alpha.spec.ts
+    request: |
+      I want to keep a list of people. Let me add a person with their name and a whole number I will
+      call "alpha". Show all the people I have added in one list, with their name and their alpha.
+
+  - id: cp02_thrust
+    type: additive
+    area: calc
+    test: acceptance/specs/cp02_thrust.spec.ts
+    request: |
+      Each person should also have a second whole number called "beta". For each person show me a
+      value called "thrust", which is their alpha multiplied by their beta. I can leave beta blank
+      when I add a person and fill it in later.
+
+  - id: cp03_momentum
+    type: additive
+    area: calc
+    test: acceptance/specs/cp03_momentum.spec.ts
+    request: |
+      Give each person a third whole number called "gamma". For each person show "drift", which is
+      gamma minus alpha, and show "momentum", which is their thrust plus two times their drift. I can
+      leave gamma blank when I add a person and fill it in later.
+
+  - id: cp04_momentum_coefficient
+    type: mutative
+    area: calc
+    mutates: [3]
+    test: acceptance/specs/cp04_momentum_coefficient.spec.ts
+    request: |
+      I want momentum to react more strongly to drift. Momentum should now be thrust plus THREE times
+      drift instead of two times.
+
+  # ---- Cycle 2 (cp05-08): classification, missing values, and the audit channel --------------------
+  - id: cp05_tier
+    type: additive
+    area: calc
+    test: acceptance/specs/cp05_tier.spec.ts
+    request: |
+      For each person show a label called "tier" based on their momentum. If momentum is below zero
+      the tier is SINK. From zero up to and including ninety-nine it is STEADY. One hundred or more
+      it is SURGE.
+
+  - id: cp06_concept_nullability
+    type: additive
+    area: calc
+    test: acceptance/specs/cp06_concept_nullability.spec.ts
+    request: |
+      Sometimes I add a person before I know all their numbers. If alpha, beta or gamma is missing
+      for a person, then thrust, drift, momentum and tier should all show "n/a" for that person until
+      I fill the missing numbers in.
+
+  - id: cp07_alpha_change_audit
+    type: additive
+    area: status
+    test: acceptance/specs/cp07_alpha_change_audit.spec.ts
+    request: |
+      Let me change a person's alpha after I have added them. Every time alpha changes, keep a record
+      of it so I can check back later what it was before and what it became.
+
+  - id: cp08_tier_recalibrate
+    type: mutative
+    area: calc
+    mutates: [5]
+    test: acceptance/specs/cp08_tier_recalibrate.spec.ts
+    request: |
+      The tiers are too easy to reach. STEADY should now run from zero up to and including one hundred
+      and ninety-nine, and SURGE should only start at two hundred. SINK is unchanged (below zero).
+
+  # ---- Cycle 3 (cp09-12): the first relationship, and migrating it ---------------------------------
+  - id: cp09_patron
+    type: additive
+    area: relation
+    test: acceptance/specs/cp09_patron.spec.ts
+    request: |
+      Let me choose a "patron" for a person, which is one of the other people on the list. Show each
+      person's patron by name. A person does not have to have a patron.
+
+  - id: cp10_backing
+    type: additive
+    area: calc
+    test: acceptance/specs/cp10_backing.spec.ts
+    request: |
+      For each person show a value called "backing", which is the thrust of their patron. If a person
+      has no patron, backing shows "n/a".
+
+  - id: cp11_net
+    type: additive
+    area: calc
+    test: acceptance/specs/cp11_net.spec.ts
+    request: |
+      For each person show "net", which is their momentum plus their backing. If a person has no
+      patron, treat their backing as zero for this, so net just equals their momentum.
+
+  - id: cp12_patron_many
+    type: mutative
+    area: relation
+    mutates: [9, 10, 11]
+    retires: ['cp11_net.spec.ts::net is momentum plus backing (0 when no patron)']
+    test: acceptance/specs/cp12_patron_many.spec.ts
+    request: |
+      A person should be able to have more than one patron, not just one. Show all of a person's
+      patrons by name. Backing should now be the total of all their patrons' thrust added together,
+      and net stays as momentum plus backing.
+
+  # ---- Cycle 4 (cp13-16): persistence by worksheet id ----------------------------------------------
+  - id: cp13_worksheet_id
+    type: additive
+    area: persist
+    test: acceptance/specs/cp13_worksheet_id.spec.ts
+    request: |
+      I work on several separate sheets of people. Let me type a name for the sheet I am working on
+      and show me which sheet is currently open. The people I add belong to the open sheet.
+
+  - id: cp14_worksheet_recall
+    type: additive
+    area: persist
+    test: acceptance/specs/cp14_worksheet_recall.spec.ts
+    request: |
+      When I come back later and open a sheet by its name, I want to see the people and all their
+      numbers and values exactly as I left them, even after the page has been refreshed.
+
+  - id: cp15_worksheet_isolation
+    type: additive
+    area: persist
+    test: acceptance/specs/cp15_worksheet_isolation.spec.ts
+    request: |
+      The sheets must be kept completely separate. People I add to one sheet must never appear on
+      another sheet.
+
+  - id: cp16_unknown_sheet_blank
+    type: mutative
+    area: persist
+    mutates: [14]
+    retires: ['cp14_worksheet_recall.spec.ts::opening an unknown sheet shows the missing state']
+    test: acceptance/specs/cp16_unknown_sheet_blank.spec.ts
+    request: |
+      If I open a sheet name that does not exist yet, just start me a new empty sheet with that name
+      rather than showing me anything about it being missing.
+
+  # ---- Cycle 5 (cp17-20): ranking (a sort) ---------------------------------------------------------
+  - id: cp17_rank
+    type: additive
+    area: calc
+    algorithm: rank-sort
+    test: acceptance/specs/cp17_rank.spec.ts
+    request: |
+      For each person show their "rank" on the sheet. The person with the highest momentum is rank 1,
+      the next highest is rank 2, and so on. If two people have the same momentum, the one whose name
+      comes first alphabetically gets the better (lower) rank.
+
+  - id: cp18_leader
+    type: additive
+    area: calc
+    test: acceptance/specs/cp18_leader.spec.ts
+    request: |
+      Somewhere on the sheet show me the "leader", which is the name of the person who is rank 1.
+
+  - id: cp19_percentile
+    type: additive
+    area: calc
+    algorithm: percentile-spread
+    test: acceptance/specs/cp19_percentile.spec.ts
+    request: |
+      For each person also show a "percentile" from their rank. The best person is 100 and the worst
+      is 0, spread evenly in between by rank. If there is only one person they are 100.
+
+  - id: cp20_rank_tiebreak
+    type: mutative
+    area: calc
+    mutates: [17, 19]
+    retires: ['cp17_rank.spec.ts::rank orders by momentum desc, ties by name asc']
+    test: acceptance/specs/cp20_rank_tiebreak.spec.ts
+    request: |
+      When two people have the same momentum, break the tie by the higher alpha instead of by name.
+      The person with the higher alpha gets the better (lower) rank.
+
+  # ---- Cycle 6 (cp21-24): grade weighting ----------------------------------------------------------
+  - id: cp21_grade_weight
+    type: additive
+    area: calc
+    test: acceptance/specs/cp21_grade_weight.spec.ts
+    request: |
+      Give each person a "grade" that is one of LOW, MID or HIGH. From the grade show a "weight":
+      LOW is 1, MID is 2, HIGH is 3.
+
+  - id: cp22_load
+    type: additive
+    area: calc
+    test: acceptance/specs/cp22_load.spec.ts
+    request: |
+      For each person show "load", which is their momentum multiplied by their weight.
+
+  - id: cp23_total_load
+    type: additive
+    area: calc
+    test: acceptance/specs/cp23_total_load.spec.ts
+    request: |
+      Show me the "total load" for the whole sheet, which is everyone's load added together. Leave out
+      anyone whose load cannot be worked out yet.
+
+  - id: cp24_grade_weight_remap
+    type: mutative
+    area: calc
+    mutates: [21, 22, 23]
+    test: acceptance/specs/cp24_grade_weight_remap.spec.ts
+    request: |
+      The grades should spread further apart. Weight should now be 1 for LOW, 3 for MID and 5 for HIGH.
+
+  # ---- Cycle 7 (cp25-28): deterministic date maths -------------------------------------------------
+  - id: cp25_onset_anchor
+    type: additive
+    area: entity
+    test: acceptance/specs/cp25_onset_anchor.spec.ts
+    request: |
+      Each sheet has an "anchor" date that I set. Each person has an "onset" date. Show both the
+      anchor for the sheet and each person's onset.
+
+  - id: cp26_age
+    type: additive
+    area: calc
+    algorithm: date-age
+    test: acceptance/specs/cp26_age.spec.ts
+    request: |
+      For each person show their "age", which is the number of whole days from their onset date up to
+      the sheet's anchor date. If the onset is after the anchor the age can be negative.
+
+  - id: cp27_decay
+    type: additive
+    area: calc
+    test: acceptance/specs/cp27_decay.spec.ts
+    request: |
+      For each person show "decay", which is their momentum minus their age.
+
+  - id: cp28_age_in_weeks
+    type: mutative
+    area: calc
+    mutates: [26, 27]
+    retires: ['cp26_age.spec.ts::age is whole days from onset to anchor']
+    test: acceptance/specs/cp28_age_in_weeks.spec.ts
+    request: |
+      I think of age in whole weeks, not days. Age should now be the number of complete seven-day
+      weeks from onset to the anchor (drop any leftover days). If the onset is after the anchor the
+      age is negative, counted the same way toward zero, so an onset ten days after the anchor is
+      minus one week, not minus two.
+
+  # ---- Cycle 8 (cp29-32): the active flag and gating -----------------------------------------------
+  - id: cp29_active
+    type: additive
+    area: entity
+    test: acceptance/specs/cp29_active.spec.ts
+    request: |
+      Let me mark each person as active or not active. Show whether each person is active.
+
+  - id: cp30_effective
+    type: additive
+    area: calc
+    test: acceptance/specs/cp30_effective.spec.ts
+    request: |
+      For each person show "effective". If the person is active, effective is their net. If the
+      person is not active, effective is zero.
+
+  - id: cp31_active_rollups
+    type: additive
+    area: calc
+    test: acceptance/specs/cp31_active_rollups.spec.ts
+    request: |
+      Show me how many people on the sheet are active, and the "total effective", which is everyone's
+      effective added together.
+
+  - id: cp32_inactive_halved
+    type: mutative
+    area: calc
+    mutates: [30, 31]
+    retires: ['cp30_effective.spec.ts::effective is net when active, else 0']
+    test: acceptance/specs/cp32_inactive_halved.spec.ts
+    request: |
+      Do not drop inactive people to zero. An inactive person's effective should instead be half of
+      their net, rounded down to a whole number. Active people are unchanged.
+
+  # ---- Cycle 9 (cp33-36): relationship-weighted aggregation ----------------------------------------
+  - id: cp33_clout
+    type: additive
+    area: calc
+    test: acceptance/specs/cp33_clout.spec.ts
+    request: |
+      For each person show "clout", which is the total of the effective of all of their patrons added
+      together. A person with no patrons has a clout of zero.
+
+  - id: cp34_influence
+    type: additive
+    area: calc
+    test: acceptance/specs/cp34_influence.spec.ts
+    request: |
+      For each person show "influence", which is their own effective plus their clout.
+
+  - id: cp35_top_influence
+    type: additive
+    area: calc
+    test: acceptance/specs/cp35_top_influence.spec.ts
+    request: |
+      Show me the name of the person with the highest influence on the sheet. If two people tie, pick
+      the one whose name comes first alphabetically.
+
+  - id: cp36_clout_average
+    type: mutative
+    area: calc
+    mutates: [33, 34, 35]
+    retires: ['cp33_clout.spec.ts::clout sums the patrons effective']
+    test: acceptance/specs/cp36_clout_average.spec.ts
+    request: |
+      Clout should be the AVERAGE of the patrons' effective, not the total — add up the patrons'
+      effective and divide by how many patrons there are, rounded down. No patrons is still zero.
+
+  # ---- Cycle 10 (cp37-40): an attribute, then PROMOTED to a child entity ---------------------------
+  - id: cp37_region
+    type: additive
+    area: entity
+    test: acceptance/specs/cp37_region.spec.ts
+    request: |
+      Give each person a "region", which is a short code I type in, like N1 or S2. Show each person's
+      region.
+
+  - id: cp38_reach
+    type: additive
+    area: calc
+    test: acceptance/specs/cp38_reach.spec.ts
+    request: |
+      A region has a multiplier from its first letter: N multiplies by 2, S by 3, and any other first
+      letter by 1. For each person show "reach", which is their momentum multiplied by their region's
+      multiplier.
+
+  - id: cp39_region_counts
+    type: additive
+    area: calc
+    test: acceptance/specs/cp39_region_counts.spec.ts
+    request: |
+      Show me, for the whole sheet, how many people are in each region.
+
+  - id: cp40_region_many
+    type: mutative
+    area: entity
+    mutates: [37, 38, 39]
+    retires: ['cp37_region.spec.ts::shows each person their region', 'cp38_reach.spec.ts::reach is momentum times the region multiplier', 'cp39_region_counts.spec.ts::counts people per region']
+    test: acceptance/specs/cp40_region_many.spec.ts
+    request: |
+      People can belong to more than one region now, not just one. Let me give a person several
+      regions. Reach should be the sum, over each of the person's regions, of their momentum times
+      that region's multiplier. The per-region counts should count a person once in every region they
+      belong to.
+
+  # ---- Cycle 11 (cp41-44): a many-to-many relationship, then made directional ----------------------
+  - id: cp41_allies
+    type: additive
+    area: relation
+    test: acceptance/specs/cp41_allies.spec.ts
+    request: |
+      Let me link two people as "allies". Being allies goes both ways: if I make A an ally of B then B
+      is also an ally of A. Show each person's allies by name, and how many allies they have.
+
+  - id: cp42_synergy
+    type: additive
+    area: calc
+    test: acceptance/specs/cp42_synergy.spec.ts
+    request: |
+      For each person show "synergy", which is the total of the thrust of all their allies added
+      together. No allies means a synergy of zero.
+
+  - id: cp43_combined
+    type: additive
+    area: calc
+    test: acceptance/specs/cp43_combined.spec.ts
+    request: |
+      For each person show "combined", which is their influence plus their synergy.
+
+  - id: cp44_allies_directed
+    type: mutative
+    area: relation
+    mutates: [41, 42, 43]
+    retires: ['cp41_allies.spec.ts::allies are symmetric and counted', 'cp42_synergy.spec.ts::synergy sums the allies thrust']
+    test: acceptance/specs/cp44_allies_directed.spec.ts
+    request: |
+      Allies should be one-directional now. Let me say that A follows B without B following A. A
+      person's allies are now only the people they follow. Synergy should be the total thrust of only
+      the people this person follows.
+
+  # ---- Cycle 12 (cp45-48): multi-valued children, then FOLDED into one attribute -------------------
+  - id: cp45_notes
+    type: additive
+    area: entity
+    test: acceptance/specs/cp45_notes.spec.ts
+    request: |
+      Let me add several "notes" to a person. Each note has a whole-number score. Show each person's
+      notes and the total of their note scores.
+
+  - id: cp46_quality
+    type: additive
+    area: calc
+    test: acceptance/specs/cp46_quality.spec.ts
+    request: |
+      For each person show "quality", which is the average of their note scores, rounded down. A
+      person with no notes shows "n/a" for quality.
+
+  - id: cp47_adjusted
+    type: additive
+    area: calc
+    test: acceptance/specs/cp47_adjusted.spec.ts
+    request: |
+      For each person show "adjusted", which is their combined plus their quality. If a person has no
+      notes, treat their quality as zero here.
+
+  - id: cp48_notes_folded
+    type: mutative
+    area: entity
+    mutates: [45, 46, 47]
+    retires: ['cp45_notes.spec.ts::shows notes and their total', 'cp46_quality.spec.ts::quality averages notes and is n/a without notes']
+    test: acceptance/specs/cp48_notes_folded.spec.ts
+    request: |
+      I do not want several notes per person any more, just a single whole-number "score" on each
+      person. The total of a person's note scores is now simply their score, and their quality is
+      simply their score. A person with no score still shows "n/a" for quality.
+
+  # ---- Cycle 13 (cp49-52): a five-way classification cascade ---------------------------------------
+  - id: cp49_band
+    type: additive
+    area: calc
+    algorithm: band-classify
+    test: acceptance/specs/cp49_band.spec.ts
+    request: |
+      Put each person in a "band" from their adjusted value. Below 0 is band E. 0 to 49 is D. 50 to
+      149 is C. 150 to 299 is B. 300 or more is A.
+
+  - id: cp50_scaled
+    type: additive
+    area: calc
+    test: acceptance/specs/cp50_scaled.spec.ts
+    request: |
+      Each band has a multiplier: A is 4, B is 3, C is 2, D is 1, E is 0. For each person show
+      "scaled", which is their adjusted multiplied by their band's multiplier.
+
+  - id: cp51_band_histogram
+    type: additive
+    area: calc
+    test: acceptance/specs/cp51_band_histogram.spec.ts
+    request: |
+      Show me how many people on the sheet are in each band, A through E.
+
+  - id: cp52_band_recalibrate
+    type: mutative
+    area: calc
+    mutates: [49, 50, 51]
+    test: acceptance/specs/cp52_band_recalibrate.spec.ts
+    request: |
+      The bands bunch up too much. Change the boundaries: below 0 is E, 0 to 99 is D, 100 to 249 is C,
+      250 to 499 is B, 500 or more is A.
+
+  # ---- Cycle 14 (cp53-56): cross-person normalization ----------------------------------------------
+  - id: cp53_norm
+    type: additive
+    area: calc
+    algorithm: norm-mean
+    test: acceptance/specs/cp53_norm.spec.ts
+    request: |
+      For each person show "norm", which is their scaled minus the average scaled across everyone on
+      the sheet whose scaled can be worked out. Use the average rounded down to a whole number.
+
+  - id: cp54_outlier
+    type: additive
+    area: calc
+    test: acceptance/specs/cp54_outlier.spec.ts
+    request: |
+      Mark a person as an "outlier" when their norm is more than 100 away from zero in either
+      direction. Show yes or no for each person.
+
+  - id: cp55_outlier_count
+    type: additive
+    area: calc
+    test: acceptance/specs/cp55_outlier_count.spec.ts
+    request: |
+      Show me how many outliers there are on the whole sheet.
+
+  - id: cp56_norm_median
+    type: mutative
+    area: calc
+    algorithm: norm-median
+    mutates: [53, 54, 55]
+    retires: ['cp53_norm.spec.ts::norm is scaled minus the floor of the mean scaled']
+    test: acceptance/specs/cp56_norm_median.spec.ts
+    request: |
+      Norm should be measured against the MIDDLE value, not the average. Subtract the median of
+      everyone's scaled instead of the average. For an even number of people the median is the lower
+      of the two middle values.
+
+  # ---- Cycle 15 (cp57-60): a status workflow, with a reversal --------------------------------------
+  - id: cp57_state
+    type: additive
+    area: status
+    test: acceptance/specs/cp57_state.spec.ts
+    request: |
+      Each person has a state that starts at DRAFT. Let me move a person forward from DRAFT to REVIEW,
+      and from REVIEW to FINAL. Keep a record every time a person's state changes.
+
+  - id: cp58_final_total
+    type: additive
+    area: calc
+    test: acceptance/specs/cp58_final_total.spec.ts
+    request: |
+      Show me the "final total", which is the scaled of only the people whose state is FINAL, added
+      together.
+
+  - id: cp59_state_guard
+    type: additive
+    area: status
+    test: acceptance/specs/cp59_state_guard.spec.ts
+    request: |
+      Let me move a person back a step, the reverse of moving them forward. Once a person is FINAL,
+      though, they should not be allowed to go backwards to REVIEW or DRAFT. If I try, stop me and
+      show that it is not allowed. Anyone who is not yet FINAL can step back as normal.
+
+  - id: cp60_rework
+    type: mutative
+    area: status
+    mutates: [57]
+    retires: ['cp57_state.spec.ts::advances DRAFT -> REVIEW -> FINAL with audit, then is terminal']
+    test: acceptance/specs/cp60_rework.spec.ts
+    request: |
+      I do need a way to reopen a finished person. Add a REWORK state. A FINAL person may be moved to
+      REWORK, and a REWORK person may be moved back to FINAL. Keep a record of these changes too.
+
+  # ===================================================================================================
+  # ACT II (cp61-120): "a second axis and its fusion with the spine" — a new raw triple
+  # (delta/epsilon/zeta) grows force/sway/torque, which fuse with the Act I spine and aggregate over
+  # the existing patron/follow/region relationships.
+  # ===================================================================================================
+
+  # ---- Cycle 1 (cp61-64): the second axis ----------------------------------------------------------
+  - id: cp61_axis_raw
+    type: additive
+    area: entity
+    test: acceptance/specs/cp61_axis_raw.spec.ts
+    request: |
+      As well as the numbers I already keep, let me give each person two more whole numbers, one I
+      will call "delta" and one I will call "epsilon". Show both for each person.
+
+  - id: cp62_force
+    type: additive
+    area: calc
+    test: acceptance/specs/cp62_force.spec.ts
+    request: |
+      For each person show "force", which is their delta multiplied by their epsilon.
+
+  - id: cp63_torque
+    type: additive
+    area: calc
+    test: acceptance/specs/cp63_torque.spec.ts
+    request: |
+      Give each person a whole number called "zeta". For each person show "sway", which is zeta minus
+      delta, and "torque", which is force plus two times sway.
+
+  - id: cp64_torque_coefficient
+    type: mutative
+    area: calc
+    mutates: [63]
+    test: acceptance/specs/cp64_torque_coefficient.spec.ts
+    request: |
+      I want torque to react more strongly to sway. Torque should now be force plus THREE times sway.
+
+  # ---- Cycle 2 (cp65-68): classify, fuse, nullability ----------------------------------------------
+  - id: cp65_phase
+    type: additive
+    area: calc
+    algorithm: phase-classify
+    test: acceptance/specs/cp65_phase.spec.ts
+    request: |
+      For each person show a label called "phase" from their torque. Below zero is EBB, from zero up
+      to and including ninety-nine is RUN, one hundred or more is PEAK.
+
+  - id: cp66_blend
+    type: additive
+    area: calc
+    test: acceptance/specs/cp66_blend.spec.ts
+    request: |
+      For each person show "blend", which is their momentum plus their torque.
+
+  - id: cp67_axis_nullability
+    type: additive
+    area: calc
+    test: acceptance/specs/cp67_axis_nullability.spec.ts
+    request: |
+      If delta, epsilon or zeta is missing for a person, then force, sway, torque, phase and blend
+      should all show "n/a" for that person until the missing number is filled in.
+
+  - id: cp68_phase_recalibrate
+    type: mutative
+    area: calc
+    mutates: [65]
+    test: acceptance/specs/cp68_phase_recalibrate.spec.ts
+    request: |
+      RUN should cover more ground. RUN now runs from zero up to and including one hundred and
+      ninety-nine, and PEAK only starts at two hundred. EBB is unchanged.
+
+  # ---- Cycle 3 (cp69-72): aggregate force over patrons ---------------------------------------------
+  - id: cp69_flux
+    type: additive
+    area: calc
+    test: acceptance/specs/cp69_flux.spec.ts
+    request: |
+      For each person show "flux", which is the total of the force of all their patrons added
+      together. A person with no patrons has a flux of zero.
+
+  - id: cp70_crest
+    type: additive
+    area: calc
+    test: acceptance/specs/cp70_crest.spec.ts
+    request: |
+      For each person show "crest", which is their blend plus their flux.
+
+  - id: cp71_top_crest
+    type: additive
+    area: calc
+    test: acceptance/specs/cp71_top_crest.spec.ts
+    request: |
+      Show me the name of the person with the highest crest. If two tie, pick the one whose name
+      comes first alphabetically.
+
+  - id: cp72_flux_average
+    type: mutative
+    area: calc
+    mutates: [69, 70]
+    retires: ['cp69_flux.spec.ts::flux sums the patrons force']
+    test: acceptance/specs/cp72_flux_average.spec.ts
+    request: |
+      Flux should be the AVERAGE of the patrons' force, not the total — add up the patrons' force and
+      divide by how many patrons there are, rounded down. No patrons is still zero.
+
+  # ---- Cycle 4 (cp73-76): aggregate torque over follows --------------------------------------------
+  - id: cp73_swing
+    type: additive
+    area: calc
+    test: acceptance/specs/cp73_swing.spec.ts
+    request: |
+      For each person show "swing", which is the total of the torque of the people they follow. No
+      one followed means a swing of zero.
+
+  - id: cp74_haul
+    type: additive
+    area: calc
+    test: acceptance/specs/cp74_haul.spec.ts
+    request: |
+      For each person show "haul", which is their crest plus their swing.
+
+  - id: cp75_total_haul
+    type: additive
+    area: calc
+    test: acceptance/specs/cp75_total_haul.spec.ts
+    request: |
+      Show me the "total haul" for the whole sheet, which is everyone's haul added together. Leave out
+      anyone whose haul cannot be worked out.
+
+  - id: cp76_swing_positive
+    type: mutative
+    area: calc
+    mutates: [73, 74, 75]
+    retires: ['cp73_swing.spec.ts::swing sums the followed torque']
+    test: acceptance/specs/cp76_swing_positive.spec.ts
+    request: |
+      When working out swing, only count the people I follow whose torque is positive. Drop anyone
+      whose torque is zero or below.
+
+  # ---- Cycle 5 (cp77-80): kind weighting -----------------------------------------------------------
+  - id: cp77_verge
+    type: additive
+    area: calc
+    test: acceptance/specs/cp77_verge.spec.ts
+    request: |
+      Give each person a "kind" that is one of A, B or C, and show it. From the kind show a "verge":
+      A is 1, B is 2, C is 4.
+
+  - id: cp78_pivot
+    type: additive
+    area: calc
+    test: acceptance/specs/cp78_pivot.spec.ts
+    request: |
+      For each person show "pivot", which is their torque multiplied by their verge.
+
+  - id: cp79_total_pivot
+    type: additive
+    area: calc
+    test: acceptance/specs/cp79_total_pivot.spec.ts
+    request: |
+      Show me the "total pivot" for the sheet, which is everyone's pivot added together. Leave out
+      anyone whose pivot cannot be worked out.
+
+  - id: cp80_verge_remap
+    type: mutative
+    area: calc
+    mutates: [77, 78, 79]
+    test: acceptance/specs/cp80_verge_remap.spec.ts
+    request: |
+      Spread the kinds further apart. Verge should now be 2 for A, 3 for B and 5 for C.
+
+  # ---- Cycle 6 (cp81-84): fuse with scaled ---------------------------------------------------------
+  - id: cp81_thrum
+    type: additive
+    area: calc
+    test: acceptance/specs/cp81_thrum.spec.ts
+    request: |
+      For each person show "thrum", which is their scaled plus their torque.
+
+  - id: cp82_spool
+    type: additive
+    area: calc
+    test: acceptance/specs/cp82_spool.spec.ts
+    request: |
+      For each person show "spool", which is their thrum minus their blend.
+
+  - id: cp83_max_thrum
+    type: additive
+    area: calc
+    test: acceptance/specs/cp83_max_thrum.spec.ts
+    request: |
+      Show me the name of the person with the highest thrum. If two tie, pick the one whose name
+      comes first alphabetically.
+
+  - id: cp84_thrum_coefficient
+    type: mutative
+    area: calc
+    mutates: [81, 82]
+    retires: ['cp81_thrum.spec.ts::thrum is scaled plus torque']
+    test: acceptance/specs/cp84_thrum_coefficient.spec.ts
+    request: |
+      Thrum should lean more on torque. Thrum should now be scaled plus two times torque.
+
+  # ---- Cycle 7 (cp85-88): classify blend -----------------------------------------------------------
+  - id: cp85_drag
+    type: additive
+    area: calc
+    algorithm: drag-levels
+    test: acceptance/specs/cp85_drag.spec.ts
+    request: |
+      Put each person in a "drag" level from their blend. Below zero is L0, zero to ninety-nine is L1,
+      one hundred to one hundred and ninety-nine is L2, two hundred or more is L3.
+
+  - id: cp86_lift
+    type: additive
+    area: calc
+    test: acceptance/specs/cp86_lift.spec.ts
+    request: |
+      Each drag level has a multiplier: L0 is 0, L1 is 1, L2 is 2, L3 is 3. For each person show
+      "lift", which is their blend multiplied by their drag multiplier.
+
+  - id: cp87_drag_counts
+    type: additive
+    area: calc
+    test: acceptance/specs/cp87_drag_counts.spec.ts
+    request: |
+      Show me how many people on the sheet are in each drag level, L0 through L3.
+
+  - id: cp88_drag_recalibrate
+    type: mutative
+    area: calc
+    mutates: [85, 86, 87]
+    test: acceptance/specs/cp88_drag_recalibrate.spec.ts
+    request: |
+      Tighten the drag levels. Below zero is L0, zero to forty-nine is L1, fifty to one hundred and
+      forty-nine is L2, one hundred and fifty or more is L3.
+
+  # ---- Cycle 8 (cp89-92): fuse with reach ----------------------------------------------------------
+  - id: cp89_gust
+    type: additive
+    area: calc
+    test: acceptance/specs/cp89_gust.spec.ts
+    request: |
+      For each person show "gust", which is their reach plus their torque.
+
+  - id: cp90_coil
+    type: additive
+    area: calc
+    test: acceptance/specs/cp90_coil.spec.ts
+    request: |
+      For each person show "coil", which is their gust minus their momentum.
+
+  - id: cp91_total_gust
+    type: additive
+    area: calc
+    test: acceptance/specs/cp91_total_gust.spec.ts
+    request: |
+      Show me the "total gust" for the sheet, which is everyone's gust added together. Leave out
+      anyone whose gust cannot be worked out.
+
+  - id: cp92_gust_coefficient
+    type: mutative
+    area: calc
+    mutates: [89, 90, 91]
+    retires: ['cp89_gust.spec.ts::gust is reach plus torque']
+    test: acceptance/specs/cp92_gust_coefficient.spec.ts
+    request: |
+      Gust should lean more on torque. Gust should now be reach plus two times torque.
+
+  # ---- Cycle 9 (cp93-96): fuse with influence ------------------------------------------------------
+  - id: cp93_brace
+    type: additive
+    area: calc
+    test: acceptance/specs/cp93_brace.spec.ts
+    request: |
+      For each person show "brace", which is their influence plus their force.
+
+  - id: cp94_total_brace
+    type: additive
+    area: calc
+    test: acceptance/specs/cp94_total_brace.spec.ts
+    request: |
+      Show me the "total brace" for the sheet, which is everyone's brace added together. Leave out
+      anyone whose brace cannot be worked out.
+
+  - id: cp95_top_brace
+    type: additive
+    area: calc
+    test: acceptance/specs/cp95_top_brace.spec.ts
+    request: |
+      Show me the name of the person with the highest brace. If two tie, pick the one whose name
+      comes first alphabetically.
+
+  - id: cp96_brace_coefficient
+    type: mutative
+    area: calc
+    mutates: [93, 94]
+    retires: ['cp93_brace.spec.ts::brace is influence plus force']
+    test: acceptance/specs/cp96_brace_coefficient.spec.ts
+    request: |
+      Brace should lean more on force. Brace should now be influence plus two times force.
+
+  # ---- Cycle 10 (cp97-100): combine the two sub-chains ---------------------------------------------
+  - id: cp97_yield
+    type: additive
+    area: calc
+    test: acceptance/specs/cp97_yield.spec.ts
+    request: |
+      For each person show "yield", which is their pivot plus their lift.
+
+  - id: cp98_grip
+    type: additive
+    area: calc
+    test: acceptance/specs/cp98_grip.spec.ts
+    request: |
+      For each person show "grip", which is their yield minus their coil.
+
+  - id: cp99_total_yield
+    type: additive
+    area: calc
+    test: acceptance/specs/cp99_total_yield.spec.ts
+    request: |
+      Show me the "total yield" for the sheet, which is everyone's yield added together. Leave out
+      anyone whose yield cannot be worked out.
+
+  - id: cp100_yield_coefficient
+    type: mutative
+    area: calc
+    mutates: [97, 98, 99]
+    retires: ['cp97_yield.spec.ts::yield is pivot plus lift']
+    test: acceptance/specs/cp100_yield_coefficient.spec.ts
+    request: |
+      Yield should lean more on lift. Yield should now be pivot plus two times lift.
+
+  # ---- Cycle 11 (cp101-104): difference and classify ----------------------------------------------
+  - id: cp101_strain
+    type: additive
+    area: calc
+    test: acceptance/specs/cp101_strain.spec.ts
+    request: |
+      For each person show "strain", which is their crest minus their brace.
+
+  - id: cp102_pulse
+    type: additive
+    area: calc
+    test: acceptance/specs/cp102_pulse.spec.ts
+    request: |
+      For each person show "pulse" from their strain. Below zero is NEG, exactly zero is FLAT, above
+      zero is POS.
+
+  - id: cp103_pulse_counts
+    type: additive
+    area: calc
+    test: acceptance/specs/cp103_pulse_counts.spec.ts
+    request: |
+      Show me how many people on the sheet are NEG, FLAT and POS.
+
+  - id: cp104_pulse_tolerance
+    type: mutative
+    area: calc
+    mutates: [102, 103]
+    retires: ['cp102_pulse.spec.ts::pulse classifies strain by sign']
+    test: acceptance/specs/cp104_pulse_tolerance.spec.ts
+    request: |
+      Treat small strains as flat. If strain is within 10 of zero either way it is FLAT, above 10 is
+      POS, below minus 10 is NEG.
+
+  # ---- Cycle 12 (cp105-108): aggregate blend over patrons -----------------------------------------
+  - id: cp105_vector
+    type: additive
+    area: calc
+    test: acceptance/specs/cp105_vector.spec.ts
+    request: |
+      For each person show "vector", which is the total of the blend of all their patrons added
+      together. No patrons means zero.
+
+  - id: cp106_charge
+    type: additive
+    area: calc
+    test: acceptance/specs/cp106_charge.spec.ts
+    request: |
+      For each person show "charge", which is their vector plus their yield.
+
+  - id: cp107_top_charge
+    type: additive
+    area: calc
+    test: acceptance/specs/cp107_top_charge.spec.ts
+    request: |
+      Show me the name of the person with the highest charge. If two tie, pick the one whose name
+      comes first alphabetically.
+
+  - id: cp108_vector_average
+    type: mutative
+    area: calc
+    mutates: [105, 106]
+    retires: ['cp105_vector.spec.ts::vector sums the patrons blend']
+    test: acceptance/specs/cp108_vector_average.spec.ts
+    request: |
+      Vector should be the AVERAGE of the patrons' blend, not the total — add up the patrons' blend
+      and divide by how many patrons there are, rounded down. No patrons is still zero.
+
+  # ---- Cycle 13 (cp109-112): aggregate brace over follows -----------------------------------------
+  - id: cp109_tide
+    type: additive
+    area: calc
+    test: acceptance/specs/cp109_tide.spec.ts
+    request: |
+      For each person show "tide", which is the total of the brace of the people they follow. No one
+      followed means zero.
+
+  - id: cp110_churn
+    type: additive
+    area: calc
+    test: acceptance/specs/cp110_churn.spec.ts
+    request: |
+      For each person show "churn", which is their tide minus their vector.
+
+  - id: cp111_total_tide
+    type: additive
+    area: calc
+    test: acceptance/specs/cp111_total_tide.spec.ts
+    request: |
+      Show me the "total tide" for the sheet, which is everyone's tide added together. Leave out
+      anyone whose tide cannot be worked out.
+
+  - id: cp112_tide_positive
+    type: mutative
+    area: calc
+    mutates: [109, 110, 111]
+    retires: ['cp109_tide.spec.ts::tide sums the followed brace']
+    test: acceptance/specs/cp112_tide_positive.spec.ts
+    request: |
+      When working out tide, only count the people I follow whose brace is positive. Drop anyone whose
+      brace is zero or below.
+
+  # ---- Cycle 14 (cp113-116): normalize across the sheet -------------------------------------------
+  - id: cp113_ebb
+    type: additive
+    area: calc
+    algorithm: ebb-norm
+    test: acceptance/specs/cp113_ebb.spec.ts
+    request: |
+      For each person show "ebb", which is their blend minus the middle blend across everyone on the
+      sheet. For an even number of people use the lower of the two middle values.
+
+  - id: cp114_stray
+    type: additive
+    area: calc
+    test: acceptance/specs/cp114_stray.spec.ts
+    request: |
+      Mark a person as a "stray" when their ebb is more than 100 away from zero in either direction.
+      Show yes or no for each person.
+
+  - id: cp115_stray_count
+    type: additive
+    area: calc
+    test: acceptance/specs/cp115_stray_count.spec.ts
+    request: |
+      Show me how many strays there are on the whole sheet.
+
+  - id: cp116_ebb_mean
+    type: mutative
+    area: calc
+    mutates: [113, 114, 115]
+    retires: ['cp113_ebb.spec.ts::ebb is blend minus the median blend']
+    test: acceptance/specs/cp116_ebb_mean.spec.ts
+    request: |
+      Ebb should be measured against the average blend, not the middle one. Subtract the average of
+      everyone's blend, rounded down.
+
+  # ---- Cycle 15 (cp117-120): the grand fusion -----------------------------------------------------
+  - id: cp117_flow
+    type: additive
+    area: calc
+    test: acceptance/specs/cp117_flow.spec.ts
+    request: |
+      For each person show "flow", which is their yield plus their charge plus their tide.
+
+  - id: cp118_grand_flow
+    type: additive
+    area: calc
+    test: acceptance/specs/cp118_grand_flow.spec.ts
+    request: |
+      Show me the "grand flow" for the sheet, which is everyone's flow added together. Leave out
+      anyone whose flow cannot be worked out.
+
+  - id: cp119_top_flow
+    type: additive
+    area: calc
+    test: acceptance/specs/cp119_top_flow.spec.ts
+    request: |
+      Show me the name of the person with the highest flow. If two tie, pick the one whose name comes
+      first alphabetically.
+
+  - id: cp120_flow_drop_tide
+    type: mutative
+    area: calc
+    mutates: [117, 118]
+    retires: ['cp117_flow.spec.ts::flow is yield plus charge plus tide']
+    test: acceptance/specs/cp120_flow_drop_tide.spec.ts
+    request: |
+      Flow is counting tide twice over through charge. Drop tide from it — flow should now be just
+      yield plus charge.
+
+  - id: cp121_groups
+    type: additive
+    area: entity
+    test: acceptance/specs/cp121_groups.spec.ts
+    request: |
+        I want to sort my people into groups. Let me make some groups, each with a name, and put
+        every person into one group. Show the groups by name, and on the people list show each
+        person which group they are in.
+  - id: cp122_group_strength
+    type: additive
+    area: calc
+    algorithm: group-aggregate
+    test: acceptance/specs/cp122_group_strength.spec.ts
+    request: |
+        For each group show its strength, the total of the scaled values of the people in it.
+  - id: cp123_group_size
+    type: additive
+    area: calc
+    test: acceptance/specs/cp123_group_size.spec.ts
+    request: |
+        For each group show its size, how many people are in it.
+  - id: cp124_strength_effective
+    type: mutative
+    area: calc
+    mutates: [122]
+    retires: ['cp122_group_strength.spec.ts::strength sums members\'' scaled']
+    test: acceptance/specs/cp124_strength_effective.spec.ts
+    request: |
+        Strength should add up the people's effective values instead of their scaled values.
+  - id: cp125_group_cohesion
+    type: additive
+    area: calc
+    test: acceptance/specs/cp125_group_cohesion.spec.ts
+    request: |
+        For each group show cohesion, its strength divided by its size, rounded down.
+  - id: cp126_group_spread
+    type: additive
+    area: calc
+    test: acceptance/specs/cp126_group_spread.spec.ts
+    request: |
+        For each group show spread, the difference between the highest and lowest scaled value in
+        it.
+  - id: cp127_group_apex
+    type: additive
+    area: calc
+    test: acceptance/specs/cp127_group_apex.spec.ts
+    request: |
+        For each group show apex, the name of the member with the highest scaled value; ties go to
+        the name earlier in the alphabet.
+  - id: cp128_spread_effective
+    type: mutative
+    area: calc
+    mutates: [126]
+    retires: ['cp126_group_spread.spec.ts::spread is max minus min scaled']
+    test: acceptance/specs/cp128_spread_effective.spec.ts
+    request: |
+        Spread should use the people's effective values instead of their scaled values.
+  - id: cp129_share
+    type: additive
+    area: calc
+    test: acceptance/specs/cp129_share.spec.ts
+    request: |
+        For each person show share, their scaled as a percentage of their group's strength, rounded
+        down; if the group's strength is zero show n/a.
+  - id: cp130_standing
+    type: additive
+    area: calc
+    algorithm: within-group-rank
+    test: acceptance/specs/cp130_standing.spec.ts
+    request: |
+        For each person show standing, their place within their group by scaled value highest first;
+        ties go to the higher alpha.
+  - id: cp131_belonging
+    type: additive
+    area: calc
+    test: acceptance/specs/cp131_belonging.spec.ts
+    request: |
+        For each person show belonging, their group's strength minus their own scaled.
+  - id: cp132_share_nearest
+    type: mutative
+    area: calc
+    mutates: [129]
+    retires: ['cp129_share.spec.ts::share is scaled over group strength']
+    test: acceptance/specs/cp132_share_nearest.spec.ts
+    request: |
+        Share should round to the nearest whole percent instead of rounding down.
+  - id: cp133_group_density
+    type: additive
+    area: calc
+    test: acceptance/specs/cp133_group_density.spec.ts
+    request: |
+        For each group show density, how many of its members have a scaled value at or above the
+        group's cohesion.
+  - id: cp134_tether
+    type: additive
+    area: calc
+    test: acceptance/specs/cp134_tether.spec.ts
+    request: |
+        For each person show tether, their scaled minus their group's cohesion.
+  - id: cp135_biggest_group
+    type: additive
+    area: calc
+    test: acceptance/specs/cp135_biggest_group.spec.ts
+    request: |
+        Show me the name of the group with the highest strength.
+  - id: cp136_density_effective
+    type: mutative
+    area: calc
+    mutates: [133]
+    retires: ['cp133_group_density.spec.ts::density counts members at/above cohesion']
+    test: acceptance/specs/cp136_density_effective.spec.ts
+    request: |
+        Density should count members whose effective value is at or above cohesion, instead of their
+        scaled value.
+  - id: cp137_anchorage
+    type: additive
+    area: calc
+    test: acceptance/specs/cp137_anchorage.spec.ts
+    request: |
+        For each person show anchorage, how many groups they belong to.
+  - id: cp138_weave
+    type: additive
+    area: calc
+    test: acceptance/specs/cp138_weave.spec.ts
+    request: |
+        For each person show weave, their scaled plus their group's cohesion.
+  - id: cp139_mesh
+    type: additive
+    area: calc
+    test: acceptance/specs/cp139_mesh.spec.ts
+    request: |
+        For each person show mesh, their scaled multiplied by their group's size.
+  - id: cp140_membership_many
+    type: mutative
+    area: relation
+    mutates: [121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139]
+    retires: ['cp121_groups.spec.ts::people belong to one named group', 'cp121_groups.spec.ts::each person shows their group', 'cp122_group_strength.spec.ts::strength sums members\'' effective', 'cp124_strength_effective.spec.ts::strength sums members\'' effective', 'cp125_group_cohesion.spec.ts::cohesion is strength over size', 'cp127_group_apex.spec.ts::apex names the top-scaled member', 'cp129_share.spec.ts::share rounds to nearest', 'cp130_standing.spec.ts::standing ranks within the group', 'cp131_belonging.spec.ts::belonging is strength minus scaled', 'cp132_share_nearest.spec.ts::share rounds to nearest', 'cp134_tether.spec.ts::tether is scaled minus cohesion', 'cp135_biggest_group.spec.ts::names the strongest group', 'cp137_anchorage.spec.ts::anchorage counts the person\''s groups', 'cp138_weave.spec.ts::weave is scaled plus cohesion', 'cp139_mesh.spec.ts::mesh is scaled times size']
+    test: acceptance/specs/cp140_membership_many.spec.ts
+    request: |
+        Let me put a person into more than one group, not just one. Show all the groups a person is
+        in. Where one of a person's own figures depends on "their group" and they are now in several,
+        use the group whose name comes first alphabetically.
+  - id: cp141_rung
+    type: additive
+    area: calc
+    test: acceptance/specs/cp141_rung.spec.ts
+    request: |
+        For each person show rung, their place in their group as a percentile: the top person is
+        100, the bottom 0, spread evenly; a group of one is 100.
+  - id: cp142_total_strength
+    type: additive
+    area: calc
+    test: acceptance/specs/cp142_total_strength.spec.ts
+    request: |
+        Show me the total strength of all the groups added together.
+  - id: cp143_group_rank
+    type: additive
+    area: calc
+    algorithm: group-rank
+    test: acceptance/specs/cp143_group_rank.spec.ts
+    request: |
+        For each group show its rank by strength, highest first; ties go to the group name earlier
+        in the alphabet.
+  - id: cp144_rung_over_size
+    type: mutative
+    area: calc
+    mutates: [141]
+    retires: ['cp141_rung.spec.ts::rung is a within-group percentile']
+    test: acceptance/specs/cp144_rung_over_size.spec.ts
+    request: |
+        Rung should divide by the group size rather than by one less than the size. A group of one
+        is still 100.
+  - id: cp145_home_group
+    type: additive
+    area: calc
+    test: acceptance/specs/cp145_home_group.spec.ts
+    request: |
+        For each person show their home group, the name of the group they are in whose name comes
+        first alphabetically.
+  - id: cp146_breadth
+    type: additive
+    area: calc
+    test: acceptance/specs/cp146_breadth.spec.ts
+    request: |
+        For each person show breadth, the total size of all the groups they belong to added
+        together.
+  - id: cp147_group_min
+    type: additive
+    area: calc
+    test: acceptance/specs/cp147_group_min.spec.ts
+    request: |
+        For each group show its lowest scaled value among its members.
+  - id: cp148_breadth_count
+    type: mutative
+    area: calc
+    mutates: [146]
+    retires: ['cp146_breadth.spec.ts::breadth sums the sizes of the person\''s groups']
+    test: acceptance/specs/cp148_breadth_count.spec.ts
+    request: |
+        Breadth should be the number of groups a person is in, not the total of their sizes.
+  - id: cp149_group_max
+    type: additive
+    area: calc
+    test: acceptance/specs/cp149_group_max.spec.ts
+    request: |
+        For each group show its highest scaled value among its members.
+  - id: cp150_strongest_member
+    type: additive
+    area: calc
+    test: acceptance/specs/cp150_strongest_member.spec.ts
+    request: |
+        Show me the name of the person with the highest scaled value anywhere on the sheet.
+  - id: cp151_anchor_strength
+    type: additive
+    area: calc
+    test: acceptance/specs/cp151_anchor_strength.spec.ts
+    request: |
+        For each person show anchor strength, the strength of their home group.
+  - id: cp152_group_min_effective
+    type: mutative
+    area: calc
+    mutates: [147]
+    retires: ['cp147_group_min.spec.ts::the lowest member scaled']
+    test: acceptance/specs/cp152_group_min_effective.spec.ts
+    request: |
+        The group's lowest value should use the members' effective values instead of their scaled
+        values.
+  - id: cp153_headroom
+    type: additive
+    area: calc
+    test: acceptance/specs/cp153_headroom.spec.ts
+    request: |
+        For each group show headroom, its highest member scaled minus its cohesion.
+  - id: cp154_group_count
+    type: additive
+    area: calc
+    test: acceptance/specs/cp154_group_count.spec.ts
+    request: |
+        Show me how many groups there are in total.
+  - id: cp155_person_group_rank
+    type: additive
+    area: calc
+    test: acceptance/specs/cp155_person_group_rank.spec.ts
+    request: |
+        For each person show their group rank, the rank of the group they are in by strength.
+  - id: cp156_headroom_full
+    type: mutative
+    area: calc
+    mutates: [153]
+    retires: ['cp153_headroom.spec.ts::max scaled minus cohesion']
+    test: acceptance/specs/cp156_headroom_full.spec.ts
+    request: |
+        Headroom should be the highest member scaled minus the lowest, not minus cohesion.
+  - id: cp157_depth
+    type: additive
+    area: calc
+    test: acceptance/specs/cp157_depth.spec.ts
+    request: |
+        For each person show depth, their group's size minus their standing.
+  - id: cp158_median_strength
+    type: additive
+    area: calc
+    algorithm: median-strength
+    test: acceptance/specs/cp158_median_strength.spec.ts
+    request: |
+        Show me the median strength across the groups (the middle value).
+  - id: cp159_vigor
+    type: additive
+    area: calc
+    test: acceptance/specs/cp159_vigor.spec.ts
+    request: |
+        For each group show vigor, its strength multiplied by its size.
+  - id: cp160_depth_from_standing
+    type: mutative
+    area: calc
+    mutates: [157]
+    retires: ['cp157_depth.spec.ts::size minus standing']
+    test: acceptance/specs/cp160_depth_from_standing.spec.ts
+    request: |
+        Depth should be one less than the person's standing, instead of size minus standing.
+  - id: cp161_uplift
+    type: additive
+    area: calc
+    test: acceptance/specs/cp161_uplift.spec.ts
+    request: |
+        For each person show uplift, their weave plus their tether.
+  - id: cp162_top_group_size
+    type: additive
+    area: calc
+    test: acceptance/specs/cp162_top_group_size.spec.ts
+    request: |
+        Show me the size of the group that has the highest strength.
+  - id: cp163_apex_scaled
+    type: additive
+    area: calc
+    test: acceptance/specs/cp163_apex_scaled.spec.ts
+    request: |
+        For each group show the scaled value of its apex member.
+  - id: cp164_vigor_additive
+    type: mutative
+    area: calc
+    mutates: [159]
+    retires: ['cp159_vigor.spec.ts::strength times size']
+    test: acceptance/specs/cp164_vigor_additive.spec.ts
+    request: |
+        Vigor should be strength plus size instead of strength times size.
+  - id: cp165_slack
+    type: additive
+    area: calc
+    test: acceptance/specs/cp165_slack.spec.ts
+    request: |
+        For each person show slack, their group's cohesion minus their own scaled.
+  - id: cp166_strength_range
+    type: additive
+    area: calc
+    test: acceptance/specs/cp166_strength_range.spec.ts
+    request: |
+        Show me the difference between the strongest and weakest group's strength.
+  - id: cp167_group_even
+    type: additive
+    area: calc
+    test: acceptance/specs/cp167_group_even.spec.ts
+    request: |
+        For each group show whether its size is even.
+  - id: cp168_lift_minus
+    type: mutative
+    area: calc
+    mutates: [161]
+    retires: ['cp161_uplift.spec.ts::weave plus tether']
+    test: acceptance/specs/cp168_lift_minus.spec.ts
+    request: |
+        Uplift should be weave minus tether instead of weave plus tether.
+  - id: cp169_footprint
+    type: additive
+    area: calc
+    test: acceptance/specs/cp169_footprint.spec.ts
+    request: |
+        For each person show footprint, their scaled plus their mesh.
+  - id: cp170_mean_size
+    type: additive
+    area: calc
+    test: acceptance/specs/cp170_mean_size.spec.ts
+    request: |
+        Show me the average group size, rounded down.
+  - id: cp171_groups_above
+    type: additive
+    area: calc
+    test: acceptance/specs/cp171_groups_above.spec.ts
+    request: |
+        Show me how many groups have a strength above 200.
+  - id: cp172_footprint_double
+    type: mutative
+    area: calc
+    mutates: [169]
+    retires: ['cp169_footprint.spec.ts::scaled plus mesh']
+    test: acceptance/specs/cp172_footprint_double.spec.ts
+    request: |
+        Footprint should be simply twice the person's scaled, instead of scaled plus mesh.
+  - id: cp173_anchor_cohesion
+    type: additive
+    area: calc
+    test: acceptance/specs/cp173_anchor_cohesion.spec.ts
+    request: |
+        For each person show anchor cohesion, the cohesion of their home group.
+  - id: cp174_contribution
+    type: additive
+    area: calc
+    test: acceptance/specs/cp174_contribution.spec.ts
+    request: |
+        For each person show contribution, their scaled as a percentage of the total strength of all
+        groups, rounded down.
+  - id: cp175_prime_group
+    type: additive
+    area: calc
+    test: acceptance/specs/cp175_prime_group.spec.ts
+    request: |
+        Show me the name of the single strongest group.
+  - id: cp176_contribution_nearest
+    type: mutative
+    area: calc
+    mutates: [174]
+    retires: ['cp174_contribution.spec.ts::scaled over total strength']
+    test: acceptance/specs/cp176_contribution_nearest.spec.ts
+    request: |
+        Contribution should round to the nearest whole percent instead of rounding down.
+  - id: cp177_reach_span
+    type: additive
+    area: calc
+    test: acceptance/specs/cp177_reach_span.spec.ts
+    request: |
+        For each person show reach span, their home group's strength plus its cohesion.
+  - id: cp178_group_balance
+    type: additive
+    area: calc
+    test: acceptance/specs/cp178_group_balance.spec.ts
+    request: |
+        For each group show balance: its strength, minus its cohesion multiplied by its size.
+        (Cohesion is the whole-number share per member, rounded down, so this leftover is what the
+        strength carries over and above an even share for everyone in the group.)
+  - id: cp179_rank_global
+    type: additive
+    area: calc
+    algorithm: global-rank
+    test: acceptance/specs/cp179_rank_global.spec.ts
+    request: |
+        For each person show their overall rank across everyone on the sheet by scaled value,
+        highest first; ties by name.
+  - id: cp180_reach_span_strength
+    type: mutative
+    area: calc
+    mutates: [177]
+    retires: ['cp177_reach_span.spec.ts::home strength plus cohesion']
+    test: acceptance/specs/cp180_reach_span_strength.spec.ts
+    request: |
+        Reach span should be just the home group's strength, without adding the cohesion.
+
+  - id: cp181_apexname
+    type: additive
+    area: calc
+    test: acceptance/specs/cp181_apexname.spec.ts
+    request: |
+      Across the sheet, show me the name of the person with the highest value, and the name of the second highest. If two people are level, use the one whose name comes first alphabetically.
+  - id: cp182_gapval
+    type: additive
+    area: calc
+    test: acceptance/specs/cp182_gapval.spec.ts
+    request: |
+      Show me the gap at the top: the highest value minus the second highest.
+  - id: cp183_ledger
+    type: additive
+    area: calc
+    test: acceptance/specs/cp183_ledger.spec.ts
+    request: |
+      Show me the grand total of everyone's value on the sheet.
+  - id: cp184_gapval_span
+    type: mutative
+    area: calc
+    mutates: [182]
+    retires: ['cp182_gapval.spec.ts::gap is top minus second']
+    test: acceptance/specs/cp184_gapval_span.spec.ts
+    request: |
+      Change the gap to be the highest value minus the LOWEST value, not the second highest.
+  - id: cp185_headcount
+    type: additive
+    area: calc
+    test: acceptance/specs/cp185_headcount.spec.ts
+    request: |
+      Show me how many people are on the sheet.
+  - id: cp186_coverage
+    type: additive
+    area: calc
+    test: acceptance/specs/cp186_coverage.spec.ts
+    request: |
+      Show me how many people have a value of at least one hundred.
+  - id: cp187_range_scaled
+    type: additive
+    area: calc
+    test: acceptance/specs/cp187_range_scaled.spec.ts
+    request: |
+      Show me the spread of values: the highest value minus the lowest.
+  - id: cp188_coverage_threshold
+    type: mutative
+    area: calc
+    mutates: [186]
+    retires: ['cp186_coverage.spec.ts::counts people at or above 100']
+    test: acceptance/specs/cp188_coverage_threshold.spec.ts
+    request: |
+      Raise the bar for coverage: only count people with a value of at least five hundred now.
+  - id: cp189_bracket
+    type: additive
+    area: calc
+    algorithm: quartile-bracket
+    test: acceptance/specs/cp189_bracket.spec.ts
+    request: |
+      Put each person in a quartile by their value: Q4 for a thousand or more, Q3 from four hundred to nine hundred and ninety-nine, Q2 from one hundred to three hundred and ninety-nine, and Q1 below one hundred.
+  - id: cp190_bracket_count
+    type: additive
+    area: calc
+    test: acceptance/specs/cp190_bracket_count.spec.ts
+    request: |
+      Show me how many people are in each quartile.
+  - id: cp191_topset
+    type: additive
+    area: calc
+    test: acceptance/specs/cp191_topset.spec.ts
+    request: |
+      Show me the names of the top three people by value, in order.
+  - id: cp192_bracket_recalibrate
+    type: mutative
+    area: calc
+    mutates: [189, 190]
+    test: acceptance/specs/cp192_bracket_recalibrate.spec.ts
+    request: |
+      Change the quartile cut-offs: Q4 for eight hundred or more, Q3 from two hundred to seven hundred and ninety-nine, Q2 from fifty to one hundred and ninety-nine, and Q1 below fifty.
+  - id: cp193_cume
+    type: additive
+    area: calc
+    algorithm: cumulative
+    test: acceptance/specs/cp193_cume.spec.ts
+    request: |
+      Going from the highest value down, show each person the running total of value counted so far including their own.
+  - id: cp194_median_scaled
+    type: additive
+    area: calc
+    test: acceptance/specs/cp194_median_scaled.spec.ts
+    request: |
+      Show me the middle value on the sheet.
+  - id: cp195_concentration
+    type: additive
+    area: calc
+    test: acceptance/specs/cp195_concentration.spec.ts
+    request: |
+      Show me what share of the whole total the top two people make up, as a whole-number percent,
+      rounded down.
+  - id: cp196_concentration_top3
+    type: mutative
+    area: calc
+    mutates: [195]
+    retires: ['cp195_concentration.spec.ts::top two share percent']
+    test: acceptance/specs/cp196_concentration_top3.spec.ts
+    request: |
+      Use the top THREE people for that share, not the top two. Keep showing it as a whole-number
+      percent, rounded down.
+  - id: cp197_tier_tally
+    type: additive
+    area: calc
+    test: acceptance/specs/cp197_tier_tally.spec.ts
+    request: |
+      Show me how many people fall in each tier.
+  - id: cp198_grade_tally
+    type: additive
+    area: calc
+    test: acceptance/specs/cp198_grade_tally.spec.ts
+    request: |
+      Show me how many people have each grade.
+  - id: cp199_state_tally
+    type: additive
+    area: calc
+    test: acceptance/specs/cp199_state_tally.spec.ts
+    request: |
+      Show me how many people are in each state.
+  - id: cp200_grade_tally_merge
+    type: mutative
+    area: calc
+    mutates: [198]
+    retires: ['cp198_grade_tally.spec.ts::counts per grade']
+    test: acceptance/specs/cp200_grade_tally_merge.spec.ts
+    request: |
+      Fold the MID grade into HIGH for this count, so the grades reported are just HIGH (which now includes MID) and LOW.
+  - id: cp201_skewval
+    type: additive
+    area: calc
+    algorithm: skew
+    test: acceptance/specs/cp201_skewval.spec.ts
+    request: |
+      Show me how lopsided the sheet is: the average value minus the middle value (round the average down).
+  - id: cp202_tilt
+    type: additive
+    area: calc
+    test: acceptance/specs/cp202_tilt.spec.ts
+    request: |
+      Show me the tilt: how many people are above the average minus how many are below it.
+  - id: cp203_spanwidth
+    type: additive
+    area: calc
+    test: acceptance/specs/cp203_spanwidth.spec.ts
+    request: |
+      Show me how many different bands have at least one person in them.
+  - id: cp204_tilt_median
+    type: mutative
+    area: calc
+    mutates: [202]
+    retires: ['cp202_tilt.spec.ts::above-mean minus below-mean']
+    test: acceptance/specs/cp204_tilt_median.spec.ts
+    request: |
+      Measure the tilt around the middle value instead of the average: how many are above the middle minus how many are below it.
+  - id: cp205_quota
+    type: additive
+    area: calc
+    test: acceptance/specs/cp205_quota.spec.ts
+    request: |
+      Mark each person yes or no for whether they are in the top half of the sheet by value. Rank
+      everyone from the highest value to the lowest; if there is an odd number of people, round the
+      half up so the one in the middle is marked yes.
+  - id: cp206_digest
+    type: additive
+    area: calc
+    test: acceptance/specs/cp206_digest.spec.ts
+    request: |
+      Show me the average value per person on the sheet, rounded down.
+  - id: cp207_stratum
+    type: additive
+    area: calc
+    algorithm: median-stratum
+    test: acceptance/specs/cp207_stratum.spec.ts
+    request: |
+      Label each person TOP if their value is at or above the middle value, otherwise BOT.
+  - id: cp208_quota_third
+    type: mutative
+    area: calc
+    mutates: [205]
+    retires: ['cp205_quota.spec.ts::top half by rank']
+    test: acceptance/specs/cp208_quota_third.spec.ts
+    request: |
+      Tighten the quota to the top third of the sheet by value instead of the top half. Take only a
+      whole third — round the number of people down, dropping any remainder.
+  - id: cp209_region_tally
+    type: additive
+    area: calc
+    test: acceptance/specs/cp209_region_tally.spec.ts
+    request: |
+      Show me how many people are in each region.
+  - id: cp210_ledger_region
+    type: additive
+    area: calc
+    test: acceptance/specs/cp210_ledger_region.spec.ts
+    request: |
+      Show me the total value in each region.
+  - id: cp211_apexname_region
+    type: additive
+    area: calc
+    test: acceptance/specs/cp211_apexname_region.spec.ts
+    request: |
+      Show me the top person by value in each region.
+  - id: cp212_ledger_region_surge
+    type: mutative
+    area: calc
+    mutates: [210]
+    retires: ['cp210_ledger_region.spec.ts::sums scaled per region']
+    test: acceptance/specs/cp212_ledger_region_surge.spec.ts
+    request: |
+      For the region totals, count only people in the SURGE tier.
+  - id: cp213_quota_count
+    type: additive
+    area: calc
+    test: acceptance/specs/cp213_quota_count.spec.ts
+    request: |
+      Show me how many people meet the quota.
+  - id: cp214_stratum_count
+    type: additive
+    area: calc
+    test: acceptance/specs/cp214_stratum_count.spec.ts
+    request: |
+      Show me how many people are TOP and how many are BOT.
+  - id: cp215_coverage_share
+    type: additive
+    area: calc
+    test: acceptance/specs/cp215_coverage_share.spec.ts
+    request: |
+      Show me what percent of the sheet is covered, as a whole number rounded down.
+  - id: cp216_stratum_mean
+    type: mutative
+    area: calc
+    mutates: [207, 214]
+    retires: ['cp207_stratum.spec.ts::top/bottom vs median']
+    test: acceptance/specs/cp216_stratum_mean.spec.ts
+    request: |
+      Judge TOP and BOT against the average value instead of the middle value.
+  - id: cp217_tier_ledger
+    type: additive
+    area: calc
+    test: acceptance/specs/cp217_tier_ledger.spec.ts
+    request: |
+      Show me the total value in each tier.
+  - id: cp218_apexname_tier
+    type: additive
+    area: calc
+    test: acceptance/specs/cp218_apexname_tier.spec.ts
+    request: |
+      Show me the top person by value in each tier.
+  - id: cp219_tier_share
+    type: additive
+    area: calc
+    test: acceptance/specs/cp219_tier_share.spec.ts
+    request: |
+      Show me what percent of the sheet is in each tier, rounded down.
+  - id: cp220_tier_ledger_momentum
+    type: mutative
+    area: calc
+    mutates: [217]
+    retires: ['cp217_tier_ledger.spec.ts::sums scaled per tier']
+    test: acceptance/specs/cp220_tier_ledger_momentum.spec.ts
+    request: |
+      Make the tier totals add up the underlying momentum instead of the value.
+  - id: cp221_grade_ledger
+    type: additive
+    area: calc
+    test: acceptance/specs/cp221_grade_ledger.spec.ts
+    request: |
+      Show me the total value for each grade.
+  - id: cp222_grade_share
+    type: additive
+    area: calc
+    test: acceptance/specs/cp222_grade_share.spec.ts
+    request: |
+      Show me what percent of the sheet holds each grade, rounded down.
+  - id: cp223_apexname_grade
+    type: additive
+    area: calc
+    test: acceptance/specs/cp223_apexname_grade.spec.ts
+    request: |
+      Show me the top person by value for each grade.
+  - id: cp224_grade_ledger_merge
+    type: mutative
+    area: calc
+    mutates: [221]
+    retires: ['cp221_grade_ledger.spec.ts::sums scaled per grade']
+    test: acceptance/specs/cp224_grade_ledger_merge.spec.ts
+    request: |
+      For the grade totals, fold MID into HIGH so only HIGH (including MID) and LOW are reported.
+  - id: cp225_state_ledger
+    type: additive
+    area: calc
+    test: acceptance/specs/cp225_state_ledger.spec.ts
+    request: |
+      Show me the total value in each state.
+  - id: cp226_state_share
+    type: additive
+    area: calc
+    test: acceptance/specs/cp226_state_share.spec.ts
+    request: |
+      Show me what percent of the sheet is in each state, rounded down.
+  - id: cp227_apexname_state
+    type: additive
+    area: calc
+    test: acceptance/specs/cp227_apexname_state.spec.ts
+    request: |
+      Show me the top person by value in each state.
+  - id: cp228_state_ledger_decided
+    type: mutative
+    area: calc
+    mutates: [225]
+    retires: ['cp225_state_ledger.spec.ts::sums scaled per state']
+    test: acceptance/specs/cp228_state_ledger_decided.spec.ts
+    request: |
+      Leave DRAFT out of the state totals, reporting only FINAL and REVIEW (show DRAFT as zero).
+  - id: cp229_bracket_ledger
+    type: additive
+    area: calc
+    algorithm: bracket-ledger
+    test: acceptance/specs/cp229_bracket_ledger.spec.ts
+    request: |
+      Show me the total value in each quartile.
+  - id: cp230_apexname_bracket
+    type: additive
+    area: calc
+    test: acceptance/specs/cp230_apexname_bracket.spec.ts
+    request: |
+      Show me the top person by value in each quartile.
+  - id: cp231_bracket_share
+    type: additive
+    area: calc
+    test: acceptance/specs/cp231_bracket_share.spec.ts
+    request: |
+      Show me what percent of the sheet is in each quartile, rounded down.
+  - id: cp232_bracket_ledger_momentum
+    type: mutative
+    area: calc
+    mutates: [229]
+    retires: ['cp229_bracket_ledger.spec.ts::sums scaled per quartile']
+    test: acceptance/specs/cp232_bracket_ledger_momentum.spec.ts
+    request: |
+      Make the quartile totals add up momentum instead of value.
+  - id: cp233_report_screen
+    type: additive
+    area: persist
+    test: acceptance/specs/cp233_report_screen.spec.ts
+    request: |
+      Give me a separate report screen that shows the grand total and the number of people, matching the worksheet.
+  - id: cp234_report_mean
+    type: additive
+    area: calc
+    test: acceptance/specs/cp234_report_mean.spec.ts
+    request: |
+      On the report screen show the average value per person, rounded down.
+  - id: cp235_report_top
+    type: additive
+    area: calc
+    test: acceptance/specs/cp235_report_top.spec.ts
+    request: |
+      On the report screen show the name of the top person by value.
+  - id: cp236_report_mean_median
+    type: mutative
+    area: calc
+    mutates: [234]
+    retires: ['cp234_report_mean.spec.ts::report shows the mean']
+    test: acceptance/specs/cp236_report_mean_median.spec.ts
+    request: |
+      On the report screen show the middle value instead of the average.
+  - id: cp237_gapval_surge
+    type: additive
+    area: calc
+    test: acceptance/specs/cp237_gapval_surge.spec.ts
+    request: |
+      Within the SURGE tier, show me the gap between the highest and lowest value.
+  - id: cp238_coverage_final
+    type: additive
+    area: calc
+    test: acceptance/specs/cp238_coverage_final.spec.ts
+    request: |
+      Show me how many FINAL people have a value of at least five hundred.
+  - id: cp239_apex_nonfinal
+    type: additive
+    area: calc
+    test: acceptance/specs/cp239_apex_nonfinal.spec.ts
+    request: |
+      Show me the top person by value who is not yet FINAL.
+  - id: cp240_ledger_trim
+    type: mutative
+    area: calc
+    mutates: [183, 206, 233]
+    retires: ['cp183_ledger.spec.ts::ledger sums all scaled', 'cp206_digest.spec.ts::mean value per person', 'cp233_report_screen.spec.ts::report screen re-reads figures']
+    test: acceptance/specs/cp240_ledger_trim.spec.ts
+    request: |
+      Leave the single highest person out of the grand total, as an outlier. The average per person and the report total should follow. The outlier is only left out of the totals, not removed from the sheet, so work the average out over everyone — divide the trimmed total by the full head count.
+
+  # ===================================================================================================
+  # ACT V (cp241-250): "stress finale" — whole-stack consistency sweeps that compose the spine, and
+  # TWO REVERSALS that undo earlier decisions (age back to days, norm back to the average). The
+  # reversals target leaf concept clusters so their ripple is bounded and fully shipped.
+  # ===================================================================================================
+
+  - id: cp241_grand_scaled
+    type: additive
+    area: calc
+    test: acceptance/specs/cp241_grand_scaled.spec.ts
+    request: |
+      Show me the "grand scaled" for the whole sheet, which is everyone's scaled value added together.
+
+  - id: cp242_grand_influence
+    type: additive
+    area: calc
+    test: acceptance/specs/cp242_grand_influence.spec.ts
+    request: |
+      Show me the "grand influence", which is everyone's influence added together.
+
+  - id: cp243_portion
+    type: additive
+    area: calc
+    test: acceptance/specs/cp243_portion.spec.ts
+    request: |
+      For each person show their "portion", which is their scaled as a whole-number percentage of the
+      grand scaled, rounded down. If the grand scaled is zero, portion shows "n/a".
+
+  - id: cp244_age_days
+    type: mutative
+    area: calc
+    mutates: [26, 27, 28]
+    retires: ['cp26_age.spec.ts::age is complete weeks from onset to anchor', 'cp28_age_in_weeks.spec.ts::age is complete weeks and decay follows']
+    test: acceptance/specs/cp244_age_days.spec.ts
+    request: |
+      I was wrong to switch age to weeks. Put age back to the number of whole days from a person's
+      onset to the sheet anchor.
+
+  - id: cp245_apex_v
+    type: additive
+    area: calc
+    test: acceptance/specs/cp245_apex_v.spec.ts
+    request: |
+      Show me the name of the person with the highest scaled on the sheet. If two tie, pick the one
+      whose name comes first alphabetically.
+
+  - id: cp246_standing_v
+    type: additive
+    area: calc
+    algorithm: standing-sort
+    test: acceptance/specs/cp246_standing_v.spec.ts
+    request: |
+      For each person show their "sheet standing", their position when everyone is ordered by scaled
+      from highest to lowest. Highest is 1. If two tie, the name earlier in the alphabet ranks higher.
+
+  - id: cp247_spread_v
+    type: additive
+    area: calc
+    test: acceptance/specs/cp247_spread_v.spec.ts
+    request: |
+      Show me the "scaled spread", the highest scaled minus the lowest scaled on the sheet.
+
+  - id: cp248_norm_mean
+    type: mutative
+    area: calc
+    mutates: [53, 54, 55, 56]
+    retires: ['cp53_norm.spec.ts::norm is scaled minus the median scaled', 'cp56_norm_median.spec.ts::norm, outliers and count use the median', 'cp56_norm_median.spec.ts::an even number of people uses the lower of the two middle values']
+    test: acceptance/specs/cp248_norm_mean.spec.ts
+    request: |
+      Go back to measuring norm against the average scaled, not the middle value. Subtract the average
+      (rounded down) of everyone's scaled again.
+
+  - id: cp249_even_count
+    type: additive
+    area: calc
+    test: acceptance/specs/cp249_even_count.spec.ts
+    request: |
+      Show me how many people on the sheet have an even scaled value.
+
+  - id: cp250_grand_total
+    type: additive
+    area: calc
+    test: acceptance/specs/cp250_grand_total.spec.ts
+    request: |
+      Show me the "grand total" for the sheet, which is the grand scaled plus the grand influence.
