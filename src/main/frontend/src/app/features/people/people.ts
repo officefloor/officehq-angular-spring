@@ -121,6 +121,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // none are); people without a tier are not counted.
 // The sheet's tier ledger shows the total scaled of its people in each tier, SURGE, STEADY and SINK (zero
 // when none are); people without a tier, or whose scaled is "n/a", add nothing.
+// The sheet's top per tier shows, for each tier, SURGE, STEADY and SINK, the name of the person in it with
+// the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them have a scaled).
 // The sheet's stratum counts show how many of its people are in each stratum, TOP and BOT (zero when
 // none are); people whose stratum is "n/a" are not counted.
 // The sheet's band counts show how many of its people are in each band, A through E (zero when none
@@ -487,6 +489,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (t of tierLedger(); track t.tier) {
           <li>
             {{ t.tier }}: <strong [attr.data-testid]="'tier-ledger-' + t.tier">{{ t.total }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="tier-apex-heading">
+      <h2 id="tier-apex-heading">Top per tier</h2>
+      <ul>
+        @for (t of tierApexes(); track t.tier) {
+          <li>
+            {{ t.tier }}: <strong [attr.data-testid]="'apexname-tier-' + t.tier">{{ t.name ?? 'n/a' }}</strong>
           </li>
         }
       </ul>
@@ -1434,6 +1446,19 @@ export class People {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([region, apex]) => ({ region, name: apex?.name ?? null }));
   });
+  /** The apex of each tier: the name of its person with the highest scaled, ties to the earlier name. */
+  protected readonly tierApexes = computed(() =>
+    TIERS.map((tier) => {
+      let apex: { name: string; scaled: number } | null = null;
+      for (const p of this.people()) {
+        if (p.tier !== tier || p.scaled === null) continue;
+        if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
+          apex = { name: p.name, scaled: p.scaled };
+        }
+      }
+      return { tier, name: apex?.name ?? null };
+    }),
+  );
   protected readonly tierTally = computed(() =>
     TIERS.map((tier) => ({ tier, count: this.people().filter((p) => p.tier === tier).length })),
   );
