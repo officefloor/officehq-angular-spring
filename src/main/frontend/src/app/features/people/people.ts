@@ -36,6 +36,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // name that comes first alphabetically ("n/a" when nobody has an influence).
 // Each person may have a region: a short code typed in (like N1 or S2), given on add, in the edit form
 // or on the row; clearing it removes it.
+// Their reach is momentum times the region's multiplier, from its first letter: N 2, S 3, any other 1
+// ("n/a" while momentum or region is missing).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -132,6 +134,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Thrust</th>
           <th scope="col">Drift</th>
           <th scope="col">Momentum</th>
+          <th scope="col">Reach</th>
           <th scope="col">Load</th>
           <th scope="col">Tier</th>
           <th scope="col">Patrons</th>
@@ -169,6 +172,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+            <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
             <td data-testid="person-patrons">{{ patronNames(p) }}</td>

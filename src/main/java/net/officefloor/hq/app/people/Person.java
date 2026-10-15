@@ -28,7 +28,8 @@ import java.util.Set;
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
- * A person may have a "region": a short code typed in, like N1 or S2 (absent until given). */
+ * A person may have a "region": a short code typed in, like N1 or S2 (absent until given). The region's
+ * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is momentum times multiplier. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -206,6 +207,25 @@ public class Person {
         Integer momentum = getMomentum();
         Integer weight = getWeight();
         return momentum == null || weight == null ? null : momentum * weight;
+    }
+
+    /** The region multiplier from its first letter: N is 2, S is 3, any other is 1; absent without a region. */
+    public Integer getRegionMultiplier() {
+        if (region == null || region.isEmpty()) {
+            return null;
+        }
+        return switch (Character.toUpperCase(region.charAt(0))) {
+            case 'N' -> 2;
+            case 'S' -> 3;
+            default -> 1;
+        };
+    }
+
+    /** Reach is momentum times the region multiplier; absent while either is absent. */
+    public Integer getReach() {
+        Integer momentum = getMomentum();
+        Integer multiplier = getRegionMultiplier();
+        return momentum == null || multiplier == null ? null : momentum * multiplier;
     }
 
     /** Backing is the sum of the patrons' thrust; absent without patrons or while any patron's thrust is absent. */

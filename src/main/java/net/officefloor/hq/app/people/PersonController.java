@@ -28,7 +28,7 @@ public class PersonController {
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
-            Integer clout, Integer influence, String region) {
+            Integer clout, Integer influence, String region, Integer reach) {
         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
@@ -36,7 +36,7 @@ public class PersonController {
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
-                    p.getInfluence(), p.getRegion());
+                    p.getInfluence(), p.getRegion(), p.getReach());
         }
     }
 
