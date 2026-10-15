@@ -120,6 +120,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
 // The sheet's biggest group is the name of the group with the highest strength, ties going to the name
 // that comes first alphabetically ("n/a" when there are no groups).
+// The sheet's top group size is the size of its biggest group ("n/a" when there are no groups).
 // The sheet's total strength is the sum of the strengths of all its groups (0 when there are none).
 // The sheet's group count is how many groups it has (0 when there are none).
 // The sheet's median strength is the middle of its groups' strengths; for an even count, the lower of
@@ -303,6 +304,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
       }
     </section>
     <p>Biggest group: <strong data-testid="rollup-biggest-group">{{ biggestGroup() ?? 'n/a' }}</strong></p>
+    <p>Top group size: <strong data-testid="rollup-top-group-size">{{ topGroupSize() ?? 'n/a' }}</strong></p>
     <p>Total strength: <strong data-testid="rollup-total-strength">{{ totalStrength() }}</strong></p>
     <p>Groups: <strong data-testid="rollup-group-count">{{ groupCount() }}</strong></p>
     <p>Median strength: <strong data-testid="rollup-median-strength">{{ medianStrength() ?? 'n/a' }}</strong></p>
@@ -943,16 +945,21 @@ export class People {
     );
     return new Map(ranked.map((g, i) => [g.id, i + 1]));
   });
-  protected readonly biggestGroup = computed(() => {
+  private readonly topGroup = computed(() => {
     const strengths = this.groupStrengths();
-    let top: { name: string; strength: number } | null = null;
+    let top: { group: Group; strength: number } | null = null;
     for (const g of this.groups()) {
       const strength = strengths.get(g.id) ?? 0;
-      if (top === null || strength > top.strength || (strength === top.strength && g.name.localeCompare(top.name) < 0)) {
-        top = { name: g.name, strength };
+      if (top === null || strength > top.strength || (strength === top.strength && g.name.localeCompare(top.group.name) < 0)) {
+        top = { group: g, strength };
       }
     }
-    return top?.name ?? null;
+    return top?.group ?? null;
+  });
+  protected readonly biggestGroup = computed(() => this.topGroup()?.name ?? null);
+  protected readonly topGroupSize = computed(() => {
+    const top = this.topGroup();
+    return top === null ? null : (this.groupSizes().get(top.id) ?? 0);
   });
   protected shareOf(p: Person): number | null {
     const strength = p.groupId === null ? 0 : (this.groupStrengths().get(p.groupId) ?? 0);
