@@ -22,10 +22,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
-            Integer thrust, Integer drift, Integer momentum) {
+            Integer thrust, Integer drift, Integer momentum, String tier) {
         static PersonView of(Person p) {
             return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
-                    p.getThrust(), p.getDrift(), p.getMomentum());
+                    p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier());
         }
     }
 

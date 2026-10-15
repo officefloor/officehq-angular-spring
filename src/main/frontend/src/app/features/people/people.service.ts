@@ -11,6 +11,7 @@ export interface Person {
   thrust: number | null;
   drift: number | null;
   momentum: number | null;
+  tier: string | null;
 }
 
 export interface NewPerson {
