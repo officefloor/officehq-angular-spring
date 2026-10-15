@@ -23,6 +23,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // its own people, and a sheet only ever shows (and edits) its own.
 // The sheet shows its anchor date (today when none is set), and each person their onset date and
 // their age: whole days from onset to the anchor, negative when onset is after it ("n/a" without onset).
+// Their decay is momentum minus age ("n/a" while either is missing).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -102,6 +103,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Grade</th>
           <th scope="col">Onset</th>
           <th scope="col">Age</th>
+          <th scope="col">Decay</th>
           <th scope="col">Weight</th>
           <th scope="col">Thrust</th>
           <th scope="col">Drift</th>
@@ -131,6 +133,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-grade">{{ p.grade }}</td>
             <td data-testid="person-onset">{{ p.onset }}</td>
             <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
+            <td data-testid="concept-decay">{{ p.decay ?? 'n/a' }}</td>
             <td data-testid="concept-weight">{{ p.weight ?? 'n/a' }}</td>
             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
