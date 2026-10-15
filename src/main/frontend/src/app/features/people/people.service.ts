@@ -67,6 +67,7 @@ export interface Person {
   drag: string | null;
   lift: number | null;
   yield: number | null;
+  grip: number | null;
   norm: number | null;
   outlier: boolean;
 }
