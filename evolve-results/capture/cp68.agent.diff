@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d4413ff2..c2d4de80 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -10,7 +10,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // (a second raw axis, blank until given), set on add, on the row or through Edit; their force is delta × epsilon
+ // ("n/a" while delta, epsilon or zeta is missing). Each person also has a whole-number zeta (blank until given), set the same
+ // way; their sway is zeta − delta and their torque is force + 3 × sway ("n/a" while any part is missing),
+-// and their phase classifies torque: EBB below zero, RUN up to 99, PEAK from 100. Their blend is
++// and their phase classifies torque: EBB below zero, RUN up to 199, PEAK from 200. Their blend is
+ // momentum + torque ("n/a" while either is missing).
+ // Each person may have any number of patrons (other
+ // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index fa6ad19b..64a64cc8 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -445,13 +445,13 @@ public class Person {
+         return momentum < 0 ? "SINK" : momentum <= 199 ? "STEADY" : "SURGE";
+     }
+ 
+-    /** Phase classifies torque: EBB below zero, RUN up to 99, PEAK from 100; absent with torque. */
++    /** Phase classifies torque: EBB below zero, RUN up to 199, PEAK from 200; absent with torque. */
+     public String getPhase() {
+         Integer torque = getTorque();
+         if (torque == null) {
+             return null;
+         }
+-        return torque < 0 ? "EBB" : torque <= 99 ? "RUN" : "PEAK";
++        return torque < 0 ? "EBB" : torque <= 199 ? "RUN" : "PEAK";
+     }
+ 
+     /** Band classifies adjusted: E below 0, D up to 99, C up to 249, B up to 499, A from 500; absent with adjusted. */
