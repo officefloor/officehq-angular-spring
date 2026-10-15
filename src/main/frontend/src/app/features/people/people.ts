@@ -117,6 +117,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // none do); people whose pulse is "n/a" are not counted.
 // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
 // add, through Edit or on the row, and the row shows its name.
+// Each group shows its strength: the sum of the scaled of the people in it, counting "n/a" as zero.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -238,6 +239,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           @for (g of groups(); track g.id) {
             <li [attr.data-testid]="'group-row-' + g.id">
               <span data-testid="group-name">{{ g.name }}</span>
+              — strength <span data-testid="group-concept-strength">{{ groupStrengths().get(g.id) ?? 0 }}</span>
             </li>
           }
         </ul>
@@ -807,6 +809,13 @@ export class People {
       .filter((p) => p.state === 'FINAL')
       .reduce((total, p) => total + (p.scaled ?? 0), 0),
   );
+  protected readonly groupStrengths = computed(() => {
+    const strengths = new Map<number, number>();
+    for (const p of this.people()) {
+      if (p.groupId !== null) strengths.set(p.groupId, (strengths.get(p.groupId) ?? 0) + (p.scaled ?? 0));
+    }
+    return strengths;
+  });
   protected readonly regionCounts = computed(() => {
     const counts = new Map<string, number>();
     for (const p of this.people()) {
