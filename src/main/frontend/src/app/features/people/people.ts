@@ -53,6 +53,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // A from 300 ("n/a" while adjusted is "n/a").
 // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
 // adjusted is "n/a").
+// The sheet's band counts show how many of its people are in each band, A through E (zero when none
+// are); people whose band is "n/a" are not counted.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -140,6 +142,16 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           }
         </ul>
       }
+    </section>
+    <section aria-labelledby="band-counts-heading">
+      <h2 id="band-counts-heading">People per band</h2>
+      <ul>
+        @for (b of bandCounts(); track b.band) {
+          <li>
+            {{ b.band }}: <strong [attr.data-testid]="'band-count-' + b.band">{{ b.count }}</strong>
+          </li>
+        }
+      </ul>
     </section>
 
     @if (people().length === 0) {
@@ -418,6 +430,9 @@ export class People {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([region, count]) => ({ region, count }));
   });
+  protected readonly bandCounts = computed(() =>
+    BANDS.map((band) => ({ band, count: this.people().filter((p) => p.band === band).length })),
+  );
   protected readonly topInfluence = computed(() => {
     let top: Person | null = null;
     for (const p of this.people()) {
@@ -568,6 +583,9 @@ export class People {
     });
   }
 }
+
+// The bands, best first.
+const BANDS = ['A', 'B', 'C', 'D', 'E'] as const;
 
 // A number input's value as a whole number, or null when it is empty.
 function toNumber(value: number | string | null): number | null {
