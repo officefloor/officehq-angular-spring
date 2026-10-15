@@ -1,0 +1,40 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 21a3ceb3..25d5abb1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -81,7 +81,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their spool is their thrum minus their blend ("n/a" while either is "n/a").
+ // Their drag classifies blend: L0 below zero, L1 up to 49, L2 up to 149, L3 from 150 ("n/a" while blend is).
+ // Their lift is their blend times their drag's multiplier: L0 0, L1 1, L2 2, L3 3 ("n/a" while blend is).
+-// Their yield is their pivot plus their lift ("n/a" while either is "n/a").
++// Their yield is their pivot plus two times their lift ("n/a" while either is "n/a").
+ // Their grip is their yield minus their coil ("n/a" while either is "n/a").
+ // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
+ // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 643fa949..151ec65b 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -31,7 +31,7 @@ import java.util.Set;
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+  * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 2, 3 or 5.
+- * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus lift, absent while either is. "Grip" is yield minus coil, absent while either is.
++ * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus two times lift, absent while either is. "Grip" is yield minus coil, absent while either is.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force.
+@@ -552,11 +552,11 @@ public class Person {
+         return blend * multiplier;
+     }
+ 
+-    /** Yield is pivot plus lift; absent while either is absent. */
++    /** Yield is pivot plus two times lift; absent while either is absent. */
+     public Integer getYield() {
+         Integer pivot = getPivot();
+         Integer lift = getLift();
+-        return pivot == null || lift == null ? null : pivot + lift;
++        return pivot == null || lift == null ? null : pivot + 2 * lift;
+     }
+ 
+     /** Band classifies adjusted: E below 0, D up to 99, C up to 249, B up to 499, A from 500; absent with adjusted. */
