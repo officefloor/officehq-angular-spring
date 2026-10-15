@@ -1,0 +1,343 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index fe81609..53dd1b8 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -33,6 +33,8 @@ export interface Person {
+   allyCount: number;
+   synergy: number | null;
+   combined: number | null;
++  notes: number[];
++  noteSum: number;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+@@ -123,6 +125,11 @@ export class PeopleService {
+     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
+   }
+ 
++  // Adds a note with a whole-number score to a person.
++  addNote(sheet: string | null, id: number, score: number): Observable<Person> {
++    return this.http.post<Person>(`/api/people/${id}/notes`, { score }, { params: sheetParams(sheet) });
++  }
++
+   // Sets the people a person follows (their allies) by id; it does not make them follow back.
+   setAllies(sheet: string | null, id: number, allyIds: number[]): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { allyIds }, { params: sheetParams(sheet) });
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 29a181e..9589558 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -45,6 +45,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // so A following B does not make B follow A. A person's allies are the people they follow, listed by name, with how many there are,
+ // and their synergy: the allies' thrust added together (zero without allies).
+ // Their combined is their influence plus their synergy ("n/a" while either is "n/a").
++// Each person may have any number of notes, each with a whole-number score, added on the row. Their
++// notes are listed by score, sorted ascending, with their note sum: the scores added together (zero without notes).
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -167,6 +169,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Clout</th>
+           <th scope="col">Influence</th>
+           <th scope="col">Combined</th>
++          <th scope="col">Notes</th>
++          <th scope="col">Note sum</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -177,6 +181,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Set active</th>
+           <th scope="col">Set patrons</th>
+           <th scope="col">Set allies</th>
++          <th scope="col">Add note</th>
+           <th scope="col">Edit</th>
+         </tr>
+       </thead>
+@@ -210,6 +215,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
+             <td data-testid="concept-influence">{{ p.influence ?? 'n/a' }}</td>
+             <td data-testid="concept-combined">{{ p.combined ?? 'n/a' }}</td>
++            <td data-testid="person-notes">{{ p.notes.join(', ') }}</td>
++            <td data-testid="concept-note-sum">{{ p.noteSum }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+@@ -339,6 +346,21 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+                 }
+               </select>
+             </td>
++            <td>
++              <form (submit)="$event.preventDefault(); addNote(p, noteInput)">
++                <label class="visually-hidden" [for]="'person-note-add-' + p.id">
++                  Note score for {{ p.name }}
++                </label>
++                <input
++                  #noteInput
++                  [id]="'person-note-add-' + p.id"
++                  type="number"
++                  step="1"
++                  data-testid="person-note-input"
++                />
++                <button type="submit" data-testid="person-note-add">Add</button>
++              </form>
++            </td>
+             <td>
+               <button
+                 type="button"
+@@ -514,6 +536,15 @@ export class People {
+     this.service.setAllies(this.sheet(), person.id, allyIds).subscribe(() => this.load());
+   }
+ 
++  protected addNote(person: Person, input: HTMLInputElement): void {
++    const text = input.value.trim();
++    if (!/^-?\d+$/.test(text)) return;
++    this.service.addNote(this.sheet(), person.id, Number(text)).subscribe(() => {
++      input.value = '';
++      this.load();
++    });
++  }
++
+   private load(): void {
+     const sheet = this.sheet();
+     this.service.sheet(sheet).subscribe((s) => {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index af2b526..18b8dcf 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -38,7 +38,9 @@ public class TestSupportController {
+ 
+     private static final Set<String> FOLLOW_FIELDS = Set.of("from", "to");
+ 
+-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows");
++    private static final Set<String> NOTE_FIELDS = Set.of("personId", "score");
++
++    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows", "notes");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -57,6 +59,7 @@ public class TestSupportController {
+         jdbc.update("DELETE FROM person_patron");
+         jdbc.update("DELETE FROM person_follow");
+         jdbc.update("DELETE FROM person_region");
++        jdbc.update("DELETE FROM person_note");
+         jdbc.update("DELETE FROM person");
+         jdbc.update("DELETE FROM sheet");
+         jdbc.update("DELETE FROM unnamed_sheet");
+@@ -72,7 +75,7 @@ public class TestSupportController {
+     public void seed(@RequestBody Map<String, Object> fixture) {
+         for (String key : fixture.keySet()) {
+             if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
+-                    && !key.equals("follows") && !key.equals("sheets")) {
++                    && !key.equals("follows") && !key.equals("notes") && !key.equals("sheets")) {
+                 throw badRequest("unknown fixture key: " + key);
+             }
+         }
+@@ -82,7 +85,7 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
+         }
+         // People, patrons and regions at the top level are on the unnamed sheet.
+-        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), "");
++        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), fixture.get("notes"), "");
+         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
+             for (String field : sheet.keySet()) {
+                 if (!SHEET_FIELDS.contains(field)) {
+@@ -93,7 +96,7 @@ public class TestSupportController {
+                 throw badRequest("sheets.id is required");
+             }
+             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
+-            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), "sheets.");
++            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), sheet.get("notes"), "sheets.");
+         }
+     }
+ 
+@@ -125,9 +128,9 @@ public class TestSupportController {
+         return ids.get(0);
+     }
+ 
+-    /** Inserts one sheet's people and then their patrons, regions and follows; a null sheet id is the unnamed sheet. */
++    /** Inserts one sheet's people and then their patrons, regions, follows and notes; a null sheet id is the unnamed sheet. */
+     private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, Object followRows,
+-            String prefix) {
++            Object noteRows, String prefix) {
+         for (Map<String, Object> row : rows(peopleRows, prefix + "people")) {
+             for (String field : row.keySet()) {
+                 if (!PERSON_FIELDS.contains(field)) {
+@@ -199,6 +202,22 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO person_follow (follower_id, followed_id) VALUES (?, ?)",
+                     internalId(sheetId, from, prefix + "follows.from"), internalId(sheetId, to, prefix + "follows.to"));
+         }
++        // Notes give a person by id a whole-number score each; a person may have several, even with equal scores.
++        for (Map<String, Object> row : rows(noteRows, prefix + "notes")) {
++            for (String field : row.keySet()) {
++                if (!NOTE_FIELDS.contains(field)) {
++                    throw badRequest("cannot store " + prefix + "notes." + field);
++                }
++            }
++            Integer personId = integer(row.get("personId"), prefix + "notes.personId");
++            Integer score = integer(row.get("score"), prefix + "notes.score");
++            if (personId == null || score == null) {
++                throw badRequest(prefix + "notes rows need personId and score");
++            }
++            long person = internalId(sheetId, personId, prefix + "notes.personId");
++            jdbc.update("INSERT INTO person_note (person_id, position, score) "
++                    + "VALUES (?, (SELECT COUNT(*) FROM person_note WHERE person_id = ?), ?)", person, person, score);
++        }
+     }
+ 
+     /**
+@@ -245,6 +264,9 @@ public class TestSupportController {
+         out.put("follows", jdbc.queryForList("SELECT p.local_id AS \"from\", o.local_id AS \"to\" "
+                 + "FROM person_follow pf JOIN person p ON p.id = pf.follower_id JOIN person o ON o.id = pf.followed_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
++        out.put("notes", jdbc.queryForList("SELECT p.local_id AS \"personId\", pn.score AS \"score\" "
++                + "FROM person_note pn JOIN person p ON p.id = pn.person_id "
++                + "WHERE " + where + " ORDER BY p.local_id, pn.position", args));
+         return out;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 26d7354..f01d152 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -13,10 +13,12 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.JoinTable;
+ import jakarta.persistence.ManyToMany;
++import jakarta.persistence.OrderColumn;
+ import jakarta.persistence.Table;
+ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ import java.util.Collection;
++import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -35,7 +37,9 @@ import java.util.Set;
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+  * person's regions, of momentum times that region's multiplier. A person may follow any number of other people on
+  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
+- * allies' thrust added together (zero without allies). "Combined" is influence plus synergy. */
++ * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
++ * A person may have any number of "notes", each with a whole-number score; their "note sum" is the
++ * scores added together (zero without notes). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -86,6 +90,13 @@ public class Person {
+     @Column(name = "region")
+     private Set<String> regions = new HashSet<>();
+ 
++    /** The scores of the person's notes, in the order they were added. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_note", joinColumns = @JoinColumn(name = "person_id"))
++    @OrderColumn(name = "position")
++    @Column(name = "score")
++    private List<Integer> notes = new ArrayList<>();
++
+     protected Person() {
+     }
+ 
+@@ -163,6 +174,20 @@ public class Person {
+         this.regions = new HashSet<>(regions);
+     }
+ 
++    /** The note scores, sorted ascending. */
++    public List<Integer> getNotes() {
++        return notes.stream().sorted().toList();
++    }
++
++    public void addNote(int score) {
++        notes.add(score);
++    }
++
++    /** The note sum is the note scores added together; zero without notes. */
++    public int getNoteSum() {
++        return notes.stream().mapToInt(Integer::intValue).sum();
++    }
++
+     public LocalDate getOnset() {
+         return onset;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index bcd9587..66e9fcb 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.people;
+ 
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+@@ -31,7 +32,7 @@ public class PersonController {
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, List<Integer> notes, int noteSum) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -41,7 +42,7 @@ public class PersonController {
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+                     p.getInfluence(), p.getRegions(), p.getReach(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getAllies().size(), p.getSynergy(), p.getCombined());
++                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getNotes(), p.getNoteSum());
+         }
+     }
+ 
+@@ -169,6 +170,19 @@ public class PersonController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+     }
+ 
++    public record NewNote(@NotNull Integer score) {
++    }
++
++    /** Adds a note with a whole-number score to the person with this id on the request's sheet. */
++    @PostMapping("/{id}/notes")
++    @ResponseStatus(HttpStatus.CREATED)
++    public PersonView addNote(@RequestParam(required = false) String sheet, @PathVariable long id,
++            @Valid @RequestBody NewNote note) {
++        String sheetId = sheetId(sheet);
++        return service.addNote(sheetId, id, note.score()).map(p -> view(sheetId, p))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
++    }
++
+     /** A person's view, ranked among the people on their sheet. */
+     private PersonView view(String sheetId, Person person) {
+         return PersonView.of(person, ranks(service.list(sheetId)), service.anchor(sheetId));
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index 0e7e434..447f53a 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -133,6 +133,15 @@ public class PersonService {
+         });
+     }
+ 
++    /** Adds a note with a whole-number score to the person. */
++    @Transactional
++    public Optional<Person> addNote(String sheetId, long id, int score) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            p.addNote(score);
++            return p;
++        });
++    }
++
+     /** Sets the patrons (other people on the same sheet) by their id on that sheet; an empty list clears them. Refuses oneself or an unknown person. */
+     @Transactional
+     public Optional<Person> setPatrons(String sheetId, long id, Collection<Long> patronIds) {
+diff --git a/src/main/resources/db/migration/V15__person_notes.sql b/src/main/resources/db/migration/V15__person_notes.sql
+new file mode 100644
+index 0000000..fbf74bf
+--- /dev/null
++++ b/src/main/resources/db/migration/V15__person_notes.sql
+@@ -0,0 +1,7 @@
++-- A person may have any number of notes, each with a whole-number score; scores may repeat.
++CREATE TABLE person_note (
++    person_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    position INT NOT NULL,
++    score INT NOT NULL,
++    PRIMARY KEY (person_id, position)
++);
