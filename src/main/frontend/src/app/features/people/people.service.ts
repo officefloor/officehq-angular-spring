@@ -74,6 +74,7 @@ export interface Person {
   grip: number | null;
   charge: number | null;
   churn: number | null;
+  flow: number | null;
   norm: number | null;
   outlier: boolean;
   ebb: number | null;
