@@ -1,0 +1,442 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index fa81fbf..d6d0851 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -8,6 +8,8 @@ export interface Person {
+   alpha: number | null;
+   beta: number | null;
+   gamma: number | null;
++  grade: Grade | null;
++  weight: number | null;
+   thrust: number | null;
+   drift: number | null;
+   momentum: number | null;
+@@ -19,6 +21,10 @@ export interface Person {
+   percentile: number | null;
+ }
+ 
++export type Grade = 'LOW' | 'MID' | 'HIGH';
++
++export const GRADES: readonly Grade[] = ['LOW', 'MID', 'HIGH'];
++
+ export interface Patron {
+   id: number;
+   name: string;
+@@ -29,6 +35,7 @@ export interface NewPerson {
+   alpha: number | null;
+   beta: number | null;
+   gamma: number | null;
++  grade: Grade | null;
+ }
+ 
+ // The people REST API (/api/people).
+@@ -68,6 +75,10 @@ export class PeopleService {
+     return this.http.patch<Person>(`/api/people/${id}`, { gamma }, { params: sheetParams(sheet) });
+   }
+ 
++  setGrade(sheet: string | null, id: number, grade: Grade | null): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { grade }, { params: sheetParams(sheet) });
++  }
++
+   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4e53f0e..82cd4fb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,6 +1,6 @@
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+-import { PeopleService, Person } from './people.service';
++import { GRADES, Grade, PeopleService, Person } from './people.service';
+ 
+ // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
+ // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
+@@ -13,6 +13,8 @@ import { PeopleService, Person } from './people.service';
+ // by higher alpha first, then by name; without a momentum the rank shows "n/a". The sheet's leader
+ // is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
+ // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100.
++// Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
++// weight comes from it (LOW 1, MID 2, HIGH 3, "n/a" without a grade).
+ // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
+ // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
+ // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
+@@ -64,6 +66,13 @@ import { PeopleService, Person } from './people.service';
+         formControlName="gamma"
+         data-testid="person-form-gamma"
+       />
++      <label for="person-grade">Grade</label>
++      <select id="person-grade" formControlName="grade" data-testid="person-form-grade">
++        <option [ngValue]="null">none</option>
++        @for (g of grades; track g) {
++          <option [ngValue]="g">{{ g }}</option>
++        }
++      </select>
+       <button type="submit" [disabled]="form.invalid || saving()" data-testid="person-form-submit">
+         {{ editing() ? 'Save ' + editing()!.name : 'Add person' }}
+       </button>
+@@ -84,6 +93,8 @@ import { PeopleService, Person } from './people.service';
+           <th scope="col">Alpha</th>
+           <th scope="col">Beta</th>
+           <th scope="col">Gamma</th>
++          <th scope="col">Grade</th>
++          <th scope="col">Weight</th>
+           <th scope="col">Thrust</th>
+           <th scope="col">Drift</th>
+           <th scope="col">Momentum</th>
+@@ -96,6 +107,7 @@ import { PeopleService, Person } from './people.service';
+           <th scope="col">Set alpha</th>
+           <th scope="col">Set beta</th>
+           <th scope="col">Set gamma</th>
++          <th scope="col">Set grade</th>
+           <th scope="col">Set patrons</th>
+           <th scope="col">Edit</th>
+         </tr>
+@@ -107,6 +119,8 @@ import { PeopleService, Person } from './people.service';
+             <td data-testid="person-alpha">{{ p.alpha }}</td>
+             <td data-testid="person-beta">{{ p.beta }}</td>
+             <td data-testid="person-gamma">{{ p.gamma }}</td>
++            <td data-testid="person-grade">{{ p.grade }}</td>
++            <td data-testid="concept-weight">{{ p.weight ?? 'n/a' }}</td>
+             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+@@ -164,6 +178,22 @@ import { PeopleService, Person } from './people.service';
+                 <button type="submit" data-testid="person-gamma-save">Save</button>
+               </form>
+             </td>
++            <td>
++              <label class="visually-hidden" [for]="'person-grade-edit-' + p.id">
++                Grade for {{ p.name }}
++              </label>
++              <select
++                [id]="'person-grade-edit-' + p.id"
++                (change)="setGrade(p, gradeSelect.value)"
++                #gradeSelect
++                data-testid="person-grade-select"
++              >
++                <option value="" [selected]="p.grade === null">none</option>
++                @for (g of grades; track g) {
++                  <option [value]="g" [selected]="p.grade === g">{{ g }}</option>
++                }
++              </select>
++            </td>
+             <td>
+               <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
+                 Patrons for {{ p.name }}
+@@ -201,6 +231,7 @@ import { PeopleService, Person } from './people.service';
+ export class People {
+   private readonly service = inject(PeopleService);
+ 
++  protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
+   protected readonly sheet = signal<string | null>(null);
+   protected readonly saving = signal(false);
+@@ -212,6 +243,7 @@ export class People {
+     alpha: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+     beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+     gamma: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
++    grade: [null as Grade | null],
+   });
+ 
+   constructor() {
+@@ -234,7 +266,7 @@ export class People {
+ 
+   protected edit(person: Person): void {
+     this.editing.set(person);
+-    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma });
++    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, grade: person.grade });
+     this.form.controls.name.disable();
+   }
+ 
+@@ -245,12 +277,12 @@ export class People {
+   }
+ 
+   protected submit(): void {
+-    const { name, alpha, beta, gamma } = this.form.getRawValue();
++    const { name, alpha, beta, gamma, grade } = this.form.getRawValue();
+     if (this.form.invalid) return;
+     const editing = this.editing();
+     const request = editing
+-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma) })
+-      : this.service.add(this.sheet(), { name, alpha, beta, gamma });
++      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), grade })
++      : this.service.add(this.sheet(), { name, alpha, beta, gamma, grade });
+     this.saving.set(true);
+     request.subscribe({
+       next: () => {
+@@ -283,6 +315,11 @@ export class People {
+     this.service.setGamma(this.sheet(), person.id, gamma).subscribe(() => this.load());
+   }
+ 
++  protected setGrade(person: Person, value: string): void {
++    const grade = GRADES.find((g) => g === value) ?? null;
++    this.service.setGrade(this.sheet(), person.id, grade).subscribe(() => this.load());
++  }
++
+   protected patronNames(person: Person): string {
+     return person.patrons.map((patron) => patron.name).join(', ');
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index e6a4ce7..22c560c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import net.officefloor.hq.app.people.Grade;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.jdbc.core.JdbcTemplate;
+@@ -26,7 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade");
+ 
+     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
+ 
+@@ -122,10 +123,11 @@ public class TestSupportController {
+             Integer alpha = integer(row.get("alpha"), prefix + "people.alpha");
+             Integer beta = integer(row.get("beta"), prefix + "people.beta");
+             Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
++            String grade = grade(row.get("grade"), prefix + "people.grade");
+             // A person's id is their id within the sheet; the internal key is generated.
+             Integer localId = integer(row.get("id"), prefix + "people.id");
+-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma) VALUES (?, ?, ?, ?, ?, ?)",
+-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma);
++            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade) VALUES (?, ?, ?, ?, ?, ?, ?)",
++                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade);
+         }
+         // Patrons link people by id, so add them once every person exists.
+         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
+@@ -169,7 +171,7 @@ public class TestSupportController {
+         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
+         Map<String, Object> out = new LinkedHashMap<>();
+         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+-                + "beta AS \"beta\", gamma AS \"gamma\" FROM person p WHERE " + where + " ORDER BY local_id", args));
++                + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
+                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+@@ -200,6 +202,17 @@ public class TestSupportController {
+         throw badRequest(field + " must be a whole number, got " + value);
+     }
+ 
++    private static String grade(Object value, String field) {
++        if (value == null) {
++            return null;
++        }
++        try {
++            return Grade.parse(String.valueOf(value)).name();
++        } catch (IllegalArgumentException e) {
++            throw badRequest(field + ": " + e.getMessage());
++        }
++    }
++
+     private static ResponseStatusException badRequest(String message) {
+         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/Grade.java b/src/main/java/net/officefloor/hq/app/people/Grade.java
+new file mode 100644
+index 0000000..43f2236
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/Grade.java
+@@ -0,0 +1,25 @@
++package net.officefloor.hq.app.people;
++
++/** A person's grade, each with its weight: LOW is 1, MID is 2, HIGH is 3. */
++public enum Grade {
++    LOW(1), MID(2), HIGH(3);
++
++    private final int weight;
++
++    Grade(int weight) {
++        this.weight = weight;
++    }
++
++    public int weight() {
++        return weight;
++    }
++
++    /** The grade with this name; refuses anything other than LOW, MID or HIGH. */
++    public static Grade parse(String value) {
++        try {
++            return Grade.valueOf(value);
++        } catch (IllegalArgumentException e) {
++            throw new IllegalArgumentException("grade must be LOW, MID or HIGH, got " + value);
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 8e9d524..e4d0b26 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.people;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+@@ -19,7 +21,8 @@ import java.util.Set;
+  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+- * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). */
++ * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
++ * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 2 or 3. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -40,6 +43,9 @@ public class Person {
+ 
+     private Integer gamma;
+ 
++    @Enumerated(EnumType.STRING)
++    private Grade grade;
++
+     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
+     @Column(name = "sheet_id")
+     private String sheetId;
+@@ -101,6 +107,19 @@ public class Person {
+         this.gamma = gamma;
+     }
+ 
++    public Grade getGrade() {
++        return grade;
++    }
++
++    public void setGrade(Grade grade) {
++        this.grade = grade;
++    }
++
++    /** Weight comes from the grade: LOW 1, MID 2, HIGH 3; absent without a grade. */
++    public Integer getWeight() {
++        return grade == null ? null : grade.weight();
++    }
++
+     /** The patrons, sorted by name. */
+     public List<Person> getPatrons() {
+         return patrons.stream()
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 362f84d..720ab26 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -25,12 +25,12 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+-            Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
++            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile) {
+         static PersonView of(Person p, Map<Long, Integer> ranks) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+-                    p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
++                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()));
+         }
+@@ -60,7 +60,7 @@ public class PersonController {
+     public record PatronView(Long id, String name) {
+     }
+ 
+-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma) {
++    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade) {
+     }
+ 
+     private final PersonService service;
+@@ -79,11 +79,12 @@ public class PersonController {
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
+-        return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma()));
++        return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
++                person.grade()));
+     }
+ 
+     /**
+-     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma and
++     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade and
+      * patronIds (a list of ids on that sheet) the body names; a null value clears it.
+      */
+     @PatchMapping("/{id}")
+@@ -100,6 +101,9 @@ public class PersonController {
+         if (update.containsKey("gamma")) {
+             person = service.setGamma(sheetId, id, integer(update.get("gamma")));
+         }
++        if (update.containsKey("grade")) {
++            person = service.setGrade(sheetId, id, grade(update.get("grade")));
++        }
+         if (update.containsKey("patronIds")) {
+             List<Long> patronIds = new ArrayList<>();
+             if (update.get("patronIds") instanceof List<?> ids) {
+@@ -142,6 +146,17 @@ public class PersonController {
+         return sheet == null || sheet.isBlank() ? null : sheet.trim();
+     }
+ 
++    private static Grade grade(Object value) {
++        if (value == null) {
++            return null;
++        }
++        try {
++            return Grade.parse(String.valueOf(value));
++        } catch (IllegalArgumentException e) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
++        }
++    }
++
+     private static Integer integer(Object value) {
+         if (value == null) {
+             return null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index 4adc44e..f9ecf64 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -52,12 +52,14 @@ public class PersonService {
+ 
+     @Transactional
+     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
+-    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma) {
++    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Grade grade) {
+         if (sheetId != null && !sheets.existsById(sheetId)) {
+             sheets.save(new Sheet(sheetId));
+         }
+         long id = people.maxLocalId(sheetId) + 1;
+-        return people.save(new Person(sheetId, id, name.trim(), alpha, beta, gamma));
++        Person person = new Person(sheetId, id, name.trim(), alpha, beta, gamma);
++        person.setGrade(grade);
++        return people.save(person);
+     }
+ 
+     @Transactional
+@@ -89,6 +91,14 @@ public class PersonService {
+         });
+     }
+ 
++    @Transactional
++    public Optional<Person> setGrade(String sheetId, long id, Grade grade) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            p.setGrade(grade);
++            return p;
++        });
++    }
++
+     /** Sets the patrons (other people on the same sheet) by their id on that sheet; an empty list clears them. Refuses oneself or an unknown person. */
+     @Transactional
+     public Optional<Person> setPatrons(String sheetId, long id, Collection<Long> patronIds) {
+diff --git a/src/main/resources/db/migration/V8__person_grade.sql b/src/main/resources/db/migration/V8__person_grade.sql
+new file mode 100644
+index 0000000..72fc210
+--- /dev/null
++++ b/src/main/resources/db/migration/V8__person_grade.sql
+@@ -0,0 +1,3 @@
++-- A person's grade: LOW, MID or HIGH; absent until given.
++ALTER TABLE person ADD COLUMN grade VARCHAR(4);
++ALTER TABLE person ADD CONSTRAINT person_grade_check CHECK (grade IN ('LOW', 'MID', 'HIGH'));

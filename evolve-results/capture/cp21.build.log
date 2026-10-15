@@ -1,0 +1,122 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610160010/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 26 tests using 1 worker
+
+[1A[2K[1/26] [chromium] › cp01_people_alpha.spec.ts:8:7 › people with alpha › lists seeded people with their alpha
+[1A[2K[2/26] [chromium] › cp01_people_alpha.spec.ts:25:7 › people with alpha › adds a person
+[1A[2K[3/26] [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta
+[1A[2K  1) [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta ────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('concept-thrust')
+    Expected string: [32m"12"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('concept-thrust')[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      14 |
+      15 |     await expect(page.getByTestId('person-row-1').getByTestId('person-beta')).toHaveText('4');
+    > 16 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-thrust')).toHaveText('12');
+         |                                                                                  ^
+      17 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-thrust')).toHaveText('14');
+      18 |   });
+      19 |
+
+        at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp02_thrust.spec.ts:16:82
+
+
+[1A[2K[4/26] [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative
+[1A[2K  2) [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('concept-thrust')
+    Expected string: [32m"0"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('concept-thrust')[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      27 |     await page.goto('/');
+      28 |
+    > 29 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-thrust')).toHaveText('0');
+         |                                                                                  ^
+      30 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-thrust')).toHaveText('-20');
+      31 |   });
+      32 | });
+
+        at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp02_thrust.spec.ts:29:82
+
+
+[1A[2K[5/26] [chromium] › cp03_momentum.spec.ts:6:7 › drift and momentum › drift and momentum build on thrust
+[1A[2K[6/26] [chromium] › cp04_momentum_coefficient.spec.ts:5:7 › momentum coefficient raised to 3 › momentum is thrust + 3*drift
+[1A[2K[7/26] [chromium] › cp05_tier.spec.ts:6:7 › tier › tier classifies momentum including the boundaries
+[1A[2K[8/26] [chromium] › cp06_concept_nullability.spec.ts:7:7 › concept nullability › missing raw value makes the dependent concepts n/a
+[1A[2K[9/26] [chromium] › cp07_alpha_change_audit.spec.ts:8:7 › alpha change audit › changing alpha updates concepts and writes an audit record
+[1A[2K[10/26] [chromium] › cp08_tier_recalibrate.spec.ts:8:7 › tier recalibrated › tier uses the new wider STEADY band
+[1A[2K[11/26] [chromium] › cp09_patron.spec.ts:6:7 › patron › shows each person their patron by name
+[1A[2K[12/26] [chromium] › cp10_backing.spec.ts:6:7 › backing › backing is the patron thrust, n/a without a patron
+[1A[2K[13/26] [chromium] › cp11_net.spec.ts:6:7 › net › net is momentum plus summed backing (0 when no patron)
+[1A[2K[14/26] [chromium] › cp12_patron_many.spec.ts:9:7 › many patrons › patrons list all names sorted
+[1A[2K[15/26] [chromium] › cp12_patron_many.spec.ts:31:7 › many patrons › backing sums all patron thrust; net adds it to momentum
+[1A[2K[16/26] [chromium] › cp13_worksheet_id.spec.ts:9:7 › worksheet id › opening a sheet shows its id and its people, and adds belong to it
+[1A[2K[17/26] [chromium] › cp14_worksheet_recall.spec.ts:6:7 › worksheet recall › a sheet recalls its data after a page refresh
+[1A[2K[18/26] [chromium] › cp14_worksheet_recall.spec.ts:26:7 › worksheet recall › opening an unknown sheet starts it empty
+[1A[2K[19/26] [chromium] › cp15_worksheet_isolation.spec.ts:6:7 › worksheet isolation › people do not leak between sheets
+[1A[2K[20/26] [chromium] › cp16_unknown_sheet_blank.spec.ts:5:7 › unknown sheet starts blank › opening an unknown id starts an empty sheet with that id
+[1A[2K[21/26] [chromium] › cp17_rank.spec.ts:6:7 › rank › rank orders by momentum desc, ties by higher alpha
+[1A[2K[22/26] [chromium] › cp18_leader.spec.ts:6:7 › leader › leader is the rank-1 person
+[1A[2K[23/26] [chromium] › cp19_percentile.spec.ts:7:7 › percentile › percentile spreads 100..0 evenly by rank
+[1A[2K[24/26] [chromium] › cp19_percentile.spec.ts:26:7 › percentile › a single person is 100
+[1A[2K[25/26] [chromium] › cp20_rank_tiebreak.spec.ts:6:7 › rank tie-break by alpha › a momentum tie is broken by higher alpha
+[1A[2K[26/26] [chromium] › cp21_grade_weight.spec.ts:6:7 › grade weight › weight comes from grade
+[1A[2K  2 failed
+    [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta ─────────────────────
+    [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative ───────────────
+  24 passed (18.2s)
