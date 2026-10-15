@@ -123,6 +123,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // ("n/a" when none of its people have an effective).
 // Each group shows its apex: the name of the person in it with the highest scaled, ties going to the name
 // earlier in the alphabet ("n/a" when none of its people have a scaled).
+// Each group shows its density: how many of its people have a scaled at or above its cohesion, not
+// counting anyone whose scaled is "n/a" (0 when empty).
 // Each person shows their share: their scaled as a percentage of their group's strength, rounded to the nearest whole percent
 // ("n/a" when their group's strength is zero, they have no group or their scaled is "n/a").
 // Each person shows their standing: their place within their group by scaled, highest first (1), with
@@ -255,6 +257,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
               — cohesion <span data-testid="group-concept-cohesion">{{ groupCohesions().get(g.id) ?? 'n/a' }}</span>
               — spread <span data-testid="group-concept-spread">{{ groupSpreads().get(g.id) ?? 'n/a' }}</span>
               — apex <span data-testid="group-concept-apex">{{ groupApexes().get(g.id)?.name ?? 'n/a' }}</span>
+              — density <span data-testid="group-concept-density">{{ groupDensities().get(g.id) ?? 0 }}</span>
             </li>
           }
         </ul>
@@ -859,6 +862,16 @@ export class People {
       cohesions.set(groupId, Math.floor((strengths.get(groupId) ?? 0) / size));
     }
     return cohesions;
+  });
+  protected readonly groupDensities = computed(() => {
+    const cohesions = this.groupCohesions();
+    const densities = new Map<number, number>();
+    for (const p of this.people()) {
+      if (p.groupId === null || p.scaled === null) continue;
+      const cohesion = cohesions.get(p.groupId);
+      if (cohesion !== undefined && p.scaled >= cohesion) densities.set(p.groupId, (densities.get(p.groupId) ?? 0) + 1);
+    }
+    return densities;
   });
   protected readonly groupSpreads = computed(() => {
     const ranges = new Map<number, { min: number; max: number }>();
