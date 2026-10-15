@@ -8,6 +8,8 @@ export interface Person {
   alpha: number | null;
   beta: number | null;
   gamma: number | null;
+  grade: Grade | null;
+  weight: number | null;
   thrust: number | null;
   drift: number | null;
   momentum: number | null;
@@ -19,6 +21,10 @@ export interface Person {
   percentile: number | null;
 }
 
+export type Grade = 'LOW' | 'MID' | 'HIGH';
+
+export const GRADES: readonly Grade[] = ['LOW', 'MID', 'HIGH'];
+
 export interface Patron {
   id: number;
   name: string;
@@ -29,6 +35,7 @@ export interface NewPerson {
   alpha: number | null;
   beta: number | null;
   gamma: number | null;
+  grade: Grade | null;
 }
 
 // The people REST API (/api/people).
@@ -66,6 +73,10 @@ export class PeopleService {
 
   setGamma(sheet: string | null, id: number, gamma: number | null): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { gamma }, { params: sheetParams(sheet) });
+  }
+
+  setGrade(sheet: string | null, id: number, grade: Grade | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { grade }, { params: sheetParams(sheet) });
   }
 
   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {

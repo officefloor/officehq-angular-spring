@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.people.Grade;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,7 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade");
 
     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
@@ -122,10 +123,11 @@ public class TestSupportController {
             Integer alpha = integer(row.get("alpha"), prefix + "people.alpha");
             Integer beta = integer(row.get("beta"), prefix + "people.beta");
             Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
+            String grade = grade(row.get("grade"), prefix + "people.grade");
             // A person's id is their id within the sheet; the internal key is generated.
             Integer localId = integer(row.get("id"), prefix + "people.id");
-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma) VALUES (?, ?, ?, ?, ?, ?)",
-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma);
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade);
         }
         // Patrons link people by id, so add them once every person exists.
         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
@@ -169,7 +171,7 @@ public class TestSupportController {
         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
-                + "beta AS \"beta\", gamma AS \"gamma\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+                + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\" FROM person p WHERE " + where + " ORDER BY local_id", args));
         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
@@ -198,6 +200,17 @@ public class TestSupportController {
             return Integer.valueOf(s);
         }
         throw badRequest(field + " must be a whole number, got " + value);
+    }
+
+    private static String grade(Object value, String field) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Grade.parse(String.valueOf(value)).name();
+        } catch (IllegalArgumentException e) {
+            throw badRequest(field + ": " + e.getMessage());
+        }
     }
 
     private static ResponseStatusException badRequest(String message) {

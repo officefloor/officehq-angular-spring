@@ -25,12 +25,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
-            Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
+            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile) {
         static PersonView of(Person p, Map<Long, Integer> ranks) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
-                    p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
+                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()));
         }
@@ -60,7 +60,7 @@ public class PersonController {
     public record PatronView(Long id, String name) {
     }
 
-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma) {
+    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade) {
     }
 
     private final PersonService service;
@@ -79,11 +79,12 @@ public class PersonController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
-        return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma()));
+        return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
+                person.grade()));
     }
 
     /**
-     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma and
+     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade and
      * patronIds (a list of ids on that sheet) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
@@ -99,6 +100,9 @@ public class PersonController {
         }
         if (update.containsKey("gamma")) {
             person = service.setGamma(sheetId, id, integer(update.get("gamma")));
+        }
+        if (update.containsKey("grade")) {
+            person = service.setGrade(sheetId, id, grade(update.get("grade")));
         }
         if (update.containsKey("patronIds")) {
             List<Long> patronIds = new ArrayList<>();
@@ -140,6 +144,17 @@ public class PersonController {
     /** The sheet named by the request, trimmed; blank or absent means the unnamed sheet. */
     private static String sheetId(String sheet) {
         return sheet == null || sheet.isBlank() ? null : sheet.trim();
+    }
+
+    private static Grade grade(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Grade.parse(String.valueOf(value));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     private static Integer integer(Object value) {

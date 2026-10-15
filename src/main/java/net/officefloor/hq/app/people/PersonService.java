@@ -52,12 +52,14 @@ public class PersonService {
 
     @Transactional
     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
-    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma) {
+    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Grade grade) {
         if (sheetId != null && !sheets.existsById(sheetId)) {
             sheets.save(new Sheet(sheetId));
         }
         long id = people.maxLocalId(sheetId) + 1;
-        return people.save(new Person(sheetId, id, name.trim(), alpha, beta, gamma));
+        Person person = new Person(sheetId, id, name.trim(), alpha, beta, gamma);
+        person.setGrade(grade);
+        return people.save(person);
     }
 
     @Transactional
@@ -85,6 +87,14 @@ public class PersonService {
     public Optional<Person> setGamma(String sheetId, long id, Integer gamma) {
         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
             p.setGamma(gamma);
+            return p;
+        });
+    }
+
+    @Transactional
+    public Optional<Person> setGrade(String sheetId, long id, Grade grade) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            p.setGrade(grade);
             return p;
         });
     }

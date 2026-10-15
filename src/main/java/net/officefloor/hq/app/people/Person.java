@@ -2,6 +2,8 @@ package net.officefloor.hq.app.people;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -19,7 +21,8 @@ import java.util.Set;
  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
- * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). */
+ * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+ * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 2 or 3. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -39,6 +42,9 @@ public class Person {
     private Integer beta;
 
     private Integer gamma;
+
+    @Enumerated(EnumType.STRING)
+    private Grade grade;
 
     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
     @Column(name = "sheet_id")
@@ -99,6 +105,19 @@ public class Person {
 
     public void setGamma(Integer gamma) {
         this.gamma = gamma;
+    }
+
+    public Grade getGrade() {
+        return grade;
+    }
+
+    public void setGrade(Grade grade) {
+        this.grade = grade;
+    }
+
+    /** Weight comes from the grade: LOW 1, MID 2, HIGH 3; absent without a grade. */
+    public Integer getWeight() {
+        return grade == null ? null : grade.weight();
     }
 
     /** The patrons, sorted by name. */
