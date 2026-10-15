@@ -54,7 +54,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their influence is their effective plus their clout ("n/a" while either is "n/a").
 // Their brace is their influence plus two times their force ("n/a" while either is "n/a").
 // Their tide is the brace of the people they follow added together, each followed brace taken as momentum plus
-// two times force (0 when they follow no one, "n/a" while any followed person's momentum or force is missing).
+// two times force, counting only positive braces (0 when they follow no one, "n/a" while any followed person's momentum or force is missing).
 // Their strain is their crest minus their brace ("n/a" while either is "n/a").
 // Their pulse classifies their strain against a tolerance band: NEG below -10, FLAT within 10 of zero, POS above 10 ("n/a" while strain is "n/a").
 // The sheet's top influence is the name of the person with the highest influence, ties going to the
