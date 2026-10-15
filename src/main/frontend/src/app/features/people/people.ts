@@ -72,7 +72,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // A from 500 ("n/a" while adjusted is "n/a").
 // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
 // adjusted is "n/a").
-// Their thrum is their scaled plus their torque ("n/a" while either is "n/a").
+// Their thrum is their scaled plus two times their torque ("n/a" while either is "n/a").
 // The sheet's max thrum is the name of the person with the highest thrum, ties going to the name that
 // comes first alphabetically ("n/a" when nobody has a thrum).
 // Their spool is their thrum minus their blend ("n/a" while either is "n/a").

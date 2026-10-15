@@ -546,11 +546,11 @@ public class Person {
         return adjusted * multiplier;
     }
 
-    /** Thrum is scaled plus torque; absent while either is absent. */
+    /** Thrum is scaled plus two times torque; absent while either is absent. */
     public Integer getThrum() {
         Integer scaled = getScaled();
         Integer torque = getTorque();
-        return scaled == null || torque == null ? null : scaled + torque;
+        return scaled == null || torque == null ? null : scaled + 2 * torque;
     }
 
     /** Spool is thrum minus blend; absent while either is absent. */
