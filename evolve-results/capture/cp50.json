@@ -1,0 +1,548 @@
+{
+  "checkpoint": 50,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b"
+  },
+  "checkpoint_id": "cp50_scaled",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each band has a multiplier: A is 4, B is 3, C is 2, D is 1, E is 0. For each person show\n\"scaled\", which is their adjusted multiplied by their band's multiplier.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for this implementation's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach band has a multiplier: A is 4, B is 3, C is 2, D is 1, E is 0. For each person show\n\"scaled\", which is their adjusted multiplied by their band's multiplier.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "326d3f0108d5465c19764e8004da25b318c2c183",
+  "reset_sha": "",
+  "preagent_sha": "368ea846c73e045346a74b1f889c311cc5b56a3e",
+  "prev_sha": "368ea846c73e045346a74b1f889c311cc5b56a3e",
+  "base_sha": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.1945786,
+    "input_tokens": 10,
+    "output_tokens": 1866,
+    "cache_read_tokens": 97613,
+    "cache_creation_tokens": 17212,
+    "num_turns": 5,
+    "duration_ms": 52905,
+    "duration_api_ms": 29241,
+    "model": "claude-opus-5-5",
+    "session_id": "6aaf27a9-35b5-459f-bef4-1459f56d87e5",
+    "stop_reason": "success",
+    "result_text": "Each person row now has a \"Scaled\" column, `data-testid=\"concept-scaled\"`. It shows their adjusted value multiplied by their band's multiplier (A 4, B 3, C 2, D 1, E 0), and \"n/a\" when adjusted is \"n/a\". `bin/e2e` passes.\n\nWhat changed:\n- **Server:** I added `Person.getScaled()`, which works the value out from the existing adjusted and band. It's sent with the rest of each person's data from `PersonController`.\n- **Front end:** I added `scaled` to the `Person` type in `people.service.ts`, and the new column, its header and a short description comment to `people.ts`.\n\nNothing new is stored, because scaled is always worked out from data that's already saved. So no database migration was needed and the test seed and read-back endpoints didn't change.\n\nThe calculation runs on the server using whole numbers, so a negative adjusted in band E shows as `0` rather than `-0`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.1945786,
+        "num_turns": 5,
+        "duration_ms": 52905,
+        "duration_api_ms": 29241,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp50.agent.jsonl",
+  "agent_diff_file": "cp50.agent.diff",
+  "build_log_file": "cp50.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 58,
+    "results": {
+      "cp01_people_alpha.spec.ts::lists seeded people with their alpha": true,
+      "cp01_people_alpha.spec.ts::adds a person": true,
+      "cp02_thrust.spec.ts::thrust is alpha times beta": false,
+      "cp02_thrust.spec.ts::thrust can be zero and negative": false,
+      "cp03_momentum.spec.ts::drift and momentum build on thrust": true,
+      "cp04_momentum_coefficient.spec.ts::momentum is thrust + 3*drift": true,
+      "cp05_tier.spec.ts::tier classifies momentum including the boundaries": true,
+      "cp06_concept_nullability.spec.ts::missing raw value makes the dependent concepts n/a": true,
+      "cp07_alpha_change_audit.spec.ts::changing alpha updates concepts and writes an audit record": true,
+      "cp08_tier_recalibrate.spec.ts::tier uses the new wider STEADY band": true,
+      "cp09_patron.spec.ts::shows each person their patron by name": true,
+      "cp10_backing.spec.ts::backing is the patron thrust, n/a without a patron": true,
+      "cp11_net.spec.ts::net is momentum plus summed backing (0 when no patron)": true,
+      "cp12_patron_many.spec.ts::patrons list all names sorted": true,
+      "cp12_patron_many.spec.ts::backing sums all patron thrust; net adds it to momentum": true,
+      "cp13_worksheet_id.spec.ts::opening a sheet shows its id and its people, and adds belong to it": true,
+      "cp14_worksheet_recall.spec.ts::a sheet recalls its data after a page refresh": true,
+      "cp14_worksheet_recall.spec.ts::opening an unknown sheet starts it empty": true,
+      "cp15_worksheet_isolation.spec.ts::people do not leak between sheets": true,
+      "cp16_unknown_sheet_blank.spec.ts::opening an unknown id starts an empty sheet with that id": true,
+      "cp17_rank.spec.ts::rank orders by momentum desc, ties by higher alpha": true,
+      "cp18_leader.spec.ts::leader is the rank-1 person": true,
+      "cp19_percentile.spec.ts::percentile spreads 100..0 evenly by rank": true,
+      "cp19_percentile.spec.ts::a single person is 100": true,
+      "cp20_rank_tiebreak.spec.ts::a momentum tie is broken by higher alpha": true,
+      "cp21_grade_weight.spec.ts::weight comes from grade": true,
+      "cp22_load.spec.ts::load is momentum times weight": true,
+      "cp23_total_load.spec.ts::total load sums computable loads only": true,
+      "cp24_grade_weight_remap.spec.ts::wider weights change load and total load": true,
+      "cp25_onset_anchor.spec.ts::shows the sheet anchor and each onset": true,
+      "cp26_age.spec.ts::age is complete weeks from onset to anchor": true,
+      "cp27_decay.spec.ts::decay is momentum minus age": true,
+      "cp28_age_in_weeks.spec.ts::age is complete weeks and decay follows": true,
+      "cp29_active.spec.ts::shows whether each person is active": true,
+      "cp30_effective.spec.ts::effective is net when active, else half of net rounded down": true,
+      "cp31_active_rollups.spec.ts::active count and total effective": true,
+      "cp32_inactive_halved.spec.ts::inactive effective is half of net rounded down": true,
+      "cp33_clout.spec.ts::clout averages the patrons effective": true,
+      "cp34_influence.spec.ts::influence is effective plus clout": true,
+      "cp35_top_influence.spec.ts::names the highest-influence person": true,
+      "cp35_top_influence.spec.ts::top influence tie is broken by name ascending": true,
+      "cp36_clout_average.spec.ts::clout averages patrons effective and the leader flips": true,
+      "cp37_region.spec.ts::shows each person their regions": true,
+      "cp38_reach.spec.ts::reach sums over the regions": true,
+      "cp39_region_counts.spec.ts::counts people per region, once per membership": true,
+      "cp40_region_many.spec.ts::a person has several regions and reach sums over them": true,
+      "cp40_region_many.spec.ts::counts count a person once per region": true,
+      "cp41_allies.spec.ts::allies are the followed people and counted": true,
+      "cp42_synergy.spec.ts::synergy sums the followed thrust": true,
+      "cp43_combined.spec.ts::combined is influence plus synergy": true,
+      "cp44_allies_directed.spec.ts::allies are the followed people": true,
+      "cp44_allies_directed.spec.ts::synergy and combined follow only the followed people": true,
+      "cp45_notes.spec.ts::shows the single score and its total": false,
+      "cp46_quality.spec.ts::quality is the score, n/a without one": true,
+      "cp47_adjusted.spec.ts::adjusted is combined plus quality": true,
+      "cp48_notes_folded.spec.ts::note-sum, quality and adjusted use the single score": true,
+      "cp49_band.spec.ts::band classifies adjusted into five bands": true,
+      "cp50_scaled.spec.ts::scaled is adjusted times the band multiplier": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people_alpha.spec.ts::lists seeded people with their alpha",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 1386,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_people_alpha.spec.ts::adds a person",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 316,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust.spec.ts::thrust is alpha times beta",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 5151,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-1').getByTestId('concept-thrust')\nExpected string: \u001b[32m\"12\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-1').getByTestId('concept-thrust')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  14 |\n  15 |     await expect(page.getByTestId('person-row-1').getByTestId('person-beta')).toHaveText('4');\n> 16 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-thrust')).toHaveText('12');\n     |                                                                                  ^\n  17 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-thrust')).toHaveText('14');\n  18 |   });\n  19 |\n\n    at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp02_thrust.spec.ts:16:82 | Error: \u001b[31mTimed "
+      },
+      {
+        "test_id": "cp02_thrust.spec.ts::thrust can be zero and negative",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 5144,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-1').getByTestId('concept-thrust')\nExpected string: \u001b[32m\"0\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-1').getByTestId('concept-thrust')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  27 |     await page.goto('/');\n  28 |\n> 29 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-thrust')).toHaveText('0');\n     |                                                                                  ^\n  30 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-thrust')).toHaveText('-20');\n  31 |   });\n  32 | });\n\n    at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp02_thrust.spec.ts:29:82 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m)"
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::drift and momentum build on thrust",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 201,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_momentum_coefficient.spec.ts::momentum is thrust + 3*drift",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 152,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_tier.spec.ts::tier classifies momentum including the boundaries",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 165,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_concept_nullability.spec.ts::missing raw value makes the dependent concepts n/a",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 191,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_alpha_change_audit.spec.ts::changing alpha updates concepts and writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 332,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_tier_recalibrate.spec.ts::tier uses the new wider STEADY band",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_patron.spec.ts::shows each person their patron by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 145,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_backing.spec.ts::backing is the patron thrust, n/a without a patron",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_net.spec.ts::net is momentum plus summed backing (0 when no patron)",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_patron_many.spec.ts::patrons list all names sorted",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 152,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_patron_many.spec.ts::backing sums all patron thrust; net adds it to momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 162,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_worksheet_id.spec.ts::opening a sheet shows its id and its people, and adds belong to it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 481,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_worksheet_recall.spec.ts::a sheet recalls its data after a page refresh",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 434,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_worksheet_recall.spec.ts::opening an unknown sheet starts it empty",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 173,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_worksheet_isolation.spec.ts::people do not leak between sheets",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 376,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_unknown_sheet_blank.spec.ts::opening an unknown id starts an empty sheet with that id",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 371,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_rank.spec.ts::rank orders by momentum desc, ties by higher alpha",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 166,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_leader.spec.ts::leader is the rank-1 person",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_percentile.spec.ts::percentile spreads 100..0 evenly by rank",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 161,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_percentile.spec.ts::a single person is 100",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 129,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_rank_tiebreak.spec.ts::a momentum tie is broken by higher alpha",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 163,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_grade_weight.spec.ts::weight comes from grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_load.spec.ts::load is momentum times weight",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_total_load.spec.ts::total load sums computable loads only",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 155,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_grade_weight_remap.spec.ts::wider weights change load and total load",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 152,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_onset_anchor.spec.ts::shows the sheet anchor and each onset",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_age.spec.ts::age is complete weeks from onset to anchor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_decay.spec.ts::decay is momentum minus age",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 144,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_age_in_weeks.spec.ts::age is complete weeks and decay follows",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 165,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_active.spec.ts::shows whether each person is active",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_effective.spec.ts::effective is net when active, else half of net rounded down",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_active_rollups.spec.ts::active count and total effective",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_inactive_halved.spec.ts::inactive effective is half of net rounded down",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_clout.spec.ts::clout averages the patrons effective",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 143,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_influence.spec.ts::influence is effective plus clout",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 143,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_top_influence.spec.ts::names the highest-influence person",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_top_influence.spec.ts::top influence tie is broken by name ascending",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 147,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_clout_average.spec.ts::clout averages patrons effective and the leader flips",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 151,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_region.spec.ts::shows each person their regions",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_reach.spec.ts::reach sums over the regions",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 144,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_region_counts.spec.ts::counts people per region, once per membership",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_region_many.spec.ts::a person has several regions and reach sums over them",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_region_many.spec.ts::counts count a person once per region",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_allies.spec.ts::allies are the followed people and counted",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_synergy.spec.ts::synergy sums the followed thrust",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_combined.spec.ts::combined is influence plus synergy",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_allies_directed.spec.ts::allies are the followed people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_allies_directed.spec.ts::synergy and combined follow only the followed people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_notes.spec.ts::shows the single score and its total",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 5086,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-1').getByTestId('person-notes')\nExpected string: \u001b[32m\"42\"\u001b[39m\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-1').getByTestId('person-notes')\u001b[22m\n\n\n  15 |     await page.goto('/');\n  16 |\n> 17 |     await expect(page.getByTestId('person-row-1').getByTestId('person-notes')).toHaveText('42');\n     |                                                                                ^\n  18 |     await expect(page.getByTestId('person-row-2').getByTestId('person-notes')).toHaveText('5');\n  19 |     await expect(page.getByTestId('person-row-3').getByTestId('person-notes')).toHaveText('');\n  20 |\n\n    at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp45_notes.spec.ts:17:80 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-1').getByTestId('person-notes')\nExpected string: \u001b[32m\"42\"\u001b[39m\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-1').getByTestId('person-notes')\u001b[22m\n"
+      },
+      {
+        "test_id": "cp46_quality.spec.ts::quality is the score, n/a without one",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 208,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_adjusted.spec.ts::adjusted is combined plus quality",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 151,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_notes_folded.spec.ts::note-sum, quality and adjusted use the single score",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 170,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_band.spec.ts::band classifies adjusted into five bands",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_scaled.spec.ts::scaled is adjusted times the band multiplier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 157,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 57,
+      "failures": []
+    }
+  },
+  "probe": {
+    "probe_cost_usd": 0.1341824,
+    "probe_input_tokens": 8,
+    "probe_cache_read_tokens": 77952,
+    "probe_recall": 0.22727272727272727,
+    "probe_text": "**1. Invoice rules:** I found none. This app has no customer invoices. I read through the code without changing anything, and nothing in it covers invoice totals, line pricing, discounts, tax, rounding, payments or how they're allocated, credits, currency, interest, approvals, holds, disputes or invoice status.\n\nWhat the app actually does is manage **people on sheets**:\n- **Server:** `src/main/java/net/officefloor/hq/app/people/` holds `Person`, `PersonService`, `PersonController`, `Sheet`, `Grade` and related files.\n- **Person fields:** alpha, beta and gamma attributes, patrons, allies, follows, regions, grade, active flag, onset/anchor date, notes and score.\n- **Database migrations:** V1 to V16 are all about people and sheets.\n- **Front end:** `src/main/frontend/src/app/features/people/` and a home page.\n\nI searched the source, migrations, `DESIGN.md` and the e2e specs and support files for invoice, payment, tax, discount, customer, currency, dispute, interest and credit. The only hits were inside `package-lock.json` and the word \"syntax\" in `DESIGN.md`, so there's nothing to list in order.\n\n**2. How hard it was to find:** Confirming it isn't there was easy. The codebase is small (about 1,000 lines of Java in one `people` package) and clearly organised around people and sheets. You may be thinking of a different repository or branch. If you point me to it, I'll trace the invoice logic there."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

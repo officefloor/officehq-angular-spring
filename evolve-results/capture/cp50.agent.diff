@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 8b5aa19..07b3eae 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -38,6 +38,7 @@ export interface Person {
+   quality: number | null;
+   adjusted: number | null;
+   band: string | null;
++  scaled: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 93dac22..041a854 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -51,6 +51,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // combined is "n/a").
+ // Their band classifies their adjusted: E below 0, D from 0 to 49, C from 50 to 149, B from 150 to 299 and
+ // A from 300 ("n/a" while adjusted is "n/a").
++// Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
++// adjusted is "n/a").
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -178,6 +180,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Quality</th>
+           <th scope="col">Adjusted</th>
+           <th scope="col">Band</th>
++          <th scope="col">Scaled</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -227,6 +230,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-quality">{{ p.quality ?? 'n/a' }}</td>
+             <td data-testid="concept-adjusted">{{ p.adjusted ?? 'n/a' }}</td>
+             <td data-testid="concept-band">{{ p.band ?? 'n/a' }}</td>
++            <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index c8d92a4..b5bc1cf 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -379,4 +379,20 @@ public class Person {
+         }
+         return adjusted < 0 ? "E" : adjusted <= 49 ? "D" : adjusted <= 149 ? "C" : adjusted <= 299 ? "B" : "A";
+     }
++
++    /** Scaled is adjusted times the band's multiplier: A 4, B 3, C 2, D 1, E 0; absent with adjusted. */
++    public Integer getScaled() {
++        Integer adjusted = getAdjusted();
++        if (adjusted == null) {
++            return null;
++        }
++        int multiplier = switch (getBand()) {
++            case "A" -> 4;
++            case "B" -> 3;
++            case "C" -> 2;
++            case "D" -> 1;
++            default -> 0;
++        };
++        return adjusted * multiplier;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 7e57ed4..3e6d072 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -32,7 +32,7 @@ public class PersonController {
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -42,7 +42,7 @@ public class PersonController {
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+                     p.getInfluence(), p.getRegions(), p.getReach(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand());
++                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled());
+         }
+     }
+ 
