@@ -50,9 +50,10 @@ public class PersonController {
         return (int) Math.round((ranked - rank) * 100.0 / (ranked - 1));
     }
 
-    /** Highest momentum first; equal momentum by name, earlier in the alphabet first. */
+    /** Highest momentum first; equal momentum by higher alpha, then by name, earlier in the alphabet first. */
     private static final Comparator<Person> RANK_ORDER = Comparator
             .comparing(Person::getMomentum, Comparator.reverseOrder())
+            .thenComparing(Person::getAlpha, Comparator.nullsLast(Comparator.reverseOrder()))
             .thenComparing(Person::getName)
             .thenComparing(Person::getLocalId);
 
@@ -125,7 +126,7 @@ public class PersonController {
 
     /**
      * Each person's rank by local id: 1 for the highest momentum, then 2, 3, ... with equal momentum
-     * ordered by name. People without a momentum are not ranked.
+     * ordered by higher alpha, then by name. People without a momentum are not ranked.
      */
     private static Map<Long, Integer> ranks(List<Person> people) {
         List<Person> ranked = people.stream().filter(p -> p.getMomentum() != null).sorted(RANK_ORDER).toList();

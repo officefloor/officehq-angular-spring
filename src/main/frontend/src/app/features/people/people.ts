@@ -10,8 +10,8 @@ import { PeopleService, Person } from './people.service';
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 // Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
-// by name; without a momentum the rank shows "n/a". The sheet's leader is the name of the rank-1
-// person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
+// by higher alpha first, then by name; without a momentum the rank shows "n/a". The sheet's leader
+// is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
 // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100.
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
