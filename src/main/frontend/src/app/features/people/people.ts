@@ -138,6 +138,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // none are); people whose bracket is "n/a" are not counted.
 // The sheet's bracket ledger shows the total scaled of its people in each bracket, Q4 down to Q1 (zero
 // when none are); people whose bracket is "n/a" add nothing.
+// The sheet's top per bracket shows, for each bracket, Q4 down to Q1, the name of the person in it with
+// the highest scaled, ties going to the name earlier in the alphabet ("n/a" when nobody is in it).
 // The sheet's grade tally shows how many of its people have each grade, HIGH and LOW (zero when none
 // do), with MID folded into HIGH; MID is still listed but always counts zero. People without a grade
 // are not counted.
@@ -658,6 +660,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (b of bracketLedger(); track b.bracket) {
           <li>
             {{ b.bracket }}: <strong [attr.data-testid]="'bracket-ledger-' + b.bracket">{{ b.total }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="bracket-apex-heading">
+      <h2 id="bracket-apex-heading">Top per bracket</h2>
+      <ul>
+        @for (b of bracketApexes(); track b.bracket) {
+          <li>
+            {{ b.bracket }}: <strong [attr.data-testid]="'apexname-bracket-' + b.bracket">{{ b.name ?? 'n/a' }}</strong>
           </li>
         }
       </ul>
@@ -1668,6 +1680,18 @@ export class People {
         .filter((p) => this.bracketOf(p) === bracket)
         .reduce((total, p) => total + (p.scaled ?? 0), 0),
     })),
+  );
+  protected readonly bracketApexes = computed(() =>
+    BRACKETS.map((bracket) => {
+      let apex: { name: string; scaled: number } | null = null;
+      for (const p of this.people()) {
+        if (p.scaled === null || this.bracketOf(p) !== bracket) continue;
+        if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
+          apex = { name: p.name, scaled: p.scaled };
+        }
+      }
+      return { bracket, name: apex?.name ?? null };
+    }),
   );
   protected readonly topInfluence = computed(() => {
     let top: Person | null = null;
