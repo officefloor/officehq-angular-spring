@@ -79,6 +79,15 @@ export interface Person {
   outlier: boolean;
   ebb: number | null;
   stray: boolean;
+  // The group the person is in: its id and name; absent until put in one.
+  groupId: number | null;
+  groupName: string | null;
+}
+
+// A named group of people on a sheet.
+export interface Group {
+  id: number;
+  name: string;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
@@ -117,6 +126,7 @@ export interface NewPerson {
   grade: Grade | null;
   kind: Kind | null;
   regions: string[];
+  groupId: number | null;
 }
 
 // The people REST API (/api/people).
@@ -137,6 +147,21 @@ export class PeopleService {
   // Opens a named sheet, starting a new empty one when no sheet has that id yet.
   openSheet(sheet: string): Observable<void> {
     return this.http.put(`/api/sheets/${encodeURIComponent(sheet)}`, null).pipe(map(() => undefined));
+  }
+
+  // The groups on a sheet; null is the unnamed sheet.
+  groups(sheet: string | null): Observable<Group[]> {
+    return this.http.get<Group[]>('/api/groups', { params: sheetParams(sheet) });
+  }
+
+  // Adds a named group to a sheet; null is the unnamed sheet.
+  addGroup(sheet: string | null, name: string): Observable<Group> {
+    return this.http.post<Group>('/api/groups', { name }, { params: sheetParams(sheet) });
+  }
+
+  // Puts a person in a group by its id; null takes them out of any group.
+  setGroup(sheet: string | null, id: number, groupId: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { groupId }, { params: sheetParams(sheet) });
   }
 
   // Adds a person to a sheet; null is the unnamed sheet.

@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -43,7 +44,7 @@ import java.util.Set;
  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
  * without one) and their "quality" is the score (absent without one). A person has a workflow "state",
  * starting at DRAFT and moved forward to REVIEW and then FINAL; a FINAL person may be reopened to REWORK
- * and moved forward to FINAL again. */
+ * and moved forward to FINAL again. A person is in one named "group" of the sheet (absent until put in one). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -107,6 +108,11 @@ public class Person {
     private Set<String> regions = new HashSet<>();
 
     private Integer score;
+
+    /** The group the person is in; absent until put in one. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "group_id")
+    private PersonGroup group;
 
     protected Person() {
     }
@@ -223,6 +229,14 @@ public class Person {
 
     public void setRegions(Collection<String> regions) {
         this.regions = new HashSet<>(regions);
+    }
+
+    public PersonGroup getGroup() {
+        return group;
+    }
+
+    public void setGroup(PersonGroup group) {
+        this.group = group;
     }
 
     public Integer getScore() {

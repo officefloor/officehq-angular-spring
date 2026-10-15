@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.service';
+import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './people.service';
 
 // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
 // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
@@ -115,6 +115,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // none are); people whose drag is "n/a" are not counted.
 // The sheet's pulse counts show how many of its people have each pulse, NEG, FLAT and POS (zero when
 // none do); people whose pulse is "n/a" are not counted.
+// The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
+// add, through Edit or on the row, and the row shows its name.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -201,6 +203,13 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <option [ngValue]="k">{{ k }}</option>
         }
       </select>
+      <label for="person-group">Group</label>
+      <select id="person-group" formControlName="groupId" data-testid="person-form-group">
+        <option [ngValue]="null">none</option>
+        @for (g of groups(); track g.id) {
+          <option [ngValue]="g.id">{{ g.name }}</option>
+        }
+      </select>
       <label for="person-region">Regions (comma-separated)</label>
       <input
         id="person-region"
@@ -215,6 +224,25 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
       }
     </form>
 
+    <section aria-labelledby="groups-heading">
+      <h2 id="groups-heading">Groups</h2>
+      <form [formGroup]="groupForm" (ngSubmit)="addGroup()" data-testid="group-form">
+        <label for="group-name">Group name</label>
+        <input id="group-name" formControlName="name" data-testid="group-form-name" />
+        <button type="submit" [disabled]="groupForm.invalid" data-testid="group-form-submit">Add group</button>
+      </form>
+      @if (groups().length === 0) {
+        <p data-testid="groups-empty">No groups yet.</p>
+      } @else {
+        <ul data-testid="groups-list">
+          @for (g of groups(); track g.id) {
+            <li [attr.data-testid]="'group-row-' + g.id">
+              <span data-testid="group-name">{{ g.name }}</span>
+            </li>
+          }
+        </ul>
+      }
+    </section>
     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
@@ -298,6 +326,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Zeta</th>
           <th scope="col">Grade</th>
           <th scope="col">Kind</th>
+          <th scope="col">Group</th>
           <th scope="col">Regions</th>
           <th scope="col">Active</th>
           <th scope="col">State</th>
@@ -368,6 +397,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Set zeta</th>
           <th scope="col">Set grade</th>
           <th scope="col">Set kind</th>
+          <th scope="col">Set group</th>
           <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
           <th scope="col">Advance</th>
@@ -391,6 +421,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="person-zeta">{{ p.zeta }}</td>
             <td data-testid="person-grade">{{ p.grade }}</td>
             <td data-testid="person-kind">{{ p.kind }}</td>
+            <td data-testid="person-group">{{ p.groupName ?? '' }}</td>
             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
             <td data-testid="person-state">{{ p.state }}</td>
@@ -582,6 +613,22 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
               </select>
             </td>
             <td>
+              <label class="visually-hidden" [for]="'person-group-edit-' + p.id">
+                Group for {{ p.name }}
+              </label>
+              <select
+                [id]="'person-group-edit-' + p.id"
+                (change)="setGroup(p, groupSelect.value)"
+                #groupSelect
+                data-testid="person-group-select"
+              >
+                <option value="" [selected]="p.groupId === null">none</option>
+                @for (g of groups(); track g.id) {
+                  <option [value]="g.id" [selected]="p.groupId === g.id">{{ g.name }}</option>
+                }
+              </select>
+            </td>
+            <td>
               <form (submit)="$event.preventDefault(); setRegions(p, regionInput.value)">
                 <label class="visually-hidden" [for]="'person-region-edit-' + p.id">
                   Regions for {{ p.name }}
@@ -718,6 +765,7 @@ export class People {
   protected readonly grades = GRADES;
   protected readonly kinds = KINDS;
   protected readonly people = signal<Person[]>([]);
+  protected readonly groups = signal<Group[]>([]);
   protected readonly sheet = signal<string | null>(null);
   protected readonly anchor = signal('');
   protected readonly saving = signal(false);
@@ -874,6 +922,11 @@ export class People {
     grade: [null as Grade | null],
     kind: [null as Kind | null],
     region: [''],
+    groupId: [null as number | null],
+  });
+
+  protected readonly groupForm = inject(NonNullableFormBuilder).group({
+    name: ['', [Validators.required, Validators.pattern(/\S/)]],
   });
 
   constructor() {
@@ -896,7 +949,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.editing.set(person);
-    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, delta: person.delta, epsilon: person.epsilon, zeta: person.zeta, grade: person.grade, kind: person.kind, region: person.regions.join(', ') });
+    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, delta: person.delta, epsilon: person.epsilon, zeta: person.zeta, grade: person.grade, kind: person.kind, region: person.regions.join(', '), groupId: person.groupId });
     this.form.controls.name.disable();
   }
 
@@ -907,13 +960,13 @@ export class People {
   }
 
   protected submit(): void {
-    const { name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, region: regionText } = this.form.getRawValue();
+    const { name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, region: regionText, groupId } = this.form.getRawValue();
     const regions = toRegions(regionText);
     if (this.form.invalid) return;
     const editing = this.editing();
     const request = editing
-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, kind, regions })
-      : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, regions });
+      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, kind, regions, groupId })
+      : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, regions, groupId });
     this.saving.set(true);
     request.subscribe({
       next: () => {
@@ -1036,10 +1089,27 @@ export class People {
     this.service.setScore(this.sheet(), person.id, score).subscribe(() => this.load());
   }
 
+  protected addGroup(): void {
+    if (this.groupForm.invalid) return;
+    const name = this.groupForm.getRawValue().name.trim();
+    this.service.addGroup(this.sheet(), name).subscribe(() => {
+      this.groupForm.reset();
+      this.load();
+    });
+  }
+
+  protected setGroup(person: Person, value: string): void {
+    const groupId = value === '' ? null : Number(value);
+    this.service.setGroup(this.sheet(), person.id, groupId).subscribe(() => this.load());
+  }
+
   private load(): void {
     const sheet = this.sheet();
     this.service.sheet(sheet).subscribe((s) => {
       if (this.sheet() === sheet) this.anchor.set(s.anchor);
+    });
+    this.service.groups(sheet).subscribe((groups) => {
+      if (this.sheet() === sheet) this.groups.set(groups);
     });
     this.service.list(sheet).subscribe((people) => {
       if (this.sheet() === sheet) this.people.set(people);

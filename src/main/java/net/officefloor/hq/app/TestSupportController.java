@@ -32,15 +32,17 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "grade", "kind", "onset", "active", "score", "state", "region");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "grade", "kind", "onset", "active", "score", "state", "region", "groupId");
 
     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
     private static final Set<String> REGION_FIELDS = Set.of("personId", "region");
 
+    private static final Set<String> GROUP_FIELDS = Set.of("id", "name");
+
     private static final Set<String> FOLLOW_FIELDS = Set.of("from", "to");
 
-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows");
+    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows", "groups");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -60,9 +62,11 @@ public class TestSupportController {
         jdbc.update("DELETE FROM person_follow");
         jdbc.update("DELETE FROM person_region");
         jdbc.update("DELETE FROM person");
+        jdbc.update("DELETE FROM person_group");
         jdbc.update("DELETE FROM sheet");
         jdbc.update("DELETE FROM unnamed_sheet");
         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
+        jdbc.execute("ALTER TABLE person_group ALTER COLUMN id RESTART WITH 1");
     }
 
     /**
@@ -74,7 +78,7 @@ public class TestSupportController {
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
             if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
-                    && !key.equals("follows") && !key.equals("sheets")) {
+                    && !key.equals("follows") && !key.equals("groups") && !key.equals("sheets")) {
                 throw badRequest("unknown fixture key: " + key);
             }
         }
@@ -84,7 +88,7 @@ public class TestSupportController {
             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
         }
         // People, patrons and regions at the top level are on the unnamed sheet.
-        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), "");
+        seedSheet(null, fixture.get("groups"), fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), "");
         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
             for (String field : sheet.keySet()) {
                 if (!SHEET_FIELDS.contains(field)) {
@@ -95,7 +99,7 @@ public class TestSupportController {
                 throw badRequest("sheets.id is required");
             }
             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
-            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), "sheets.");
+            seedSheet(id, sheet.get("groups"), sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), "sheets.");
         }
     }
 
@@ -127,9 +131,34 @@ public class TestSupportController {
         return ids.get(0);
     }
 
-    /** Inserts one sheet's people and then their patrons, regions and follows; a null sheet id is the unnamed sheet. */
-    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, Object followRows,
+    /** The internal key of the group with an id on a sheet; refuses an id the sheet does not have. */
+    private long internalGroupId(String sheetId, long localId, String field) {
+        List<Long> ids = jdbc.queryForList("SELECT id FROM person_group WHERE " + sheetWhere(sheetId) + " AND local_id = ?",
+                Long.class, sheetArgs(sheetId, localId));
+        if (ids.isEmpty()) {
+            throw badRequest(field + " " + localId + " is not a group on the sheet");
+        }
+        return ids.get(0);
+    }
+
+    /** Inserts one sheet's groups, its people and then their patrons, regions and follows; a null sheet id is the unnamed sheet. */
+    private void seedSheet(String sheetId, Object groupRows, Object peopleRows, Object patronRows, Object regionRows, Object followRows,
             String prefix) {
+        for (Map<String, Object> row : rows(groupRows, prefix + "groups")) {
+            for (String field : row.keySet()) {
+                if (!GROUP_FIELDS.contains(field)) {
+                    throw badRequest("cannot store " + prefix + "groups." + field);
+                }
+            }
+            if (!(row.get("name") instanceof String name)) {
+                throw badRequest(prefix + "groups.name is required");
+            }
+            Integer givenId = integer(row.get("id"), prefix + "groups.id");
+            long localId = givenId != null ? givenId : jdbc.queryForObject(
+                    "SELECT COALESCE(MAX(local_id), 0) + 1 FROM person_group WHERE " + sheetWhere(sheetId), Long.class,
+                    sheetArgs(sheetId));
+            jdbc.update("INSERT INTO person_group (sheet_id, local_id, name) VALUES (?, ?, ?)", sheetId, localId, name);
+        }
         for (Map<String, Object> row : rows(peopleRows, prefix + "people")) {
             for (String field : row.keySet()) {
                 if (!PERSON_FIELDS.contains(field)) {
@@ -151,13 +180,15 @@ public class TestSupportController {
             Boolean active = bool(row.get("active"), prefix + "people.active");
             Integer score = integer(row.get("score"), prefix + "people.score");
             String state = state(row.get("state"), prefix + "people.state");
+            Integer groupId = integer(row.get("groupId"), prefix + "people.groupId");
+            Long groupKey = groupId == null ? null : internalGroupId(sheetId, groupId, prefix + "people.groupId");
             // A person's id is their id within the sheet; the internal key is generated.
             Integer givenId = integer(row.get("id"), prefix + "people.id");
             long localId = givenId != null ? givenId : nextLocalId(sheetId);
-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset, active, score, state) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset, active, score, state, group_id) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     sheetId, localId, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset,
-                    active != null ? active : true, score, state != null ? state : State.DRAFT.name());
+                    active != null ? active : true, score, state != null ? state : State.DRAFT.name(), groupKey);
             // A person's single region (from before people had several) is one of their regions.
             String region = text(row.get("region"), prefix + "people.region");
             if (region != null) {
@@ -248,10 +279,13 @@ public class TestSupportController {
         String where = sheetId == null ? "p.sheet_id IS NULL" : "p.sheet_id = ?";
         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
         Map<String, Object> out = new LinkedHashMap<>();
+        out.put("groups", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\" FROM person_group p WHERE "
+                + where + " ORDER BY local_id", args));
         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
                 + "beta AS \"beta\", gamma AS \"gamma\", delta AS \"delta\", epsilon AS \"epsilon\", zeta AS \"zeta\", grade AS \"grade\", kind AS \"kind\", "
                 + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\", "
-                + "(SELECT MIN(pr.region) FROM person_region pr WHERE pr.person_id = p.id) AS \"region\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+                + "(SELECT MIN(pr.region) FROM person_region pr WHERE pr.person_id = p.id) AS \"region\", "
+                + "(SELECT g.local_id FROM person_group g WHERE g.id = p.group_id) AS \"groupId\" FROM person p WHERE " + where + " ORDER BY local_id", args));
         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));

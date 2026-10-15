@@ -33,7 +33,8 @@ public class PersonController {
             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, Integer vector, String phase, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, State state, Integer ebb, boolean stray) {
+            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, State state, Integer ebb, boolean stray,
+            Long groupId, String groupName) {
         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer meanBlend, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
@@ -47,7 +48,9 @@ public class PersonController {
                     PersonController.norm(p.getScaled(), medianScaled),
                     PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState(),
                     PersonController.ebb(p.getBlend(), meanBlend),
-                    PersonController.stray(PersonController.ebb(p.getBlend(), meanBlend)));
+                    PersonController.stray(PersonController.ebb(p.getBlend(), meanBlend)),
+                    p.getGroup() == null ? null : p.getGroup().getLocalId(),
+                    p.getGroup() == null ? null : p.getGroup().getName());
         }
     }
 
@@ -125,7 +128,7 @@ public class PersonController {
     public record PatronView(Long id, String name) {
     }
 
-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta, Grade grade, Kind kind, List<String> regions) {
+    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta, Grade grade, Kind kind, List<String> regions, Long groupId) {
     }
 
     private final PersonService service;
@@ -148,8 +151,13 @@ public class PersonController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
-        return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
-                person.delta(), person.epsilon(), person.zeta(), person.grade(), person.kind(), regions(person.regions())));
+        try {
+            return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
+                    person.delta(), person.epsilon(), person.zeta(), person.grade(), person.kind(), regions(person.regions()),
+                    person.groupId()));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     /** Moves the person with this id on the request's sheet forward to their next state (REWORK back to FINAL); refused once FINAL. */
@@ -190,7 +198,7 @@ public class PersonController {
 
     /**
      * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, delta, epsilon, zeta, score, grade, kind, regions (a list of codes), active
-     * (true or false), patronIds and allyIds (lists of ids on that sheet) the body names; a null value clears it.
+     * (true or false), patronIds and allyIds (lists of ids on that sheet) and groupId (a group's id on that sheet) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
     public PersonView update(@RequestParam(required = false) String sheet, @PathVariable long id,
@@ -270,6 +278,14 @@ public class PersonController {
             }
             try {
                 person = service.setAllies(sheetId, id, allyIds);
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            }
+        }
+        if (update.containsKey("groupId")) {
+            Integer groupId = integer(update.get("groupId"));
+            try {
+                person = service.setGroup(sheetId, id, groupId == null ? null : groupId.longValue());
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }

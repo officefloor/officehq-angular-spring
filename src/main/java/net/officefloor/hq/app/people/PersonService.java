@@ -21,11 +21,14 @@ public class PersonService {
 
     private final UnnamedSheetRepository unnamedSheet;
 
+    private final PersonGroupRepository groups;
+
     private final Audit audit;
 
     public PersonService(PersonRepository people, SheetRepository sheets, UnnamedSheetRepository unnamedSheet,
-            Audit audit) {
+            PersonGroupRepository groups, Audit audit) {
         this.people = people;
+        this.groups = groups;
         this.sheets = sheets;
         this.unnamedSheet = unnamedSheet;
         this.audit = audit;
@@ -70,10 +73,9 @@ public class PersonService {
     @Transactional
     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
     public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
-            Grade grade, Kind kind, Collection<String> regions) {
-        if (sheetId != null && !sheets.existsById(sheetId)) {
-            sheets.save(new Sheet(sheetId));
-        }
+            Grade grade, Kind kind, Collection<String> regions, Long groupId) {
+        ensureSheet(sheetId);
+        PersonGroup group = group(sheetId, groupId);
         long id = people.maxLocalId(sheetId) + 1;
         Person person = new Person(sheetId, id, name.trim(), alpha, beta, gamma);
         person.setDelta(delta);
@@ -82,7 +84,44 @@ public class PersonService {
         person.setGrade(grade);
         person.setKind(kind);
         person.setRegions(regions);
+        person.setGroup(group);
         return people.save(person);
+    }
+
+    /** The groups on a sheet, by id; a null sheet id is the unnamed sheet. */
+    @Transactional(readOnly = true)
+    public List<PersonGroup> groups(String sheetId) {
+        return groups.findBySheetId(sheetId, Sort.by("localId"));
+    }
+
+    /** Adds a named group to a sheet (null for the unnamed sheet), creating the sheet on first use. */
+    @Transactional
+    public PersonGroup addGroup(String sheetId, String name) {
+        ensureSheet(sheetId);
+        return groups.save(new PersonGroup(sheetId, groups.maxLocalId(sheetId) + 1, name.trim()));
+    }
+
+    /** Puts the person in the group with an id on the same sheet; null takes them out of any group. Refuses an unknown group. */
+    @Transactional
+    public Optional<Person> setGroup(String sheetId, long id, Long groupId) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            p.setGroup(group(sheetId, groupId));
+            return p;
+        });
+    }
+
+    private PersonGroup group(String sheetId, Long groupId) {
+        if (groupId == null) {
+            return null;
+        }
+        return groups.findBySheetIdAndLocalId(sheetId, groupId)
+                .orElseThrow(() -> new IllegalArgumentException("no group " + groupId + " on this sheet"));
+    }
+
+    private void ensureSheet(String sheetId) {
+        if (sheetId != null && !sheets.existsById(sheetId)) {
+            sheets.save(new Sheet(sheetId));
+        }
     }
 
     @Transactional
