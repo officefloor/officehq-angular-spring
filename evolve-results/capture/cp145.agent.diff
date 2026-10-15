@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8fb14b59..f75aa47c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -145,6 +145,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // Each person shows their rung: (their group's size less their standing in it) over the group's size, as a
+ // percentage, rounded; a group of one is 100 ("n/a" without a standing).
+ // Each person shows their anchorage: how many groups they belong to (0 without one).
++// Each person shows their home group: the name of their group ("n/a" without one).
+ // A person may be in several groups; a group's figures count every person in it. Where a person's own
+ // figure depends on "their group", it is the group, of those they are in, whose name comes first
+ // alphabetically.
+@@ -434,6 +435,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+           <th scope="col">Weave</th>
+           <th scope="col">Mesh</th>
+           <th scope="col">Anchorage</th>
++          <th scope="col">Home group</th>
+           <th scope="col">Rung</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+@@ -538,6 +540,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+             <td data-testid="concept-weave">{{ weaveOf(p) ?? 'n/a' }}</td>
+             <td data-testid="concept-mesh">{{ meshOf(p) ?? 'n/a' }}</td>
+             <td data-testid="concept-anchorage">{{ anchorageOf(p) }}</td>
++            <td data-testid="concept-home-group">{{ p.groupName ?? 'n/a' }}</td>
+             <td data-testid="concept-rung">{{ rungs().get(p.id) ?? 'n/a' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
