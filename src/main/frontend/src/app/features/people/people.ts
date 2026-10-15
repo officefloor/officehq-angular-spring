@@ -26,6 +26,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // Their decay is momentum minus age ("n/a" while either is missing).
 // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
 // Their effective is their net while active ("n/a" while net is), and 0 while not active.
+// The sheet's active count is how many of its people are active, and its total effective is everyone's
+// effective added together, leaving out anyone whose effective is "n/a".
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -91,6 +93,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 
     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
+    <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
+    <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
 
     @if (people().length === 0) {
       <p data-testid="people-empty">No people yet.</p>
@@ -275,6 +279,10 @@ export class People {
   protected readonly leader = computed(() => this.people().find((p) => p.rank === 1)?.name ?? null);
   protected readonly totalLoad = computed(() =>
     this.people().reduce((total, p) => total + (p.load ?? 0), 0),
+  );
+  protected readonly activeCount = computed(() => this.people().filter((p) => p.active).length);
+  protected readonly totalEffective = computed(() =>
+    this.people().reduce((total, p) => total + (p.effective ?? 0), 0),
   );
 
   protected readonly form = inject(NonNullableFormBuilder).group({
