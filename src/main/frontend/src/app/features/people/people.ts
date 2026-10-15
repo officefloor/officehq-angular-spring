@@ -3,7 +3,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { PeopleService, Person } from './people.service';
 
 // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
-// (gamma − alpha) and momentum (thrust + 2 × drift), plus a form to add one. Beta and gamma are
+// (gamma − alpha) and momentum (thrust + 3 × drift), plus a form to add one. Beta and gamma are
 // optional on add and can be filled in (or changed) on the row later.
 @Component({
   selector: 'app-people',

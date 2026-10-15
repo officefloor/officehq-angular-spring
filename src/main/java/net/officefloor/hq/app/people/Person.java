@@ -8,7 +8,7 @@ import jakarta.persistence.Table;
 
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
- * (thrust + 2 × drift). */
+ * (thrust + 3 × drift). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -73,10 +73,10 @@ public class Person {
         return gamma == null || alpha == null ? null : gamma - alpha;
     }
 
-    /** Momentum is thrust plus two times drift; absent while either is absent. */
+    /** Momentum is thrust plus three times drift; absent while either is absent. */
     public Integer getMomentum() {
         Integer thrust = getThrust();
         Integer drift = getDrift();
-        return thrust == null || drift == null ? null : thrust + 2 * drift;
+        return thrust == null || drift == null ? null : thrust + 3 * drift;
     }
 }
