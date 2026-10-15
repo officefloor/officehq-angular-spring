@@ -32,7 +32,7 @@ public class PersonController {
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, List<String> regions, Integer reach,
-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier) {
+            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier, State state) {
         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
@@ -44,7 +44,7 @@ public class PersonController {
                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(),
                     PersonController.norm(p.getScaled(), medianScaled),
-                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)));
+                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState());
         }
     }
 
@@ -118,6 +118,18 @@ public class PersonController {
     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
         return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
                 person.grade(), regions(person.regions())));
+    }
+
+    /** Moves the person with this id on the request's sheet forward to their next state; refused once FINAL. */
+    @PostMapping("/{id}/advance")
+    public PersonView advance(@RequestParam(required = false) String sheet, @PathVariable long id) {
+        String sheetId = sheetId(sheet);
+        try {
+            return service.advance(sheetId, id).map(p -> view(sheetId, p))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
     }
 
     /**

@@ -24,6 +24,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // The sheet shows its anchor date (today when none is set), and each person their onset date and
 // their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
 // Their decay is momentum minus age ("n/a" while either is missing).
+// Each person has a state, starting at DRAFT; the row's Advance button moves it forward to REVIEW and
+// then FINAL, after which there is no Advance button. Every change is recorded in the audit.
 // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
 // Their effective is their net while active, and half their net rounded down while not active
 // ("n/a" while net is).
@@ -173,6 +175,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Grade</th>
           <th scope="col">Regions</th>
           <th scope="col">Active</th>
+          <th scope="col">State</th>
           <th scope="col">Onset</th>
           <th scope="col">Age</th>
           <th scope="col">Decay</th>
@@ -209,6 +212,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set grade</th>
           <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
+          <th scope="col">Advance</th>
           <th scope="col">Set patrons</th>
           <th scope="col">Set allies</th>
           <th scope="col">Set score</th>
@@ -225,6 +229,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-grade">{{ p.grade }}</td>
             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+            <td data-testid="person-state">{{ p.state }}</td>
             <td data-testid="person-onset">{{ p.onset }}</td>
             <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
             <td data-testid="concept-decay">{{ p.decay ?? 'n/a' }}</td>
@@ -345,6 +350,18 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
                 #activeCheckbox
                 data-testid="person-active-toggle"
               />
+            </td>
+            <td>
+              @if (p.state !== 'FINAL') {
+                <button
+                  type="button"
+                  (click)="advance(p)"
+                  [attr.aria-label]="'Advance ' + p.name"
+                  [attr.data-testid]="'person-advance-' + p.id"
+                >
+                  Advance
+                </button>
+              }
             </td>
             <td>
               <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
@@ -549,6 +566,10 @@ export class People {
 
   protected setActive(person: Person, active: boolean): void {
     this.service.setActive(this.sheet(), person.id, active).subscribe(() => this.load());
+  }
+
+  protected advance(person: Person): void {
+    this.service.advance(this.sheet(), person.id).subscribe(() => this.load());
   }
 
   protected patronNames(person: Person): string {

@@ -2,6 +2,9 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
+// A person's workflow state, moved forward from DRAFT to REVIEW to FINAL.
+export type State = 'DRAFT' | 'REVIEW' | 'FINAL';
+
 export interface Person {
   id: number;
   name: string;
@@ -24,6 +27,7 @@ export interface Person {
   age: number | null;
   decay: number | null;
   active: boolean;
+  state: State;
   effective: number | null;
   clout: number | null;
   influence: number | null;
@@ -125,6 +129,11 @@ export class PeopleService {
 
   setActive(sheet: string | null, id: number, active: boolean): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { active }, { params: sheetParams(sheet) });
+  }
+
+  // Moves a person forward to their next state (DRAFT -> REVIEW -> FINAL).
+  advance(sheet: string | null, id: number): Observable<Person> {
+    return this.http.post<Person>(`/api/people/${id}/advance`, null, { params: sheetParams(sheet) });
   }
 
   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {

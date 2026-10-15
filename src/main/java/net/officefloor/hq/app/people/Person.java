@@ -37,7 +37,8 @@ import java.util.Set;
  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
- * without one) and their "quality" is the score (absent without one). */
+ * without one) and their "quality" is the score (absent without one). A person has a workflow "state",
+ * starting at DRAFT and moved forward to REVIEW and then FINAL. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -67,6 +68,9 @@ public class Person {
     private LocalDate onset;
 
     private boolean active = true;
+
+    @Enumerated(EnumType.STRING)
+    private State state = State.DRAFT;
 
     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
     @Column(name = "sheet_id")
@@ -156,6 +160,14 @@ public class Person {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public State getState() {
+        return state;
+    }
+
+    public void setState(State state) {
+        this.state = state;
     }
 
     /** The regions, sorted ascending. */

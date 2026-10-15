@@ -133,6 +133,21 @@ public class PersonService {
         });
     }
 
+    /** Moves the person forward to their next state, recorded in the audit as STATE_CHANGED id=.. from=.. to=...; refused once FINAL. */
+    @Transactional
+    public Optional<Person> advance(String sheetId, long id) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            State previous = p.getState();
+            State next = previous.next();
+            if (next == null) {
+                throw new IllegalStateException("a person at " + previous + " cannot move forward");
+            }
+            p.setState(next);
+            audit.record("STATE_CHANGED id=" + id + " from=" + previous + " to=" + next);
+            return p;
+        });
+    }
+
     /** Sets the person's whole-number score; null clears it. */
     @Transactional
     public Optional<Person> setScore(String sheetId, long id, Integer score) {
