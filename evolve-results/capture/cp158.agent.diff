@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2c0b48eb..0f391187 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -122,6 +122,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // that comes first alphabetically ("n/a" when there are no groups).
+ // The sheet's total strength is the sum of the strengths of all its groups (0 when there are none).
+ // The sheet's group count is how many groups it has (0 when there are none).
++// The sheet's median strength is the middle of its groups' strengths; for an even count, the lower of
++// the two middle values ("n/a" when there are no groups).
+ // Each group shows its rank: its place among the sheet's groups by strength, highest first (1), with
+ // equal strength placed by the group name earlier in the alphabet.
+ // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
+@@ -300,6 +302,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+     <p>Biggest group: <strong data-testid="rollup-biggest-group">{{ biggestGroup() ?? 'n/a' }}</strong></p>
+     <p>Total strength: <strong data-testid="rollup-total-strength">{{ totalStrength() }}</strong></p>
+     <p>Groups: <strong data-testid="rollup-group-count">{{ groupCount() }}</strong></p>
++    <p>Median strength: <strong data-testid="rollup-median-strength">{{ medianStrength() ?? 'n/a' }}</strong></p>
+     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
+     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
+     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
+@@ -921,6 +924,13 @@ export class People {
+     return this.groups().reduce((total, g) => total + (strengths.get(g.id) ?? 0), 0);
+   });
+   protected readonly groupCount = computed(() => this.groups().length);
++  protected readonly medianStrength = computed(() => {
++    const strengths = this.groupStrengths();
++    const sorted = this.groups()
++      .map((g) => strengths.get(g.id) ?? 0)
++      .sort((a, b) => a - b);
++    return sorted.length === 0 ? null : sorted[Math.floor((sorted.length - 1) / 2)];
++  });
+   protected readonly groupRanks = computed(() => {
+     const strengths = this.groupStrengths();
+     const ranked = [...this.groups()].sort(
