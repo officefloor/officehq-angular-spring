@@ -1,0 +1,31 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6fcdcbbb..4485aba9 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -120,6 +120,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
+ // The sheet's biggest group is the name of the group with the highest strength, ties going to the name
+ // that comes first alphabetically ("n/a" when there are no groups).
++// The sheet's total strength is the sum of the strengths of all its groups (0 when there are none).
+ // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
+ // Each group shows its spread: the highest effective of the people in it minus the lowest, ignoring "n/a"
+ // ("n/a" when none of its people have an effective).
+@@ -278,6 +279,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+       }
+     </section>
+     <p>Biggest group: <strong data-testid="rollup-biggest-group">{{ biggestGroup() ?? 'n/a' }}</strong></p>
++    <p>Total strength: <strong data-testid="rollup-total-strength">{{ totalStrength() }}</strong></p>
+     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
+     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
+     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
+@@ -883,6 +885,10 @@ export class People {
+     }
+     return strengths;
+   });
++  protected readonly totalStrength = computed(() => {
++    const strengths = this.groupStrengths();
++    return this.groups().reduce((total, g) => total + (strengths.get(g.id) ?? 0), 0);
++  });
+   protected readonly biggestGroup = computed(() => {
+     const strengths = this.groupStrengths();
+     let top: { name: string; strength: number } | null = null;
