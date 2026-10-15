@@ -11,7 +11,8 @@ import { PeopleService, Person } from './people.service';
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
-// id no sheet has yet says so; adding a person to it creates it.
+// id no sheet has yet says so; adding a person to it creates it. Sheets are kept apart: each numbers
+// its own people, and a sheet only ever shows (and edits) its own.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -235,7 +236,7 @@ export class People {
     if (this.form.invalid) return;
     const editing = this.editing();
     const request = editing
-      ? this.service.update(editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma) })
+      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma) })
       : this.service.add(this.sheet(), { name, alpha, beta, gamma });
     this.saving.set(true);
     request.subscribe({
@@ -252,21 +253,21 @@ export class People {
     const text = value.trim();
     if (text !== '' && !/^-?\d+$/.test(text)) return;
     const alpha = text === '' ? null : Number(text);
-    this.service.setAlpha(person.id, alpha).subscribe(() => this.load());
+    this.service.setAlpha(this.sheet(), person.id, alpha).subscribe(() => this.load());
   }
 
   protected setBeta(person: Person, value: string): void {
     const text = value.trim();
     if (text !== '' && !/^-?\d+$/.test(text)) return;
     const beta = text === '' ? null : Number(text);
-    this.service.setBeta(person.id, beta).subscribe(() => this.load());
+    this.service.setBeta(this.sheet(), person.id, beta).subscribe(() => this.load());
   }
 
   protected setGamma(person: Person, value: string): void {
     const text = value.trim();
     if (text !== '' && !/^-?\d+$/.test(text)) return;
     const gamma = text === '' ? null : Number(text);
-    this.service.setGamma(person.id, gamma).subscribe(() => this.load());
+    this.service.setGamma(this.sheet(), person.id, gamma).subscribe(() => this.load());
   }
 
   protected patronNames(person: Person): string {
@@ -279,7 +280,7 @@ export class People {
 
   protected setPatrons(person: Person, select: HTMLSelectElement): void {
     const patronIds = Array.from(select.selectedOptions, (option) => Number(option.value));
-    this.service.setPatrons(person.id, patronIds).subscribe(() => this.load());
+    this.service.setPatrons(this.sheet(), person.id, patronIds).subscribe(() => this.load());
   }
 
   private load(): void {

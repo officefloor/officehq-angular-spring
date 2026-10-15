@@ -26,9 +26,9 @@ public class PersonController {
             Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
             Integer backing, Integer net) {
         static PersonView of(Person p) {
-            return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+            return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
-                    p.getPatrons().stream().map(o -> new PatronView(o.getId(), o.getName())).toList(),
+                    p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet());
         }
     }
@@ -57,20 +57,22 @@ public class PersonController {
     }
 
     /**
-     * Sets whichever of alpha, beta, gamma and patronIds (a list of ids) the body names; a null
-     * value clears it.
+     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma and
+     * patronIds (a list of ids on that sheet) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
-    public PersonView update(@PathVariable long id, @RequestBody Map<String, Object> update) {
-        Optional<Person> person = service.find(id);
+    public PersonView update(@RequestParam(required = false) String sheet, @PathVariable long id,
+            @RequestBody Map<String, Object> update) {
+        String sheetId = sheetId(sheet);
+        Optional<Person> person = service.find(sheetId, id);
         if (update.containsKey("alpha")) {
-            person = service.setAlpha(id, integer(update.get("alpha")));
+            person = service.setAlpha(sheetId, id, integer(update.get("alpha")));
         }
         if (update.containsKey("beta")) {
-            person = service.setBeta(id, integer(update.get("beta")));
+            person = service.setBeta(sheetId, id, integer(update.get("beta")));
         }
         if (update.containsKey("gamma")) {
-            person = service.setGamma(id, integer(update.get("gamma")));
+            person = service.setGamma(sheetId, id, integer(update.get("gamma")));
         }
         if (update.containsKey("patronIds")) {
             List<Long> patronIds = new ArrayList<>();
@@ -82,7 +84,7 @@ public class PersonController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "patronIds must be a list");
             }
             try {
-                person = service.setPatrons(id, patronIds);
+                person = service.setPatrons(sheetId, id, patronIds);
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }

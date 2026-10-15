@@ -29,7 +29,7 @@ public class PersonService {
     @Transactional(readOnly = true)
     /** The people on a sheet; a null sheet id is the unnamed sheet. */
     public List<Person> list(String sheetId) {
-        return people.findBySheetId(sheetId, Sort.by("id"));
+        return people.findBySheetId(sheetId, Sort.by("localId"));
     }
 
     /** Whether a named sheet has been stored. */
@@ -38,9 +38,10 @@ public class PersonService {
         return sheets.existsById(sheetId);
     }
 
+    /** The person with an id on a sheet; a null sheet id is the unnamed sheet. */
     @Transactional(readOnly = true)
-    public Optional<Person> find(long id) {
-        return people.findById(id);
+    public Optional<Person> find(String sheetId, long id) {
+        return people.findBySheetIdAndLocalId(sheetId, id);
     }
 
     @Transactional
@@ -49,13 +50,14 @@ public class PersonService {
         if (sheetId != null && !sheets.existsById(sheetId)) {
             sheets.save(new Sheet(sheetId));
         }
-        return people.save(new Person(sheetId, name.trim(), alpha, beta, gamma));
+        long id = people.maxLocalId(sheetId) + 1;
+        return people.save(new Person(sheetId, id, name.trim(), alpha, beta, gamma));
     }
 
     @Transactional
     /** Sets alpha; a real change is recorded in the audit as ALPHA_CHANGED id=.. from=.. to=... */
-    public Optional<Person> setAlpha(long id, Integer alpha) {
-        return people.findById(id).map(p -> {
+    public Optional<Person> setAlpha(String sheetId, long id, Integer alpha) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
             Integer previous = p.getAlpha();
             p.setAlpha(alpha);
             if (!Objects.equals(previous, alpha)) {
@@ -66,32 +68,31 @@ public class PersonService {
     }
 
     @Transactional
-    public Optional<Person> setBeta(long id, Integer beta) {
-        return people.findById(id).map(p -> {
+    public Optional<Person> setBeta(String sheetId, long id, Integer beta) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
             p.setBeta(beta);
             return p;
         });
     }
 
     @Transactional
-    public Optional<Person> setGamma(long id, Integer gamma) {
-        return people.findById(id).map(p -> {
+    public Optional<Person> setGamma(String sheetId, long id, Integer gamma) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
             p.setGamma(gamma);
             return p;
         });
     }
 
-    /** Sets the patrons (other people on the same sheet) by id; an empty list clears them. Refuses oneself or an unknown person. */
+    /** Sets the patrons (other people on the same sheet) by their id on that sheet; an empty list clears them. Refuses oneself or an unknown person. */
     @Transactional
-    public Optional<Person> setPatrons(long id, Collection<Long> patronIds) {
-        return people.findById(id).map(p -> {
+    public Optional<Person> setPatrons(String sheetId, long id, Collection<Long> patronIds) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
             Set<Person> patrons = new HashSet<>();
             for (Long patronId : patronIds) {
                 if (patronId == id) {
                     throw new IllegalArgumentException("a person cannot be their own patron");
                 }
-                patrons.add(people.findById(patronId)
-                        .filter(patron -> Objects.equals(patron.getSheetId(), p.getSheetId()))
+                patrons.add(people.findBySheetIdAndLocalId(sheetId, patronId)
                         .orElseThrow(() -> new IllegalArgumentException("no person " + patronId + " on this sheet")));
             }
             p.setPatrons(patrons);

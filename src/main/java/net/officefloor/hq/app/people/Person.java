@@ -19,7 +19,7 @@ import java.util.Set;
  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
- * "backing". A person belongs to one sheet (null for the unnamed sheet). "Net" is momentum plus backing (backing counted as zero without patrons). */
+ * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -27,6 +27,10 @@ public class Person {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** The person's id within their sheet; the id the user and the API see. */
+    @Column(name = "local_id")
+    private Long localId;
 
     private String name;
 
@@ -48,8 +52,9 @@ public class Person {
     protected Person() {
     }
 
-    public Person(String sheetId, String name, Integer alpha, Integer beta, Integer gamma) {
+    public Person(String sheetId, long localId, String name, Integer alpha, Integer beta, Integer gamma) {
         this.sheetId = sheetId;
+        this.localId = localId;
         this.name = name;
         this.alpha = alpha;
         this.beta = beta;
@@ -58,6 +63,10 @@ public class Person {
 
     public Long getId() {
         return id;
+    }
+
+    public Long getLocalId() {
+        return localId;
     }
 
     public String getSheetId() {

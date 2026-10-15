@@ -78,9 +78,34 @@ public class TestSupportController {
             jdbc.update("INSERT INTO sheet (id) VALUES (?)", id);
             seedSheet(id, sheet.get("people"), sheet.get("patrons"), "sheets.");
         }
-        // Keep generated ids clear of the seeded ones.
-        Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM person", Long.class);
-        jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH " + next);
+    }
+
+    private static String sheetWhere(String sheetId) {
+        return sheetId == null ? "sheet_id IS NULL" : "sheet_id = ?";
+    }
+
+    private static Object[] sheetArgs(String sheetId, Object... more) {
+        List<Object> args = new ArrayList<>();
+        if (sheetId != null) {
+            args.add(sheetId);
+        }
+        args.addAll(List.of(more));
+        return args.toArray();
+    }
+
+    private long nextLocalId(String sheetId) {
+        return jdbc.queryForObject("SELECT COALESCE(MAX(local_id), 0) + 1 FROM person WHERE " + sheetWhere(sheetId),
+                Long.class, sheetArgs(sheetId));
+    }
+
+    /** The internal key of the person with an id on a sheet; refuses an id the sheet does not have. */
+    private long internalId(String sheetId, long localId, String field) {
+        List<Long> ids = jdbc.queryForList("SELECT id FROM person WHERE " + sheetWhere(sheetId) + " AND local_id = ?",
+                Long.class, sheetArgs(sheetId, localId));
+        if (ids.isEmpty()) {
+            throw badRequest(field + " " + localId + " is not a person on the sheet");
+        }
+        return ids.get(0);
     }
 
     /** Inserts one sheet's people and then their patrons; a null sheet id is the unnamed sheet. */
@@ -94,17 +119,13 @@ public class TestSupportController {
             if (!(row.get("name") instanceof String name)) {
                 throw badRequest(prefix + "people.name is required");
             }
-            Object id = row.get("id");
             Integer alpha = integer(row.get("alpha"), prefix + "people.alpha");
             Integer beta = integer(row.get("beta"), prefix + "people.beta");
             Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
-            if (id == null) {
-                jdbc.update("INSERT INTO person (sheet_id, name, alpha, beta, gamma) VALUES (?, ?, ?, ?, ?)",
-                        sheetId, name, alpha, beta, gamma);
-            } else {
-                jdbc.update("INSERT INTO person (id, sheet_id, name, alpha, beta, gamma) VALUES (?, ?, ?, ?, ?, ?)",
-                        integer(id, prefix + "people.id"), sheetId, name, alpha, beta, gamma);
-            }
+            // A person's id is their id within the sheet; the internal key is generated.
+            Integer localId = integer(row.get("id"), prefix + "people.id");
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma) VALUES (?, ?, ?, ?, ?, ?)",
+                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma);
         }
         // Patrons link people by id, so add them once every person exists.
         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
@@ -118,7 +139,9 @@ public class TestSupportController {
             if (personId == null || patronId == null) {
                 throw badRequest(prefix + "patrons rows need personId and patronId");
             }
-            jdbc.update("INSERT INTO person_patron (person_id, patron_id) VALUES (?, ?)", personId, patronId);
+            jdbc.update("INSERT INTO person_patron (person_id, patron_id) VALUES (?, ?)",
+                    internalId(sheetId, personId, prefix + "patrons.personId"),
+                    internalId(sheetId, patronId, prefix + "patrons.patronId"));
         }
     }
 
@@ -145,11 +168,11 @@ public class TestSupportController {
         String where = sheetId == null ? "p.sheet_id IS NULL" : "p.sheet_id = ?";
         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
-                + "beta AS \"beta\", gamma AS \"gamma\" FROM person p WHERE " + where + " ORDER BY id", args));
-        out.put("patrons", jdbc.queryForList("SELECT pp.person_id AS \"personId\", pp.patron_id AS \"patronId\" "
-                + "FROM person_patron pp JOIN person p ON p.id = pp.person_id WHERE " + where
-                + " ORDER BY pp.person_id, pp.patron_id", args));
+        out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+                + "beta AS \"beta\", gamma AS \"gamma\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+        out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
+                + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
+                + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
         return out;
     }
 

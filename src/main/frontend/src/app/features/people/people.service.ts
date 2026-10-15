@@ -52,24 +52,25 @@ export class PeopleService {
     return this.http.post<Person>('/api/people', person, { params: sheetParams(sheet) });
   }
 
-  update(id: number, values: Omit<NewPerson, 'name'>): Observable<Person> {
-    return this.http.patch<Person>(`/api/people/${id}`, values);
+  // Updates the person with an id on a sheet (ids are per sheet); null is the unnamed sheet.
+  update(sheet: string | null, id: number, values: Omit<NewPerson, 'name'>): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, values, { params: sheetParams(sheet) });
   }
 
-  setAlpha(id: number, alpha: number | null): Observable<Person> {
-    return this.http.patch<Person>(`/api/people/${id}`, { alpha });
+  setAlpha(sheet: string | null, id: number, alpha: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { alpha }, { params: sheetParams(sheet) });
   }
 
-  setBeta(id: number, beta: number | null): Observable<Person> {
-    return this.http.patch<Person>(`/api/people/${id}`, { beta });
+  setBeta(sheet: string | null, id: number, beta: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { beta }, { params: sheetParams(sheet) });
   }
 
-  setGamma(id: number, gamma: number | null): Observable<Person> {
-    return this.http.patch<Person>(`/api/people/${id}`, { gamma });
+  setGamma(sheet: string | null, id: number, gamma: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { gamma }, { params: sheetParams(sheet) });
   }
 
-  setPatrons(id: number, patronIds: number[]): Observable<Person> {
-    return this.http.patch<Person>(`/api/people/${id}`, { patronIds });
+  setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
   }
 }
 
