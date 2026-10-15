@@ -183,6 +183,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // The sheet's apex name is the name of the person with the highest scaled anywhere on the sheet, and its
 // runner-up the name of the second highest, ties going to the name earlier in the alphabet ("n/a" when
 // there is no such person).
+// The sheet's gap is the highest scaled on the sheet minus the second highest ("n/a" when fewer than two
+// people have a scaled).
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
 // figure depends on "their group", it is the group, of those they are in, whose name comes first
 // alphabetically.
@@ -358,6 +360,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
     <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
     <p>Runner-up: <strong data-testid="rollup-runnerup">{{ runnerUp() ?? 'n/a' }}</strong></p>
+    <p>Gap: <strong data-testid="rollup-gapval">{{ gapVal() ?? 'n/a' }}</strong></p>
     <section aria-labelledby="region-counts-heading">
       <h2 id="region-counts-heading">People per region</h2>
       @if (regionCounts().length === 0) {
@@ -1280,6 +1283,10 @@ export class People {
   );
   protected readonly apexName = computed(() => this.scaledOrder()[0]?.name ?? null);
   protected readonly runnerUp = computed(() => this.scaledOrder()[1]?.name ?? null);
+  protected readonly gapVal = computed(() => {
+    const [first, second] = this.scaledOrder();
+    return first && second ? first.scaled! - second.scaled! : null;
+  });
   protected readonly strongestMember = computed(() => {
     let top: Person | null = null;
     for (const p of this.people()) {
