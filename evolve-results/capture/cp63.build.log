@@ -1,0 +1,192 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610160010/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 72 tests using 1 worker
+
+[1A[2K[1/72] [chromium] › cp01_people_alpha.spec.ts:8:7 › people with alpha › lists seeded people with their alpha
+[1A[2K[2/72] [chromium] › cp01_people_alpha.spec.ts:25:7 › people with alpha › adds a person
+[1A[2K[3/72] [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta
+[1A[2K  1) [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta ────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('concept-thrust')
+    Expected string: [32m"12"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('concept-thrust')[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      14 |
+      15 |     await expect(page.getByTestId('person-row-1').getByTestId('person-beta')).toHaveText('4');
+    > 16 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-thrust')).toHaveText('12');
+         |                                                                                  ^
+      17 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-thrust')).toHaveText('14');
+      18 |   });
+      19 |
+
+        at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp02_thrust.spec.ts:16:82
+
+
+[1A[2K[4/72] [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative
+[1A[2K  2) [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative ──────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('concept-thrust')
+    Expected string: [32m"0"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('concept-thrust')[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-thrust">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      27 |     await page.goto('/');
+      28 |
+    > 29 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-thrust')).toHaveText('0');
+         |                                                                                  ^
+      30 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-thrust')).toHaveText('-20');
+      31 |   });
+      32 | });
+
+        at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp02_thrust.spec.ts:29:82
+
+
+[1A[2K[5/72] [chromium] › cp03_momentum.spec.ts:6:7 › drift and momentum › drift and momentum build on thrust
+[1A[2K[6/72] [chromium] › cp04_momentum_coefficient.spec.ts:5:7 › momentum coefficient raised to 3 › momentum is thrust + 3*drift
+[1A[2K[7/72] [chromium] › cp05_tier.spec.ts:6:7 › tier › tier classifies momentum including the boundaries
+[1A[2K[8/72] [chromium] › cp06_concept_nullability.spec.ts:7:7 › concept nullability › missing raw value makes the dependent concepts n/a
+[1A[2K[9/72] [chromium] › cp07_alpha_change_audit.spec.ts:8:7 › alpha change audit › changing alpha updates concepts and writes an audit record
+[1A[2K[10/72] [chromium] › cp08_tier_recalibrate.spec.ts:8:7 › tier recalibrated › tier uses the new wider STEADY band
+[1A[2K[11/72] [chromium] › cp09_patron.spec.ts:6:7 › patron › shows each person their patron by name
+[1A[2K[12/72] [chromium] › cp10_backing.spec.ts:6:7 › backing › backing is the patron thrust, n/a without a patron
+[1A[2K[13/72] [chromium] › cp11_net.spec.ts:6:7 › net › net is momentum plus summed backing (0 when no patron)
+[1A[2K[14/72] [chromium] › cp12_patron_many.spec.ts:9:7 › many patrons › patrons list all names sorted
+[1A[2K[15/72] [chromium] › cp12_patron_many.spec.ts:31:7 › many patrons › backing sums all patron thrust; net adds it to momentum
+[1A[2K[16/72] [chromium] › cp13_worksheet_id.spec.ts:9:7 › worksheet id › opening a sheet shows its id and its people, and adds belong to it
+[1A[2K[17/72] [chromium] › cp14_worksheet_recall.spec.ts:6:7 › worksheet recall › a sheet recalls its data after a page refresh
+[1A[2K[18/72] [chromium] › cp14_worksheet_recall.spec.ts:26:7 › worksheet recall › opening an unknown sheet starts it empty
+[1A[2K[19/72] [chromium] › cp15_worksheet_isolation.spec.ts:6:7 › worksheet isolation › people do not leak between sheets
+[1A[2K[20/72] [chromium] › cp16_unknown_sheet_blank.spec.ts:5:7 › unknown sheet starts blank › opening an unknown id starts an empty sheet with that id
+[1A[2K[21/72] [chromium] › cp17_rank.spec.ts:6:7 › rank › rank orders by momentum desc, ties by higher alpha
+[1A[2K[22/72] [chromium] › cp18_leader.spec.ts:6:7 › leader › leader is the rank-1 person
+[1A[2K[23/72] [chromium] › cp19_percentile.spec.ts:7:7 › percentile › percentile spreads 100..0 evenly by rank
+[1A[2K[24/72] [chromium] › cp19_percentile.spec.ts:26:7 › percentile › a single person is 100
+[1A[2K[25/72] [chromium] › cp20_rank_tiebreak.spec.ts:6:7 › rank tie-break by alpha › a momentum tie is broken by higher alpha
+[1A[2K[26/72] [chromium] › cp21_grade_weight.spec.ts:5:7 › grade weight › weight comes from grade
+[1A[2K[27/72] [chromium] › cp22_load.spec.ts:5:7 › load › load is momentum times weight
+[1A[2K[28/72] [chromium] › cp23_total_load.spec.ts:5:7 › total load › total load sums computable loads only
+[1A[2K[29/72] [chromium] › cp24_grade_weight_remap.spec.ts:5:7 › grade weight remapped › wider weights change load and total load
+[1A[2K[30/72] [chromium] › cp25_onset_anchor.spec.ts:7:7 › onset and anchor › shows the sheet anchor and each onset
+[1A[2K[31/72] [chromium] › cp26_age.spec.ts:6:7 › age in days › age is complete weeks from onset to anchor
+[1A[2K[32/72] [chromium] › cp27_decay.spec.ts:5:7 › decay › decay is momentum minus age
+[1A[2K[33/72] [chromium] › cp28_age_in_weeks.spec.ts:6:7 › age in weeks › age is complete weeks and decay follows
+[1A[2K[34/72] [chromium] › cp29_active.spec.ts:6:7 › active flag › shows whether each person is active
+[1A[2K[35/72] [chromium] › cp30_effective.spec.ts:6:7 › effective › effective is net when active, else half of net rounded down
+[1A[2K[36/72] [chromium] › cp31_active_rollups.spec.ts:7:7 › active rollups › active count and total effective
+[1A[2K[37/72] [chromium] › cp32_inactive_halved.spec.ts:7:7 › inactive halved › inactive effective is half of net rounded down
+[1A[2K[38/72] [chromium] › cp33_clout.spec.ts:6:7 › clout › clout averages the patrons effective
+[1A[2K[39/72] [chromium] › cp34_influence.spec.ts:7:7 › influence › influence is effective plus clout
+[1A[2K[40/72] [chromium] › cp35_top_influence.spec.ts:6:7 › top influence › names the highest-influence person
+[1A[2K[41/72] [chromium] › cp35_top_influence.spec.ts:31:7 › top influence › top influence tie is broken by name ascending
+[1A[2K[42/72] [chromium] › cp36_clout_average.spec.ts:10:7 › clout as average › clout averages patrons effective and the leader flips
+[1A[2K[43/72] [chromium] › cp37_region.spec.ts:6:7 › region › shows each person their regions
+[1A[2K[44/72] [chromium] › cp38_reach.spec.ts:7:7 › reach › reach sums over the regions
+[1A[2K[45/72] [chromium] › cp39_region_counts.spec.ts:6:7 › region counts › counts people per region, once per membership
+[1A[2K[46/72] [chromium] › cp40_region_many.spec.ts:9:7 › many regions › a person has several regions and reach sums over them
+[1A[2K[47/72] [chromium] › cp40_region_many.spec.ts:33:7 › many regions › counts count a person once per region
+[1A[2K[48/72] [chromium] › cp41_allies.spec.ts:6:7 › allies › allies are the followed people and counted
+[1A[2K[49/72] [chromium] › cp42_synergy.spec.ts:6:7 › synergy › synergy sums the followed thrust
+[1A[2K[50/72] [chromium] › cp43_combined.spec.ts:6:7 › combined › combined is influence plus synergy
+[1A[2K[51/72] [chromium] › cp44_allies_directed.spec.ts:12:7 › directed allies › allies are the followed people
+[1A[2K[52/72] [chromium] › cp44_allies_directed.spec.ts:35:7 › directed allies › synergy and combined follow only the followed people
+[1A[2K[53/72] [chromium] › cp45_notes.spec.ts:7:7 › notes › shows the single score and its total
+[1A[2K  3) [chromium] › cp45_notes.spec.ts:7:7 › notes › shows the single score and its total ────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('person-notes')
+    Expected string: [32m"42"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('person-notes')[22m
+
+
+      15 |     await page.goto('/');
+      16 |
+    > 17 |     await expect(page.getByTestId('person-row-1').getByTestId('person-notes')).toHaveText('42');
+         |                                                                                ^
+      18 |     await expect(page.getByTestId('person-row-2').getByTestId('person-notes')).toHaveText('5');
+      19 |     await expect(page.getByTestId('person-row-3').getByTestId('person-notes')).toHaveText('');
+      20 |
+
+        at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp45_notes.spec.ts:17:80
+
+
+[1A[2K[54/72] [chromium] › cp46_quality.spec.ts:6:7 › quality › quality is the score, n/a without one
+[1A[2K[55/72] [chromium] › cp47_adjusted.spec.ts:7:7 › adjusted › adjusted is combined plus quality
+[1A[2K[56/72] [chromium] › cp48_notes_folded.spec.ts:11:7 › notes folded to a single score › note-sum, quality and adjusted use the single score
+[1A[2K[57/72] [chromium] › cp49_band.spec.ts:7:7 › band › band classifies adjusted into five bands
+[1A[2K[58/72] [chromium] › cp50_scaled.spec.ts:8:7 › scaled › scaled is adjusted times the band multiplier
+[1A[2K[59/72] [chromium] › cp51_band_histogram.spec.ts:7:7 › band histogram › counts people per band
+[1A[2K[60/72] [chromium] › cp52_band_recalibrate.spec.ts:8:7 › band recalibrated › new boundaries reclassify and rescale
+[1A[2K[61/72] [chromium] › cp53_norm.spec.ts:6:7 › norm › norm is scaled minus the median scaled
+[1A[2K[62/72] [chromium] › cp54_outlier.spec.ts:7:7 › outlier › outlier when the norm magnitude exceeds 100
+[1A[2K[63/72] [chromium] › cp55_outlier_count.spec.ts:6:7 › outlier count › counts the outliers on the sheet
+[1A[2K[64/72] [chromium] › cp56_norm_median.spec.ts:10:7 › norm against the median › norm, outliers and count use the median
+[1A[2K[65/72] [chromium] › cp56_norm_median.spec.ts:33:7 › norm against the median › an even number of people uses the lower of the two middle values
+[1A[2K[66/72] [chromium] › cp57_state.spec.ts:8:7 › state workflow › advances DRAFT -> REVIEW -> FINAL with audit; FINAL offers rework
+[1A[2K[67/72] [chromium] › cp58_final_total.spec.ts:9:7 › final total › final total sums scaled of FINAL people only
+[1A[2K[68/72] [chromium] › cp59_state_guard.spec.ts:7:7 › state guard › FINAL cannot go back; other states can
+[1A[2K[69/72] [chromium] › cp60_rework.spec.ts:8:7 › rework state › FINAL can move to REWORK and back, with audit
+[1A[2K[70/72] [chromium] › cp61_axis_raw.spec.ts:6:7 › second axis raw values › shows delta and epsilon
+[1A[2K[71/72] [chromium] › cp62_force.spec.ts:6:7 › force › force is delta times epsilon
+[1A[2K[72/72] [chromium] › cp63_torque.spec.ts:6:7 › sway and torque › sway and torque build on force
+[1A[2K  3 failed
+    [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta ─────────────────────
+    [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative ───────────────
+    [chromium] › cp45_notes.spec.ts:7:7 › notes › shows the single score and its total ─────────────
+  69 passed (33.3s)
