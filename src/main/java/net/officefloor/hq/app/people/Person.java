@@ -31,6 +31,7 @@ import java.util.Set;
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
  * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 1, 2 or 4.
+ * "Pivot" is torque times verge, absent while either is.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
@@ -341,6 +342,13 @@ public class Person {
         Integer force = getForce();
         Integer sway = getSway();
         return force == null || sway == null ? null : force + 3 * sway;
+    }
+
+    /** Pivot is torque times verge; absent while either is absent. */
+    public Integer getPivot() {
+        Integer torque = getTorque();
+        Integer verge = getVerge();
+        return torque == null || verge == null ? null : torque * verge;
     }
 
     /** Blend is momentum plus torque; absent while either is absent. */

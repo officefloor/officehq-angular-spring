@@ -25,6 +25,7 @@ export interface Person {
   force: number | null;
   sway: number | null;
   torque: number | null;
+  pivot: number | null;
   blend: number | null;
   flux: number | null;
   crest: number | null;

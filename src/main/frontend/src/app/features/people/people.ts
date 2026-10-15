@@ -30,7 +30,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
 // out anyone whose load is "n/a".
 // Each person may have a kind (A, B or C), chosen on add, in the edit form or on the row; their verge
-// comes from it (A 1, B 2, C 4, "n/a" without a kind).
+// comes from it (A 1, B 2, C 4, "n/a" without a kind). Their pivot is torque × verge ("n/a" while either is missing).
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
@@ -247,6 +247,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Force</th>
           <th scope="col">Sway</th>
           <th scope="col">Torque</th>
+          <th scope="col">Pivot</th>
           <th scope="col">Blend</th>
           <th scope="col">Flux</th>
           <th scope="col">Crest</th>
@@ -321,6 +322,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-force">{{ p.force ?? 'n/a' }}</td>
             <td data-testid="concept-sway">{{ p.sway ?? 'n/a' }}</td>
             <td data-testid="concept-torque">{{ p.torque ?? 'n/a' }}</td>
+            <td data-testid="concept-pivot">{{ p.pivot ?? 'n/a' }}</td>
             <td data-testid="concept-blend">{{ p.blend ?? 'n/a' }}</td>
             <td data-testid="concept-flux">{{ p.flux ?? 'n/a' }}</td>
             <td data-testid="concept-crest">{{ p.crest ?? 'n/a' }}</td>
