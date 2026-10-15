@@ -154,7 +154,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // group or their scaled is "n/a").
 // Each person shows their rung: (their group's size less their standing in it) over the group's size, as a
 // percentage, rounded; a group of one is 100 ("n/a" without a standing).
-// Each person shows their depth: their group's size minus their standing in it ("n/a" without a standing).
+// Each person shows their depth: their standing in their group less one ("n/a" without a standing).
 // Each person shows their anchorage: how many groups they belong to (0 without one).
 // Each person shows their home group: the name of their group ("n/a" without one).
 // Each person shows their anchor strength: the strength of their home group ("n/a" without one).
@@ -982,7 +982,7 @@ export class People {
   protected depthOf(p: Person): number | null {
     const standing = this.standings().get(p.id);
     if (standing === undefined || p.groupId === null) return null;
-    return (this.groupSizes().get(p.groupId) ?? 0) - standing;
+    return standing - 1;
   }
   protected anchorageOf(p: Person): number {
     return p.groups.length;
