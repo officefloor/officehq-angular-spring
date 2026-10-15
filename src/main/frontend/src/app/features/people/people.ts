@@ -139,6 +139,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's grade tally shows how many of its people have each grade, HIGH and LOW (zero when none
 // do), with MID folded into HIGH; MID is still listed but always counts zero. People without a grade
 // are not counted.
+// The sheet's grade ledger shows the total scaled of its people with each grade, LOW, MID and HIGH (zero
+// when none do), counting "n/a" as zero; people without a grade add nothing.
 // The sheet's state tally shows how many of its people are in each state, DRAFT, REVIEW, FINAL and
 // REWORK (zero when none are).
 // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
@@ -521,6 +523,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (g of gradeTally(); track g.grade) {
           <li>
             {{ g.grade }}: <strong [attr.data-testid]="'grade-tally-' + g.grade">{{ g.count }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="grade-ledger-heading">
+      <h2 id="grade-ledger-heading">Ledger per grade</h2>
+      <ul>
+        @for (g of gradeLedger(); track g.grade) {
+          <li>
+            {{ g.grade }}: <strong [attr.data-testid]="'grade-ledger-' + g.grade">{{ g.total }}</strong>
           </li>
         }
       </ul>
@@ -1493,6 +1505,14 @@ export class People {
     [...GRADES].reverse().map((grade) => ({
       grade,
       count: this.people().filter((p) => p.grade !== null && TALLIED_GRADE[p.grade] === grade).length,
+    })),
+  );
+  protected readonly gradeLedger = computed(() =>
+    GRADES.map((grade) => ({
+      grade,
+      total: this.people()
+        .filter((p) => p.grade === grade)
+        .reduce((total, p) => total + (p.scaled ?? 0), 0),
     })),
   );
   protected readonly stateTally = computed(() =>
