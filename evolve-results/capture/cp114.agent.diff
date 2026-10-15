@@ -1,0 +1,76 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 1fabe334..b0c95495 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -77,6 +77,7 @@ export interface Person {
+   norm: number | null;
+   outlier: boolean;
+   ebb: number | null;
++  stray: boolean;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 19779b7d..f43e5525 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -100,6 +100,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // The sheet's outlier count is how many of its people are outliers.
+ // Their ebb is their blend minus the median blend of everyone on the sheet whose blend can be worked
+ // out; for an even count, the lower of the two middle values ("n/a" while their blend is "n/a").
++// They are a stray ("yes") when their ebb is more than 100 away from zero in either direction, and
++// otherwise "no" (also "no" while their ebb is "n/a").
+ // The sheet's final total is the sum of the scaled of its people whose state is FINAL, counting
+ // "n/a" as zero.
+ // The sheet's band counts show how many of its people are in each band, A through E (zero when none
+@@ -346,6 +348,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+           <th scope="col">Norm</th>
+           <th scope="col">Outlier</th>
+           <th scope="col">Ebb</th>
++          <th scope="col">Stray</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -437,6 +440,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
+             <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
++            <td data-testid="concept-stray">{{ p.stray ? 'yes' : 'no' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 2ec52c18..eb62f04e 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -33,7 +33,7 @@ public class PersonController {
+             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, Integer vector, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer norm, boolean outlier, State state, Integer ebb) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer norm, boolean outlier, State state, Integer ebb, boolean stray) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer medianBlend, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+@@ -46,7 +46,8 @@ public class PersonController {
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(),
+                     PersonController.norm(p.getScaled(), medianScaled),
+                     PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState(),
+-                    PersonController.ebb(p.getBlend(), medianBlend));
++                    PersonController.ebb(p.getBlend(), medianBlend),
++                    PersonController.stray(PersonController.ebb(p.getBlend(), medianBlend)));
+         }
+     }
+ 
+@@ -74,6 +75,11 @@ public class PersonController {
+         return blend == null || medianBlend == null ? null : blend - medianBlend;
+     }
+ 
++    /** A stray has an ebb more than 100 away from zero in either direction; without an ebb, not a stray. */
++    static boolean stray(Integer ebb) {
++        return ebb != null && Math.abs(ebb) > 100;
++    }
++
+     /** An outlier has a norm more than 100 away from zero in either direction; without a norm, not an outlier. */
+     static boolean outlier(Integer norm) {
+         return norm != null && Math.abs(norm) > 100;
