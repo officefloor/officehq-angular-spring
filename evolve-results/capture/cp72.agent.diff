@@ -1,0 +1,44 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d5419414..d655040b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -11,7 +11,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // ("n/a" while delta, epsilon or zeta is missing). Each person also has a whole-number zeta (blank until given), set the same
+ // way; their sway is zeta − delta and their torque is force + 3 × sway ("n/a" while any part is missing),
+ // and their phase classifies torque: EBB below zero, RUN up to 199, PEAK from 200. Their blend is
+-// momentum + torque ("n/a" while either is missing). Their flux is the sum of their patrons' force (0 without
++// momentum + torque ("n/a" while either is missing). Their flux is the average of their patrons' force, rounded down (0 without
+ // patrons, "n/a" while any patron's force is missing). Their crest is blend + flux ("n/a" while either is missing).
+ // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
+ // comes first alphabetically ("n/a" when nobody has a crest).
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index cbb084fa..28e847d7 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -25,7 +25,7 @@ import java.util.Set;
+ /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
+  * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given) with the derived "force"
+  * (delta × epsilon), a whole-number "zeta" (absent until given) with the derived "sway"
+- * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the patrons' force added together, zero without patrons), "crest" (blend + flux, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
++ * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the average of the patrons' force, rounded down, zero without patrons), "crest" (blend + flux, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+@@ -374,7 +374,7 @@ public class Person {
+         return sum;
+     }
+ 
+-    /** Flux is the sum of the patrons' force; zero without patrons, absent while any patron's force is absent. */
++    /** Flux is the average of the patrons' force, rounded down; zero without patrons, absent while any patron's force is absent. */
+     public Integer getFlux() {
+         int sum = 0;
+         for (Person patron : patrons) {
+@@ -384,7 +384,7 @@ public class Person {
+             }
+             sum += force;
+         }
+-        return sum;
++        return patrons.isEmpty() ? 0 : Math.floorDiv(sum, patrons.size());
+     }
+ 
+     /** Crest is blend plus flux; absent while either is absent. */
