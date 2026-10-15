@@ -198,6 +198,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
     <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
     <p>Top influence: <strong data-testid="rollup-top-influence">{{ topInfluence() ?? 'n/a' }}</strong></p>
     <p>Top crest: <strong data-testid="rollup-top-crest">{{ topCrest() ?? 'n/a' }}</strong></p>
+    <p>Top brace: <strong data-testid="rollup-top-brace">{{ topBrace() ?? 'n/a' }}</strong></p>
     <p>Max thrum: <strong data-testid="rollup-max-thrum">{{ maxThrum() ?? 'n/a' }}</strong></p>
     <p>Total haul: <strong data-testid="rollup-total-haul">{{ totalHaul() }}</strong></p>
     <p>Total pivot: <strong data-testid="rollup-total-pivot">{{ totalPivot() }}</strong></p>
@@ -724,6 +725,20 @@ export class People {
         top === null ||
         p.crest > top.crest! ||
         (p.crest === top.crest && p.name.localeCompare(top.name) < 0)
+      ) {
+        top = p;
+      }
+    }
+    return top?.name ?? null;
+  });
+  protected readonly topBrace = computed(() => {
+    let top: Person | null = null;
+    for (const p of this.people()) {
+      if (p.brace === null) continue;
+      if (
+        top === null ||
+        p.brace > top.brace! ||
+        (p.brace === top.brace && p.name.localeCompare(top.name) < 0)
       ) {
         top = p;
       }
