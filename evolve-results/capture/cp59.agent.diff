@@ -1,0 +1,175 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 9bd8bf3..dfe32f2 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -136,6 +136,11 @@ export class PeopleService {
+     return this.http.post<Person>(`/api/people/${id}/advance`, null, { params: sheetParams(sheet) });
+   }
+ 
++  // Moves a person back to their previous state (REVIEW -> DRAFT); refused once FINAL.
++  demote(sheet: string | null, id: number): Observable<Person> {
++    return this.http.post<Person>(`/api/people/${id}/demote`, null, { params: sheetParams(sheet) });
++  }
++
+   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 59a468d..3541205 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -25,7 +25,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
+ // Their decay is momentum minus age ("n/a" while either is missing).
+ // Each person has a state, starting at DRAFT; the row's Advance button moves it forward to REVIEW and
+-// then FINAL, after which there is no Advance button. Every change is recorded in the audit.
++// then FINAL, after which there is no Advance button. The row's Back button moves a REVIEW person back
++// to DRAFT; a FINAL person cannot go back, and trying shows that it is not allowed. Every change is
++// recorded in the audit.
+ // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
+ // Their effective is their net while active, and half their net rounded down while not active
+ // ("n/a" while net is).
+@@ -168,6 +170,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+     @if (people().length === 0) {
+       <p data-testid="people-empty">No people yet.</p>
+     }
++    @if (stateError(); as error) {
++      <p role="alert" data-testid="person-state-error">{{ error }}</p>
++    }
+     <table data-testid="people-table">
+       <thead>
+         <tr>
+@@ -216,6 +221,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Set regions</th>
+           <th scope="col">Set active</th>
+           <th scope="col">Advance</th>
++          <th scope="col">Back</th>
+           <th scope="col">Set patrons</th>
+           <th scope="col">Set allies</th>
+           <th scope="col">Set score</th>
+@@ -366,6 +372,18 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+                 </button>
+               }
+             </td>
++            <td>
++              @if (p.state !== 'DRAFT') {
++                <button
++                  type="button"
++                  (click)="demote(p)"
++                  [attr.aria-label]="'Move ' + p.name + ' back'"
++                  [attr.data-testid]="'person-demote-' + p.id"
++                >
++                  Back
++                </button>
++              }
++            </td>
+             <td>
+               <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
+                 Patrons for {{ p.name }}
+@@ -442,6 +460,7 @@ export class People {
+   protected readonly sheet = signal<string | null>(null);
+   protected readonly anchor = signal('');
+   protected readonly saving = signal(false);
++  protected readonly stateError = signal<string | null>(null);
+   protected readonly editing = signal<Person | null>(null);
+   protected readonly leader = computed(() => this.people().find((p) => p.rank === 1)?.name ?? null);
+   protected readonly totalLoad = computed(() =>
+@@ -577,9 +596,18 @@ export class People {
+   }
+ 
+   protected advance(person: Person): void {
++    this.stateError.set(null);
+     this.service.advance(this.sheet(), person.id).subscribe(() => this.load());
+   }
+ 
++  protected demote(person: Person): void {
++    this.stateError.set(null);
++    this.service.demote(this.sheet(), person.id).subscribe({
++      next: () => this.load(),
++      error: () => this.stateError.set(`${person.name} is ${person.state} and cannot move back.`),
++    });
++  }
++
+   protected patronNames(person: Person): string {
+     return person.patrons.map((patron) => patron.name).join(', ');
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index e63e28a..b98e43c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -132,6 +132,18 @@ public class PersonController {
+         }
+     }
+ 
++    /** Moves the person with this id on the request's sheet back to their previous state; refused once FINAL or at DRAFT. */
++    @PostMapping("/{id}/demote")
++    public PersonView demote(@RequestParam(required = false) String sheet, @PathVariable long id) {
++        String sheetId = sheetId(sheet);
++        try {
++            return service.demote(sheetId, id).map(p -> view(sheetId, p))
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
++        } catch (IllegalStateException e) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
++        }
++    }
++
+     /**
+      * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, score, grade, regions (a list of codes), active
+      * (true or false), patronIds and allyIds (lists of ids on that sheet) the body names; a null value clears it.
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index 5e02186..af44aa7 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -148,6 +148,21 @@ public class PersonService {
+         });
+     }
+ 
++    /** Moves the person back to their previous state, recorded in the audit like {@link #advance}; refused once FINAL or at DRAFT. */
++    @Transactional
++    public Optional<Person> demote(String sheetId, long id) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            State current = p.getState();
++            State previous = current.previous();
++            if (previous == null) {
++                throw new IllegalStateException("a person at " + current + " cannot move back");
++            }
++            p.setState(previous);
++            audit.record("STATE_CHANGED id=" + id + " from=" + current + " to=" + previous);
++            return p;
++        });
++    }
++
+     /** Sets the person's whole-number score; null clears it. */
+     @Transactional
+     public Optional<Person> setScore(String sheetId, long id, Integer score) {
+diff --git a/src/main/java/net/officefloor/hq/app/people/State.java b/src/main/java/net/officefloor/hq/app/people/State.java
+index 5720a87..a387d7d 100644
+--- a/src/main/java/net/officefloor/hq/app/people/State.java
++++ b/src/main/java/net/officefloor/hq/app/people/State.java
+@@ -1,6 +1,9 @@
+ package net.officefloor.hq.app.people;
+ 
+-/** A person's workflow state; a person moves forward from DRAFT to REVIEW to FINAL, and FINAL is terminal. */
++/**
++ * A person's workflow state; a person moves forward from DRAFT to REVIEW to FINAL, and back a step from REVIEW to DRAFT. FINAL is
++ * terminal: once there a person cannot move forward or back.
++ */
+ public enum State {
+     DRAFT, REVIEW, FINAL;
+ 
+@@ -13,6 +16,15 @@ public enum State {
+         };
+     }
+ 
++    /** The state a step back from this one; none from DRAFT, and none from FINAL as it is terminal. */
++    public State previous() {
++        return switch (this) {
++            case DRAFT -> null;
++            case REVIEW -> DRAFT;
++            case FINAL -> null;
++        };
++    }
++
+     /** The state with this name; refuses anything other than DRAFT, REVIEW or FINAL. */
+     public static State parse(String value) {
+         try {
