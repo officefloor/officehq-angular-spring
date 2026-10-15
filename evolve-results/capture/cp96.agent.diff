@@ -1,0 +1,40 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5c146c6a..433aad97 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -51,7 +51,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their clout is the average of their patrons' effective, rounded down (zero without patrons; "n/a" while any
+ // patron's effective is "n/a").
+ // Their influence is their effective plus their clout ("n/a" while either is "n/a").
+-// Their brace is their influence plus their force ("n/a" while either is "n/a").
++// Their brace is their influence plus two times their force ("n/a" while either is "n/a").
+ // The sheet's top influence is the name of the person with the highest influence, ties going to the
+ // name that comes first alphabetically ("n/a" when nobody has an influence).
+ // Each person may belong to any number of regions: short codes typed in (like N1 or S2), separated by
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 169d4d39..9bd791ec 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -34,7 +34,7 @@ import java.util.Set;
+  * "Pivot" is torque times verge, absent while either is.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+- * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus force.
++ * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force.
+  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+  * person's regions, of momentum times that region's multiplier. "Gust" is reach plus two times torque. "Coil" is gust minus momentum. A person may follow any number of other people on
+@@ -496,11 +496,11 @@ public class Person {
+         return effective == null || clout == null ? null : effective + clout;
+     }
+ 
+-    /** Brace is influence plus force; absent while either is. */
++    /** Brace is influence plus two times force; absent while either is. */
+     public Integer getBrace() {
+         Integer influence = getInfluence();
+         Integer force = getForce();
+-        return influence == null || force == null ? null : influence + force;
++        return influence == null || force == null ? null : influence + 2 * force;
+     }
+ 
+     /** Combined is influence plus synergy; absent while either is. */
