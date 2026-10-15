@@ -120,6 +120,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
 // The sheet's biggest group is the name of the group with the highest strength, ties going to the name
 // that comes first alphabetically ("n/a" when there are no groups).
+// The sheet's prime group is the name of its strongest group: the same group as its biggest group
+// ("n/a" when there are no groups).
 // The sheet's top group size is the size of its biggest group ("n/a" when there are no groups).
 // The sheet's total strength is the sum of the strengths of all its groups (0 when there are none).
 // The sheet's group count is how many groups it has (0 when there are none).
@@ -317,6 +319,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
       }
     </section>
     <p>Biggest group: <strong data-testid="rollup-biggest-group">{{ biggestGroup() ?? 'n/a' }}</strong></p>
+    <p>Prime group: <strong data-testid="rollup-prime-group">{{ biggestGroup() ?? 'n/a' }}</strong></p>
     <p>Top group size: <strong data-testid="rollup-top-group-size">{{ topGroupSize() ?? 'n/a' }}</strong></p>
     <p>Total strength: <strong data-testid="rollup-total-strength">{{ totalStrength() }}</strong></p>
     <p>Groups: <strong data-testid="rollup-group-count">{{ groupCount() }}</strong></p>
