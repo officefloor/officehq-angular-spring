@@ -13,12 +13,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
-import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -38,9 +36,8 @@ import java.util.Set;
  * person's regions, of momentum times that region's multiplier. A person may follow any number of other people on
  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
- * A person may have any number of "notes", each with a whole-number score; their "note sum" is the
- * scores added together (zero without notes). "Quality" is the average of the note scores, rounded down
- * (absent without notes). */
+ * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
+ * without one) and their "quality" is the score (absent without one). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -91,12 +88,7 @@ public class Person {
     @Column(name = "region")
     private Set<String> regions = new HashSet<>();
 
-    /** The scores of the person's notes, in the order they were added. */
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "person_note", joinColumns = @JoinColumn(name = "person_id"))
-    @OrderColumn(name = "position")
-    @Column(name = "score")
-    private List<Integer> notes = new ArrayList<>();
+    private Integer score;
 
     protected Person() {
     }
@@ -175,26 +167,25 @@ public class Person {
         this.regions = new HashSet<>(regions);
     }
 
-    /** The note scores, sorted ascending. */
-    public List<Integer> getNotes() {
-        return notes.stream().sorted().toList();
+    public Integer getScore() {
+        return score;
     }
 
-    public void addNote(int score) {
-        notes.add(score);
+    public void setScore(Integer score) {
+        this.score = score;
     }
 
-    /** The note sum is the note scores added together; zero without notes. */
+    /** The note sum is the score; zero without one. */
     public int getNoteSum() {
-        return notes.stream().mapToInt(Integer::intValue).sum();
+        return score == null ? 0 : score;
     }
 
-    /** Quality is the average of the note scores, rounded down; absent without notes. */
+    /** Quality is the score; absent without one. */
     public Integer getQuality() {
-        return notes.isEmpty() ? null : Math.floorDiv(getNoteSum(), notes.size());
+        return score;
     }
 
-    /** Adjusted is combined plus quality (quality counted as zero without notes); absent while combined is. */
+    /** Adjusted is combined plus quality (quality counted as zero without a score); absent while combined is. */
     public Integer getAdjusted() {
         Integer combined = getCombined();
         Integer quality = getQuality();

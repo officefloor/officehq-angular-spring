@@ -33,7 +33,7 @@ export interface Person {
   allyCount: number;
   synergy: number | null;
   combined: number | null;
-  notes: number[];
+  score: number | null;
   noteSum: number;
   quality: number | null;
   adjusted: number | null;
@@ -127,9 +127,9 @@ export class PeopleService {
     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
   }
 
-  // Adds a note with a whole-number score to a person.
-  addNote(sheet: string | null, id: number, score: number): Observable<Person> {
-    return this.http.post<Person>(`/api/people/${id}/notes`, { score }, { params: sheetParams(sheet) });
+  // Sets a person's whole-number score; null clears it.
+  setScore(sheet: string | null, id: number, score: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { score }, { params: sheetParams(sheet) });
   }
 
   // Sets the people a person follows (their allies) by id; it does not make them follow back.

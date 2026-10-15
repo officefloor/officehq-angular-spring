@@ -133,11 +133,11 @@ public class PersonService {
         });
     }
 
-    /** Adds a note with a whole-number score to the person. */
+    /** Sets the person's whole-number score; null clears it. */
     @Transactional
-    public Optional<Person> addNote(String sheetId, long id, int score) {
+    public Optional<Person> setScore(String sheetId, long id, Integer score) {
         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
-            p.addNote(score);
+            p.setScore(score);
             return p;
         });
     }

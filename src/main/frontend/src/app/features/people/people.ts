@@ -45,10 +45,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // so A following B does not make B follow A. A person's allies are the people they follow, listed by name, with how many there are,
 // and their synergy: the allies' thrust added together (zero without allies).
 // Their combined is their influence plus their synergy ("n/a" while either is "n/a").
-// Each person may have any number of notes, each with a whole-number score, added on the row. Their
-// notes are listed by score, sorted ascending, with their note sum: the scores added together (zero without notes).
-// Their quality is the average of their note scores, rounded down ("n/a" without notes).
-// Their adjusted is their combined plus their quality, counting quality as zero without notes ("n/a" while
+// Each person may have a single whole-number score, set on the row. Their note sum is their score (zero
+// without one) and their quality is their score ("n/a" without one).
+// Their adjusted is their combined plus their quality, counting quality as zero without a score ("n/a" while
 // combined is "n/a").
 @Component({
   selector: 'app-people',
@@ -172,7 +171,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Clout</th>
           <th scope="col">Influence</th>
           <th scope="col">Combined</th>
-          <th scope="col">Notes</th>
+          <th scope="col">Score</th>
           <th scope="col">Note sum</th>
           <th scope="col">Quality</th>
           <th scope="col">Adjusted</th>
@@ -186,7 +185,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set active</th>
           <th scope="col">Set patrons</th>
           <th scope="col">Set allies</th>
-          <th scope="col">Add note</th>
+          <th scope="col">Set score</th>
           <th scope="col">Edit</th>
         </tr>
       </thead>
@@ -220,7 +219,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
             <td data-testid="concept-influence">{{ p.influence ?? 'n/a' }}</td>
             <td data-testid="concept-combined">{{ p.combined ?? 'n/a' }}</td>
-            <td data-testid="person-notes">{{ p.notes.join(', ') }}</td>
+            <td data-testid="person-score">{{ p.score }}</td>
             <td data-testid="concept-note-sum">{{ p.noteSum }}</td>
             <td data-testid="concept-quality">{{ p.quality ?? 'n/a' }}</td>
             <td data-testid="concept-adjusted">{{ p.adjusted ?? 'n/a' }}</td>
@@ -354,18 +353,19 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
               </select>
             </td>
             <td>
-              <form (submit)="$event.preventDefault(); addNote(p, noteInput)">
-                <label class="visually-hidden" [for]="'person-note-add-' + p.id">
-                  Note score for {{ p.name }}
+              <form (submit)="$event.preventDefault(); setScore(p, scoreInput.value)">
+                <label class="visually-hidden" [for]="'person-score-edit-' + p.id">
+                  Score for {{ p.name }}
                 </label>
                 <input
-                  #noteInput
-                  [id]="'person-note-add-' + p.id"
+                  #scoreInput
+                  [id]="'person-score-edit-' + p.id"
                   type="number"
                   step="1"
-                  data-testid="person-note-input"
+                  [value]="p.score ?? ''"
+                  data-testid="person-score-input"
                 />
-                <button type="submit" data-testid="person-note-add">Add</button>
+                <button type="submit" data-testid="person-score-save">Save</button>
               </form>
             </td>
             <td>
@@ -543,13 +543,11 @@ export class People {
     this.service.setAllies(this.sheet(), person.id, allyIds).subscribe(() => this.load());
   }
 
-  protected addNote(person: Person, input: HTMLInputElement): void {
-    const text = input.value.trim();
-    if (!/^-?\d+$/.test(text)) return;
-    this.service.addNote(this.sheet(), person.id, Number(text)).subscribe(() => {
-      input.value = '';
-      this.load();
-    });
+  protected setScore(person: Person, value: string): void {
+    const text = value.trim();
+    if (text !== '' && !/^-?\d+$/.test(text)) return;
+    const score = text === '' ? null : Number(text);
+    this.service.setScore(this.sheet(), person.id, score).subscribe(() => this.load());
   }
 
   private load(): void {
