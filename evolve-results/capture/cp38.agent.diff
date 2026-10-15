@@ -1,0 +1,103 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index ae8758f..3c1165a 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -28,6 +28,7 @@ export interface Person {
+   clout: number | null;
+   influence: number | null;
+   region: string | null;
++  reach: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 87748bb..2193b86 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -36,6 +36,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // name that comes first alphabetically ("n/a" when nobody has an influence).
+ // Each person may have a region: a short code typed in (like N1 or S2), given on add, in the edit form
+ // or on the row; clearing it removes it.
++// Their reach is momentum times the region's multiplier, from its first letter: N 2, S 3, any other 1
++// ("n/a" while momentum or region is missing).
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -132,6 +134,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Thrust</th>
+           <th scope="col">Drift</th>
+           <th scope="col">Momentum</th>
++          <th scope="col">Reach</th>
+           <th scope="col">Load</th>
+           <th scope="col">Tier</th>
+           <th scope="col">Patrons</th>
+@@ -169,6 +172,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
++            <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
+             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
+             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index da9aa8c..a3359bc 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -28,7 +28,8 @@ import java.util.Set;
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
+- * A person may have a "region": a short code typed in, like N1 or S2 (absent until given). */
++ * A person may have a "region": a short code typed in, like N1 or S2 (absent until given). The region's
++ * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is momentum times multiplier. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -208,6 +209,25 @@ public class Person {
+         return momentum == null || weight == null ? null : momentum * weight;
+     }
+ 
++    /** The region multiplier from its first letter: N is 2, S is 3, any other is 1; absent without a region. */
++    public Integer getRegionMultiplier() {
++        if (region == null || region.isEmpty()) {
++            return null;
++        }
++        return switch (Character.toUpperCase(region.charAt(0))) {
++            case 'N' -> 2;
++            case 'S' -> 3;
++            default -> 1;
++        };
++    }
++
++    /** Reach is momentum times the region multiplier; absent while either is absent. */
++    public Integer getReach() {
++        Integer momentum = getMomentum();
++        Integer multiplier = getRegionMultiplier();
++        return momentum == null || multiplier == null ? null : momentum * multiplier;
++    }
++
+     /** Backing is the sum of the patrons' thrust; absent without patrons or while any patron's thrust is absent. */
+     public Integer getBacking() {
+         if (patrons.isEmpty()) {
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 3a016d6..8ebc06c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -28,7 +28,7 @@ public class PersonController {
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+-            Integer clout, Integer influence, String region) {
++            Integer clout, Integer influence, String region, Integer reach) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -36,7 +36,7 @@ public class PersonController {
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+-                    p.getInfluence(), p.getRegion());
++                    p.getInfluence(), p.getRegion(), p.getReach());
+         }
+     }
+ 
