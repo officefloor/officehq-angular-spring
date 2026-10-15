@@ -1,0 +1,254 @@
+{
+  "checkpoint": 18,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b"
+  },
+  "checkpoint_id": "cp18_leader",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Somewhere on the sheet show me the \"leader\", which is the name of the person who is rank 1.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for this implementation's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSomewhere on the sheet show me the \"leader\", which is the name of the person who is rank 1.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6137a9235931c0eca64379b689654b56b12c44ee",
+  "reset_sha": "",
+  "preagent_sha": "a5a2ec70d93304ce20265d018269cfe5c77d8ec6",
+  "prev_sha": "a5a2ec70d93304ce20265d018269cfe5c77d8ec6",
+  "base_sha": "60a0e172a480a4ec3b53df5bc1692c14ea7afe7b",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.17589139999999998,
+    "input_tokens": 10,
+    "output_tokens": 1063,
+    "cache_read_tokens": 96637,
+    "cache_creation_tokens": 16908,
+    "num_turns": 5,
+    "duration_ms": 39088,
+    "duration_api_ms": 18546,
+    "model": "claude-opus-5-5",
+    "session_id": "2acca6fd-f441-47e7-b4fc-b5d9a1c9d178",
+    "stop_reason": "success",
+    "result_text": "The sheet now shows a \"Leader:\" line, just above the people table, with the name of the person ranked 1. The `bin/e2e` test passes: with Ann, Cy and Di seeded, it shows \"Cy\".\n\nThe server already works out each person's rank, so this was a front-end-only change in `src/main/frontend/src/app/features/people/people.ts`. The leader is simply the person whose rank is 1, so it updates whenever the list reloads after an edit. The stored data and the server are unchanged.\n\nWhen nobody on the sheet is ranked (an empty sheet, or no one has a momentum yet), the leader shows \"n/a\", the same placeholder the rank column uses.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.17589139999999998,
+        "num_turns": 5,
+        "duration_ms": 39088,
+        "duration_api_ms": 18546,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp18.agent.jsonl",
+  "agent_diff_file": "cp18.agent.diff",
+  "build_log_file": "cp18.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 22,
+    "results": {
+      "cp01_people_alpha.spec.ts::lists seeded people with their alpha": true,
+      "cp01_people_alpha.spec.ts::adds a person": true,
+      "cp02_thrust.spec.ts::thrust is alpha times beta": false,
+      "cp02_thrust.spec.ts::thrust can be zero and negative": false,
+      "cp03_momentum.spec.ts::drift and momentum build on thrust": true,
+      "cp04_momentum_coefficient.spec.ts::momentum is thrust + 3*drift": true,
+      "cp05_tier.spec.ts::tier classifies momentum including the boundaries": true,
+      "cp06_concept_nullability.spec.ts::missing raw value makes the dependent concepts n/a": true,
+      "cp07_alpha_change_audit.spec.ts::changing alpha updates concepts and writes an audit record": true,
+      "cp08_tier_recalibrate.spec.ts::tier uses the new wider STEADY band": true,
+      "cp09_patron.spec.ts::shows each person their patron by name": true,
+      "cp10_backing.spec.ts::backing is the patron thrust, n/a without a patron": true,
+      "cp11_net.spec.ts::net is momentum plus summed backing (0 when no patron)": true,
+      "cp12_patron_many.spec.ts::patrons list all names sorted": true,
+      "cp12_patron_many.spec.ts::backing sums all patron thrust; net adds it to momentum": true,
+      "cp13_worksheet_id.spec.ts::opening a sheet shows its id and its people, and adds belong to it": true,
+      "cp14_worksheet_recall.spec.ts::a sheet recalls its data after a page refresh": true,
+      "cp14_worksheet_recall.spec.ts::opening an unknown sheet starts it empty": true,
+      "cp15_worksheet_isolation.spec.ts::people do not leak between sheets": true,
+      "cp16_unknown_sheet_blank.spec.ts::opening an unknown id starts an empty sheet with that id": true,
+      "cp17_rank.spec.ts::rank orders by momentum desc, ties by name asc": true,
+      "cp18_leader.spec.ts::leader is the rank-1 person": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people_alpha.spec.ts::lists seeded people with their alpha",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 788,
+        "failure": ""
+      },
+      {
+        "test_id": "cp01_people_alpha.spec.ts::adds a person",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 324,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust.spec.ts::thrust is alpha times beta",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 5146,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-1').getByTestId('concept-thrust')\nExpected string: \u001b[32m\"12\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-1').getByTestId('concept-thrust')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  14 |\n  15 |     await expect(page.getByTestId('person-row-1').getByTestId('person-beta')).toHaveText('4');\n> 16 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-thrust')).toHaveText('12');\n     |                                                                                  ^\n  17 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-thrust')).toHaveText('14');\n  18 |   });\n  19 |\n\n    at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp02_thrust.spec.ts:16:82 | Error: \u001b[31mTimed "
+      },
+      {
+        "test_id": "cp02_thrust.spec.ts::thrust can be zero and negative",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 5165,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-1').getByTestId('concept-thrust')\nExpected string: \u001b[32m\"0\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-1').getByTestId('concept-thrust')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"concept-thrust\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  27 |     await page.goto('/');\n  28 |\n> 29 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-thrust')).toHaveText('0');\n     |                                                                                  ^\n  30 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-thrust')).toHaveText('-20');\n  31 |   });\n  32 | });\n\n    at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp02_thrust.spec.ts:29:82 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m)"
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::drift and momentum build on thrust",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 191,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_momentum_coefficient.spec.ts::momentum is thrust + 3*drift",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 143,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_tier.spec.ts::tier classifies momentum including the boundaries",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_concept_nullability.spec.ts::missing raw value makes the dependent concepts n/a",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 179,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_alpha_change_audit.spec.ts::changing alpha updates concepts and writes an audit record",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 370,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_tier_recalibrate.spec.ts::tier uses the new wider STEADY band",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_patron.spec.ts::shows each person their patron by name",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_backing.spec.ts::backing is the patron thrust, n/a without a patron",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_net.spec.ts::net is momentum plus summed backing (0 when no patron)",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_patron_many.spec.ts::patrons list all names sorted",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_patron_many.spec.ts::backing sums all patron thrust; net adds it to momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_worksheet_id.spec.ts::opening a sheet shows its id and its people, and adds belong to it",
+        "category": "core",
+        "passed": true,
+        "duration_ms": 504,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_worksheet_recall.spec.ts::a sheet recalls its data after a page refresh",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 519,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_worksheet_recall.spec.ts::opening an unknown sheet starts it empty",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 185,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_worksheet_isolation.spec.ts::people do not leak between sheets",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 363,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_unknown_sheet_blank.spec.ts::opening an unknown id starts an empty sheet with that id",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 364,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_rank.spec.ts::rank orders by momentum desc, ties by name asc",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 144,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_leader.spec.ts::leader is the rank-1 person",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 125,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 21,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
