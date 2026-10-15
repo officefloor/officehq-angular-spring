@@ -1,0 +1,142 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index e0208c35..cccfc049 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -66,6 +66,7 @@ export interface Person {
+   spool: number | null;
+   drag: string | null;
+   lift: number | null;
++  yield: number | null;
+   norm: number | null;
+   outlier: boolean;
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 433aad97..d231d0b1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -81,6 +81,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their spool is their thrum minus their blend ("n/a" while either is "n/a").
+ // Their drag classifies blend: L0 below zero, L1 up to 49, L2 up to 149, L3 from 150 ("n/a" while blend is).
+ // Their lift is their blend times their drag's multiplier: L0 0, L1 1, L2 2, L3 3 ("n/a" while blend is).
++// Their yield is their pivot plus their lift ("n/a" while either is "n/a").
+ // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
+ // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
+ // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
+@@ -306,6 +307,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+           <th scope="col">Spool</th>
+           <th scope="col">Drag</th>
+           <th scope="col">Lift</th>
++          <th scope="col">Yield</th>
+           <th scope="col">Norm</th>
+           <th scope="col">Outlier</th>
+           <th scope="col">Rank</th>
+@@ -388,6 +390,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+             <td data-testid="concept-spool">{{ p.spool ?? 'n/a' }}</td>
+             <td data-testid="concept-drag">{{ p.drag ?? 'n/a' }}</td>
+             <td data-testid="concept-lift">{{ p.lift ?? 'n/a' }}</td>
++            <td data-testid="concept-yield">{{ p.yield ?? 'n/a' }}</td>
+             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 91ccd852..1d46dc60 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -32,7 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "grade", "kind", "onset", "active", "score", "state");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "grade", "kind", "onset", "active", "score", "state", "region");
+ 
+     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
+ 
+@@ -152,11 +152,18 @@ public class TestSupportController {
+             Integer score = integer(row.get("score"), prefix + "people.score");
+             String state = state(row.get("state"), prefix + "people.state");
+             // A person's id is their id within the sheet; the internal key is generated.
+-            Integer localId = integer(row.get("id"), prefix + "people.id");
++            Integer givenId = integer(row.get("id"), prefix + "people.id");
++            long localId = givenId != null ? givenId : nextLocalId(sheetId);
+             jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset, active, score, state) "
+                     + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset,
++                    sheetId, localId, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset,
+                     active != null ? active : true, score, state != null ? state : State.DRAFT.name());
++            // A person's single region (from before people had several) is one of their regions.
++            String region = text(row.get("region"), prefix + "people.region");
++            if (region != null) {
++                jdbc.update("MERGE INTO person_region (person_id, region) KEY (person_id, region) VALUES (?, ?)",
++                        internalId(sheetId, localId, prefix + "people.id"), region);
++            }
+         }
+         // Patrons link people by id, so add them once every person exists.
+         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
+@@ -186,7 +193,7 @@ public class TestSupportController {
+             if (personId == null || region == null) {
+                 throw badRequest(prefix + "regions rows need personId and region");
+             }
+-            jdbc.update("INSERT INTO person_region (person_id, region) VALUES (?, ?)",
++            jdbc.update("MERGE INTO person_region (person_id, region) KEY (person_id, region) VALUES (?, ?)",
+                     internalId(sheetId, personId, prefix + "regions.personId"), region);
+         }
+         // Follows link a follower to the person they follow, by id; one direction only.
+@@ -243,7 +250,8 @@ public class TestSupportController {
+         Map<String, Object> out = new LinkedHashMap<>();
+         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+                 + "beta AS \"beta\", gamma AS \"gamma\", delta AS \"delta\", epsilon AS \"epsilon\", zeta AS \"zeta\", grade AS \"grade\", kind AS \"kind\", "
+-                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\" FROM person p WHERE " + where + " ORDER BY local_id", args));
++                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\", "
++                + "(SELECT MIN(pr.region) FROM person_region pr WHERE pr.person_id = p.id) AS \"region\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
+                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 9bd791ec..3e27af3b 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -31,7 +31,7 @@ import java.util.Set;
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+  * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 2, 3 or 5.
+- * "Pivot" is torque times verge, absent while either is.
++ * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus lift, absent while either is.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force.
+@@ -552,6 +552,13 @@ public class Person {
+         return blend * multiplier;
+     }
+ 
++    /** Yield is pivot plus lift; absent while either is absent. */
++    public Integer getYield() {
++        Integer pivot = getPivot();
++        Integer lift = getLift();
++        return pivot == null || lift == null ? null : pivot + lift;
++    }
++
+     /** Band classifies adjusted: E below 0, D up to 99, C up to 249, B up to 499, A from 500; absent with adjusted. */
+     public String getBand() {
+         Integer adjusted = getAdjusted();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 485668bb..f2e4e363 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -32,7 +32,7 @@ public class PersonController {
+             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, Integer brace, List<String> regions, Integer reach, Integer gust, Integer coil,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer norm, boolean outlier, State state) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+@@ -42,7 +42,7 @@ public class PersonController {
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+                     p.getInfluence(), p.getBrace(), p.getRegions(), p.getReach(), p.getGust(), p.getCoil(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(),
++                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(),
+                     PersonController.norm(p.getScaled(), medianScaled),
+                     PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState());
+         }
