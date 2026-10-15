@@ -50,7 +50,7 @@ export interface Patron {
   name: string;
 }
 
-// An ally: being allies goes both ways, so each of two allies lists the other.
+// An ally: a person this person follows; following is one-directional.
 export interface Ally {
   id: number;
   name: string;
@@ -123,7 +123,7 @@ export class PeopleService {
     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
   }
 
-  // Sets a person's allies by id; each ally then also has this person as an ally.
+  // Sets the people a person follows (their allies) by id; it does not make them follow back.
   setAllies(sheet: string | null, id: number, allyIds: number[]): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { allyIds }, { params: sheetParams(sheet) });
   }

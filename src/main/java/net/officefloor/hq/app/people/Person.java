@@ -33,9 +33,9 @@ import java.util.Set;
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
- * person's regions, of momentum times that region's multiplier. A person may have any number of "allies":
- * other people on the list, where being allies goes both ways. "Synergy" is the allies' thrust added
- * together (zero without allies). "Combined" is influence plus synergy. */
+ * person's regions, of momentum times that region's multiplier. A person may follow any number of other people on
+ * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
+ * allies' thrust added together (zero without allies). "Combined" is influence plus synergy. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -75,15 +75,11 @@ public class Person {
             inverseJoinColumns = @JoinColumn(name = "patron_id"))
     private Set<Person> patrons = new HashSet<>();
 
-    /** Allies linked from this person; each pair is stored once, on whichever side it was made from. */
+    /** The people this person follows: their allies. Following is one-directional. */
     @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "person_ally", joinColumns = @JoinColumn(name = "person_id"),
-            inverseJoinColumns = @JoinColumn(name = "ally_id"))
-    private Set<Person> alliesMade = new HashSet<>();
-
-    /** Allies linked to this person from the other side. */
-    @ManyToMany(mappedBy = "alliesMade", fetch = FetchType.EAGER)
-    private Set<Person> alliesOf = new HashSet<>();
+    @JoinTable(name = "person_follow", joinColumns = @JoinColumn(name = "follower_id"),
+            inverseJoinColumns = @JoinColumn(name = "followed_id"))
+    private Set<Person> follows = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_region", joinColumns = @JoinColumn(name = "person_id"))
@@ -200,30 +196,16 @@ public class Person {
         this.patrons = new HashSet<>(patrons);
     }
 
-    /** The allies, from either side of the link, sorted by name. */
+    /** The allies: the people this person follows, sorted by name. */
     public List<Person> getAllies() {
-        Set<Person> allies = new HashSet<>(alliesMade);
-        allies.addAll(alliesOf);
-        return allies.stream()
+        return follows.stream()
                 .sorted(Comparator.comparing(Person::getName).thenComparing(Person::getId))
                 .toList();
     }
 
-    /** Replaces the allies, unlinking any no longer given from both sides and linking new ones from this side. */
+    /** Replaces the people this person follows; whether they follow this person back is unchanged. */
     public void setAllies(Set<Person> allies) {
-        for (Person other : new HashSet<>(alliesOf)) {
-            if (!allies.contains(other)) {
-                other.alliesMade.remove(this);
-                alliesOf.remove(other);
-            }
-        }
-        alliesMade.retainAll(allies);
-        for (Person ally : allies) {
-            if (!alliesMade.contains(ally) && !alliesOf.contains(ally)) {
-                alliesMade.add(ally);
-                ally.alliesOf.add(this);
-            }
-        }
+        this.follows = new HashSet<>(allies);
     }
 
     /** The derived values exist only once alpha, beta and gamma are all given. */
@@ -289,7 +271,7 @@ public class Person {
         return sum;
     }
 
-    /** Synergy is the sum of the allies' thrust; zero without allies, absent while any ally's thrust is absent. */
+    /** Synergy is the sum of the thrust of the people followed; zero without allies, absent while any ally's thrust is absent. */
     public Integer getSynergy() {
         int sum = 0;
         for (Person ally : getAllies()) {

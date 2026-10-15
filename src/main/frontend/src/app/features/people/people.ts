@@ -41,8 +41,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
 // The sheet's region counts show, for each region its people have, how many of them are in it
 // (a person counts once in every region they belong to), ordered by region code.
-// Each person may have any number of allies (other people), chosen on the row; being allies goes both
-// ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are,
+// Each person may follow any number of other people, chosen on the row; following is one-directional,
+// so A following B does not make B follow A. A person's allies are the people they follow, listed by name, with how many there are,
 // and their synergy: the allies' thrust added together (zero without allies).
 // Their combined is their influence plus their synergy ("n/a" while either is "n/a").
 @Component({
@@ -323,7 +323,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             </td>
             <td>
               <label class="visually-hidden" [for]="'person-ally-edit-' + p.id">
-                Allies for {{ p.name }}
+                People {{ p.name }} follows
               </label>
               <select
                 multiple

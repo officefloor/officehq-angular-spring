@@ -150,7 +150,7 @@ public class PersonService {
         });
     }
 
-    /** Sets the allies (other people on the same sheet) by their id on that sheet, both ways; an empty list clears them. Refuses oneself or an unknown person. */
+    /** Sets the allies (the other people on the same sheet this person follows) by their id on that sheet; an empty list clears them. Following is one-directional. Refuses oneself or an unknown person. */
     @Transactional
     public Optional<Person> setAllies(String sheetId, long id, Collection<Long> allyIds) {
         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
