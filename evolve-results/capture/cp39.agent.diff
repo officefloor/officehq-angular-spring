@@ -1,0 +1,50 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2193b86..7c0cb49 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -38,6 +38,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // or on the row; clearing it removes it.
+ // Their reach is momentum times the region's multiplier, from its first letter: N 2, S 3, any other 1
+ // ("n/a" while momentum or region is missing).
++// The sheet's region counts show, for each region its people have, how many of them are in it
++// (people without a region are left out), ordered by region code.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -113,6 +115,20 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
+     <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
+     <p>Top influence: <strong data-testid="rollup-top-influence">{{ topInfluence() ?? 'n/a' }}</strong></p>
++    <section aria-labelledby="region-counts-heading">
++      <h2 id="region-counts-heading">People per region</h2>
++      @if (regionCounts().length === 0) {
++        <p>No regions yet.</p>
++      } @else {
++        <ul>
++          @for (r of regionCounts(); track r.region) {
++            <li>
++              {{ r.region }}: <strong [attr.data-testid]="'region-count-' + r.region">{{ r.count }}</strong>
++            </li>
++          }
++        </ul>
++      }
++    </section>
+ 
+     @if (people().length === 0) {
+       <p data-testid="people-empty">No people yet.</p>
+@@ -326,6 +342,15 @@ export class People {
+   protected readonly totalEffective = computed(() =>
+     this.people().reduce((total, p) => total + (p.effective ?? 0), 0),
+   );
++  protected readonly regionCounts = computed(() => {
++    const counts = new Map<string, number>();
++    for (const p of this.people()) {
++      if (p.region) counts.set(p.region, (counts.get(p.region) ?? 0) + 1);
++    }
++    return [...counts.entries()]
++      .sort(([a], [b]) => a.localeCompare(b))
++      .map(([region, count]) => ({ region, count }));
++  });
+   protected readonly topInfluence = computed(() => {
+     let top: Person | null = null;
+     for (const p of this.people()) {
