@@ -89,12 +89,12 @@ public class Person {
         return thrust == null || drift == null ? null : thrust + 3 * drift;
     }
 
-    /** Tier classifies momentum: SINK below zero, STEADY up to 99, SURGE from 100; absent with momentum. */
+    /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
     public String getTier() {
         Integer momentum = getMomentum();
         if (momentum == null) {
             return null;
         }
-        return momentum < 0 ? "SINK" : momentum <= 99 ? "STEADY" : "SURGE";
+        return momentum < 0 ? "SINK" : momentum <= 199 ? "STEADY" : "SURGE";
     }
 }
