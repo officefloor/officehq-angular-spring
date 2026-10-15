@@ -34,7 +34,7 @@ import java.util.Set;
  * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus two times lift, absent while either is. "Grip" is yield minus coil, absent while either is. "Charge" is vector plus yield, absent while either is.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
- * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force. "Strain" is crest minus brace. "Pulse" classifies strain against a tolerance band of 10 either side of zero.
+ * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force. "Tide" is the brace of the people followed added together, each followed brace taken as their momentum plus two times force (zero without any). "Strain" is crest minus brace. "Pulse" classifies strain against a tolerance band of 10 either side of zero.
  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
  * person's regions, of momentum times that region's multiplier. "Gust" is reach plus two times torque. "Coil" is gust minus momentum. A person may follow any number of other people on
@@ -514,6 +514,23 @@ public class Person {
         Integer influence = getInfluence();
         Integer force = getForce();
         return influence == null || force == null ? null : influence + 2 * force;
+    }
+
+    /**
+     * Tide is the sum of the brace of the people followed, each taken as momentum plus two times force; zero without
+     * allies, absent while any ally's momentum or force is absent.
+     */
+    public Integer getTide() {
+        int sum = 0;
+        for (Person ally : getAllies()) {
+            Integer momentum = ally.getMomentum();
+            Integer force = ally.getForce();
+            if (momentum == null || force == null) {
+                return null;
+            }
+            sum += momentum + 2 * force;
+        }
+        return sum;
     }
 
     /** Strain is crest minus brace; absent while either is. */
