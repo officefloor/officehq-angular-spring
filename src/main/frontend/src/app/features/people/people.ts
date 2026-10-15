@@ -73,6 +73,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // Each count is also the region's tally (region-tally-<code>), the same number.
 // The sheet's top per region shows, for each region its people have, the name of the person in it with
 // the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them have a scaled).
+// The sheet's gap per tier shows, for each tier, SURGE, STEADY and SINK, the highest scaled of its people
+// minus the lowest ("n/a" when fewer than two of them have a scaled).
 // Each person may follow any number of other people, chosen on the row; following is one-directional,
 // so A following B does not make B follow A. A person's allies are the people they follow, listed by name, with how many there are,
 // and their synergy: the allies' thrust added together (zero without allies).
@@ -532,6 +534,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (t of tierApexes(); track t.tier) {
           <li>
             {{ t.tier }}: <strong [attr.data-testid]="'apexname-tier-' + t.tier">{{ t.name ?? 'n/a' }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="tier-gap-heading">
+      <h2 id="tier-gap-heading">Gap per tier</h2>
+      <ul>
+        @for (t of tierGaps(); track t.tier) {
+          <li>
+            {{ t.tier }}: <strong [attr.data-testid]="'rollup-gapval-' + t.tier.toLowerCase()">{{ t.gap ?? 'n/a' }}</strong>
           </li>
         }
       </ul>
@@ -1580,6 +1592,15 @@ export class People {
         }
       }
       return { tier, name: apex?.name ?? null };
+    }),
+  );
+  /** The gap of each tier: the highest scaled of its people minus the lowest, absent while fewer than two have one. */
+  protected readonly tierGaps = computed(() =>
+    TIERS.map((tier) => {
+      const scaled = this.people()
+        .filter((p) => p.tier === tier && p.scaled !== null)
+        .map((p) => p.scaled!);
+      return { tier, gap: scaled.length >= 2 ? Math.max(...scaled) - Math.min(...scaled) : null };
     }),
   );
   protected readonly tierTally = computed(() =>
