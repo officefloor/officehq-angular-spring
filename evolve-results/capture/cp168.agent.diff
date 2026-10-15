@@ -1,0 +1,22 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 456f51e8..525fc67d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -156,7 +156,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // group or their scaled is "n/a").
+ // Each person shows their weave: their scaled plus their group's cohesion ("n/a" when they have no
+ // group or their scaled is "n/a").
+-// Each person shows their uplift: their weave plus their tether ("n/a" when either is "n/a").
++// Each person shows their uplift: their weave minus their tether ("n/a" when either is "n/a").
+ // Each person shows their mesh: their scaled multiplied by their group's size ("n/a" when they have no
+ // group or their scaled is "n/a").
+ // Each person shows their rung: (their group's size less their standing in it) over the group's size, as a
+@@ -1008,7 +1008,7 @@ export class People {
+   protected upliftOf(p: Person): number | null {
+     const weave = this.weaveOf(p);
+     const tether = this.tetherOf(p);
+-    return weave === null || tether === null ? null : weave + tether;
++    return weave === null || tether === null ? null : weave - tether;
+   }
+   protected meshOf(p: Person): number | null {
+     if (p.groupId === null || p.scaled === null) return null;
