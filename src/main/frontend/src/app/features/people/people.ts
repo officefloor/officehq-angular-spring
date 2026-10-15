@@ -121,6 +121,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // The sheet's biggest group is the name of the group with the highest strength, ties going to the name
 // that comes first alphabetically ("n/a" when there are no groups).
 // The sheet's total strength is the sum of the strengths of all its groups (0 when there are none).
+// The sheet's group count is how many groups it has (0 when there are none).
 // Each group shows its rank: its place among the sheet's groups by strength, highest first (1), with
 // equal strength placed by the group name earlier in the alphabet.
 // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
@@ -295,6 +296,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
     </section>
     <p>Biggest group: <strong data-testid="rollup-biggest-group">{{ biggestGroup() ?? 'n/a' }}</strong></p>
     <p>Total strength: <strong data-testid="rollup-total-strength">{{ totalStrength() }}</strong></p>
+    <p>Groups: <strong data-testid="rollup-group-count">{{ groupCount() }}</strong></p>
     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
@@ -911,6 +913,7 @@ export class People {
     const strengths = this.groupStrengths();
     return this.groups().reduce((total, g) => total + (strengths.get(g.id) ?? 0), 0);
   });
+  protected readonly groupCount = computed(() => this.groups().length);
   protected readonly groupRanks = computed(() => {
     const strengths = this.groupStrengths();
     const ranked = [...this.groups()].sort(
