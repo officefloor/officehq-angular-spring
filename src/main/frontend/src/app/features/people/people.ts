@@ -2082,6 +2082,7 @@ export class People {
     });
     this.service.list(sheet).subscribe((people) => {
       if (this.sheet() === sheet) this.people.set(people);
+      this.service.changed();
     });
   }
 }

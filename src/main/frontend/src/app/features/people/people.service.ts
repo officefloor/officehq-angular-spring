@@ -1,5 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
 // A person's workflow state, moved forward from DRAFT to REVIEW to FINAL; a FINAL person may be
@@ -141,6 +141,14 @@ export interface NewPerson {
 @Injectable({ providedIn: 'root' })
 export class PeopleService {
   private readonly http = inject(HttpClient);
+  private readonly changes = signal(0);
+
+  // Bumped whenever the people have been (re)loaded, so views of them elsewhere can re-read theirs.
+  readonly revision = this.changes.asReadonly();
+
+  changed(): void {
+    this.changes.update((n) => n + 1);
+  }
 
   // The people on a sheet; null is the unnamed sheet.
   list(sheet: string | null): Observable<Person[]> {
