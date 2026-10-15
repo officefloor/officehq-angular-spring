@@ -1,0 +1,26 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 89209d16..e12eb149 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -130,8 +130,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // earlier in the alphabet ("n/a" when none of its people have a scaled).
+ // Each group shows its density: how many of its people have an effective at or above its cohesion, not
+ // counting anyone whose effective is "n/a" (0 when empty).
+-// Each group shows its min: the lowest scaled of the people in it, ignoring "n/a" ("n/a" when none of its
+-// people have a scaled).
++// Each group shows its min: the lowest effective of the people in it, ignoring "n/a" ("n/a" when none of its
++// people have an effective).
+ // Each group shows its max: the highest scaled of the people in it, ignoring "n/a" ("n/a" when none of its
+ // people have a scaled).
+ // Each person shows their share: their scaled as a percentage of their group's strength, rounded to the nearest whole percent
+@@ -1023,8 +1023,8 @@ export class People {
+   protected readonly groupMins = computed(() => {
+     const mins = new Map<number, number>();
+     for (const p of this.people()) {
+-      if (p.scaled === null) continue;
+-      for (const g of p.groups) mins.set(g.id, Math.min(mins.get(g.id) ?? p.scaled, p.scaled));
++      if (p.effective === null) continue;
++      for (const g of p.groups) mins.set(g.id, Math.min(mins.get(g.id) ?? p.effective, p.effective));
+     }
+     return mins;
+   });
