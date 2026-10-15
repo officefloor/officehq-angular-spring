@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index d6d0851..70154b3 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -13,6 +13,7 @@ export interface Person {
+   thrust: number | null;
+   drift: number | null;
+   momentum: number | null;
++  load: number | null;
+   tier: string | null;
+   patrons: Patron[];
+   backing: number | null;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 82cd4fb..1f5f182 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -14,7 +14,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
+ // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100.
+ // Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
+-// weight comes from it (LOW 1, MID 2, HIGH 3, "n/a" without a grade).
++// weight comes from it (LOW 1, MID 2, HIGH 3, "n/a" without a grade). Their load is momentum × weight
++// ("n/a" while either is missing).
+ // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
+ // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
+ // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
+@@ -98,6 +99,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Thrust</th>
+           <th scope="col">Drift</th>
+           <th scope="col">Momentum</th>
++          <th scope="col">Load</th>
+           <th scope="col">Tier</th>
+           <th scope="col">Patrons</th>
+           <th scope="col">Backing</th>
+@@ -124,6 +126,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
++            <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
+             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index e4d0b26..88a18c2 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -22,7 +22,7 @@ import java.util.Set;
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+- * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 2 or 3. */
++ * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 2 or 3. "Load" is momentum times weight. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -153,6 +153,13 @@ public class Person {
+         return thrust == null || drift == null ? null : thrust + 3 * drift;
+     }
+ 
++    /** Load is momentum times weight; absent while either is absent. */
++    public Integer getLoad() {
++        Integer momentum = getMomentum();
++        Integer weight = getWeight();
++        return momentum == null || weight == null ? null : momentum * weight;
++    }
++
+     /** Backing is the sum of the patrons' thrust; absent without patrons or while any patron's thrust is absent. */
+     public Integer getBacking() {
+         if (patrons.isEmpty()) {
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 720ab26..fd41552 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -25,12 +25,12 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+-            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
++            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile) {
+         static PersonView of(Person p, Map<Long, Integer> ranks) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+-                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
++                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()));
+         }
