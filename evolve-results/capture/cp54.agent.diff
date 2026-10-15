@@ -1,0 +1,76 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 83fdf8d..2b6e409 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -40,6 +40,7 @@ export interface Person {
+   band: string | null;
+   scaled: number | null;
+   norm: number | null;
++  outlier: boolean;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bae1ea8..f74ce93 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -55,6 +55,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // adjusted is "n/a").
+ // Their norm is their scaled minus the average scaled, rounded down, of everyone on the sheet whose
+ // scaled can be worked out ("n/a" while their scaled is "n/a").
++// They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
++// otherwise "no" (also "no" while their norm is "n/a").
+ // The sheet's band counts show how many of its people are in each band, A through E (zero when none
+ // are); people whose band is "n/a" are not counted.
+ @Component({
+@@ -196,6 +198,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Band</th>
+           <th scope="col">Scaled</th>
+           <th scope="col">Norm</th>
++          <th scope="col">Outlier</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -247,6 +250,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-band">{{ p.band ?? 'n/a' }}</td>
+             <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
+             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
++            <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index b6ec348..3f20d2b 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -32,7 +32,7 @@ public class PersonController {
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer meanScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -43,7 +43,8 @@ public class PersonController {
+                     p.getInfluence(), p.getRegions(), p.getReach(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(),
+-                    PersonController.norm(p.getScaled(), meanScaled));
++                    PersonController.norm(p.getScaled(), meanScaled),
++                    PersonController.outlier(PersonController.norm(p.getScaled(), meanScaled)));
+         }
+     }
+ 
+@@ -66,6 +67,11 @@ public class PersonController {
+         return scaled == null || meanScaled == null ? null : scaled - meanScaled;
+     }
+ 
++    /** An outlier has a norm more than 100 away from zero in either direction; without a norm, not an outlier. */
++    static boolean outlier(Integer norm) {
++        return norm != null && Math.abs(norm) > 100;
++    }
++
+     /** The average scaled of the people whose scaled can be worked out, rounded down; absent when there are none. */
+     private static Integer meanScaled(List<Person> people) {
+         List<Integer> scaled = people.stream().map(Person::getScaled).filter(s -> s != null).toList();
