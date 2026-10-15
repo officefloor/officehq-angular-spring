@@ -49,6 +49,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // without one) and their quality is their score ("n/a" without one).
 // Their adjusted is their combined plus their quality, counting quality as zero without a score ("n/a" while
 // combined is "n/a").
+// Their band classifies their adjusted: E below 0, D from 0 to 49, C from 50 to 149, B from 150 to 299 and
+// A from 300 ("n/a" while adjusted is "n/a").
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -175,6 +177,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Note sum</th>
           <th scope="col">Quality</th>
           <th scope="col">Adjusted</th>
+          <th scope="col">Band</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -223,6 +226,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-note-sum">{{ p.noteSum }}</td>
             <td data-testid="concept-quality">{{ p.quality ?? 'n/a' }}</td>
             <td data-testid="concept-adjusted">{{ p.adjusted ?? 'n/a' }}</td>
+            <td data-testid="concept-band">{{ p.band ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>
