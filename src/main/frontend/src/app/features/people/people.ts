@@ -435,6 +435,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Weave</th>
           <th scope="col">Mesh</th>
           <th scope="col">Anchorage</th>
+          <th scope="col">Breadth</th>
           <th scope="col">Home group</th>
           <th scope="col">Rung</th>
           <th scope="col">Rank</th>
@@ -540,6 +541,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-weave">{{ weaveOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-mesh">{{ meshOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-anchorage">{{ anchorageOf(p) }}</td>
+            <td data-testid="concept-breadth">{{ breadthOf(p) }}</td>
             <td data-testid="concept-home-group">{{ p.groupName ?? 'n/a' }}</td>
             <td data-testid="concept-rung">{{ rungs().get(p.id) ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
@@ -937,6 +939,10 @@ export class People {
   }
   protected anchorageOf(p: Person): number {
     return p.groups.length;
+  }
+  protected breadthOf(p: Person): number {
+    const sizes = this.groupSizes();
+    return p.groups.reduce((sum, g) => sum + (sizes.get(g.id) ?? 0), 0);
   }
   protected groupNamesOf(p: Person): string {
     return p.groups.map((g) => g.name).join(', ');
