@@ -1,0 +1,83 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index eaa3f939..df3f40d2 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -23,6 +23,7 @@ export interface Person {
+   force: number | null;
+   sway: number | null;
+   torque: number | null;
++  phase: string | null;
+   load: number | null;
+   tier: string | null;
+   patrons: Patron[];
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8f6a7b28..6551b864 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,7 +9,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // their alpha, beta and gamma instead of adding. Each person also has whole-number delta and epsilon
+ // (a second raw axis, blank until given), set on add, on the row or through Edit; their force is delta × epsilon
+ // ("n/a" while either is missing). Each person also has a whole-number zeta (blank until given), set the same
+-// way; their sway is zeta − delta and their torque is force + 3 × sway ("n/a" while any part is missing).
++// way; their sway is zeta − delta and their torque is force + 3 × sway ("n/a" while any part is missing),
++// and their phase classifies torque: EBB below zero, RUN up to 99, PEAK from 100.
+ // Each person may have any number of patrons (other
+ // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
+ // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
+@@ -226,6 +227,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Force</th>
+           <th scope="col">Sway</th>
+           <th scope="col">Torque</th>
++          <th scope="col">Phase</th>
+           <th scope="col">Reach</th>
+           <th scope="col">Load</th>
+           <th scope="col">Tier</th>
+@@ -291,6 +293,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-force">{{ p.force ?? 'n/a' }}</td>
+             <td data-testid="concept-sway">{{ p.sway ?? 'n/a' }}</td>
+             <td data-testid="concept-torque">{{ p.torque ?? 'n/a' }}</td>
++            <td data-testid="concept-phase">{{ p.phase ?? 'n/a' }}</td>
+             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
+             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
+             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 93c2c6b9..b4110e0a 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -433,6 +433,15 @@ public class Person {
+         return momentum < 0 ? "SINK" : momentum <= 199 ? "STEADY" : "SURGE";
+     }
+ 
++    /** Phase classifies torque: EBB below zero, RUN up to 99, PEAK from 100; absent with torque. */
++    public String getPhase() {
++        Integer torque = getTorque();
++        if (torque == null) {
++            return null;
++        }
++        return torque < 0 ? "EBB" : torque <= 99 ? "RUN" : "PEAK";
++    }
++
+     /** Band classifies adjusted: E below 0, D up to 99, C up to 249, B up to 499, A from 500; absent with adjusted. */
+     public String getBand() {
+         Integer adjusted = getAdjusted();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 3a49f6f6..039dee81 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -29,14 +29,14 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
+-            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer load, String tier, List<PatronView> patrons,
++            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+-                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getLoad(), p.getTier(),
++                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getPhase(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
