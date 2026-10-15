@@ -1,0 +1,36 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 41dd5e2a..9b0e4acb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -135,6 +135,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // equal strength placed by the group name earlier in the alphabet.
+ // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
+ // Each group shows its vigor: its strength plus its size (0 when empty).
++// Each group shows its balance: its strength minus its cohesion multiplied by its size ("n/a" when empty).
+ // Each group shows its spread: the highest effective of the people in it minus the lowest, ignoring "n/a"
+ // ("n/a" when none of its people have an effective).
+ // Each group shows its apex: the name of the person in it with the highest scaled, ties going to the name
+@@ -305,6 +306,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+               — rank <span data-testid="group-concept-rank">{{ groupRanks().get(g.id) }}</span>
+               — size <span data-testid="group-concept-size">{{ groupSizes().get(g.id) ?? 0 }}</span>
+               — cohesion <span data-testid="group-concept-cohesion">{{ groupCohesions().get(g.id) ?? 'n/a' }}</span>
++              — balance <span data-testid="group-concept-balance">{{ groupBalances().get(g.id) ?? 'n/a' }}</span>
+               — vigor <span data-testid="group-concept-vigor">{{ groupVigors().get(g.id) ?? 0 }}</span>
+               — spread <span data-testid="group-concept-spread">{{ groupSpreads().get(g.id) ?? 'n/a' }}</span>
+               — apex <span data-testid="group-concept-apex">{{ groupApexes().get(g.id)?.name ?? 'n/a' }}</span>
+@@ -1099,6 +1101,15 @@ export class People {
+     }
+     return cohesions;
+   });
++  protected readonly groupBalances = computed(() => {
++    const strengths = this.groupStrengths();
++    const cohesions = this.groupCohesions();
++    const balances = new Map<number, number>();
++    for (const [groupId, size] of this.groupSizes()) {
++      balances.set(groupId, (strengths.get(groupId) ?? 0) - (cohesions.get(groupId) ?? 0) * size);
++    }
++    return balances;
++  });
+   protected readonly groupDensities = computed(() => {
+     const cohesions = this.groupCohesions();
+     const densities = new Map<number, number>();
