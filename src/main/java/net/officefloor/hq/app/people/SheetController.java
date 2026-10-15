@@ -3,6 +3,7 @@ package net.officefloor.hq.app.people;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -27,6 +28,17 @@ public class SheetController {
         if (!service.sheetExists(sheetId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "no sheet " + sheetId);
         }
+        return new SheetView(sheetId);
+    }
+
+    /** Opens the named sheet, starting a new empty one when no sheet has that id yet. */
+    @PutMapping("/{id}")
+    public SheetView open(@PathVariable String id) {
+        String sheetId = id.trim();
+        if (sheetId.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "a sheet id is required");
+        }
+        service.openSheet(sheetId);
         return new SheetView(sheetId);
     }
 }

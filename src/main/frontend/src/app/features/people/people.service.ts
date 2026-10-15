@@ -1,6 +1,6 @@
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, map, of, throwError } from 'rxjs';
+import { Observable, map } from 'rxjs';
 
 export interface Person {
   id: number;
@@ -39,12 +39,9 @@ export class PeopleService {
     return this.http.get<Person[]>('/api/people', { params: sheetParams(sheet) });
   }
 
-  // Whether a named sheet is stored; false when no sheet has that id.
-  sheetExists(sheet: string): Observable<boolean> {
-    return this.http.get(`/api/sheets/${encodeURIComponent(sheet)}`).pipe(
-      map(() => true),
-      catchError((error: HttpErrorResponse) => (error.status === 404 ? of(false) : throwError(() => error))),
-    );
+  // Opens a named sheet, starting a new empty one when no sheet has that id yet.
+  openSheet(sheet: string): Observable<void> {
+    return this.http.put(`/api/sheets/${encodeURIComponent(sheet)}`, null).pipe(map(() => undefined));
   }
 
   // Adds a person to a sheet; null is the unnamed sheet.

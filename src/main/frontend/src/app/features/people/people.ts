@@ -11,7 +11,7 @@ import { PeopleService, Person } from './people.service';
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
-// id no sheet has yet says so; adding a person to it creates it. Sheets are kept apart: each numbers
+// id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
 // its own people, and a sheet only ever shows (and edits) its own.
 @Component({
   selector: 'app-people',
@@ -32,9 +32,6 @@ import { PeopleService, Person } from './people.service';
         <span data-testid="sheet-none">none</span>
       }
     </p>
-    @if (missing()) {
-      <p role="status" data-testid="sheet-missing">No sheet named "{{ sheet() }}" exists yet.</p>
-    }
 
     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
       <label for="person-name">Name</label>
@@ -196,7 +193,6 @@ export class People {
 
   protected readonly people = signal<Person[]>([]);
   protected readonly sheet = signal<string | null>(null);
-  protected readonly missing = signal(false);
   protected readonly saving = signal(false);
   protected readonly editing = signal<Person | null>(null);
 
@@ -213,10 +209,16 @@ export class People {
 
   protected openSheet(value: string): void {
     const id = value.trim();
-    this.sheet.set(id === '' ? null : id);
-    this.missing.set(false);
+    const sheet = id === '' ? null : id;
+    this.sheet.set(sheet);
     this.cancelEdit();
-    this.load();
+    if (sheet === null) {
+      this.load();
+    } else {
+      this.service.openSheet(sheet).subscribe(() => {
+        if (this.sheet() === sheet) this.load();
+      });
+    }
   }
 
   protected edit(person: Person): void {
@@ -288,11 +290,6 @@ export class People {
     this.service.list(sheet).subscribe((people) => {
       if (this.sheet() === sheet) this.people.set(people);
     });
-    if (sheet !== null) {
-      this.service.sheetExists(sheet).subscribe((exists) => {
-        if (this.sheet() === sheet) this.missing.set(!exists);
-      });
-    }
   }
 }
 

@@ -38,6 +38,12 @@ public class PersonService {
         return sheets.existsById(sheetId);
     }
 
+    /** Opens a named sheet, storing it as a new empty sheet when it does not exist yet. */
+    @Transactional
+    public Sheet openSheet(String sheetId) {
+        return sheets.findById(sheetId).orElseGet(() -> sheets.save(new Sheet(sheetId)));
+    }
+
     /** The person with an id on a sheet; a null sheet id is the unnamed sheet. */
     @Transactional(readOnly = true)
     public Optional<Person> find(String sheetId, long id) {
