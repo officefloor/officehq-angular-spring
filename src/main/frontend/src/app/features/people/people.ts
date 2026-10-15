@@ -15,7 +15,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100.
 // Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
 // weight comes from it (LOW 1, MID 2, HIGH 3, "n/a" without a grade). Their load is momentum × weight
-// ("n/a" while either is missing).
+// ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
+// out anyone whose load is "n/a".
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
@@ -83,6 +84,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
     </form>
 
     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
+    <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
 
     @if (people().length === 0) {
       <p data-testid="people-empty">No people yet.</p>
@@ -240,6 +242,9 @@ export class People {
   protected readonly saving = signal(false);
   protected readonly editing = signal<Person | null>(null);
   protected readonly leader = computed(() => this.people().find((p) => p.rank === 1)?.name ?? null);
+  protected readonly totalLoad = computed(() =>
+    this.people().reduce((total, p) => total + (p.load ?? 0), 0),
+  );
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
