@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index b0c95495..21cfe6e1 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -74,6 +74,7 @@ export interface Person {
+   grip: number | null;
+   charge: number | null;
+   churn: number | null;
++  flow: number | null;
+   norm: number | null;
+   outlier: boolean;
+   ebb: number | null;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6d53c8e2..5d92ce31 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -90,6 +90,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their grip is their yield minus their coil ("n/a" while either is "n/a").
+ // Their charge is their vector plus their yield ("n/a" while either is "n/a").
+ // Their churn is their tide minus their vector ("n/a" while either is "n/a").
++// Their flow is their yield plus their charge plus their tide ("n/a" while any is "n/a").
+ // The sheet's top charge is the name of the person with the highest charge, ties going to the name
+ // that comes first alphabetically ("n/a" when nobody has a charge).
+ // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
+@@ -347,6 +348,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+           <th scope="col">Grip</th>
+           <th scope="col">Charge</th>
+           <th scope="col">Churn</th>
++          <th scope="col">Flow</th>
+           <th scope="col">Norm</th>
+           <th scope="col">Outlier</th>
+           <th scope="col">Ebb</th>
+@@ -439,6 +441,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+             <td data-testid="concept-grip">{{ p.grip ?? 'n/a' }}</td>
+             <td data-testid="concept-charge">{{ p.charge ?? 'n/a' }}</td>
+             <td data-testid="concept-churn">{{ p.churn ?? 'n/a' }}</td>
++            <td data-testid="concept-flow">{{ p.flow ?? 'n/a' }}</td>
+             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
+             <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 52815215..949f96c4 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -31,7 +31,7 @@ import java.util.Set;
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+  * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 2, 3 or 5.
+- * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus two times lift, absent while either is. "Grip" is yield minus coil, absent while either is. "Charge" is vector plus yield, absent while either is. "Churn" is tide minus vector, absent while either is.
++ * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus two times lift, absent while either is. "Grip" is yield minus coil, absent while either is. "Charge" is vector plus yield, absent while either is. "Churn" is tide minus vector, absent while either is. "Flow" is yield plus charge plus tide, absent while any is.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force. "Tide" is the brace of the people followed added together, each followed brace taken as their momentum plus two times force and only positive braces counted (zero without any). "Strain" is crest minus brace. "Pulse" classifies strain against a tolerance band of 10 either side of zero.
+@@ -681,4 +681,12 @@ public class Person {
+         Integer vector = getVector();
+         return tide == null || vector == null ? null : tide - vector;
+     }
++
++    /** Flow is yield plus charge plus tide; absent while any is absent. */
++    public Integer getFlow() {
++        Integer yield = getYield();
++        Integer charge = getCharge();
++        Integer tide = getTide();
++        return yield == null || charge == null || tide == null ? null : yield + charge + tide;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index d70824e1..9223cae9 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -33,7 +33,7 @@ public class PersonController {
+             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, Integer vector, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer norm, boolean outlier, State state, Integer ebb, boolean stray) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, State state, Integer ebb, boolean stray) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer meanBlend, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+@@ -43,7 +43,7 @@ public class PersonController {
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+                     p.getInfluence(), p.getBrace(), p.getTide(), p.getStrain(), p.getPulse(), p.getRegions(), p.getReach(), p.getGust(), p.getCoil(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(),
++                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(), p.getFlow(),
+                     PersonController.norm(p.getScaled(), medianScaled),
+                     PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState(),
+                     PersonController.ebb(p.getBlend(), meanBlend),
