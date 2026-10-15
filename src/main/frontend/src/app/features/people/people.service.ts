@@ -35,6 +35,7 @@ export interface Person {
   combined: number | null;
   notes: number[];
   noteSum: number;
+  quality: number | null;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).

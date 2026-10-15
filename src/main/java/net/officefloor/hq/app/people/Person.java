@@ -39,7 +39,8 @@ import java.util.Set;
  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
  * A person may have any number of "notes", each with a whole-number score; their "note sum" is the
- * scores added together (zero without notes). */
+ * scores added together (zero without notes). "Quality" is the average of the note scores, rounded down
+ * (absent without notes). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -186,6 +187,11 @@ public class Person {
     /** The note sum is the note scores added together; zero without notes. */
     public int getNoteSum() {
         return notes.stream().mapToInt(Integer::intValue).sum();
+    }
+
+    /** Quality is the average of the note scores, rounded down; absent without notes. */
+    public Integer getQuality() {
+        return notes.isEmpty() ? null : Math.floorDiv(getNoteSum(), notes.size());
     }
 
     public LocalDate getOnset() {
