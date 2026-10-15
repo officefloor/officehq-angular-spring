@@ -159,6 +159,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // Each person shows their uplift: their weave minus their tether ("n/a" when either is "n/a").
 // Each person shows their mesh: their scaled multiplied by their group's size ("n/a" when they have no
 // group or their scaled is "n/a").
+// Each person shows their footprint: their scaled plus their mesh ("n/a" while their mesh is "n/a").
 // Each person shows their rung: (their group's size less their standing in it) over the group's size, as a
 // percentage, rounded; a group of one is 100 ("n/a" without a standing).
 // Each person shows their depth: their standing in their group less one ("n/a" without a standing).
@@ -469,6 +470,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Weave</th>
           <th scope="col">Uplift</th>
           <th scope="col">Mesh</th>
+          <th scope="col">Footprint</th>
           <th scope="col">Anchorage</th>
           <th scope="col">Breadth</th>
           <th scope="col">Home group</th>
@@ -580,6 +582,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-weave">{{ weaveOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-uplift">{{ upliftOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-mesh">{{ meshOf(p) ?? 'n/a' }}</td>
+            <td data-testid="concept-footprint">{{ footprintOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-anchorage">{{ anchorageOf(p) }}</td>
             <td data-testid="concept-breadth">{{ breadthOf(p) }}</td>
             <td data-testid="concept-home-group">{{ p.groupName ?? 'n/a' }}</td>
@@ -1013,6 +1016,10 @@ export class People {
   protected meshOf(p: Person): number | null {
     if (p.groupId === null || p.scaled === null) return null;
     return p.scaled * (this.groupSizes().get(p.groupId) ?? 0);
+  }
+  protected footprintOf(p: Person): number | null {
+    const mesh = this.meshOf(p);
+    return mesh === null || p.scaled === null ? null : p.scaled + mesh;
   }
   protected depthOf(p: Person): number | null {
     const standing = this.standings().get(p.id);
