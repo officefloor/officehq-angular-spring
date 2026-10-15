@@ -25,12 +25,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
-            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
+            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile) {
         static PersonView of(Person p, Map<Long, Integer> ranks) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
-                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
+                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()));
         }

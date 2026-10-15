@@ -14,7 +14,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
 // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100.
 // Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
-// weight comes from it (LOW 1, MID 2, HIGH 3, "n/a" without a grade).
+// weight comes from it (LOW 1, MID 2, HIGH 3, "n/a" without a grade). Their load is momentum × weight
+// ("n/a" while either is missing).
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
@@ -98,6 +99,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Thrust</th>
           <th scope="col">Drift</th>
           <th scope="col">Momentum</th>
+          <th scope="col">Load</th>
           <th scope="col">Tier</th>
           <th scope="col">Patrons</th>
           <th scope="col">Backing</th>
@@ -124,6 +126,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+            <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>

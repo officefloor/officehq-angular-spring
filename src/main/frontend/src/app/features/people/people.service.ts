@@ -13,6 +13,7 @@ export interface Person {
   thrust: number | null;
   drift: number | null;
   momentum: number | null;
+  load: number | null;
   tier: string | null;
   patrons: Patron[];
   backing: number | null;
