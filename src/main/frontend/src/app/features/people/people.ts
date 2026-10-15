@@ -11,7 +11,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // ("n/a" while delta, epsilon or zeta is missing). Each person also has a whole-number zeta (blank until given), set the same
 // way; their sway is zeta − delta and their torque is force + 3 × sway ("n/a" while any part is missing),
 // and their phase classifies torque: EBB below zero, RUN up to 199, PEAK from 200. Their blend is
-// momentum + torque ("n/a" while either is missing). Their flux is the sum of their patrons' force (0 without
+// momentum + torque ("n/a" while either is missing). Their flux is the average of their patrons' force, rounded down (0 without
 // patrons, "n/a" while any patron's force is missing). Their crest is blend + flux ("n/a" while either is missing).
 // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
 // comes first alphabetically ("n/a" when nobody has a crest).
