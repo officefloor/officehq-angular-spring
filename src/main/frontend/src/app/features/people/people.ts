@@ -16,7 +16,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
 // comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the positive torque of the people
 // they follow (0 when they follow no one, "n/a" while any followed person's torque is missing). Their haul is
-// crest + swing ("n/a" while either is missing). Their vector is the sum of their patrons' blend (0 without patrons,
+// crest + swing ("n/a" while either is missing). Their vector is the average of their patrons' blend, rounded down (0 without patrons,
 // "n/a" while any patron's blend is missing). The sheet's total haul is everyone's haul added together,
 // leaving out anyone whose haul is "n/a".
 // Each person may have any number of patrons (other
