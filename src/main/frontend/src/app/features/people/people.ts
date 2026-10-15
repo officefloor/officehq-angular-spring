@@ -55,6 +55,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // adjusted is "n/a").
 // Their norm is their scaled minus the average scaled, rounded down, of everyone on the sheet whose
 // scaled can be worked out ("n/a" while their scaled is "n/a").
+// They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
+// otherwise "no" (also "no" while their norm is "n/a").
 // The sheet's band counts show how many of its people are in each band, A through E (zero when none
 // are); people whose band is "n/a" are not counted.
 @Component({
@@ -196,6 +198,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Band</th>
           <th scope="col">Scaled</th>
           <th scope="col">Norm</th>
+          <th scope="col">Outlier</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -247,6 +250,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-band">{{ p.band ?? 'n/a' }}</td>
             <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+            <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>

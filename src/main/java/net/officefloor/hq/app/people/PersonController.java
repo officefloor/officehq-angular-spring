@@ -32,7 +32,7 @@ public class PersonController {
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, List<String> regions, Integer reach,
-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm) {
+            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier) {
         static PersonView of(Person p, Map<Long, Integer> ranks, Integer meanScaled, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
@@ -43,7 +43,8 @@ public class PersonController {
                     p.getInfluence(), p.getRegions(), p.getReach(),
                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(),
-                    PersonController.norm(p.getScaled(), meanScaled));
+                    PersonController.norm(p.getScaled(), meanScaled),
+                    PersonController.outlier(PersonController.norm(p.getScaled(), meanScaled)));
         }
     }
 
@@ -64,6 +65,11 @@ public class PersonController {
     /** Norm is scaled minus the sheet's mean scaled; absent while either is absent. */
     static Integer norm(Integer scaled, Integer meanScaled) {
         return scaled == null || meanScaled == null ? null : scaled - meanScaled;
+    }
+
+    /** An outlier has a norm more than 100 away from zero in either direction; without a norm, not an outlier. */
+    static boolean outlier(Integer norm) {
+        return norm != null && Math.abs(norm) > 100;
     }
 
     /** The average scaled of the people whose scaled can be worked out, rounded down; absent when there are none. */
