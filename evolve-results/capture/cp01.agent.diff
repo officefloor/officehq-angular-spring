@@ -1,0 +1,419 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index 19e0ad8..b8c93f3 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -3,10 +3,15 @@ import { Routes } from '@angular/router';
+ // The route table. A page is a new component file registered here with one entry that lazily
+ // imports it; an entry's `data: { section, label }` is read by the shell to build the nav bar.
+ export const routes: Routes = [
+-  { path: '', redirectTo: 'home', pathMatch: 'full' },
++  { path: '', redirectTo: 'people', pathMatch: 'full' },
+   {
+     path: 'home',
+     data: { section: 'home', label: 'Home', order: 0 },
+     loadComponent: () => import('./features/home/home').then((m) => m.Home),
+   },
++  {
++    path: 'people',
++    data: { section: 'people', label: 'People', order: 1 },
++    loadComponent: () => import('./features/people/people').then((m) => m.People),
++  },
+ ];
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+new file mode 100644
+index 0000000..9d50d17
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -0,0 +1,28 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface Person {
++  id: number;
++  name: string;
++  alpha: number | null;
++}
++
++export interface NewPerson {
++  name: string;
++  alpha: number;
++}
++
++// The people REST API (/api/people).
++@Injectable({ providedIn: 'root' })
++export class PeopleService {
++  private readonly http = inject(HttpClient);
++
++  list(): Observable<Person[]> {
++    return this.http.get<Person[]>('/api/people');
++  }
++
++  add(person: NewPerson): Observable<Person> {
++    return this.http.post<Person>('/api/people', person);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+new file mode 100644
+index 0000000..4f1036d
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -0,0 +1,81 @@
++import { Component, inject, signal } from '@angular/core';
++import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { PeopleService, Person } from './people.service';
++
++// The people list: every person with their name and alpha, plus a form to add one.
++@Component({
++  selector: 'app-people',
++  imports: [ReactiveFormsModule],
++  template: `
++    <h1>People</h1>
++
++    <form [formGroup]="form" (ngSubmit)="add()" data-testid="person-form">
++      <label for="person-name">Name</label>
++      <input id="person-name" formControlName="name" data-testid="person-form-name" />
++      <label for="person-alpha">Alpha</label>
++      <input
++        id="person-alpha"
++        type="number"
++        step="1"
++        formControlName="alpha"
++        data-testid="person-form-alpha"
++      />
++      <button type="submit" [disabled]="form.invalid || saving()" data-testid="person-form-submit">
++        Add person
++      </button>
++    </form>
++
++    @if (people().length === 0) {
++      <p data-testid="people-empty">No people yet.</p>
++    }
++    <table data-testid="people-table">
++      <thead>
++        <tr>
++          <th scope="col">Name</th>
++          <th scope="col">Alpha</th>
++        </tr>
++      </thead>
++      <tbody>
++        @for (p of people(); track p.id) {
++          <tr [attr.data-testid]="'person-row-' + p.id">
++            <td data-testid="person-name">{{ p.name }}</td>
++            <td data-testid="person-alpha">{{ p.alpha }}</td>
++          </tr>
++        }
++      </tbody>
++    </table>
++  `,
++})
++export class People {
++  private readonly service = inject(PeopleService);
++
++  protected readonly people = signal<Person[]>([]);
++  protected readonly saving = signal(false);
++
++  protected readonly form = inject(NonNullableFormBuilder).group({
++    name: ['', [Validators.required, Validators.pattern(/\S/)]],
++    alpha: [null as number | null, [Validators.required, Validators.pattern(/^-?\d+$/)]],
++  });
++
++  constructor() {
++    this.load();
++  }
++
++  protected add(): void {
++    const { name, alpha } = this.form.getRawValue();
++    if (this.form.invalid || alpha === null) return;
++    this.saving.set(true);
++    this.service.add({ name, alpha }).subscribe({
++      next: () => {
++        this.form.reset();
++        this.saving.set(false);
++        this.load();
++      },
++      error: () => this.saving.set(false),
++    });
++  }
++
++  private load(): void {
++    this.service.list().subscribe((people) => this.people.set(people));
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 36b52b9..2807912 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,12 +1,19 @@
+ package net.officefloor.hq.app;
+ 
++import java.util.LinkedHashMap;
++import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import org.springframework.context.annotation.Profile;
++import org.springframework.http.HttpStatus;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Per-spec data setup for the end-to-end tests. Profile-guarded so it exists ONLY under the test
+@@ -18,17 +25,22 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha");
++
+     private final Audit audit;
++    private final JdbcTemplate jdbc;
+ 
+-    public TestSupportController(Audit audit) {
++    public TestSupportController(Audit audit, JdbcTemplate jdbc) {
+         this.audit = audit;
++        this.jdbc = jdbc;
+     }
+ 
+     /** Truncate all domain tables and clear the audit file so each spec starts clean. */
+     @PostMapping("/reset")
++    @Transactional
+     public void reset() {
+         audit.clear();
+-        // TODO: TRUNCATE the domain tables that currently exist (inject a JdbcTemplate/repo).
++        jdbc.execute("TRUNCATE TABLE person RESTART IDENTITY");
+     }
+ 
+     /**
+@@ -36,8 +48,34 @@ public class TestSupportController {
+      * given, or refuse with HTTP 400 naming it — never ignore one silently (AGENTS.md §4.2).
+      */
+     @PostMapping("/seed")
++    @Transactional
+     public void seed(@RequestBody Map<String, Object> fixture) {
+-        // TODO: insert rows for the fixture.
++        for (String key : fixture.keySet()) {
++            if (!key.equals("people")) {
++                throw badRequest("unknown fixture key: " + key);
++            }
++        }
++        for (Map<String, Object> row : rows(fixture.get("people"), "people")) {
++            for (String field : row.keySet()) {
++                if (!PERSON_FIELDS.contains(field)) {
++                    throw badRequest("cannot store people." + field);
++                }
++            }
++            if (!(row.get("name") instanceof String name)) {
++                throw badRequest("people.name is required");
++            }
++            Object id = row.get("id");
++            Integer alpha = integer(row.get("alpha"), "people.alpha");
++            if (id == null) {
++                jdbc.update("INSERT INTO person (name, alpha) VALUES (?, ?)", name, alpha);
++            } else {
++                jdbc.update("INSERT INTO person (id, name, alpha) VALUES (?, ?, ?)",
++                        integer(id, "people.id"), name, alpha);
++            }
++        }
++        // Keep generated ids clear of the seeded ones.
++        Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM person", Long.class);
++        jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH " + next);
+     }
+ 
+     /**
+@@ -46,7 +84,37 @@ public class TestSupportController {
+      */
+     @GetMapping("/fixture")
+     public Map<String, Object> fixture() {
+-        // TODO: return each collection that exists, e.g. {"clients": [...], "invoices": [...]}.
+-        return Map.of();
++        Map<String, Object> out = new LinkedHashMap<>();
++        out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\" "
++                + "FROM person ORDER BY id"));
++        return out;
++    }
++
++    @SuppressWarnings("unchecked")
++    private static List<Map<String, Object>> rows(Object value, String key) {
++        if (value == null) {
++            return List.of();
++        }
++        if (!(value instanceof List<?> list) || !list.stream().allMatch(r -> r instanceof Map)) {
++            throw badRequest(key + " must be a list of rows");
++        }
++        return (List<Map<String, Object>>) list;
++    }
++
++    private static Integer integer(Object value, String field) {
++        if (value == null) {
++            return null;
++        }
++        if (value instanceof Number n && n.doubleValue() == Math.rint(n.doubleValue())) {
++            return n.intValue();
++        }
++        if (value instanceof String s && s.matches("-?\\d+")) {
++            return Integer.valueOf(s);
++        }
++        throw badRequest(field + " must be a whole number, got " + value);
++    }
++
++    private static ResponseStatusException badRequest(String message) {
++        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+new file mode 100644
+index 0000000..5bbcc16
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app.people;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A person on the list: a name and a whole-number "alpha" (absent until given). */
++@Entity
++@Table(name = "person")
++public class Person {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name;
++
++    private Integer alpha;
++
++    protected Person() {
++    }
++
++    public Person(String name, Integer alpha) {
++        this.name = name;
++        this.alpha = alpha;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public Integer getAlpha() {
++        return alpha;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+new file mode 100644
+index 0000000..754cfb8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.people;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/people")
++public class PersonController {
++
++    public record PersonView(Long id, String name, Integer alpha) {
++        static PersonView of(Person p) {
++            return new PersonView(p.getId(), p.getName(), p.getAlpha());
++        }
++    }
++
++    public record NewPerson(@NotBlank String name, @NotNull Integer alpha) {
++    }
++
++    private final PersonService service;
++
++    public PersonController(PersonService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<PersonView> list() {
++        return service.list().stream().map(PersonView::of).toList();
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public PersonView add(@Valid @RequestBody NewPerson person) {
++        return PersonView.of(service.add(person.name(), person.alpha()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonRepository.java b/src/main/java/net/officefloor/hq/app/people/PersonRepository.java
+new file mode 100644
+index 0000000..9426c92
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/PersonRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.people;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PersonRepository extends JpaRepository<Person, Long> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+new file mode 100644
+index 0000000..b31424d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app.people;
++
++import java.util.List;
++import org.springframework.data.domain.Sort;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++public class PersonService {
++
++    private final PersonRepository people;
++
++    public PersonService(PersonRepository people) {
++        this.people = people;
++    }
++
++    @Transactional(readOnly = true)
++    public List<Person> list() {
++        return people.findAll(Sort.by("id"));
++    }
++
++    @Transactional
++    public Person add(String name, int alpha) {
++        return people.save(new Person(name.trim(), alpha));
++    }
++}
+diff --git a/src/main/resources/db/migration/V1__people.sql b/src/main/resources/db/migration/V1__people.sql
+new file mode 100644
+index 0000000..11cba8a
+--- /dev/null
++++ b/src/main/resources/db/migration/V1__people.sql
+@@ -0,0 +1,5 @@
++CREATE TABLE person (
++    id    BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    name  VARCHAR(255) NOT NULL,
++    alpha INTEGER
++);
