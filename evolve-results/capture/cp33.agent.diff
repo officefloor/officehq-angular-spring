@@ -1,0 +1,98 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 525add2..bbc44c7 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -25,6 +25,7 @@ export interface Person {
+   decay: number | null;
+   active: boolean;
+   effective: number | null;
++  clout: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d0bb985..f4de3b4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -29,6 +29,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // ("n/a" while net is).
+ // The sheet's active count is how many of its people are active, and its total effective is everyone's
+ // effective added together, leaving out anyone whose effective is "n/a".
++// Their clout is their patrons' effective added together (zero without patrons; "n/a" while any
++// patron's effective is "n/a").
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -122,6 +124,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Backing</th>
+           <th scope="col">Net</th>
+           <th scope="col">Effective</th>
++          <th scope="col">Clout</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -155,6 +158,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
+             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
++            <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 24decfa..6cf5b0e 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -26,7 +26,8 @@ import java.util.Set;
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+- * "Decay" is momentum minus age. A person is "active" or not; a new person is active. */
++ * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the sum of the
++ * patrons' effective (zero without patrons). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -230,6 +231,20 @@ public class Person {
+         }
+         return Math.floorDiv(net, 2);
+     }
++
++    /** Clout is the sum of the patrons' effective; zero without patrons, absent while any patron's effective is absent. */
++    public Integer getClout() {
++        int sum = 0;
++        for (Person patron : patrons) {
++            Integer effective = patron.getEffective();
++            if (effective == null) {
++                return null;
++            }
++            sum += effective;
++        }
++        return sum;
++    }
++
+     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
+     public String getTier() {
+         Integer momentum = getMomentum();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 0358e64..479e995 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -27,14 +27,15 @@ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+-            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective) {
++            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
++            Integer clout) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+-                    p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective());
++                    p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout());
+         }
+     }
+ 
