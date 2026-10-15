@@ -49,6 +49,7 @@ export interface Person {
   influence: number | null;
   regions: string[];
   reach: number | null;
+  gust: number | null;
   allies: Ally[];
   allyCount: number;
   synergy: number | null;
