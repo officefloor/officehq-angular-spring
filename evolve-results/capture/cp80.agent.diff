@@ -1,0 +1,50 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e9e4a01c..74c9b203 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -30,7 +30,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
+ // out anyone whose load is "n/a".
+ // Each person may have a kind (A, B or C), chosen on add, in the edit form or on the row; their verge
+-// comes from it (A 1, B 2, C 4, "n/a" without a kind). Their pivot is torque × verge ("n/a" while either is missing).
++// comes from it (A 2, B 3, C 5, "n/a" without a kind). Their pivot is torque × verge ("n/a" while either is missing).
+ // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
+ // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
+ // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
+diff --git a/src/main/java/net/officefloor/hq/app/people/Kind.java b/src/main/java/net/officefloor/hq/app/people/Kind.java
+index eb6d92fb..807e9759 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Kind.java
++++ b/src/main/java/net/officefloor/hq/app/people/Kind.java
+@@ -1,8 +1,8 @@
+ package net.officefloor.hq.app.people;
+ 
+-/** A person's kind, each with its verge: A is 1, B is 2, C is 4. */
++/** A person's kind, each with its verge: A is 2, B is 3, C is 5. */
+ public enum Kind {
+-    A(1), B(2), C(4);
++    A(2), B(3), C(5);
+ 
+     private final int verge;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 842909b8..e352c513 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -30,7 +30,7 @@ import java.util.Set;
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+- * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 1, 2 or 4.
++ * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 2, 3 or 5.
+  * "Pivot" is torque times verge, absent while either is.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+@@ -272,7 +272,7 @@ public class Person {
+         return grade == null ? null : grade.weight();
+     }
+ 
+-    /** Verge comes from the kind: A 1, B 2, C 4; absent without a kind. */
++    /** Verge comes from the kind: A 2, B 3, C 5; absent without a kind. */
+     public Integer getVerge() {
+         return kind == null ? null : kind.verge();
+     }
