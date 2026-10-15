@@ -125,6 +125,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // The sheet's group count is how many groups it has (0 when there are none).
 // The sheet's median strength is the middle of its groups' strengths; for an even count, the lower of
 // the two middle values ("n/a" when there are no groups).
+// The sheet's strength range is the strongest group's strength minus the weakest's ("n/a" when there
+// are no groups).
 // Each group shows its rank: its place among the sheet's groups by strength, highest first (1), with
 // equal strength placed by the group name earlier in the alphabet.
 // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
@@ -312,6 +314,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
     <p>Total strength: <strong data-testid="rollup-total-strength">{{ totalStrength() }}</strong></p>
     <p>Groups: <strong data-testid="rollup-group-count">{{ groupCount() }}</strong></p>
     <p>Median strength: <strong data-testid="rollup-median-strength">{{ medianStrength() ?? 'n/a' }}</strong></p>
+    <p>Strength range: <strong data-testid="rollup-strength-range">{{ strengthRange() ?? 'n/a' }}</strong></p>
     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
@@ -943,6 +946,11 @@ export class People {
       .map((g) => strengths.get(g.id) ?? 0)
       .sort((a, b) => a - b);
     return sorted.length === 0 ? null : sorted[Math.floor((sorted.length - 1) / 2)];
+  });
+  protected readonly strengthRange = computed(() => {
+    const strengths = this.groupStrengths();
+    const values = this.groups().map((g) => strengths.get(g.id) ?? 0);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
   protected readonly groupRanks = computed(() => {
     const strengths = this.groupStrengths();
