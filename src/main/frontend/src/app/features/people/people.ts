@@ -179,6 +179,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // Each person shows their reach span: their home group's strength ("n/a" without one).
 // Each person shows their global rank: their place among everyone on the sheet by scaled, highest
 // first (1), with equal scaled placed by name ("n/a" while their scaled is "n/a").
+// Each person shows their bracket: the quartile of their scaled — Q4 from 1000, Q3 from 400 to 999,
+// Q2 from 100 to 399 and Q1 below 100 ("n/a" while their scaled is "n/a").
 // The sheet's strongest member is the name of the person with the highest scaled anywhere on the sheet,
 // ties going to the name earlier in the alphabet ("n/a" when nobody has a scaled).
 // The sheet's apex name is the name of the person with the highest scaled anywhere on the sheet, and its
@@ -514,6 +516,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Global rank</th>
+          <th scope="col">Bracket</th>
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
@@ -630,6 +633,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td data-testid="concept-rank-global">{{ globalRanks().get(p.id) ?? 'n/a' }}</td>
+            <td data-testid="concept-bracket">{{ bracketOf(p) ?? 'n/a' }}</td>
             <td>
               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">
@@ -1084,6 +1088,10 @@ export class People {
   }
   protected footprintOf(p: Person): number | null {
     return p.scaled === null ? null : 2 * p.scaled;
+  }
+  protected bracketOf(p: Person): string | null {
+    if (p.scaled === null) return null;
+    return p.scaled >= 1000 ? 'Q4' : p.scaled >= 400 ? 'Q3' : p.scaled >= 100 ? 'Q2' : 'Q1';
   }
   protected depthOf(p: Person): number | null {
     const standing = this.standings().get(p.id);
