@@ -119,6 +119,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // add, through Edit or on the row, and the row shows its name.
 // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
 // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
+// Each group shows its spread: the highest scaled of the people in it minus the lowest, ignoring "n/a"
+// ("n/a" when none of its people have a scaled).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -243,6 +245,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
               — strength <span data-testid="group-concept-strength">{{ groupStrengths().get(g.id) ?? 0 }}</span>
               — size <span data-testid="group-concept-size">{{ groupSizes().get(g.id) ?? 0 }}</span>
               — cohesion <span data-testid="group-concept-cohesion">{{ groupCohesions().get(g.id) ?? 'n/a' }}</span>
+              — spread <span data-testid="group-concept-spread">{{ groupSpreads().get(g.id) ?? 'n/a' }}</span>
             </li>
           }
         </ul>
@@ -833,6 +836,20 @@ export class People {
       cohesions.set(groupId, Math.floor((strengths.get(groupId) ?? 0) / size));
     }
     return cohesions;
+  });
+  protected readonly groupSpreads = computed(() => {
+    const ranges = new Map<number, { min: number; max: number }>();
+    for (const p of this.people()) {
+      if (p.groupId === null || p.scaled === null) continue;
+      const range = ranges.get(p.groupId);
+      ranges.set(p.groupId, {
+        min: Math.min(range?.min ?? p.scaled, p.scaled),
+        max: Math.max(range?.max ?? p.scaled, p.scaled),
+      });
+    }
+    const spreads = new Map<number, number>();
+    for (const [groupId, { min, max }] of ranges) spreads.set(groupId, max - min);
+    return spreads;
   });
   protected readonly regionCounts = computed(() => {
     const counts = new Map<string, number>();
