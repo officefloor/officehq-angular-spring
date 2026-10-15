@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index bdc2697a..1a09c943 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -50,6 +50,7 @@ export interface Person {
+   regions: string[];
+   reach: number | null;
+   gust: number | null;
++  coil: number | null;
+   allies: Ally[];
+   allyCount: number;
+   synergy: number | null;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 20bb722e..e2f8b156 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -59,6 +59,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their reach is the sum, over their regions, of momentum times the region's multiplier, from its first
+ // letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
+ // Their gust is their reach plus their torque ("n/a" while either is "n/a").
++// Their coil is their gust minus their momentum ("n/a" while either is "n/a").
+ // The sheet's region counts show, for each region its people have, how many of them are in it
+ // (a person counts once in every region they belong to), ordered by region code.
+ // Each person may follow any number of other people, chosen on the row; following is one-directional,
+@@ -277,6 +278,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+           <th scope="col">Phase</th>
+           <th scope="col">Reach</th>
+           <th scope="col">Gust</th>
++          <th scope="col">Coil</th>
+           <th scope="col">Load</th>
+           <th scope="col">Tier</th>
+           <th scope="col">Patrons</th>
+@@ -357,6 +359,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+             <td data-testid="concept-phase">{{ p.phase ?? 'n/a' }}</td>
+             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
+             <td data-testid="concept-gust">{{ p.gust ?? 'n/a' }}</td>
++            <td data-testid="concept-coil">{{ p.coil ?? 'n/a' }}</td>
+             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
+             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index dc15a0ee..740fa000 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -37,7 +37,7 @@ import java.util.Set;
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
+  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+- * person's regions, of momentum times that region's multiplier. "Gust" is reach plus torque. A person may follow any number of other people on
++ * person's regions, of momentum times that region's multiplier. "Gust" is reach plus torque. "Coil" is gust minus momentum. A person may follow any number of other people on
+  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
+  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
+  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
+@@ -590,4 +590,11 @@ public class Person {
+         Integer torque = getTorque();
+         return reach == null || torque == null ? null : reach + torque;
+     }
++
++    /** Coil is gust minus momentum; absent while either is absent. */
++    public Integer getCoil() {
++        Integer gust = getGust();
++        Integer momentum = getMomentum();
++        return gust == null || momentum == null ? null : gust - momentum;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 945c887f..448dfc25 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -31,7 +31,7 @@ public class PersonController {
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
+             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+-            Integer clout, Integer influence, List<String> regions, Integer reach, Integer gust,
++            Integer clout, Integer influence, List<String> regions, Integer reach, Integer gust, Integer coil,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+@@ -40,7 +40,7 @@ public class PersonController {
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+-                    p.getInfluence(), p.getRegions(), p.getReach(), p.getGust(),
++                    p.getInfluence(), p.getRegions(), p.getReach(), p.getGust(), p.getCoil(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(),
+                     PersonController.norm(p.getScaled(), medianScaled),
