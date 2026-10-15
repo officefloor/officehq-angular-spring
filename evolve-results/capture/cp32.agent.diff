@@ -1,0 +1,34 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f2f3d0d..d0bb985 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -25,7 +25,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
+ // Their decay is momentum minus age ("n/a" while either is missing).
+ // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
+-// Their effective is their net while active ("n/a" while net is), and 0 while not active.
++// Their effective is their net while active, and half their net rounded down while not active
++// ("n/a" while net is).
+ // The sheet's active count is how many of its people are active, and its total effective is everyone's
+ // effective added together, leaving out anyone whose effective is "n/a".
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 673211e..24decfa 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -222,9 +222,13 @@ public class Person {
+         return backing == null ? null : momentum + backing;
+     }
+ 
+-    /** Effective is net while active (absent while net is), and zero while not active. */
++    /** Effective is net while active, and half of net rounded down while not active (absent while net is). */
+     public Integer getEffective() {
+-        return active ? getNet() : Integer.valueOf(0);
++        Integer net = getNet();
++        if (net == null || active) {
++            return net;
++        }
++        return Math.floorDiv(net, 2);
+     }
+     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
+     public String getTier() {
