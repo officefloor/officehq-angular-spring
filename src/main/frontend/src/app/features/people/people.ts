@@ -10,7 +10,8 @@ import { PeopleService, Person } from './people.service';
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
-// shown, and people added belong to it. Until one is opened the unnamed sheet is shown.
+// shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
+// id no sheet has yet says so; adding a person to it creates it.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -30,6 +31,9 @@ import { PeopleService, Person } from './people.service';
         <span data-testid="sheet-none">none</span>
       }
     </p>
+    @if (missing()) {
+      <p role="status" data-testid="sheet-missing">No sheet named "{{ sheet() }}" exists yet.</p>
+    }
 
     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
       <label for="person-name">Name</label>
@@ -191,6 +195,7 @@ export class People {
 
   protected readonly people = signal<Person[]>([]);
   protected readonly sheet = signal<string | null>(null);
+  protected readonly missing = signal(false);
   protected readonly saving = signal(false);
   protected readonly editing = signal<Person | null>(null);
 
@@ -208,6 +213,7 @@ export class People {
   protected openSheet(value: string): void {
     const id = value.trim();
     this.sheet.set(id === '' ? null : id);
+    this.missing.set(false);
     this.cancelEdit();
     this.load();
   }
@@ -281,6 +287,11 @@ export class People {
     this.service.list(sheet).subscribe((people) => {
       if (this.sheet() === sheet) this.people.set(people);
     });
+    if (sheet !== null) {
+      this.service.sheetExists(sheet).subscribe((exists) => {
+        if (this.sheet() === sheet) this.missing.set(!exists);
+      });
+    }
   }
 }
 

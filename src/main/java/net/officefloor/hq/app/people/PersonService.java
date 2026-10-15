@@ -32,6 +32,12 @@ public class PersonService {
         return people.findBySheetId(sheetId, Sort.by("id"));
     }
 
+    /** Whether a named sheet has been stored. */
+    @Transactional(readOnly = true)
+    public boolean sheetExists(String sheetId) {
+        return sheets.existsById(sheetId);
+    }
+
     @Transactional(readOnly = true)
     public Optional<Person> find(long id) {
         return people.findById(id);
