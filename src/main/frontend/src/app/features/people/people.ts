@@ -186,6 +186,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // there is no such person).
 // The sheet's gap is the highest scaled on the sheet minus the lowest ("n/a" when fewer than two
 // people have a scaled).
+// The sheet's range is the highest scaled on the sheet minus the lowest ("n/a" when nobody has a scaled).
 // The sheet's coverage is how many of its people have a scaled of at least 100 (0 when nobody does).
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
 // figure depends on "their group", it is the group, of those they are in, whose name comes first
@@ -365,6 +366,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
     <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
     <p>Runner-up: <strong data-testid="rollup-runnerup">{{ runnerUp() ?? 'n/a' }}</strong></p>
     <p>Gap: <strong data-testid="rollup-gapval">{{ gapVal() ?? 'n/a' }}</strong></p>
+    <p>Range: <strong data-testid="rollup-range-scaled">{{ rangeScaled() ?? 'n/a' }}</strong></p>
     <p>Coverage (scaled 100 or more): <strong data-testid="rollup-coverage">{{ coverage() }}</strong></p>
     <section aria-labelledby="region-counts-heading">
       <h2 id="region-counts-heading">People per region</h2>
@@ -1298,6 +1300,10 @@ export class People {
   protected readonly gapVal = computed(() => {
     const order = this.scaledOrder();
     return order.length >= 2 ? order[0].scaled! - order[order.length - 1].scaled! : null;
+  });
+  protected readonly rangeScaled = computed(() => {
+    const order = this.scaledOrder();
+    return order.length > 0 ? order[0].scaled! - order[order.length - 1].scaled! : null;
   });
   protected readonly strongestMember = computed(() => {
     let top: Person | null = null;
