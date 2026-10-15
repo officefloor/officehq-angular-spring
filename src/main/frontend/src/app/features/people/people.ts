@@ -1369,11 +1369,15 @@ export class People {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([region, count]) => ({ region, count }));
   });
-  /** The ledger of each region: its people's scaled added together (a person absent scaled adds nothing). */
+  /**
+   * The ledger of each region: the scaled of its people in the SURGE tier added together (anyone else, or a
+   * person absent scaled, adds nothing). Every region its people have is listed, at zero when none count.
+   */
   protected readonly regionLedgers = computed(() => {
     const totals = new Map<string, number>();
     for (const p of this.people()) {
-      for (const region of p.regions) totals.set(region, (totals.get(region) ?? 0) + (p.scaled ?? 0));
+      const scaled = p.tier === 'SURGE' ? (p.scaled ?? 0) : 0;
+      for (const region of p.regions) totals.set(region, (totals.get(region) ?? 0) + scaled);
     }
     return [...totals.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
