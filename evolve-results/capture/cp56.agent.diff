@@ -1,0 +1,95 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 261d334..1990c63 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -53,8 +53,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // A from 500 ("n/a" while adjusted is "n/a").
+ // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
+ // adjusted is "n/a").
+-// Their norm is their scaled minus the average scaled, rounded down, of everyone on the sheet whose
+-// scaled can be worked out ("n/a" while their scaled is "n/a").
++// Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
++// worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
+ // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
+ // otherwise "no" (also "no" while their norm is "n/a").
+ // The sheet's outlier count is how many of its people are outliers.
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 3f20d2b..d5862fe 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -33,7 +33,7 @@ public class PersonController {
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier) {
+-        static PersonView of(Person p, Map<Long, Integer> ranks, Integer meanScaled, LocalDate anchor) {
++        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
+@@ -43,8 +43,8 @@ public class PersonController {
+                     p.getInfluence(), p.getRegions(), p.getReach(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(),
+-                    PersonController.norm(p.getScaled(), meanScaled),
+-                    PersonController.outlier(PersonController.norm(p.getScaled(), meanScaled)));
++                    PersonController.norm(p.getScaled(), medianScaled),
++                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)));
+         }
+     }
+ 
+@@ -62,9 +62,9 @@ public class PersonController {
+         return (int) Math.round((ranked - rank) * 100.0 / (ranked - 1));
+     }
+ 
+-    /** Norm is scaled minus the sheet's mean scaled; absent while either is absent. */
+-    static Integer norm(Integer scaled, Integer meanScaled) {
+-        return scaled == null || meanScaled == null ? null : scaled - meanScaled;
++    /** Norm is scaled minus the sheet's median scaled; absent while either is absent. */
++    static Integer norm(Integer scaled, Integer medianScaled) {
++        return scaled == null || medianScaled == null ? null : scaled - medianScaled;
+     }
+ 
+     /** An outlier has a norm more than 100 away from zero in either direction; without a norm, not an outlier. */
+@@ -72,14 +72,16 @@ public class PersonController {
+         return norm != null && Math.abs(norm) > 100;
+     }
+ 
+-    /** The average scaled of the people whose scaled can be worked out, rounded down; absent when there are none. */
+-    private static Integer meanScaled(List<Person> people) {
+-        List<Integer> scaled = people.stream().map(Person::getScaled).filter(s -> s != null).toList();
++    /**
++     * The median scaled of the people whose scaled can be worked out; for an even count, the lower of
++     * the two middle values. Absent when there are none.
++     */
++    private static Integer medianScaled(List<Person> people) {
++        List<Integer> scaled = people.stream().map(Person::getScaled).filter(s -> s != null).sorted().toList();
+         if (scaled.isEmpty()) {
+             return null;
+         }
+-        long sum = scaled.stream().mapToLong(Integer::longValue).sum();
+-        return (int) Math.floorDiv(sum, scaled.size());
++        return scaled.get((scaled.size() - 1) / 2);
+     }
+ 
+     /** Highest momentum first; equal momentum by higher alpha, then by name, earlier in the alphabet first. */
+@@ -106,9 +108,9 @@ public class PersonController {
+         String sheetId = sheetId(sheet);
+         List<Person> people = service.list(sheetId);
+         Map<Long, Integer> ranks = ranks(people);
+-        Integer meanScaled = meanScaled(people);
++        Integer medianScaled = medianScaled(people);
+         LocalDate anchor = service.anchor(sheetId);
+-        return people.stream().map(p -> PersonView.of(p, ranks, meanScaled, anchor)).toList();
++        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, anchor)).toList();
+     }
+ 
+     @PostMapping
+@@ -199,7 +201,7 @@ public class PersonController {
+     /** A person's view, ranked among the people on their sheet. */
+     private PersonView view(String sheetId, Person person) {
+         List<Person> people = service.list(sheetId);
+-        return PersonView.of(person, ranks(people), meanScaled(people), service.anchor(sheetId));
++        return PersonView.of(person, ranks(people), medianScaled(people), service.anchor(sheetId));
+     }
+ 
+     /**
