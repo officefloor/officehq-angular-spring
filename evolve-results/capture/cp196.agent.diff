@@ -1,0 +1,36 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index acda6324..e314db9d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -199,7 +199,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // The sheet's median scaled is the middle of the scaled of everyone on the sheet whose scaled can be
+ // worked out; for an even count, the lower of the two middle values ("n/a" when nobody has a scaled).
+ // The sheet's coverage is how many of its people have a scaled of at least 500 (0 when nobody does).
+-// The sheet's concentration is the scaled of its two highest-scaled people added together as a percentage
++// The sheet's concentration is the scaled of its three highest-scaled people added together as a percentage
+ // of its ledger, rounded down ("n/a" when the ledger is zero).
+ // A person may be in several groups; a group's figures count every person in it. Where a person's own
+ // figure depends on "their group", it is the group, of those they are in, whose name comes first
+@@ -383,7 +383,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+     <p>Range: <strong data-testid="rollup-range-scaled">{{ rangeScaled() ?? 'n/a' }}</strong></p>
+     <p>Median scaled: <strong data-testid="rollup-median-scaled">{{ medianScaled() ?? 'n/a' }}</strong></p>
+     <p>Coverage (scaled 500 or more): <strong data-testid="rollup-coverage">{{ coverage() }}</strong></p>
+-    <p>Concentration (top two share %): <strong data-testid="rollup-concentration">{{ concentration() ?? 'n/a' }}</strong></p>
++    <p>Concentration (top three share %): <strong data-testid="rollup-concentration">{{ concentration() ?? 'n/a' }}</strong></p>
+     <section aria-labelledby="region-counts-heading">
+       <h2 id="region-counts-heading">People per region</h2>
+       @if (regionCounts().length === 0) {
+@@ -1359,10 +1359,10 @@ export class People {
+   });
+   protected readonly concentration = computed(() => {
+     const total = this.ledger();
+-    const topTwo = this.scaledOrder()
+-      .slice(0, 2)
++    const topThree = this.scaledOrder()
++      .slice(0, 3)
+       .reduce((sum, p) => sum + p.scaled!, 0);
+-    return total === 0 ? null : Math.floor((topTwo * 100) / total);
++    return total === 0 ? null : Math.floor((topThree * 100) / total);
+   });
+   protected readonly strongestMember = computed(() => {
+     let top: Person | null = null;
