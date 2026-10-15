@@ -1,0 +1,48 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3dfd037d..999acf43 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -119,6 +119,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a".
+ // The sheet's tier tally shows how many of its people are in each tier, SURGE, STEADY and SINK (zero when
+ // none are); people without a tier are not counted.
++// The sheet's stratum counts show how many of its people are in each stratum, TOP and BOT (zero when
++// none are); people whose stratum is "n/a" are not counted.
+ // The sheet's band counts show how many of its people are in each band, A through E (zero when none
+ // are); people whose band is "n/a" are not counted.
+ // The sheet's span width is how many different bands have at least one of its people in them.
+@@ -494,6 +496,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+         }
+       </ul>
+     </section>
++    <section aria-labelledby="stratum-counts-heading">
++      <h2 id="stratum-counts-heading">People per stratum</h2>
++      <ul>
++        @for (s of stratumCounts(); track s.stratum) {
++          <li>
++            {{ s.stratum }}: <strong [attr.data-testid]="'stratum-count-' + s.stratum">{{ s.count }}</strong>
++          </li>
++        }
++      </ul>
++    </section>
+     <section aria-labelledby="drag-counts-heading">
+       <h2 id="drag-counts-heading">People per drag level</h2>
+       <ul>
+@@ -1415,6 +1427,9 @@ export class People {
+   protected readonly stateTally = computed(() =>
+     STATES.map((state) => ({ state, count: this.people().filter((p) => p.state === state).length })),
+   );
++  protected readonly stratumCounts = computed(() =>
++    STRATA.map((stratum) => ({ stratum, count: this.people().filter((p) => p.stratum === stratum).length })),
++  );
+   protected readonly bandCounts = computed(() =>
+     BANDS.map((band) => ({ band, count: this.people().filter((p) => p.band === band).length })),
+   );
+@@ -1804,6 +1819,7 @@ export class People {
+ 
+ // The bands, best first.
+ const TIERS = ['SURGE', 'STEADY', 'SINK'] as const;
++const STRATA = ['TOP', 'BOT'] as const;
+ // The grade tally counts MID under HIGH.
+ const TALLIED_GRADE: Record<Grade, Grade> = { LOW: 'LOW', MID: 'HIGH', HIGH: 'HIGH' };
+ const BANDS = ['A', 'B', 'C', 'D', 'E'] as const;
