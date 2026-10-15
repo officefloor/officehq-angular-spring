@@ -8,7 +8,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
 // their alpha, beta and gamma instead of adding. Each person also has whole-number delta and epsilon
 // (a second raw axis, blank until given), set on add, on the row or through Edit; their force is delta × epsilon
-// ("n/a" while either is missing). Each person also has a whole-number zeta (blank until given), set the same
+// ("n/a" while delta, epsilon or zeta is missing). Each person also has a whole-number zeta (blank until given), set the same
 // way; their sway is zeta − delta and their torque is force + 3 × sway ("n/a" while any part is missing),
 // and their phase classifies torque: EBB below zero, RUN up to 99, PEAK from 100. Their blend is
 // momentum + torque ("n/a" while either is missing).

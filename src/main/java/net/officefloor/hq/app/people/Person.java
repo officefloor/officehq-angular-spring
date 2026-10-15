@@ -24,8 +24,8 @@ import java.util.Set;
 
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
  * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given) with the derived "force"
- * (delta × epsilon, absent while either is), a whole-number "zeta" (absent until given) with the derived "sway"
- * (zeta − delta) and "torque" (force + 3 × sway), each absent while any part is, "blend" (momentum + torque, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+ * (delta × epsilon), a whole-number "zeta" (absent until given) with the derived "sway"
+ * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
@@ -304,14 +304,19 @@ public class Person {
         return thrust == null || drift == null ? null : thrust + 3 * drift;
     }
 
-    /** Force is delta multiplied by epsilon; absent while either is absent. */
-    public Integer getForce() {
-        return delta == null || epsilon == null ? null : delta * epsilon;
+    /** Whether all of delta, epsilon and zeta are given; the concepts built on them are absent until they are. */
+    private boolean hasSecondAxis() {
+        return delta != null && epsilon != null && zeta != null;
     }
 
-    /** Sway is zeta minus delta; absent while either is absent. */
+    /** Force is delta multiplied by epsilon; absent while any of delta, epsilon or zeta is absent. */
+    public Integer getForce() {
+        return hasSecondAxis() ? delta * epsilon : null;
+    }
+
+    /** Sway is zeta minus delta; absent while any of delta, epsilon or zeta is absent. */
     public Integer getSway() {
-        return zeta == null || delta == null ? null : zeta - delta;
+        return hasSecondAxis() ? zeta - delta : null;
     }
 
     /** Torque is force plus three times sway; absent while either is absent. */
