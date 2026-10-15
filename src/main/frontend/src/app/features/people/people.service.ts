@@ -21,6 +21,7 @@ export interface Person {
   rank: number | null;
   percentile: number | null;
   onset: string | null;
+  age: number | null;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).

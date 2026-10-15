@@ -21,7 +21,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
 // its own people, and a sheet only ever shows (and edits) its own.
-// The sheet shows its anchor date (today when none is set), and each person their onset date.
+// The sheet shows its anchor date (today when none is set), and each person their onset date and
+// their age: whole days from onset to the anchor, negative when onset is after it ("n/a" without onset).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -100,6 +101,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Gamma</th>
           <th scope="col">Grade</th>
           <th scope="col">Onset</th>
+          <th scope="col">Age</th>
           <th scope="col">Weight</th>
           <th scope="col">Thrust</th>
           <th scope="col">Drift</th>
@@ -128,6 +130,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-gamma">{{ p.gamma }}</td>
             <td data-testid="person-grade">{{ p.grade }}</td>
             <td data-testid="person-onset">{{ p.onset }}</td>
+            <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
             <td data-testid="concept-weight">{{ p.weight ?? 'n/a' }}</td>
             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>

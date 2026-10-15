@@ -27,13 +27,14 @@ public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
-            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset) {
-        static PersonView of(Person p, Map<Long, Integer> ranks) {
+            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age) {
+        static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
-                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset());
+                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                    p.getAge(anchor));
         }
     }
 
@@ -72,9 +73,11 @@ public class PersonController {
 
     @GetMapping
     public List<PersonView> list(@RequestParam(required = false) String sheet) {
-        List<Person> people = service.list(sheetId(sheet));
+        String sheetId = sheetId(sheet);
+        List<Person> people = service.list(sheetId);
         Map<Long, Integer> ranks = ranks(people);
-        return people.stream().map(p -> PersonView.of(p, ranks)).toList();
+        LocalDate anchor = service.anchor(sheetId);
+        return people.stream().map(p -> PersonView.of(p, ranks, anchor)).toList();
     }
 
     @PostMapping
@@ -126,7 +129,7 @@ public class PersonController {
 
     /** A person's view, ranked among the people on their sheet. */
     private PersonView view(String sheetId, Person person) {
-        return PersonView.of(person, ranks(service.list(sheetId)));
+        return PersonView.of(person, ranks(service.list(sheetId)), service.anchor(sheetId));
     }
 
     /**
