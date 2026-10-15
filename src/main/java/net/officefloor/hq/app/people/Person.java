@@ -552,4 +552,11 @@ public class Person {
         Integer torque = getTorque();
         return scaled == null || torque == null ? null : scaled + torque;
     }
+
+    /** Spool is thrum minus blend; absent while either is absent. */
+    public Integer getSpool() {
+        Integer thrum = getThrum();
+        Integer blend = getBlend();
+        return thrum == null || blend == null ? null : thrum - blend;
+    }
 }

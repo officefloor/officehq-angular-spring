@@ -60,6 +60,7 @@ export interface Person {
   band: string | null;
   scaled: number | null;
   thrum: number | null;
+  spool: number | null;
   norm: number | null;
   outlier: boolean;
 }
