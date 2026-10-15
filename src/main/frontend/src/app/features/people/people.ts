@@ -174,6 +174,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // Each person shows their anchor strength: the strength of their home group ("n/a" without one).
 // Each person shows their group rank: the rank of their home group by strength ("n/a" without one).
 // Each person shows their anchor cohesion: the cohesion of their home group ("n/a" without one).
+// Each person shows their reach span: their home group's strength plus its cohesion ("n/a" without one).
 // The sheet's strongest member is the name of the person with the highest scaled anywhere on the sheet,
 // ties going to the name earlier in the alphabet ("n/a" when nobody has a scaled).
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
@@ -488,6 +489,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Anchor strength</th>
           <th scope="col">Group rank</th>
           <th scope="col">Anchor cohesion</th>
+          <th scope="col">Reach span</th>
           <th scope="col">Rung</th>
           <th scope="col">Depth</th>
           <th scope="col">Rank</th>
@@ -602,6 +604,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-anchor-strength">{{ anchorStrengthOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-group-rank">{{ groupRankOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-anchor-cohesion">{{ anchorCohesionOf(p) ?? 'n/a' }}</td>
+            <td data-testid="concept-reach-span">{{ reachSpanOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-rung">{{ rungs().get(p.id) ?? 'n/a' }}</td>
             <td data-testid="concept-depth">{{ depthOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
@@ -1019,6 +1022,11 @@ export class People {
   }
   protected anchorCohesionOf(p: Person): number | null {
     return p.groupId === null ? null : (this.groupCohesions().get(p.groupId) ?? null);
+  }
+  protected reachSpanOf(p: Person): number | null {
+    const strength = this.anchorStrengthOf(p);
+    const cohesion = this.anchorCohesionOf(p);
+    return strength === null || cohesion === null ? null : strength + cohesion;
   }
   protected belongingOf(p: Person): number | null {
     if (p.groupId === null || p.scaled === null) return null;
