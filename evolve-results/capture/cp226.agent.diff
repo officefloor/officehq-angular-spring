@@ -1,0 +1,44 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 347e6785..2b21393f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -149,6 +149,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them have a scaled).
+ // The sheet's state tally shows how many of its people are in each state, DRAFT, REVIEW, FINAL and
+ // REWORK (zero when none are).
++// The sheet's state share shows what percent of its people are in each state, rounded down (zero when
++// the sheet has no people).
+ // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
+ // add, through Edit or on the row, and the row shows its name.
+ // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
+@@ -573,6 +575,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+         }
+       </ul>
+     </section>
++    <section aria-labelledby="state-share-heading">
++      <h2 id="state-share-heading">Percent per state</h2>
++      <ul>
++        @for (s of stateShare(); track s.state) {
++          <li>
++            {{ s.state }}: <strong [attr.data-testid]="'state-share-' + s.state">{{ s.percent }}</strong>%
++          </li>
++        }
++      </ul>
++    </section>
+     <section aria-labelledby="state-ledger-heading">
+       <h2 id="state-ledger-heading">Ledger per state</h2>
+       <ul>
+@@ -1576,6 +1588,13 @@ export class People {
+   protected readonly stateTally = computed(() =>
+     STATES.map((state) => ({ state, count: this.people().filter((p) => p.state === state).length })),
+   );
++  protected readonly stateShare = computed(() => {
++    const total = this.people().length;
++    return this.stateTally().map(({ state, count }) => ({
++      state,
++      percent: total === 0 ? 0 : Math.floor((count * 100) / total),
++    }));
++  });
+   protected readonly stateLedger = computed(() =>
+     STATES.map((state) => ({
+       state,
