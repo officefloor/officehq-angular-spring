@@ -120,8 +120,9 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // none do); people whose pulse is "n/a" are not counted.
 // The sheet's bracket counts show how many of its people are in each bracket, Q4 down to Q1 (zero when
 // none are); people whose bracket is "n/a" are not counted.
-// The sheet's grade tally shows how many of its people have each grade, HIGH, MID and LOW (zero when
-// none do); people without a grade are not counted.
+// The sheet's grade tally shows how many of its people have each grade, HIGH and LOW (zero when none
+// do), with MID folded into HIGH; MID is still listed but always counts zero. People without a grade
+// are not counted.
 // The sheet's state tally shows how many of its people are in each state, DRAFT, REVIEW, FINAL and
 // REWORK (zero when none are).
 // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
@@ -1321,7 +1322,10 @@ export class People {
     TIERS.map((tier) => ({ tier, count: this.people().filter((p) => p.tier === tier).length })),
   );
   protected readonly gradeTally = computed(() =>
-    [...GRADES].reverse().map((grade) => ({ grade, count: this.people().filter((p) => p.grade === grade).length })),
+    [...GRADES].reverse().map((grade) => ({
+      grade,
+      count: this.people().filter((p) => p.grade !== null && TALLIED_GRADE[p.grade] === grade).length,
+    })),
   );
   protected readonly stateTally = computed(() =>
     STATES.map((state) => ({ state, count: this.people().filter((p) => p.state === state).length })),
@@ -1697,6 +1701,8 @@ export class People {
 
 // The bands, best first.
 const TIERS = ['SURGE', 'STEADY', 'SINK'] as const;
+// The grade tally counts MID under HIGH.
+const TALLIED_GRADE: Record<Grade, Grade> = { LOW: 'LOW', MID: 'HIGH', HIGH: 'HIGH' };
 const BANDS = ['A', 'B', 'C', 'D', 'E'] as const;
 
 // The drag levels, lowest first.
