@@ -1,8 +1,8 @@
 package net.officefloor.hq.app.people;
 
-/** A person's kind, each with its verge: A is 1, B is 2, C is 4. */
+/** A person's kind, each with its verge: A is 2, B is 3, C is 5. */
 public enum Kind {
-    A(1), B(2), C(4);
+    A(2), B(3), C(5);
 
     private final int verge;
 

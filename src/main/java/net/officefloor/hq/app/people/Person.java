@@ -30,7 +30,7 @@ import java.util.Set;
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
- * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 1, 2 or 4.
+ * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 2, 3 or 5.
  * "Pivot" is torque times verge, absent while either is.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
@@ -272,7 +272,7 @@ public class Person {
         return grade == null ? null : grade.weight();
     }
 
-    /** Verge comes from the kind: A 1, B 2, C 4; absent without a kind. */
+    /** Verge comes from the kind: A 2, B 3, C 5; absent without a kind. */
     public Integer getVerge() {
         return kind == null ? null : kind.verge();
     }
