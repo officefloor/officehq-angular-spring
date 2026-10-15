@@ -379,4 +379,20 @@ public class Person {
         }
         return adjusted < 0 ? "E" : adjusted <= 49 ? "D" : adjusted <= 149 ? "C" : adjusted <= 299 ? "B" : "A";
     }
+
+    /** Scaled is adjusted times the band's multiplier: A 4, B 3, C 2, D 1, E 0; absent with adjusted. */
+    public Integer getScaled() {
+        Integer adjusted = getAdjusted();
+        if (adjusted == null) {
+            return null;
+        }
+        int multiplier = switch (getBand()) {
+            case "A" -> 4;
+            case "B" -> 3;
+            case "C" -> 2;
+            case "D" -> 1;
+            default -> 0;
+        };
+        return adjusted * multiplier;
+    }
 }

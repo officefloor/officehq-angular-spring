@@ -51,6 +51,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // combined is "n/a").
 // Their band classifies their adjusted: E below 0, D from 0 to 49, C from 50 to 149, B from 150 to 299 and
 // A from 300 ("n/a" while adjusted is "n/a").
+// Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
+// adjusted is "n/a").
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -178,6 +180,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Quality</th>
           <th scope="col">Adjusted</th>
           <th scope="col">Band</th>
+          <th scope="col">Scaled</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -227,6 +230,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-quality">{{ p.quality ?? 'n/a' }}</td>
             <td data-testid="concept-adjusted">{{ p.adjusted ?? 'n/a' }}</td>
             <td data-testid="concept-band">{{ p.band ?? 'n/a' }}</td>
+            <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>
