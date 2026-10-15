@@ -132,6 +132,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // counting anyone whose effective is "n/a" (0 when empty).
 // Each group shows its min: the lowest scaled of the people in it, ignoring "n/a" ("n/a" when none of its
 // people have a scaled).
+// Each group shows its max: the highest scaled of the people in it, ignoring "n/a" ("n/a" when none of its
+// people have a scaled).
 // Each person shows their share: their scaled as a percentage of their group's strength, rounded to the nearest whole percent
 // ("n/a" when their group's strength is zero, they have no group or their scaled is "n/a").
 // Each person shows their standing: their place within their group by scaled, highest first (1), with
@@ -280,6 +282,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
               — apex <span data-testid="group-concept-apex">{{ groupApexes().get(g.id)?.name ?? 'n/a' }}</span>
               — density <span data-testid="group-concept-density">{{ groupDensities().get(g.id) ?? 0 }}</span>
               — min <span data-testid="group-concept-min">{{ groupMins().get(g.id) ?? 'n/a' }}</span>
+              — max <span data-testid="group-concept-max">{{ groupMaxes().get(g.id) ?? 'n/a' }}</span>
             </li>
           }
         </ul>
@@ -1015,6 +1018,14 @@ export class People {
       for (const g of p.groups) mins.set(g.id, Math.min(mins.get(g.id) ?? p.scaled, p.scaled));
     }
     return mins;
+  });
+  protected readonly groupMaxes = computed(() => {
+    const maxes = new Map<number, number>();
+    for (const p of this.people()) {
+      if (p.scaled === null) continue;
+      for (const g of p.groups) maxes.set(g.id, Math.max(maxes.get(g.id) ?? p.scaled, p.scaled));
+    }
+    return maxes;
   });
   protected readonly standings = computed(() => {
     const ranked = this.people()
