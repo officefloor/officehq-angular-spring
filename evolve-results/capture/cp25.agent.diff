@@ -1,0 +1,486 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 70154b3..5fd639e 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -20,6 +20,13 @@ export interface Person {
+   net: number | null;
+   rank: number | null;
+   percentile: number | null;
++  onset: string | null;
++}
++
++// A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
++export interface Sheet {
++  id: string | null;
++  anchor: string;
+ }
+ 
+ export type Grade = 'LOW' | 'MID' | 'HIGH';
+@@ -49,6 +56,11 @@ export class PeopleService {
+     return this.http.get<Person[]>('/api/people', { params: sheetParams(sheet) });
+   }
+ 
++  // A sheet (with its anchor); null is the unnamed sheet.
++  sheet(sheet: string | null): Observable<Sheet> {
++    return this.http.get<Sheet>('/api/sheet', { params: sheetParams(sheet) });
++  }
++
+   // Opens a named sheet, starting a new empty one when no sheet has that id yet.
+   openSheet(sheet: string): Observable<void> {
+     return this.http.put(`/api/sheets/${encodeURIComponent(sheet)}`, null).pipe(map(() => undefined));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e8a122b..2c6e6fd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -21,6 +21,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
+ // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
+ // its own people, and a sheet only ever shows (and edits) its own.
++// The sheet shows its anchor date (today when none is set), and each person their onset date.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -40,6 +41,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+         <span data-testid="sheet-none">none</span>
+       }
+     </p>
++    <p>Anchor: <strong data-testid="sheet-anchor">{{ anchor() }}</strong></p>
+ 
+     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
+       <label for="person-name">Name</label>
+@@ -97,6 +99,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Beta</th>
+           <th scope="col">Gamma</th>
+           <th scope="col">Grade</th>
++          <th scope="col">Onset</th>
+           <th scope="col">Weight</th>
+           <th scope="col">Thrust</th>
+           <th scope="col">Drift</th>
+@@ -124,6 +127,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-beta">{{ p.beta }}</td>
+             <td data-testid="person-gamma">{{ p.gamma }}</td>
+             <td data-testid="person-grade">{{ p.grade }}</td>
++            <td data-testid="person-onset">{{ p.onset }}</td>
+             <td data-testid="concept-weight">{{ p.weight ?? 'n/a' }}</td>
+             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+@@ -239,6 +243,7 @@ export class People {
+   protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
+   protected readonly sheet = signal<string | null>(null);
++  protected readonly anchor = signal('');
+   protected readonly saving = signal(false);
+   protected readonly editing = signal<Person | null>(null);
+   protected readonly leader = computed(() => this.people().find((p) => p.rank === 1)?.name ?? null);
+@@ -343,6 +348,9 @@ export class People {
+ 
+   private load(): void {
+     const sheet = this.sheet();
++    this.service.sheet(sheet).subscribe((s) => {
++      if (this.sheet() === sheet) this.anchor.set(s.anchor);
++    });
+     this.service.list(sheet).subscribe((people) => {
+       if (this.sheet() === sheet) this.people.set(people);
+     });
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 22c560c..4dc27b3 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,5 +1,7 @@
+ package net.officefloor.hq.app;
+ 
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
+ import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -27,11 +29,11 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset");
+ 
+     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
+ 
+-    private static final Set<String> SHEET_FIELDS = Set.of("id", "people", "patrons");
++    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -50,6 +52,7 @@ public class TestSupportController {
+         jdbc.update("DELETE FROM person_patron");
+         jdbc.update("DELETE FROM person");
+         jdbc.update("DELETE FROM sheet");
++        jdbc.update("DELETE FROM unnamed_sheet");
+         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
+     }
+ 
+@@ -61,10 +64,15 @@ public class TestSupportController {
+     @Transactional
+     public void seed(@RequestBody Map<String, Object> fixture) {
+         for (String key : fixture.keySet()) {
+-            if (!key.equals("people") && !key.equals("patrons") && !key.equals("sheets")) {
++            if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("sheets")) {
+                 throw badRequest("unknown fixture key: " + key);
+             }
+         }
++        // The top-level anchor, people and patrons are the unnamed sheet's.
++        LocalDate anchor = date(fixture.get("anchor"), "anchor");
++        if (anchor != null) {
++            jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
++        }
+         // People and patrons at the top level are on the unnamed sheet.
+         seedSheet(null, fixture.get("people"), fixture.get("patrons"), "");
+         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
+@@ -76,7 +84,7 @@ public class TestSupportController {
+             if (!(sheet.get("id") instanceof String id) || id.isBlank()) {
+                 throw badRequest("sheets.id is required");
+             }
+-            jdbc.update("INSERT INTO sheet (id) VALUES (?)", id);
++            jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
+             seedSheet(id, sheet.get("people"), sheet.get("patrons"), "sheets.");
+         }
+     }
+@@ -124,10 +132,12 @@ public class TestSupportController {
+             Integer beta = integer(row.get("beta"), prefix + "people.beta");
+             Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
+             String grade = grade(row.get("grade"), prefix + "people.grade");
++            LocalDate onset = date(row.get("onset"), prefix + "people.onset");
+             // A person's id is their id within the sheet; the internal key is generated.
+             Integer localId = integer(row.get("id"), prefix + "people.id");
+-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade) VALUES (?, ?, ?, ?, ?, ?, ?)",
+-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade);
++            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset) "
++                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
++                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset);
+         }
+         // Patrons link people by id, so add them once every person exists.
+         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
+@@ -154,11 +164,20 @@ public class TestSupportController {
+      */
+     @GetMapping("/fixture")
+     public Map<String, Object> fixture() {
+-        Map<String, Object> out = new LinkedHashMap<>(sheetContents(null));
++        Map<String, Object> out = new LinkedHashMap<>();
++        for (String anchor : jdbc.queryForList("SELECT CAST(anchor AS VARCHAR) FROM unnamed_sheet WHERE anchor IS NOT NULL",
++                String.class)) {
++            out.put("anchor", anchor);
++        }
++        out.putAll(sheetContents(null));
+         List<Map<String, Object>> sheets = new ArrayList<>();
+-        for (String id : jdbc.queryForList("SELECT id FROM sheet ORDER BY id", String.class)) {
++        for (Map<String, Object> row : jdbc.queryForList("SELECT id, CAST(anchor AS VARCHAR) AS anchor FROM sheet ORDER BY id")) {
+             Map<String, Object> sheet = new LinkedHashMap<>();
+-            sheet.put("id", id);
++            sheet.put("id", row.get("id"));
++            if (row.get("anchor") != null) {
++                sheet.put("anchor", row.get("anchor"));
++            }
++            String id = (String) row.get("id");
+             sheet.putAll(sheetContents(id));
+             sheets.add(sheet);
+         }
+@@ -171,7 +190,8 @@ public class TestSupportController {
+         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
+         Map<String, Object> out = new LinkedHashMap<>();
+         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+-                + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\" FROM person p WHERE " + where + " ORDER BY local_id", args));
++                + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\", "
++                + "CAST(onset AS VARCHAR) AS \"onset\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
+                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+@@ -213,6 +233,17 @@ public class TestSupportController {
+         }
+     }
+ 
++    private static LocalDate date(Object value, String field) {
++        if (value == null) {
++            return null;
++        }
++        try {
++            return LocalDate.parse(String.valueOf(value));
++        } catch (DateTimeParseException e) {
++            throw badRequest(field + " must be a date as yyyy-mm-dd, got " + value);
++        }
++    }
++
+     private static ResponseStatusException badRequest(String message) {
+         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 57bd4a2..7b0c3db 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.JoinTable;
+ import jakarta.persistence.ManyToMany;
+ import jakarta.persistence.Table;
++import java.time.LocalDate;
+ import java.util.Comparator;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -22,7 +23,8 @@ import java.util.Set;
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+- * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight. */
++ * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
++ * A person may have an "onset" date (absent until given). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -46,6 +48,8 @@ public class Person {
+     @Enumerated(EnumType.STRING)
+     private Grade grade;
+ 
++    private LocalDate onset;
++
+     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
+     @Column(name = "sheet_id")
+     private String sheetId;
+@@ -115,6 +119,10 @@ public class Person {
+         this.grade = grade;
+     }
+ 
++    public LocalDate getOnset() {
++        return onset;
++    }
++
+     /** Weight comes from the grade: LOW 1, MID 3, HIGH 5; absent without a grade. */
+     public Integer getWeight() {
+         return grade == null ? null : grade.weight();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index fd41552..810a60e 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.people;
+ 
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashMap;
+@@ -26,13 +27,13 @@ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+-            Integer backing, Integer net, Integer rank, Integer percentile) {
++            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset) {
+         static PersonView of(Person p, Map<Long, Integer> ranks) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()));
++                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index f9ecf64..9edb9ac 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.people;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -18,11 +19,15 @@ public class PersonService {
+ 
+     private final SheetRepository sheets;
+ 
++    private final UnnamedSheetRepository unnamedSheet;
++
+     private final Audit audit;
+ 
+-    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
++    public PersonService(PersonRepository people, SheetRepository sheets, UnnamedSheetRepository unnamedSheet,
++            Audit audit) {
+         this.people = people;
+         this.sheets = sheets;
++        this.unnamedSheet = unnamedSheet;
+         this.audit = audit;
+     }
+ 
+@@ -38,6 +43,18 @@ public class PersonService {
+         return sheets.existsById(sheetId);
+     }
+ 
++    /**
++     * A sheet's anchor date: the one set on it, or today when none is set; a null sheet id is the
++     * unnamed sheet.
++     */
++    @Transactional(readOnly = true)
++    public LocalDate anchor(String sheetId) {
++        Optional<LocalDate> anchor = sheetId == null
++                ? unnamedSheet.findById(UnnamedSheet.ID).map(UnnamedSheet::getAnchor)
++                : sheets.findById(sheetId).map(Sheet::getAnchor);
++        return anchor.orElseGet(LocalDate::now);
++    }
++
+     /** Opens a named sheet, storing it as a new empty sheet when it does not exist yet. */
+     @Transactional
+     public Sheet openSheet(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/people/Sheet.java b/src/main/java/net/officefloor/hq/app/people/Sheet.java
+index 8049ecb..abc70b3 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/people/Sheet.java
+@@ -3,8 +3,10 @@ package net.officefloor.hq.app.people;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.time.LocalDate;
+ 
+-/** A named sheet of people, identified by the id the user types to open it. */
++/** A named sheet of people, identified by the id the user types to open it. Its "anchor" is the
++ * reference date for everything date-dependent on it; absent until set. */
+ @Entity
+ @Table(name = "sheet")
+ public class Sheet {
+@@ -12,6 +14,8 @@ public class Sheet {
+     @Id
+     private String id;
+ 
++    private LocalDate anchor;
++
+     protected Sheet() {
+     }
+ 
+@@ -22,4 +26,8 @@ public class Sheet {
+     public String getId() {
+         return id;
+     }
++
++    public LocalDate getAnchor() {
++        return anchor;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/SheetController.java b/src/main/java/net/officefloor/hq/app/people/SheetController.java
+index e13a6f0..ec6ec46 100644
+--- a/src/main/java/net/officefloor/hq/app/people/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/people/SheetController.java
+@@ -1,18 +1,19 @@
+ package net.officefloor.hq.app.people;
+ 
++import java.time.LocalDate;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PutMapping;
+-import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ @RestController
+-@RequestMapping("/api/sheets")
+ public class SheetController {
+ 
+-    public record SheetView(String id) {
++    /** A sheet: its id (null for the unnamed sheet) and its anchor date (today when none is set). */
++    public record SheetView(String id, LocalDate anchor) {
+     }
+ 
+     private final PersonService service;
+@@ -21,24 +22,33 @@ public class SheetController {
+         this.service = service;
+     }
+ 
++    /** The sheet named by the request, like the people API; blank or absent means the unnamed sheet. */
++    @GetMapping("/api/sheet")
++    public SheetView current(@RequestParam(required = false) String sheet) {
++        if (sheet == null || sheet.isBlank()) {
++            return new SheetView(null, service.anchor(null));
++        }
++        return get(sheet);
++    }
++
+     /** The named sheet, or 404 when no sheet has that id. */
+-    @GetMapping("/{id}")
++    @GetMapping("/api/sheets/{id}")
+     public SheetView get(@PathVariable String id) {
+         String sheetId = id.trim();
+         if (!service.sheetExists(sheetId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "no sheet " + sheetId);
+         }
+-        return new SheetView(sheetId);
++        return new SheetView(sheetId, service.anchor(sheetId));
+     }
+ 
+     /** Opens the named sheet, starting a new empty one when no sheet has that id yet. */
+-    @PutMapping("/{id}")
++    @PutMapping("/api/sheets/{id}")
+     public SheetView open(@PathVariable String id) {
+         String sheetId = id.trim();
+         if (sheetId.isEmpty()) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "a sheet id is required");
+         }
+         service.openSheet(sheetId);
+-        return new SheetView(sheetId);
++        return new SheetView(sheetId, service.anchor(sheetId));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/UnnamedSheet.java b/src/main/java/net/officefloor/hq/app/people/UnnamedSheet.java
+new file mode 100644
+index 0000000..8eb38b0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/UnnamedSheet.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app.people;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** The settings of the unnamed sheet (which has no id); there is at most one row, with id 1. */
++@Entity
++@Table(name = "unnamed_sheet")
++public class UnnamedSheet {
++
++    public static final int ID = 1;
++
++    @Id
++    private Integer id;
++
++    private LocalDate anchor;
++
++    protected UnnamedSheet() {
++    }
++
++    public LocalDate getAnchor() {
++        return anchor;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/UnnamedSheetRepository.java b/src/main/java/net/officefloor/hq/app/people/UnnamedSheetRepository.java
+new file mode 100644
+index 0000000..36740f3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/UnnamedSheetRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.people;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UnnamedSheetRepository extends JpaRepository<UnnamedSheet, Integer> {
++}
+diff --git a/src/main/resources/db/migration/V9__anchor_onset.sql b/src/main/resources/db/migration/V9__anchor_onset.sql
+new file mode 100644
+index 0000000..0f789b0
+--- /dev/null
++++ b/src/main/resources/db/migration/V9__anchor_onset.sql
+@@ -0,0 +1,9 @@
++-- A person's onset date; absent until given.
++ALTER TABLE person ADD COLUMN onset DATE;
++-- A sheet's anchor date, the fixed point for everything date-dependent; absent means today.
++ALTER TABLE sheet ADD COLUMN anchor DATE;
++-- The unnamed sheet has no row in sheet, so its settings live in this single-row table.
++CREATE TABLE unnamed_sheet (
++    id INT PRIMARY KEY CHECK (id = 1),
++    anchor DATE
++);
