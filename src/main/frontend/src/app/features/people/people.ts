@@ -6,7 +6,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
 // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
 // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
-// their alpha, beta and gamma instead of adding. Each person may have any number of patrons (other
+// their alpha, beta and gamma instead of adding. Each person also has whole-number delta and epsilon
+// (a second raw axis, blank until given), set on add, on the row or through Edit. Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 // Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
@@ -115,6 +116,22 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
         formControlName="gamma"
         data-testid="person-form-gamma"
       />
+      <label for="person-delta">Delta</label>
+      <input
+        id="person-delta"
+        type="number"
+        step="1"
+        formControlName="delta"
+        data-testid="person-form-delta"
+      />
+      <label for="person-epsilon">Epsilon</label>
+      <input
+        id="person-epsilon"
+        type="number"
+        step="1"
+        formControlName="epsilon"
+        data-testid="person-form-epsilon"
+      />
       <label for="person-grade">Grade</label>
       <select id="person-grade" formControlName="grade" data-testid="person-form-grade">
         <option [ngValue]="null">none</option>
@@ -181,6 +198,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Alpha</th>
           <th scope="col">Beta</th>
           <th scope="col">Gamma</th>
+          <th scope="col">Delta</th>
+          <th scope="col">Epsilon</th>
           <th scope="col">Grade</th>
           <th scope="col">Regions</th>
           <th scope="col">Active</th>
@@ -218,6 +237,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
+          <th scope="col">Set delta</th>
+          <th scope="col">Set epsilon</th>
           <th scope="col">Set grade</th>
           <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
@@ -237,6 +258,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-alpha">{{ p.alpha }}</td>
             <td data-testid="person-beta">{{ p.beta }}</td>
             <td data-testid="person-gamma">{{ p.gamma }}</td>
+            <td data-testid="person-delta">{{ p.delta }}</td>
+            <td data-testid="person-epsilon">{{ p.epsilon }}</td>
             <td data-testid="person-grade">{{ p.grade }}</td>
             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
@@ -317,6 +340,38 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
                   data-testid="person-gamma-input"
                 />
                 <button type="submit" data-testid="person-gamma-save">Save</button>
+              </form>
+            </td>
+            <td>
+              <form (submit)="$event.preventDefault(); setDelta(p, deltaInput.value)">
+                <label class="visually-hidden" [for]="'person-delta-edit-' + p.id">
+                  Delta for {{ p.name }}
+                </label>
+                <input
+                  #deltaInput
+                  [id]="'person-delta-edit-' + p.id"
+                  type="number"
+                  step="1"
+                  [value]="p.delta ?? ''"
+                  data-testid="person-delta-input"
+                />
+                <button type="submit" data-testid="person-delta-save">Save</button>
+              </form>
+            </td>
+            <td>
+              <form (submit)="$event.preventDefault(); setEpsilon(p, epsilonInput.value)">
+                <label class="visually-hidden" [for]="'person-epsilon-edit-' + p.id">
+                  Epsilon for {{ p.name }}
+                </label>
+                <input
+                  #epsilonInput
+                  [id]="'person-epsilon-edit-' + p.id"
+                  type="number"
+                  step="1"
+                  [value]="p.epsilon ?? ''"
+                  data-testid="person-epsilon-input"
+                />
+                <button type="submit" data-testid="person-epsilon-save">Save</button>
               </form>
             </td>
             <td>
@@ -522,6 +577,8 @@ export class People {
     alpha: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     gamma: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+    delta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+    epsilon: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     grade: [null as Grade | null],
     region: [''],
   });
@@ -546,7 +603,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.editing.set(person);
-    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, grade: person.grade, region: person.regions.join(', ') });
+    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, delta: person.delta, epsilon: person.epsilon, grade: person.grade, region: person.regions.join(', ') });
     this.form.controls.name.disable();
   }
 
@@ -557,13 +614,13 @@ export class People {
   }
 
   protected submit(): void {
-    const { name, alpha, beta, gamma, grade, region: regionText } = this.form.getRawValue();
+    const { name, alpha, beta, gamma, delta, epsilon, grade, region: regionText } = this.form.getRawValue();
     const regions = toRegions(regionText);
     if (this.form.invalid) return;
     const editing = this.editing();
     const request = editing
-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), grade, regions })
-      : this.service.add(this.sheet(), { name, alpha, beta, gamma, grade, regions });
+      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), grade, regions })
+      : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, grade, regions });
     this.saving.set(true);
     request.subscribe({
       next: () => {
@@ -594,6 +651,20 @@ export class People {
     if (text !== '' && !/^-?\d+$/.test(text)) return;
     const gamma = text === '' ? null : Number(text);
     this.service.setGamma(this.sheet(), person.id, gamma).subscribe(() => this.load());
+  }
+
+  protected setDelta(person: Person, value: string): void {
+    const text = value.trim();
+    if (text !== '' && !/^-?\d+$/.test(text)) return;
+    const delta = text === '' ? null : Number(text);
+    this.service.setDelta(this.sheet(), person.id, delta).subscribe(() => this.load());
+  }
+
+  protected setEpsilon(person: Person, value: string): void {
+    const text = value.trim();
+    if (text !== '' && !/^-?\d+$/.test(text)) return;
+    const epsilon = text === '' ? null : Number(text);
+    this.service.setEpsilon(this.sheet(), person.id, epsilon).subscribe(() => this.load());
   }
 
   protected setGrade(person: Person, value: string): void {

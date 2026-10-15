@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Set;
 
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
- * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+ * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
@@ -62,6 +62,10 @@ public class Person {
     private Integer beta;
 
     private Integer gamma;
+
+    private Integer delta;
+
+    private Integer epsilon;
 
     @Enumerated(EnumType.STRING)
     private Grade grade;
@@ -145,6 +149,22 @@ public class Person {
 
     public void setGamma(Integer gamma) {
         this.gamma = gamma;
+    }
+
+    public Integer getDelta() {
+        return delta;
+    }
+
+    public void setDelta(Integer delta) {
+        this.delta = delta;
+    }
+
+    public Integer getEpsilon() {
+        return epsilon;
+    }
+
+    public void setEpsilon(Integer epsilon) {
+        this.epsilon = epsilon;
     }
 
     public Grade getGrade() {

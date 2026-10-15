@@ -12,6 +12,8 @@ export interface Person {
   alpha: number | null;
   beta: number | null;
   gamma: number | null;
+  delta: number | null;
+  epsilon: number | null;
   grade: Grade | null;
   weight: number | null;
   thrust: number | null;
@@ -74,6 +76,8 @@ export interface NewPerson {
   alpha: number | null;
   beta: number | null;
   gamma: number | null;
+  delta: number | null;
+  epsilon: number | null;
   grade: Grade | null;
   regions: string[];
 }
@@ -118,6 +122,14 @@ export class PeopleService {
 
   setGamma(sheet: string | null, id: number, gamma: number | null): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { gamma }, { params: sheetParams(sheet) });
+  }
+
+  setDelta(sheet: string | null, id: number, delta: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { delta }, { params: sheetParams(sheet) });
+  }
+
+  setEpsilon(sheet: string | null, id: number, epsilon: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { epsilon }, { params: sheetParams(sheet) });
   }
 
   setGrade(sheet: string | null, id: number, grade: Grade | null): Observable<Person> {

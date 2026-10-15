@@ -31,7 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active", "score", "state");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "delta", "epsilon", "grade", "onset", "active", "score", "state");
 
     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
@@ -141,6 +141,8 @@ public class TestSupportController {
             Integer alpha = integer(row.get("alpha"), prefix + "people.alpha");
             Integer beta = integer(row.get("beta"), prefix + "people.beta");
             Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
+            Integer delta = integer(row.get("delta"), prefix + "people.delta");
+            Integer epsilon = integer(row.get("epsilon"), prefix + "people.epsilon");
             String grade = grade(row.get("grade"), prefix + "people.grade");
             LocalDate onset = date(row.get("onset"), prefix + "people.onset");
             Boolean active = bool(row.get("active"), prefix + "people.active");
@@ -148,9 +150,9 @@ public class TestSupportController {
             String state = state(row.get("state"), prefix + "people.state");
             // A person's id is their id within the sheet; the internal key is generated.
             Integer localId = integer(row.get("id"), prefix + "people.id");
-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active, score, state) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset,
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, grade, onset, active, score, state) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, delta, epsilon, grade, onset,
                     active != null ? active : true, score, state != null ? state : State.DRAFT.name());
         }
         // Patrons link people by id, so add them once every person exists.
@@ -237,7 +239,7 @@ public class TestSupportController {
         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
-                + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\", "
+                + "beta AS \"beta\", gamma AS \"gamma\", delta AS \"delta\", epsilon AS \"epsilon\", grade AS \"grade\", "
                 + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\" FROM person p WHERE " + where + " ORDER BY local_id", args));
         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
