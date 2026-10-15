@@ -9,7 +9,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // their alpha, beta and gamma instead of adding. Each person also has whole-number delta and epsilon
 // (a second raw axis, blank until given), set on add, on the row or through Edit; their force is delta × epsilon
 // ("n/a" while either is missing). Each person also has a whole-number zeta (blank until given), set the same
-// way; their sway is zeta − delta and their torque is force + 2 × sway ("n/a" while any part is missing).
+// way; their sway is zeta − delta and their torque is force + 3 × sway ("n/a" while any part is missing).
 // Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).

@@ -25,7 +25,7 @@ import java.util.Set;
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
  * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given) with the derived "force"
  * (delta × epsilon, absent while either is), a whole-number "zeta" (absent until given) with the derived "sway"
- * (zeta − delta) and "torque" (force + 2 × sway), each absent while any part is, and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+ * (zeta − delta) and "torque" (force + 3 × sway), each absent while any part is, and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
@@ -314,11 +314,11 @@ public class Person {
         return zeta == null || delta == null ? null : zeta - delta;
     }
 
-    /** Torque is force plus two times sway; absent while either is absent. */
+    /** Torque is force plus three times sway; absent while either is absent. */
     public Integer getTorque() {
         Integer force = getForce();
         Integer sway = getSway();
-        return force == null || sway == null ? null : force + 2 * sway;
+        return force == null || sway == null ? null : force + 3 * sway;
     }
 
     /** Load is momentum times weight; absent while either is absent. */
