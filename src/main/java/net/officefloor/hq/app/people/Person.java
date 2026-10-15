@@ -37,7 +37,7 @@ import java.util.Set;
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
- * person's regions, of momentum times that region's multiplier. "Gust" is reach plus torque. "Coil" is gust minus momentum. A person may follow any number of other people on
+ * person's regions, of momentum times that region's multiplier. "Gust" is reach plus two times torque. "Coil" is gust minus momentum. A person may follow any number of other people on
  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
@@ -584,11 +584,11 @@ public class Person {
         return thrum == null || blend == null ? null : thrum - blend;
     }
 
-    /** Gust is reach plus torque; absent while either is absent. */
+    /** Gust is reach plus two times torque; absent while either is absent. */
     public Integer getGust() {
         Integer reach = getReach();
         Integer torque = getTorque();
-        return reach == null || torque == null ? null : reach + torque;
+        return reach == null || torque == null ? null : reach + 2 * torque;
     }
 
     /** Coil is gust minus momentum; absent while either is absent. */

@@ -58,7 +58,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // sorted ascending.
 // Their reach is the sum, over their regions, of momentum times the region's multiplier, from its first
 // letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
-// Their gust is their reach plus their torque ("n/a" while either is "n/a").
+// Their gust is their reach plus two times their torque ("n/a" while either is "n/a").
 // Their coil is their gust minus their momentum ("n/a" while either is "n/a").
 // The sheet's region counts show, for each region its people have, how many of them are in it
 // (a person counts once in every region they belong to), ordered by region code.
