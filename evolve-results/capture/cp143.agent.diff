@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4485aba9..7f246942 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -121,6 +121,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // The sheet's biggest group is the name of the group with the highest strength, ties going to the name
+ // that comes first alphabetically ("n/a" when there are no groups).
+ // The sheet's total strength is the sum of the strengths of all its groups (0 when there are none).
++// Each group shows its rank: its place among the sheet's groups by strength, highest first (1), with
++// equal strength placed by the group name earlier in the alphabet.
+ // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
+ // Each group shows its spread: the highest effective of the people in it minus the lowest, ignoring "n/a"
+ // ("n/a" when none of its people have an effective).
+@@ -268,6 +270,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+             <li [attr.data-testid]="'group-row-' + g.id">
+               <span data-testid="group-name">{{ g.name }}</span>
+               — strength <span data-testid="group-concept-strength">{{ groupStrengths().get(g.id) ?? 0 }}</span>
++              — rank <span data-testid="group-concept-rank">{{ groupRanks().get(g.id) }}</span>
+               — size <span data-testid="group-concept-size">{{ groupSizes().get(g.id) ?? 0 }}</span>
+               — cohesion <span data-testid="group-concept-cohesion">{{ groupCohesions().get(g.id) ?? 'n/a' }}</span>
+               — spread <span data-testid="group-concept-spread">{{ groupSpreads().get(g.id) ?? 'n/a' }}</span>
+@@ -889,6 +892,13 @@ export class People {
+     const strengths = this.groupStrengths();
+     return this.groups().reduce((total, g) => total + (strengths.get(g.id) ?? 0), 0);
+   });
++  protected readonly groupRanks = computed(() => {
++    const strengths = this.groupStrengths();
++    const ranked = [...this.groups()].sort(
++      (a, b) => (strengths.get(b.id) ?? 0) - (strengths.get(a.id) ?? 0) || a.name.localeCompare(b.name),
++    );
++    return new Map(ranked.map((g, i) => [g.id, i + 1]));
++  });
+   protected readonly biggestGroup = computed(() => {
+     const strengths = this.groupStrengths();
+     let top: { name: string; strength: number } | null = null;
