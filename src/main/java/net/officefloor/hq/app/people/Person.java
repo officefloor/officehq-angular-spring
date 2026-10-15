@@ -521,13 +521,13 @@ public class Person {
         return torque < 0 ? "EBB" : torque <= 199 ? "RUN" : "PEAK";
     }
 
-    /** Drag classifies blend: L0 below zero, L1 up to 99, L2 up to 199, L3 from 200; absent with blend. */
+    /** Drag classifies blend: L0 below zero, L1 up to 49, L2 up to 149, L3 from 150; absent with blend. */
     public String getDrag() {
         Integer blend = getBlend();
         if (blend == null) {
             return null;
         }
-        return blend < 0 ? "L0" : blend <= 99 ? "L1" : blend <= 199 ? "L2" : "L3";
+        return blend < 0 ? "L0" : blend <= 49 ? "L1" : blend <= 149 ? "L2" : "L3";
     }
 
     /** Lift is blend times the drag's multiplier: L0 0, L1 1, L2 2, L3 3; absent with blend. */

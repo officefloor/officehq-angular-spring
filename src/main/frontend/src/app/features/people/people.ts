@@ -76,7 +76,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // The sheet's max thrum is the name of the person with the highest thrum, ties going to the name that
 // comes first alphabetically ("n/a" when nobody has a thrum).
 // Their spool is their thrum minus their blend ("n/a" while either is "n/a").
-// Their drag classifies blend: L0 below zero, L1 up to 99, L2 up to 199, L3 from 200 ("n/a" while blend is).
+// Their drag classifies blend: L0 below zero, L1 up to 49, L2 up to 149, L3 from 150 ("n/a" while blend is).
 // Their lift is their blend times their drag's multiplier: L0 0, L1 1, L2 2, L3 3 ("n/a" while blend is).
 // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
