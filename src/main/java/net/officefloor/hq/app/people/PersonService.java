@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.people;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import net.officefloor.hq.app.Audit;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,8 +13,11 @@ public class PersonService {
 
     private final PersonRepository people;
 
-    public PersonService(PersonRepository people) {
+    private final Audit audit;
+
+    public PersonService(PersonRepository people, Audit audit) {
         this.people = people;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -31,9 +36,14 @@ public class PersonService {
     }
 
     @Transactional
+    /** Sets alpha; a real change is recorded in the audit as ALPHA_CHANGED id=.. from=.. to=... */
     public Optional<Person> setAlpha(long id, Integer alpha) {
         return people.findById(id).map(p -> {
+            Integer previous = p.getAlpha();
             p.setAlpha(alpha);
+            if (!Objects.equals(previous, alpha)) {
+                audit.record("ALPHA_CHANGED id=" + id + " from=" + previous + " to=" + alpha);
+            }
             return p;
         });
     }

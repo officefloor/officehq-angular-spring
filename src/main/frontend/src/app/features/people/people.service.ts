@@ -34,6 +34,10 @@ export class PeopleService {
     return this.http.post<Person>('/api/people', person);
   }
 
+  update(id: number, values: Omit<NewPerson, 'name'>): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, values);
+  }
+
   setAlpha(id: number, alpha: number | null): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { alpha });
   }

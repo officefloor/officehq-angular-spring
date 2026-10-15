@@ -5,14 +5,15 @@ import { PeopleService, Person } from './people.service';
 // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
 // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
 // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
-// derived values show "n/a".
+// derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
+// their alpha, beta and gamma instead of adding.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
   template: `
     <h1>People</h1>
 
-    <form [formGroup]="form" (ngSubmit)="add()" data-testid="person-form">
+    <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
       <label for="person-name">Name</label>
       <input id="person-name" formControlName="name" data-testid="person-form-name" />
       <label for="person-alpha">Alpha</label>
@@ -40,8 +41,11 @@ import { PeopleService, Person } from './people.service';
         data-testid="person-form-gamma"
       />
       <button type="submit" [disabled]="form.invalid || saving()" data-testid="person-form-submit">
-        Add person
+        {{ editing() ? 'Save ' + editing()!.name : 'Add person' }}
       </button>
+      @if (editing()) {
+        <button type="button" (click)="cancelEdit()" data-testid="person-form-cancel">Cancel</button>
+      }
     </form>
 
     @if (people().length === 0) {
@@ -61,6 +65,7 @@ import { PeopleService, Person } from './people.service';
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
+          <th scope="col">Edit</th>
         </tr>
       </thead>
       <tbody>
@@ -122,6 +127,16 @@ import { PeopleService, Person } from './people.service';
                 <button type="submit" data-testid="person-gamma-save">Save</button>
               </form>
             </td>
+            <td>
+              <button
+                type="button"
+                (click)="edit(p)"
+                [attr.aria-label]="'Edit ' + p.name"
+                [attr.data-testid]="'person-edit-' + p.id"
+              >
+                Edit
+              </button>
+            </td>
           </tr>
         }
       </tbody>
@@ -133,6 +148,7 @@ export class People {
 
   protected readonly people = signal<Person[]>([]);
   protected readonly saving = signal(false);
+  protected readonly editing = signal<Person | null>(null);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
@@ -145,14 +161,30 @@ export class People {
     this.load();
   }
 
-  protected add(): void {
+  protected edit(person: Person): void {
+    this.editing.set(person);
+    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma });
+    this.form.controls.name.disable();
+  }
+
+  protected cancelEdit(): void {
+    this.editing.set(null);
+    this.form.controls.name.enable();
+    this.form.reset();
+  }
+
+  protected submit(): void {
     const { name, alpha, beta, gamma } = this.form.getRawValue();
     if (this.form.invalid) return;
+    const editing = this.editing();
+    const request = editing
+      ? this.service.update(editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma) })
+      : this.service.add({ name, alpha, beta, gamma });
     this.saving.set(true);
-    this.service.add({ name, alpha, beta, gamma }).subscribe({
+    request.subscribe({
       next: () => {
-        this.form.reset();
         this.saving.set(false);
+        this.cancelEdit();
         this.load();
       },
       error: () => this.saving.set(false),
@@ -183,4 +215,9 @@ export class People {
   private load(): void {
     this.service.list().subscribe((people) => this.people.set(people));
   }
+}
+
+// A number input's value as a whole number, or null when it is empty.
+function toNumber(value: number | string | null): number | null {
+  return value === null || value === '' ? null : Number(value);
 }
