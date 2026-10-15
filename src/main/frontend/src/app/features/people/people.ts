@@ -202,6 +202,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
     <p>Total haul: <strong data-testid="rollup-total-haul">{{ totalHaul() }}</strong></p>
     <p>Total pivot: <strong data-testid="rollup-total-pivot">{{ totalPivot() }}</strong></p>
     <p>Total gust: <strong data-testid="rollup-total-gust">{{ totalGust() }}</strong></p>
+    <p>Total brace: <strong data-testid="rollup-total-brace">{{ totalBrace() }}</strong></p>
     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
     <section aria-labelledby="region-counts-heading">
@@ -677,6 +678,9 @@ export class People {
   );
   protected readonly totalGust = computed(() =>
     this.people().reduce((total, p) => total + (p.gust ?? 0), 0),
+  );
+  protected readonly totalBrace = computed(() =>
+    this.people().reduce((total, p) => total + (p.brace ?? 0), 0),
   );
   protected readonly finalTotal = computed(() =>
     this.people()
