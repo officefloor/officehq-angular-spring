@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 90bef355..cd82ab36 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -6,6 +6,8 @@ import { Observable, map } from 'rxjs';
+ // reopened to REWORK and moved forward to FINAL again.
+ export type State = 'DRAFT' | 'REVIEW' | 'FINAL' | 'REWORK';
+ 
++export const STATES: readonly State[] = ['DRAFT', 'REVIEW', 'FINAL', 'REWORK'];
++
+ export interface Person {
+   id: number;
+   name: string;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2b556c9f..bb4e2ca0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,6 +1,6 @@
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+-import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './people.service';
++import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from './people.service';
+ 
+ // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
+ // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
+@@ -122,6 +122,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // none are); people whose bracket is "n/a" are not counted.
+ // The sheet's grade tally shows how many of its people have each grade, HIGH, MID and LOW (zero when
+ // none do); people without a grade are not counted.
++// The sheet's state tally shows how many of its people are in each state, DRAFT, REVIEW, FINAL and
++// REWORK (zero when none are).
+ // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
+ // add, through Edit or on the row, and the row shows its name.
+ // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
+@@ -432,6 +434,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+         }
+       </ul>
+     </section>
++    <section aria-labelledby="state-tally-heading">
++      <h2 id="state-tally-heading">People per state</h2>
++      <ul>
++        @for (s of stateTally(); track s.state) {
++          <li>
++            {{ s.state }}: <strong [attr.data-testid]="'state-tally-' + s.state">{{ s.count }}</strong>
++          </li>
++        }
++      </ul>
++    </section>
+     <section aria-labelledby="drag-counts-heading">
+       <h2 id="drag-counts-heading">People per drag level</h2>
+       <ul>
+@@ -1311,6 +1323,9 @@ export class People {
+   protected readonly gradeTally = computed(() =>
+     [...GRADES].reverse().map((grade) => ({ grade, count: this.people().filter((p) => p.grade === grade).length })),
+   );
++  protected readonly stateTally = computed(() =>
++    STATES.map((state) => ({ state, count: this.people().filter((p) => p.state === state).length })),
++  );
+   protected readonly bandCounts = computed(() =>
+     BANDS.map((band) => ({ band, count: this.people().filter((p) => p.band === band).length })),
+   );
