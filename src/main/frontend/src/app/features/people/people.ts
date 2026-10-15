@@ -97,6 +97,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // are); people whose band is "n/a" are not counted.
 // The sheet's drag counts show how many of its people are in each drag level, L0 through L3 (zero when
 // none are); people whose drag is "n/a" are not counted.
+// The sheet's pulse counts show how many of its people have each pulse, NEG, FLAT and POS (zero when
+// none do); people whose pulse is "n/a" are not counted.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -242,6 +244,16 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
         @for (d of dragCounts(); track d.drag) {
           <li>
             {{ d.drag }}: <strong [attr.data-testid]="'drag-count-' + d.drag">{{ d.count }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="pulse-counts-heading">
+      <h2 id="pulse-counts-heading">People per pulse</h2>
+      <ul>
+        @for (c of pulseCounts(); track c.pulse) {
+          <li>
+            {{ c.pulse }}: <strong [attr.data-testid]="'pulse-count-' + c.pulse">{{ c.count }}</strong>
           </li>
         }
       </ul>
@@ -720,6 +732,9 @@ export class People {
   protected readonly dragCounts = computed(() =>
     DRAGS.map((drag) => ({ drag, count: this.people().filter((p) => p.drag === drag).length })),
   );
+  protected readonly pulseCounts = computed(() =>
+    PULSES.map((pulse) => ({ pulse, count: this.people().filter((p) => p.pulse === pulse).length })),
+  );
   protected readonly topInfluence = computed(() => {
     let top: Person | null = null;
     for (const p of this.people()) {
@@ -966,6 +981,7 @@ const BANDS = ['A', 'B', 'C', 'D', 'E'] as const;
 
 // The drag levels, lowest first.
 const DRAGS = ['L0', 'L1', 'L2', 'L3'] as const;
+const PULSES = ['NEG', 'FLAT', 'POS'] as const;
 
 // A number input's value as a whole number, or null when it is empty.
 function toNumber(value: number | string | null): number | null {
