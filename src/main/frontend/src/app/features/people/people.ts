@@ -32,6 +32,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // Their clout is their patrons' effective added together (zero without patrons; "n/a" while any
 // patron's effective is "n/a").
 // Their influence is their effective plus their clout ("n/a" while either is "n/a").
+// The sheet's top influence is the name of the person with the highest influence, ties going to the
+// name that comes first alphabetically ("n/a" when nobody has an influence).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -99,6 +101,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
     <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
+    <p>Top influence: <strong data-testid="rollup-top-influence">{{ topInfluence() ?? 'n/a' }}</strong></p>
 
     @if (people().length === 0) {
       <p data-testid="people-empty">No people yet.</p>
@@ -292,6 +295,20 @@ export class People {
   protected readonly totalEffective = computed(() =>
     this.people().reduce((total, p) => total + (p.effective ?? 0), 0),
   );
+  protected readonly topInfluence = computed(() => {
+    let top: Person | null = null;
+    for (const p of this.people()) {
+      if (p.influence === null) continue;
+      if (
+        top === null ||
+        p.influence > top.influence! ||
+        (p.influence === top.influence && p.name.localeCompare(top.name) < 0)
+      ) {
+        top = p;
+      }
+    }
+    return top?.name ?? null;
+  });
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
