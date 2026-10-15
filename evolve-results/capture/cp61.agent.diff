@@ -1,0 +1,401 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 7e3cd73..b279f5b 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -12,6 +12,8 @@ export interface Person {
+   alpha: number | null;
+   beta: number | null;
+   gamma: number | null;
++  delta: number | null;
++  epsilon: number | null;
+   grade: Grade | null;
+   weight: number | null;
+   thrust: number | null;
+@@ -74,6 +76,8 @@ export interface NewPerson {
+   alpha: number | null;
+   beta: number | null;
+   gamma: number | null;
++  delta: number | null;
++  epsilon: number | null;
+   grade: Grade | null;
+   regions: string[];
+ }
+@@ -120,6 +124,14 @@ export class PeopleService {
+     return this.http.patch<Person>(`/api/people/${id}`, { gamma }, { params: sheetParams(sheet) });
+   }
+ 
++  setDelta(sheet: string | null, id: number, delta: number | null): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { delta }, { params: sheetParams(sheet) });
++  }
++
++  setEpsilon(sheet: string | null, id: number, epsilon: number | null): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { epsilon }, { params: sheetParams(sheet) });
++  }
++
+   setGrade(sheet: string | null, id: number, grade: Grade | null): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { grade }, { params: sheetParams(sheet) });
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 733b192..7d019bc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,7 +6,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
+ // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
+ // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
+-// their alpha, beta and gamma instead of adding. Each person may have any number of patrons (other
++// their alpha, beta and gamma instead of adding. Each person also has whole-number delta and epsilon
++// (a second raw axis, blank until given), set on add, on the row or through Edit. Each person may have any number of patrons (other
+ // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
+ // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
+ // Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
+@@ -115,6 +116,22 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+         formControlName="gamma"
+         data-testid="person-form-gamma"
+       />
++      <label for="person-delta">Delta</label>
++      <input
++        id="person-delta"
++        type="number"
++        step="1"
++        formControlName="delta"
++        data-testid="person-form-delta"
++      />
++      <label for="person-epsilon">Epsilon</label>
++      <input
++        id="person-epsilon"
++        type="number"
++        step="1"
++        formControlName="epsilon"
++        data-testid="person-form-epsilon"
++      />
+       <label for="person-grade">Grade</label>
+       <select id="person-grade" formControlName="grade" data-testid="person-form-grade">
+         <option [ngValue]="null">none</option>
+@@ -181,6 +198,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Alpha</th>
+           <th scope="col">Beta</th>
+           <th scope="col">Gamma</th>
++          <th scope="col">Delta</th>
++          <th scope="col">Epsilon</th>
+           <th scope="col">Grade</th>
+           <th scope="col">Regions</th>
+           <th scope="col">Active</th>
+@@ -218,6 +237,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Set alpha</th>
+           <th scope="col">Set beta</th>
+           <th scope="col">Set gamma</th>
++          <th scope="col">Set delta</th>
++          <th scope="col">Set epsilon</th>
+           <th scope="col">Set grade</th>
+           <th scope="col">Set regions</th>
+           <th scope="col">Set active</th>
+@@ -237,6 +258,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-alpha">{{ p.alpha }}</td>
+             <td data-testid="person-beta">{{ p.beta }}</td>
+             <td data-testid="person-gamma">{{ p.gamma }}</td>
++            <td data-testid="person-delta">{{ p.delta }}</td>
++            <td data-testid="person-epsilon">{{ p.epsilon }}</td>
+             <td data-testid="person-grade">{{ p.grade }}</td>
+             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
+             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+@@ -319,6 +342,38 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+                 <button type="submit" data-testid="person-gamma-save">Save</button>
+               </form>
+             </td>
++            <td>
++              <form (submit)="$event.preventDefault(); setDelta(p, deltaInput.value)">
++                <label class="visually-hidden" [for]="'person-delta-edit-' + p.id">
++                  Delta for {{ p.name }}
++                </label>
++                <input
++                  #deltaInput
++                  [id]="'person-delta-edit-' + p.id"
++                  type="number"
++                  step="1"
++                  [value]="p.delta ?? ''"
++                  data-testid="person-delta-input"
++                />
++                <button type="submit" data-testid="person-delta-save">Save</button>
++              </form>
++            </td>
++            <td>
++              <form (submit)="$event.preventDefault(); setEpsilon(p, epsilonInput.value)">
++                <label class="visually-hidden" [for]="'person-epsilon-edit-' + p.id">
++                  Epsilon for {{ p.name }}
++                </label>
++                <input
++                  #epsilonInput
++                  [id]="'person-epsilon-edit-' + p.id"
++                  type="number"
++                  step="1"
++                  [value]="p.epsilon ?? ''"
++                  data-testid="person-epsilon-input"
++                />
++                <button type="submit" data-testid="person-epsilon-save">Save</button>
++              </form>
++            </td>
+             <td>
+               <label class="visually-hidden" [for]="'person-grade-edit-' + p.id">
+                 Grade for {{ p.name }}
+@@ -522,6 +577,8 @@ export class People {
+     alpha: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+     beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+     gamma: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
++    delta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
++    epsilon: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+     grade: [null as Grade | null],
+     region: [''],
+   });
+@@ -546,7 +603,7 @@ export class People {
+ 
+   protected edit(person: Person): void {
+     this.editing.set(person);
+-    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, grade: person.grade, region: person.regions.join(', ') });
++    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, delta: person.delta, epsilon: person.epsilon, grade: person.grade, region: person.regions.join(', ') });
+     this.form.controls.name.disable();
+   }
+ 
+@@ -557,13 +614,13 @@ export class People {
+   }
+ 
+   protected submit(): void {
+-    const { name, alpha, beta, gamma, grade, region: regionText } = this.form.getRawValue();
++    const { name, alpha, beta, gamma, delta, epsilon, grade, region: regionText } = this.form.getRawValue();
+     const regions = toRegions(regionText);
+     if (this.form.invalid) return;
+     const editing = this.editing();
+     const request = editing
+-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), grade, regions })
+-      : this.service.add(this.sheet(), { name, alpha, beta, gamma, grade, regions });
++      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), grade, regions })
++      : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, grade, regions });
+     this.saving.set(true);
+     request.subscribe({
+       next: () => {
+@@ -596,6 +653,20 @@ export class People {
+     this.service.setGamma(this.sheet(), person.id, gamma).subscribe(() => this.load());
+   }
+ 
++  protected setDelta(person: Person, value: string): void {
++    const text = value.trim();
++    if (text !== '' && !/^-?\d+$/.test(text)) return;
++    const delta = text === '' ? null : Number(text);
++    this.service.setDelta(this.sheet(), person.id, delta).subscribe(() => this.load());
++  }
++
++  protected setEpsilon(person: Person, value: string): void {
++    const text = value.trim();
++    if (text !== '' && !/^-?\d+$/.test(text)) return;
++    const epsilon = text === '' ? null : Number(text);
++    this.service.setEpsilon(this.sheet(), person.id, epsilon).subscribe(() => this.load());
++  }
++
+   protected setGrade(person: Person, value: string): void {
+     const grade = GRADES.find((g) => g === value) ?? null;
+     this.service.setGrade(this.sheet(), person.id, grade).subscribe(() => this.load());
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index f010e98..2ae2d5d 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -31,7 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active", "score", "state");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "delta", "epsilon", "grade", "onset", "active", "score", "state");
+ 
+     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
+ 
+@@ -141,6 +141,8 @@ public class TestSupportController {
+             Integer alpha = integer(row.get("alpha"), prefix + "people.alpha");
+             Integer beta = integer(row.get("beta"), prefix + "people.beta");
+             Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
++            Integer delta = integer(row.get("delta"), prefix + "people.delta");
++            Integer epsilon = integer(row.get("epsilon"), prefix + "people.epsilon");
+             String grade = grade(row.get("grade"), prefix + "people.grade");
+             LocalDate onset = date(row.get("onset"), prefix + "people.onset");
+             Boolean active = bool(row.get("active"), prefix + "people.active");
+@@ -148,9 +150,9 @@ public class TestSupportController {
+             String state = state(row.get("state"), prefix + "people.state");
+             // A person's id is their id within the sheet; the internal key is generated.
+             Integer localId = integer(row.get("id"), prefix + "people.id");
+-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active, score, state) "
+-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset,
++            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, grade, onset, active, score, state) "
++                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, delta, epsilon, grade, onset,
+                     active != null ? active : true, score, state != null ? state : State.DRAFT.name());
+         }
+         // Patrons link people by id, so add them once every person exists.
+@@ -237,7 +239,7 @@ public class TestSupportController {
+         Object[] args = sheetId == null ? new Object[0] : new Object[] {sheetId};
+         Map<String, Object> out = new LinkedHashMap<>();
+         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+-                + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\", "
++                + "beta AS \"beta\", gamma AS \"gamma\", delta AS \"delta\", epsilon AS \"epsilon\", grade AS \"grade\", "
+                 + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
+                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index fe5c191..3190b8e 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -23,7 +23,7 @@ import java.util.List;
+ import java.util.Set;
+ 
+ /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
+- * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
++ * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+@@ -63,6 +63,10 @@ public class Person {
+ 
+     private Integer gamma;
+ 
++    private Integer delta;
++
++    private Integer epsilon;
++
+     @Enumerated(EnumType.STRING)
+     private Grade grade;
+ 
+@@ -147,6 +151,22 @@ public class Person {
+         this.gamma = gamma;
+     }
+ 
++    public Integer getDelta() {
++        return delta;
++    }
++
++    public void setDelta(Integer delta) {
++        this.delta = delta;
++    }
++
++    public Integer getEpsilon() {
++        return epsilon;
++    }
++
++    public void setEpsilon(Integer epsilon) {
++        this.epsilon = epsilon;
++    }
++
+     public Grade getGrade() {
+         return grade;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 5a50832..10158ca 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -28,14 +28,14 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/api/people")
+ public class PersonController {
+ 
+-    public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
++    public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+-            return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
++            return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(),
+                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+@@ -94,7 +94,7 @@ public class PersonController {
+     public record PatronView(Long id, String name) {
+     }
+ 
+-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade, List<String> regions) {
++    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Grade grade, List<String> regions) {
+     }
+ 
+     private final PersonService service;
+@@ -117,7 +117,7 @@ public class PersonController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
+         return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
+-                person.grade(), regions(person.regions())));
++                person.delta(), person.epsilon(), person.grade(), regions(person.regions())));
+     }
+ 
+     /** Moves the person with this id on the request's sheet forward to their next state (REWORK back to FINAL); refused once FINAL. */
+@@ -157,7 +157,7 @@ public class PersonController {
+     }
+ 
+     /**
+-     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, score, grade, regions (a list of codes), active
++     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, delta, epsilon, score, grade, regions (a list of codes), active
+      * (true or false), patronIds and allyIds (lists of ids on that sheet) the body names; a null value clears it.
+      */
+     @PatchMapping("/{id}")
+@@ -174,6 +174,12 @@ public class PersonController {
+         if (update.containsKey("gamma")) {
+             person = service.setGamma(sheetId, id, integer(update.get("gamma")));
+         }
++        if (update.containsKey("delta")) {
++            person = service.setDelta(sheetId, id, integer(update.get("delta")));
++        }
++        if (update.containsKey("epsilon")) {
++            person = service.setEpsilon(sheetId, id, integer(update.get("epsilon")));
++        }
+         if (update.containsKey("score")) {
+             person = service.setScore(sheetId, id, integer(update.get("score")));
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index e12b570..50dfd89 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -69,12 +69,15 @@ public class PersonService {
+ 
+     @Transactional
+     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
+-    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Grade grade, Collection<String> regions) {
++    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Grade grade,
++            Collection<String> regions) {
+         if (sheetId != null && !sheets.existsById(sheetId)) {
+             sheets.save(new Sheet(sheetId));
+         }
+         long id = people.maxLocalId(sheetId) + 1;
+         Person person = new Person(sheetId, id, name.trim(), alpha, beta, gamma);
++        person.setDelta(delta);
++        person.setEpsilon(epsilon);
+         person.setGrade(grade);
+         person.setRegions(regions);
+         return people.save(person);
+@@ -109,6 +112,22 @@ public class PersonService {
+         });
+     }
+ 
++    @Transactional
++    public Optional<Person> setDelta(String sheetId, long id, Integer delta) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            p.setDelta(delta);
++            return p;
++        });
++    }
++
++    @Transactional
++    public Optional<Person> setEpsilon(String sheetId, long id, Integer epsilon) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            p.setEpsilon(epsilon);
++            return p;
++        });
++    }
++
+     @Transactional
+     public Optional<Person> setGrade(String sheetId, long id, Grade grade) {
+         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+diff --git a/src/main/resources/db/migration/V18__person_delta_epsilon.sql b/src/main/resources/db/migration/V18__person_delta_epsilon.sql
+new file mode 100644
+index 0000000..0c3cd7d
+--- /dev/null
++++ b/src/main/resources/db/migration/V18__person_delta_epsilon.sql
+@@ -0,0 +1,3 @@
++-- A second raw axis: whole-number delta and epsilon on each person, absent until given.
++ALTER TABLE person ADD COLUMN delta INTEGER;
++ALTER TABLE person ADD COLUMN epsilon INTEGER;
