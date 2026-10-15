@@ -57,6 +57,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // scaled can be worked out ("n/a" while their scaled is "n/a").
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
 // otherwise "no" (also "no" while their norm is "n/a").
+// The sheet's outlier count is how many of its people are outliers.
 // The sheet's band counts show how many of its people are in each band, A through E (zero when none
 // are); people whose band is "n/a" are not counted.
 @Component({
@@ -133,6 +134,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
     <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
     <p>Top influence: <strong data-testid="rollup-top-influence">{{ topInfluence() ?? 'n/a' }}</strong></p>
+    <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
     <section aria-labelledby="region-counts-heading">
       <h2 id="region-counts-heading">People per region</h2>
       @if (regionCounts().length === 0) {
@@ -426,6 +428,7 @@ export class People {
     this.people().reduce((total, p) => total + (p.load ?? 0), 0),
   );
   protected readonly activeCount = computed(() => this.people().filter((p) => p.active).length);
+  protected readonly outlierCount = computed(() => this.people().filter((p) => p.outlier).length);
   protected readonly totalEffective = computed(() =>
     this.people().reduce((total, p) => total + (p.effective ?? 0), 0),
   );
