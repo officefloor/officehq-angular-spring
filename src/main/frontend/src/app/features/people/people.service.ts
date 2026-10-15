@@ -73,6 +73,7 @@ export interface Person {
   yield: number | null;
   grip: number | null;
   charge: number | null;
+  churn: number | null;
   norm: number | null;
   outlier: boolean;
 }

@@ -89,6 +89,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their yield is their pivot plus two times their lift ("n/a" while either is "n/a").
 // Their grip is their yield minus their coil ("n/a" while either is "n/a").
 // Their charge is their vector plus their yield ("n/a" while either is "n/a").
+// Their churn is their tide minus their vector ("n/a" while either is "n/a").
 // The sheet's top charge is the name of the person with the highest charge, ties going to the name
 // that comes first alphabetically ("n/a" when nobody has a charge).
 // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
@@ -338,6 +339,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Yield</th>
           <th scope="col">Grip</th>
           <th scope="col">Charge</th>
+          <th scope="col">Churn</th>
           <th scope="col">Norm</th>
           <th scope="col">Outlier</th>
           <th scope="col">Rank</th>
@@ -427,6 +429,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-yield">{{ p.yield ?? 'n/a' }}</td>
             <td data-testid="concept-grip">{{ p.grip ?? 'n/a' }}</td>
             <td data-testid="concept-charge">{{ p.charge ?? 'n/a' }}</td>
+            <td data-testid="concept-churn">{{ p.churn ?? 'n/a' }}</td>
             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
