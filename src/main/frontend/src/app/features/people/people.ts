@@ -114,6 +114,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // none are); people without a tier are not counted.
 // The sheet's band counts show how many of its people are in each band, A through E (zero when none
 // are); people whose band is "n/a" are not counted.
+// The sheet's span width is how many different bands have at least one of its people in them.
 // The sheet's drag counts show how many of its people are in each drag level, L0 through L3 (zero when
 // none are); people whose drag is "n/a" are not counted.
 // The sheet's pulse counts show how many of its people have each pulse, NEG, FLAT and POS (zero when
@@ -395,6 +396,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
     <p>Median scaled: <strong data-testid="rollup-median-scaled">{{ medianScaled() ?? 'n/a' }}</strong></p>
     <p>Coverage (scaled 500 or more): <strong data-testid="rollup-coverage">{{ coverage() }}</strong></p>
     <p>Concentration (top three share %): <strong data-testid="rollup-concentration">{{ concentration() ?? 'n/a' }}</strong></p>
+    <p>Bands in use: <strong data-testid="rollup-spanwidth">{{ spanWidth() }}</strong></p>
     <p>Skew (average minus median scaled): <strong data-testid="rollup-skewval">{{ skewVal() ?? 'n/a' }}</strong></p>
     <p>Tilt (above average minus below average scaled): <strong data-testid="rollup-tilt">{{ tilt() }}</strong></p>
     <section aria-labelledby="region-counts-heading">
@@ -1339,6 +1341,7 @@ export class People {
   protected readonly bandCounts = computed(() =>
     BANDS.map((band) => ({ band, count: this.people().filter((p) => p.band === band).length })),
   );
+  protected readonly spanWidth = computed(() => this.bandCounts().filter((b) => b.count > 0).length);
   protected readonly dragCounts = computed(() =>
     DRAGS.map((drag) => ({ drag, count: this.people().filter((p) => p.drag === drag).length })),
   );
