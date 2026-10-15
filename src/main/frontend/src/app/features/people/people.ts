@@ -70,6 +70,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's region counts show, for each region its people have, how many of them are in it
 // (a person counts once in every region they belong to), ordered by region code.
 // Each count is also the region's tally (region-tally-<code>), the same number.
+// The sheet's top per region shows, for each region its people have, the name of the person in it with
+// the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them have a scaled).
 // Each person may follow any number of other people, chosen on the row; following is one-directional,
 // so A following B does not make B follow A. A person's allies are the people they follow, listed by name, with how many there are,
 // and their synergy: the allies' thrust added together (zero without allies).
@@ -431,6 +433,20 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
           @for (r of regionLedgers(); track r.region) {
             <li>
               {{ r.region }}: <strong [attr.data-testid]="'ledger-region-' + r.region">{{ r.total }}</strong>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+    <section aria-labelledby="region-apex-heading">
+      <h2 id="region-apex-heading">Top per region</h2>
+      @if (regionApexes().length === 0) {
+        <p>No regions yet.</p>
+      } @else {
+        <ul>
+          @for (r of regionApexes(); track r.region) {
+            <li>
+              {{ r.region }}: <strong [attr.data-testid]="'apexname-region-' + r.region">{{ r.name ?? 'n/a' }}</strong>
             </li>
           }
         </ul>
@@ -1362,6 +1378,23 @@ export class People {
     return [...totals.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([region, total]) => ({ region, total }));
+  });
+  /** The apex of each region: the name of its person with the highest scaled, ties to the earlier name. */
+  protected readonly regionApexes = computed(() => {
+    const apexes = new Map<string, { name: string; scaled: number } | null>();
+    for (const p of this.people()) {
+      for (const region of p.regions) {
+        const apex = apexes.get(region) ?? null;
+        if (p.scaled === null) {
+          if (!apexes.has(region)) apexes.set(region, null);
+        } else if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
+          apexes.set(region, { name: p.name, scaled: p.scaled });
+        }
+      }
+    }
+    return [...apexes.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([region, apex]) => ({ region, name: apex?.name ?? null }));
   });
   protected readonly tierTally = computed(() =>
     TIERS.map((tier) => ({ tier, count: this.people().filter((p) => p.tier === tier).length })),
