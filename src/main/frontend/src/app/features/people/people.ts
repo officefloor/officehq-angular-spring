@@ -142,8 +142,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // group or their scaled is "n/a").
 // Each person shows their mesh: their scaled multiplied by their group's size ("n/a" when they have no
 // group or their scaled is "n/a").
-// Each person shows their rung: their standing as a percentile of the ranked people in their group, the
-// top 100 and the bottom 0, evenly spread and rounded; a group of one is 100 ("n/a" without a standing).
+// Each person shows their rung: (their group's size less their standing in it) over the group's size, as a
+// percentage, rounded; a group of one is 100 ("n/a" without a standing).
 // Each person shows their anchorage: how many groups they belong to (0 without one).
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
 // figure depends on "their group", it is the group, of those they are in, whose name comes first
@@ -1030,7 +1030,7 @@ export class People {
       const standing = standings.get(p.id);
       if (standing === undefined || p.groupId === null) continue;
       const size = sizes.get(p.groupId) ?? 1;
-      rungs.set(p.id, size <= 1 ? 100 : Math.round(((size - standing) * 100) / (size - 1)));
+      rungs.set(p.id, size <= 1 ? 100 : Math.round(((size - standing) * 100) / size));
     }
     return rungs;
   });
