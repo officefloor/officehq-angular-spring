@@ -1,0 +1,51 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4e130512..61a5cc63 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -116,6 +116,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // none are); people whose drag is "n/a" are not counted.
+ // The sheet's pulse counts show how many of its people have each pulse, NEG, FLAT and POS (zero when
+ // none do); people whose pulse is "n/a" are not counted.
++// The sheet's bracket counts show how many of its people are in each bracket, Q4 down to Q1 (zero when
++// none are); people whose bracket is "n/a" are not counted.
+ // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
+ // add, through Edit or on the row, and the row shows its name.
+ // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
+@@ -414,6 +416,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+         }
+       </ul>
+     </section>
++    <section aria-labelledby="bracket-counts-heading">
++      <h2 id="bracket-counts-heading">People per bracket</h2>
++      <ul>
++        @for (c of bracketCounts(); track c.bracket) {
++          <li>
++            {{ c.bracket }}: <strong [attr.data-testid]="'bracket-count-' + c.bracket">{{ c.count }}</strong>
++          </li>
++        }
++      </ul>
++    </section>
+ 
+     @if (people().length === 0) {
+       <p data-testid="people-empty">No people yet.</p>
+@@ -1264,6 +1276,12 @@ export class People {
+   protected readonly pulseCounts = computed(() =>
+     PULSES.map((pulse) => ({ pulse, count: this.people().filter((p) => p.pulse === pulse).length })),
+   );
++  protected readonly bracketCounts = computed(() =>
++    BRACKETS.map((bracket) => ({
++      bracket,
++      count: this.people().filter((p) => this.bracketOf(p) === bracket).length,
++    })),
++  );
+   protected readonly topInfluence = computed(() => {
+     let top: Person | null = null;
+     for (const p of this.people()) {
+@@ -1605,6 +1623,7 @@ const BANDS = ['A', 'B', 'C', 'D', 'E'] as const;
+ // The drag levels, lowest first.
+ const DRAGS = ['L0', 'L1', 'L2', 'L3'] as const;
+ const PULSES = ['NEG', 'FLAT', 'POS'] as const;
++const BRACKETS = ['Q4', 'Q3', 'Q2', 'Q1'] as const;
+ 
+ // A number input's value as a whole number, or null when it is empty.
+ function toNumber(value: number | string | null): number | null {
