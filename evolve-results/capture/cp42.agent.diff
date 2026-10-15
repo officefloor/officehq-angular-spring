@@ -1,0 +1,98 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index d1e2123..409f774 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -31,6 +31,7 @@ export interface Person {
+   reach: number | null;
+   allies: Ally[];
+   allyCount: number;
++  synergy: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f2c23e3..1362a0d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -42,7 +42,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // The sheet's region counts show, for each region its people have, how many of them are in it
+ // (a person counts once in every region they belong to), ordered by region code.
+ // Each person may have any number of allies (other people), chosen on the row; being allies goes both
+-// ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are.
++// ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are,
++// and their synergy: the allies' thrust added together (zero without allies).
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -158,6 +159,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Patrons</th>
+           <th scope="col">Allies</th>
+           <th scope="col">Ally count</th>
++          <th scope="col">Synergy</th>
+           <th scope="col">Backing</th>
+           <th scope="col">Net</th>
+           <th scope="col">Effective</th>
+@@ -199,6 +201,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+             <td data-testid="person-allies">{{ allyNames(p) }}</td>
+             <td data-testid="person-ally-count">{{ p.allyCount }}</td>
++            <td data-testid="concept-synergy">{{ p.synergy ?? 'n/a' }}</td>
+             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
+             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 0bdc5c1..bfb3b1b 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -34,7 +34,8 @@ import java.util.Set;
+  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+  * person's regions, of momentum times that region's multiplier. A person may have any number of "allies":
+- * other people on the list, where being allies goes both ways. */
++ * other people on the list, where being allies goes both ways. "Synergy" is the allies' thrust added
++ * together (zero without allies). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -288,6 +289,19 @@ public class Person {
+         return sum;
+     }
+ 
++    /** Synergy is the sum of the allies' thrust; zero without allies, absent while any ally's thrust is absent. */
++    public Integer getSynergy() {
++        int sum = 0;
++        for (Person ally : getAllies()) {
++            Integer thrust = ally.getThrust();
++            if (thrust == null) {
++                return null;
++            }
++            sum += thrust;
++        }
++        return sum;
++    }
++
+     /** Net is momentum plus backing, counting backing as zero without patrons; absent with momentum, or with a patron whose thrust is absent. */
+     public Integer getNet() {
+         Integer momentum = getMomentum();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 51e8eb6..ce0ba2a 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -31,7 +31,7 @@ public class PersonController {
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+-            List<PatronView> allies, int allyCount) {
++            List<PatronView> allies, int allyCount, Integer synergy) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -41,7 +41,7 @@ public class PersonController {
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+                     p.getInfluence(), p.getRegions(), p.getReach(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getAllies().size());
++                    p.getAllies().size(), p.getSynergy());
+         }
+     }
+ 
