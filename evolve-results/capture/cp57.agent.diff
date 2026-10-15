@@ -1,0 +1,310 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 2b6e409..9bd8bf3 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -2,6 +2,9 @@ import { HttpClient, HttpParams } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable, map } from 'rxjs';
+ 
++// A person's workflow state, moved forward from DRAFT to REVIEW to FINAL.
++export type State = 'DRAFT' | 'REVIEW' | 'FINAL';
++
+ export interface Person {
+   id: number;
+   name: string;
+@@ -24,6 +27,7 @@ export interface Person {
+   age: number | null;
+   decay: number | null;
+   active: boolean;
++  state: State;
+   effective: number | null;
+   clout: number | null;
+   influence: number | null;
+@@ -127,6 +131,11 @@ export class PeopleService {
+     return this.http.patch<Person>(`/api/people/${id}`, { active }, { params: sheetParams(sheet) });
+   }
+ 
++  // Moves a person forward to their next state (DRAFT -> REVIEW -> FINAL).
++  advance(sheet: string | null, id: number): Observable<Person> {
++    return this.http.post<Person>(`/api/people/${id}/advance`, null, { params: sheetParams(sheet) });
++  }
++
+   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1990c63..36e3725 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -24,6 +24,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // The sheet shows its anchor date (today when none is set), and each person their onset date and
+ // their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
+ // Their decay is momentum minus age ("n/a" while either is missing).
++// Each person has a state, starting at DRAFT; the row's Advance button moves it forward to REVIEW and
++// then FINAL, after which there is no Advance button. Every change is recorded in the audit.
+ // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
+ // Their effective is their net while active, and half their net rounded down while not active
+ // ("n/a" while net is).
+@@ -173,6 +175,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Grade</th>
+           <th scope="col">Regions</th>
+           <th scope="col">Active</th>
++          <th scope="col">State</th>
+           <th scope="col">Onset</th>
+           <th scope="col">Age</th>
+           <th scope="col">Decay</th>
+@@ -209,6 +212,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Set grade</th>
+           <th scope="col">Set regions</th>
+           <th scope="col">Set active</th>
++          <th scope="col">Advance</th>
+           <th scope="col">Set patrons</th>
+           <th scope="col">Set allies</th>
+           <th scope="col">Set score</th>
+@@ -225,6 +229,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-grade">{{ p.grade }}</td>
+             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
+             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
++            <td data-testid="person-state">{{ p.state }}</td>
+             <td data-testid="person-onset">{{ p.onset }}</td>
+             <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
+             <td data-testid="concept-decay">{{ p.decay ?? 'n/a' }}</td>
+@@ -346,6 +351,18 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+                 data-testid="person-active-toggle"
+               />
+             </td>
++            <td>
++              @if (p.state !== 'FINAL') {
++                <button
++                  type="button"
++                  (click)="advance(p)"
++                  [attr.aria-label]="'Advance ' + p.name"
++                  [attr.data-testid]="'person-advance-' + p.id"
++                >
++                  Advance
++                </button>
++              }
++            </td>
+             <td>
+               <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
+                 Patrons for {{ p.name }}
+@@ -551,6 +568,10 @@ export class People {
+     this.service.setActive(this.sheet(), person.id, active).subscribe(() => this.load());
+   }
+ 
++  protected advance(person: Person): void {
++    this.service.advance(this.sheet(), person.id).subscribe(() => this.load());
++  }
++
+   protected patronNames(person: Person): string {
+     return person.patrons.map((patron) => patron.name).join(', ');
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 5f9c772..f010e98 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -8,6 +8,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.people.Grade;
++import net.officefloor.hq.app.people.State;
+ import net.officefloor.hq.app.people.Person;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.http.HttpStatus;
+@@ -30,7 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active", "score");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active", "score", "state");
+ 
+     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
+ 
+@@ -144,12 +145,13 @@ public class TestSupportController {
+             LocalDate onset = date(row.get("onset"), prefix + "people.onset");
+             Boolean active = bool(row.get("active"), prefix + "people.active");
+             Integer score = integer(row.get("score"), prefix + "people.score");
++            String state = state(row.get("state"), prefix + "people.state");
+             // A person's id is their id within the sheet; the internal key is generated.
+             Integer localId = integer(row.get("id"), prefix + "people.id");
+-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active, score) "
+-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active, score, state) "
++                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset,
+-                    active != null ? active : true, score);
++                    active != null ? active : true, score, state != null ? state : State.DRAFT.name());
+         }
+         // Patrons link people by id, so add them once every person exists.
+         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
+@@ -236,7 +238,7 @@ public class TestSupportController {
+         Map<String, Object> out = new LinkedHashMap<>();
+         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+                 + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\", "
+-                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\" FROM person p WHERE " + where + " ORDER BY local_id", args));
++                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
+                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+@@ -284,6 +286,17 @@ public class TestSupportController {
+         }
+     }
+ 
++    private static String state(Object value, String field) {
++        if (value == null) {
++            return null;
++        }
++        try {
++            return State.parse(String.valueOf(value)).name();
++        } catch (IllegalArgumentException e) {
++            throw badRequest(field + ": " + e.getMessage());
++        }
++    }
++
+     private static String text(Object value, String field) {
+         if (value == null) {
+             return null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 375839c..4d63ed7 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -37,7 +37,8 @@ import java.util.Set;
+  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
+  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
+  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
+- * without one) and their "quality" is the score (absent without one). */
++ * without one) and their "quality" is the score (absent without one). A person has a workflow "state",
++ * starting at DRAFT and moved forward to REVIEW and then FINAL. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -68,6 +69,9 @@ public class Person {
+ 
+     private boolean active = true;
+ 
++    @Enumerated(EnumType.STRING)
++    private State state = State.DRAFT;
++
+     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
+     @Column(name = "sheet_id")
+     private String sheetId;
+@@ -158,6 +162,14 @@ public class Person {
+         this.active = active;
+     }
+ 
++    public State getState() {
++        return state;
++    }
++
++    public void setState(State state) {
++        this.state = state;
++    }
++
+     /** The regions, sorted ascending. */
+     public List<String> getRegions() {
+         return regions.stream().sorted().toList();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index d5862fe..e63e28a 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -32,7 +32,7 @@ public class PersonController {
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -44,7 +44,7 @@ public class PersonController {
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(),
+                     PersonController.norm(p.getScaled(), medianScaled),
+-                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)));
++                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState());
+         }
+     }
+ 
+@@ -120,6 +120,18 @@ public class PersonController {
+                 person.grade(), regions(person.regions())));
+     }
+ 
++    /** Moves the person with this id on the request's sheet forward to their next state; refused once FINAL. */
++    @PostMapping("/{id}/advance")
++    public PersonView advance(@RequestParam(required = false) String sheet, @PathVariable long id) {
++        String sheetId = sheetId(sheet);
++        try {
++            return service.advance(sheetId, id).map(p -> view(sheetId, p))
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
++        } catch (IllegalStateException e) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
++        }
++    }
++
+     /**
+      * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, score, grade, regions (a list of codes), active
+      * (true or false), patronIds and allyIds (lists of ids on that sheet) the body names; a null value clears it.
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index b0f9c2c..5e02186 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -133,6 +133,21 @@ public class PersonService {
+         });
+     }
+ 
++    /** Moves the person forward to their next state, recorded in the audit as STATE_CHANGED id=.. from=.. to=...; refused once FINAL. */
++    @Transactional
++    public Optional<Person> advance(String sheetId, long id) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            State previous = p.getState();
++            State next = previous.next();
++            if (next == null) {
++                throw new IllegalStateException("a person at " + previous + " cannot move forward");
++            }
++            p.setState(next);
++            audit.record("STATE_CHANGED id=" + id + " from=" + previous + " to=" + next);
++            return p;
++        });
++    }
++
+     /** Sets the person's whole-number score; null clears it. */
+     @Transactional
+     public Optional<Person> setScore(String sheetId, long id, Integer score) {
+diff --git a/src/main/java/net/officefloor/hq/app/people/State.java b/src/main/java/net/officefloor/hq/app/people/State.java
+new file mode 100644
+index 0000000..5720a87
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/State.java
+@@ -0,0 +1,24 @@
++package net.officefloor.hq.app.people;
++
++/** A person's workflow state; a person moves forward from DRAFT to REVIEW to FINAL, and FINAL is terminal. */
++public enum State {
++    DRAFT, REVIEW, FINAL;
++
++    /** The state after this one; none after FINAL. */
++    public State next() {
++        return switch (this) {
++            case DRAFT -> REVIEW;
++            case REVIEW -> FINAL;
++            case FINAL -> null;
++        };
++    }
++
++    /** The state with this name; refuses anything other than DRAFT, REVIEW or FINAL. */
++    public static State parse(String value) {
++        try {
++            return State.valueOf(value);
++        } catch (IllegalArgumentException e) {
++            throw new IllegalArgumentException("state must be DRAFT, REVIEW or FINAL, got " + value);
++        }
++    }
++}
+diff --git a/src/main/resources/db/migration/V17__person_state.sql b/src/main/resources/db/migration/V17__person_state.sql
+new file mode 100644
+index 0000000..6cba7cb
+--- /dev/null
++++ b/src/main/resources/db/migration/V17__person_state.sql
+@@ -0,0 +1,2 @@
++-- Each person's workflow state: DRAFT, then REVIEW, then FINAL; a new person starts at DRAFT.
++ALTER TABLE person ADD COLUMN state VARCHAR(16) DEFAULT 'DRAFT' NOT NULL;
