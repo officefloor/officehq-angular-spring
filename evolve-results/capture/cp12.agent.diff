@@ -1,0 +1,447 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 7d56faa..5e94382 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -12,12 +12,16 @@ export interface Person {
+   drift: number | null;
+   momentum: number | null;
+   tier: string | null;
+-  patronId: number | null;
+-  patronName: string | null;
++  patrons: Patron[];
+   backing: number | null;
+   net: number | null;
+ }
+ 
++export interface Patron {
++  id: number;
++  name: string;
++}
++
+ export interface NewPerson {
+   name: string;
+   alpha: number | null;
+@@ -54,7 +58,7 @@ export class PeopleService {
+     return this.http.patch<Person>(`/api/people/${id}`, { gamma });
+   }
+ 
+-  setPatron(id: number, patronId: number | null): Observable<Person> {
+-    return this.http.patch<Person>(`/api/people/${id}`, { patronId });
++  setPatrons(id: number, patronIds: number[]): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { patronIds });
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 029df88..9f9dc86 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,9 +6,9 @@ import { PeopleService, Person } from './people.service';
+ // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
+ // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
+ // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
+-// their alpha, beta and gamma instead of adding. Each person may have a patron (another person), shown
+-// by name and chosen on the row; their backing is the patron's thrust ("n/a" without a patron),
+-// and their net is momentum plus backing (backing counted as zero without a patron).
++// their alpha, beta and gamma instead of adding. Each person may have any number of patrons (other
++// people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
++// ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -64,13 +64,13 @@ import { PeopleService, Person } from './people.service';
+           <th scope="col">Drift</th>
+           <th scope="col">Momentum</th>
+           <th scope="col">Tier</th>
+-          <th scope="col">Patron</th>
++          <th scope="col">Patrons</th>
+           <th scope="col">Backing</th>
+           <th scope="col">Net</th>
+           <th scope="col">Set alpha</th>
+           <th scope="col">Set beta</th>
+           <th scope="col">Set gamma</th>
+-          <th scope="col">Set patron</th>
++          <th scope="col">Set patrons</th>
+           <th scope="col">Edit</th>
+         </tr>
+       </thead>
+@@ -85,7 +85,7 @@ import { PeopleService, Person } from './people.service';
+             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+-            <td data-testid="person-patrons">{{ p.patronName ?? '' }}</td>
++            <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
+             <td>
+@@ -138,18 +138,18 @@ import { PeopleService, Person } from './people.service';
+             </td>
+             <td>
+               <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
+-                Patron for {{ p.name }}
++                Patrons for {{ p.name }}
+               </label>
+               <select
++                multiple
+                 [id]="'person-patron-edit-' + p.id"
+-                (change)="setPatron(p, patronSelect.value)"
++                (change)="setPatrons(p, patronSelect)"
+                 #patronSelect
+                 data-testid="person-patron-select"
+               >
+-                <option value="" [selected]="p.patronId === null">No patron</option>
+                 @for (other of people(); track other.id) {
+                   @if (other.id !== p.id) {
+-                    <option [value]="other.id" [selected]="p.patronId === other.id">{{ other.name }}</option>
++                    <option [value]="other.id" [selected]="hasPatron(p, other)">{{ other.name }}</option>
+                   }
+                 }
+               </select>
+@@ -239,9 +239,17 @@ export class People {
+     this.service.setGamma(person.id, gamma).subscribe(() => this.load());
+   }
+ 
+-  protected setPatron(person: Person, value: string): void {
+-    const patronId = value === '' ? null : Number(value);
+-    this.service.setPatron(person.id, patronId).subscribe(() => this.load());
++  protected patronNames(person: Person): string {
++    return person.patrons.map((patron) => patron.name).join(', ');
++  }
++
++  protected hasPatron(person: Person, other: Person): boolean {
++    return person.patrons.some((patron) => patron.id === other.id);
++  }
++
++  protected setPatrons(person: Person, select: HTMLSelectElement): void {
++    const patronIds = Array.from(select.selectedOptions, (option) => Number(option.value));
++    this.service.setPatrons(person.id, patronIds).subscribe(() => this.load());
+   }
+ 
+   private load(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 92b2085..a07397c 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -25,7 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "patronId");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma");
++
++    private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -40,7 +42,8 @@ public class TestSupportController {
+     @Transactional
+     public void reset() {
+         audit.clear();
+-        // Person references itself (patron), so delete rather than truncate.
++        // Person is referenced by its patrons, so delete rather than truncate.
++        jdbc.update("DELETE FROM person_patron");
+         jdbc.update("DELETE FROM person");
+         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
+     }
+@@ -53,7 +56,7 @@ public class TestSupportController {
+     @Transactional
+     public void seed(@RequestBody Map<String, Object> fixture) {
+         for (String key : fixture.keySet()) {
+-            if (!key.equals("people")) {
++            if (!key.equals("people") && !key.equals("patrons")) {
+                 throw badRequest("unknown fixture key: " + key);
+             }
+         }
+@@ -79,16 +82,19 @@ public class TestSupportController {
+                         integer(id, "people.id"), name, alpha, beta, gamma);
+             }
+         }
+-        // Patrons link people by id, so set them once every person exists.
+-        for (Map<String, Object> row : people) {
+-            Integer patronId = integer(row.get("patronId"), "people.patronId");
+-            if (patronId != null) {
+-                if (row.get("id") == null) {
+-                    throw badRequest("people.patronId needs the person's id");
++        // Patrons link people by id, so add them once every person exists.
++        for (Map<String, Object> row : rows(fixture.get("patrons"), "patrons")) {
++            for (String field : row.keySet()) {
++                if (!PATRON_FIELDS.contains(field)) {
++                    throw badRequest("cannot store patrons." + field);
+                 }
+-                jdbc.update("UPDATE person SET patron_id = ? WHERE id = ?", patronId,
+-                        integer(row.get("id"), "people.id"));
+             }
++            Integer personId = integer(row.get("personId"), "patrons.personId");
++            Integer patronId = integer(row.get("patronId"), "patrons.patronId");
++            if (personId == null || patronId == null) {
++                throw badRequest("patrons rows need personId and patronId");
++            }
++            jdbc.update("INSERT INTO person_patron (person_id, patron_id) VALUES (?, ?)", personId, patronId);
+         }
+         // Keep generated ids clear of the seeded ones.
+         Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM person", Long.class);
+@@ -103,8 +109,9 @@ public class TestSupportController {
+     public Map<String, Object> fixture() {
+         Map<String, Object> out = new LinkedHashMap<>();
+         out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+-                + "beta AS \"beta\", gamma AS \"gamma\", patron_id AS \"patronId\" "
+-                + "FROM person ORDER BY id"));
++                + "beta AS \"beta\", gamma AS \"gamma\" FROM person ORDER BY id"));
++        out.put("patrons", jdbc.queryForList("SELECT person_id AS \"personId\", patron_id AS \"patronId\" "
++                + "FROM person_patron ORDER BY person_id, patron_id"));
+         return out;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index c2ec316..794f2f4 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -1,17 +1,24 @@
+ package net.officefloor.hq.app.people;
+ 
+ import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+-import jakarta.persistence.ManyToOne;
++import jakarta.persistence.JoinTable;
++import jakarta.persistence.ManyToMany;
+ import jakarta.persistence.Table;
++import java.util.Comparator;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
+ 
+ /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
+  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+- * a "patron": another person on the list, whose thrust is the person's "backing". "Net" is momentum plus backing (backing counted as zero without a patron). */
++ * any number of "patrons": other people on the list, whose thrust added together is the person's
++ * "backing". "Net" is momentum plus backing (backing counted as zero without patrons). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -28,9 +35,10 @@ public class Person {
+ 
+     private Integer gamma;
+ 
+-    @ManyToOne
+-    @JoinColumn(name = "patron_id")
+-    private Person patron;
++    @ManyToMany(fetch = FetchType.EAGER)
++    @JoinTable(name = "person_patron", joinColumns = @JoinColumn(name = "person_id"),
++            inverseJoinColumns = @JoinColumn(name = "patron_id"))
++    private Set<Person> patrons = new HashSet<>();
+ 
+     protected Person() {
+     }
+@@ -74,12 +82,15 @@ public class Person {
+         this.gamma = gamma;
+     }
+ 
+-    public Person getPatron() {
+-        return patron;
++    /** The patrons, sorted by name. */
++    public List<Person> getPatrons() {
++        return patrons.stream()
++                .sorted(Comparator.comparing(Person::getName).thenComparing(Person::getId))
++                .toList();
+     }
+ 
+-    public void setPatron(Person patron) {
+-        this.patron = patron;
++    public void setPatrons(Set<Person> patrons) {
++        this.patrons = new HashSet<>(patrons);
+     }
+ 
+     /** The derived values exist only once alpha, beta and gamma are all given. */
+@@ -104,24 +115,34 @@ public class Person {
+         return thrust == null || drift == null ? null : thrust + 3 * drift;
+     }
+ 
+-    /** Backing is the patron's thrust; absent without a patron or while the patron's thrust is absent. */
++    /** Backing is the sum of the patrons' thrust; absent without patrons or while any patron's thrust is absent. */
+     public Integer getBacking() {
+-        return patron == null ? null : patron.getThrust();
++        if (patrons.isEmpty()) {
++            return null;
++        }
++        int sum = 0;
++        for (Person patron : patrons) {
++            Integer thrust = patron.getThrust();
++            if (thrust == null) {
++                return null;
++            }
++            sum += thrust;
++        }
++        return sum;
+     }
+ 
+-    /** Net is momentum plus backing, counting backing as zero without a patron; absent with momentum, or with a patron whose thrust is absent. */
++    /** Net is momentum plus backing, counting backing as zero without patrons; absent with momentum, or with a patron whose thrust is absent. */
+     public Integer getNet() {
+         Integer momentum = getMomentum();
+         if (momentum == null) {
+             return null;
+         }
+-        if (patron == null) {
++        if (patrons.isEmpty()) {
+             return momentum;
+         }
+         Integer backing = getBacking();
+         return backing == null ? null : momentum + backing;
+     }
+-
+     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
+     public String getTier() {
+         Integer momentum = getMomentum();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 27c3d7a..0267ed6 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.people;
+ 
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
++import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+@@ -21,17 +22,19 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+-            Integer thrust, Integer drift, Integer momentum, String tier, Long patronId,
+-            String patronName, Integer backing, Integer net) {
++            Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
++            Integer backing, Integer net) {
+         static PersonView of(Person p) {
+-            Person patron = p.getPatron();
+             return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
+-                    patron == null ? null : patron.getId(), patron == null ? null : patron.getName(),
++                    p.getPatrons().stream().map(o -> new PatronView(o.getId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet());
+         }
+     }
+ 
++    public record PatronView(Long id, String name) {
++    }
++
+     public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma) {
+     }
+ 
+@@ -52,23 +55,33 @@ public class PersonController {
+         return PersonView.of(service.add(person.name(), person.alpha(), person.beta(), person.gamma()));
+     }
+ 
+-    /** Sets whichever of alpha, beta, gamma and patronId the body names; a null value clears it. */
++    /**
++     * Sets whichever of alpha, beta, gamma and patronIds (a list of ids) the body names; a null
++     * value clears it.
++     */
+     @PatchMapping("/{id}")
+-    public PersonView update(@PathVariable long id, @RequestBody Map<String, Integer> update) {
++    public PersonView update(@PathVariable long id, @RequestBody Map<String, Object> update) {
+         Optional<Person> person = service.find(id);
+         if (update.containsKey("alpha")) {
+-            person = service.setAlpha(id, update.get("alpha"));
++            person = service.setAlpha(id, integer(update.get("alpha")));
+         }
+         if (update.containsKey("beta")) {
+-            person = service.setBeta(id, update.get("beta"));
++            person = service.setBeta(id, integer(update.get("beta")));
+         }
+         if (update.containsKey("gamma")) {
+-            person = service.setGamma(id, update.get("gamma"));
++            person = service.setGamma(id, integer(update.get("gamma")));
+         }
+-        if (update.containsKey("patronId")) {
+-            Integer patronId = update.get("patronId");
++        if (update.containsKey("patronIds")) {
++            List<Long> patronIds = new ArrayList<>();
++            if (update.get("patronIds") instanceof List<?> ids) {
++                for (Object patronId : ids) {
++                    patronIds.add(integer(patronId).longValue());
++                }
++            } else if (update.get("patronIds") != null) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "patronIds must be a list");
++            }
+             try {
+-                person = service.setPatron(id, patronId == null ? null : patronId.longValue());
++                person = service.setPatrons(id, patronIds);
+             } catch (IllegalArgumentException e) {
+                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+             }
+@@ -76,4 +89,14 @@ public class PersonController {
+         return person.map(PersonView::of)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+     }
++
++    private static Integer integer(Object value) {
++        if (value == null) {
++            return null;
++        }
++        if (value instanceof Integer i) {
++            return i;
++        }
++        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "expected a whole number, got " + value);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index dc8bf74..20f46a9 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -1,8 +1,11 @@
+ package net.officefloor.hq.app.people;
+ 
++import java.util.Collection;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Objects;
+ import java.util.Optional;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import org.springframework.data.domain.Sort;
+ import org.springframework.stereotype.Service;
+@@ -64,19 +67,19 @@ public class PersonService {
+         });
+     }
+ 
+-    /** Sets the patron (another person) by id; null clears it. Refuses oneself or an unknown person. */
++    /** Sets the patrons (other people) by id; an empty list clears them. Refuses oneself or an unknown person. */
+     @Transactional
+-    public Optional<Person> setPatron(long id, Long patronId) {
++    public Optional<Person> setPatrons(long id, Collection<Long> patronIds) {
+         return people.findById(id).map(p -> {
+-            if (patronId == null) {
+-                p.setPatron(null);
+-            } else {
++            Set<Person> patrons = new HashSet<>();
++            for (Long patronId : patronIds) {
+                 if (patronId == id) {
+                     throw new IllegalArgumentException("a person cannot be their own patron");
+                 }
+-                p.setPatron(people.findById(patronId)
++                patrons.add(people.findById(patronId)
+                         .orElseThrow(() -> new IllegalArgumentException("no person " + patronId)));
+             }
++            p.setPatrons(patrons);
+             return p;
+         });
+     }
+diff --git a/src/main/resources/db/migration/V5__person_patrons.sql b/src/main/resources/db/migration/V5__person_patrons.sql
+new file mode 100644
+index 0000000..8a02676
+--- /dev/null
++++ b/src/main/resources/db/migration/V5__person_patrons.sql
+@@ -0,0 +1,8 @@
++CREATE TABLE person_patron (
++    person_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    patron_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    PRIMARY KEY (person_id, patron_id)
++);
++INSERT INTO person_patron (person_id, patron_id)
++    SELECT id, patron_id FROM person WHERE patron_id IS NOT NULL;
++ALTER TABLE person DROP COLUMN patron_id;
