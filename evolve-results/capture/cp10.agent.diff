@@ -1,0 +1,86 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 6ef91ab..f72e954 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -14,6 +14,7 @@ export interface Person {
+   tier: string | null;
+   patronId: number | null;
+   patronName: string | null;
++  backing: number | null;
+ }
+ 
+ export interface NewPerson {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 63f4dd7..833ae85 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,7 +7,7 @@ import { PeopleService, Person } from './people.service';
+ // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
+ // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
+ // their alpha, beta and gamma instead of adding. Each person may have a patron (another person), shown
+-// by name and chosen on the row.
++// by name and chosen on the row; their backing is the patron's thrust ("n/a" without a patron).
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -64,6 +64,7 @@ import { PeopleService, Person } from './people.service';
+           <th scope="col">Momentum</th>
+           <th scope="col">Tier</th>
+           <th scope="col">Patron</th>
++          <th scope="col">Backing</th>
+           <th scope="col">Set alpha</th>
+           <th scope="col">Set beta</th>
+           <th scope="col">Set gamma</th>
+@@ -83,6 +84,7 @@ import { PeopleService, Person } from './people.service';
+             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+             <td data-testid="person-patrons">{{ p.patronName ?? '' }}</td>
++            <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+             <td>
+               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
+                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index ed1c197..9569bff 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -11,7 +11,7 @@ import jakarta.persistence.Table;
+ /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
+  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+- * a "patron": another person on the list. */
++ * a "patron": another person on the list, whose thrust is the person's "backing". */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -104,6 +104,11 @@ public class Person {
+         return thrust == null || drift == null ? null : thrust + 3 * drift;
+     }
+ 
++    /** Backing is the patron's thrust; absent without a patron or while the patron's thrust is absent. */
++    public Integer getBacking() {
++        return patron == null ? null : patron.getThrust();
++    }
++
+     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
+     public String getTier() {
+         Integer momentum = getMomentum();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 35c9d27..d164e9d 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -22,12 +22,13 @@ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Integer thrust, Integer drift, Integer momentum, String tier, Long patronId,
+-            String patronName) {
++            String patronName, Integer backing) {
+         static PersonView of(Person p) {
+             Person patron = p.getPatron();
+             return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
+-                    patron == null ? null : patron.getId(), patron == null ? null : patron.getName());
++                    patron == null ? null : patron.getId(), patron == null ? null : patron.getName(),
++                    p.getBacking());
+         }
+     }
+ 
