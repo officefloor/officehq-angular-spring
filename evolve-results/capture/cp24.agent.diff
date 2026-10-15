@@ -1,0 +1,50 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e390c38..e8a122b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -14,7 +14,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
+ // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100.
+ // Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
+-// weight comes from it (LOW 1, MID 2, HIGH 3, "n/a" without a grade). Their load is momentum × weight
++// weight comes from it (LOW 1, MID 3, HIGH 5, "n/a" without a grade). Their load is momentum × weight
+ // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
+ // out anyone whose load is "n/a".
+ // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
+diff --git a/src/main/java/net/officefloor/hq/app/people/Grade.java b/src/main/java/net/officefloor/hq/app/people/Grade.java
+index 43f2236..e8c040b 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Grade.java
++++ b/src/main/java/net/officefloor/hq/app/people/Grade.java
+@@ -1,8 +1,8 @@
+ package net.officefloor.hq.app.people;
+ 
+-/** A person's grade, each with its weight: LOW is 1, MID is 2, HIGH is 3. */
++/** A person's grade, each with its weight: LOW is 1, MID is 3, HIGH is 5. */
+ public enum Grade {
+-    LOW(1), MID(2), HIGH(3);
++    LOW(1), MID(3), HIGH(5);
+ 
+     private final int weight;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 88a18c2..57bd4a2 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -22,7 +22,7 @@ import java.util.Set;
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+- * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 2 or 3. "Load" is momentum times weight. */
++ * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -115,7 +115,7 @@ public class Person {
+         this.grade = grade;
+     }
+ 
+-    /** Weight comes from the grade: LOW 1, MID 2, HIGH 3; absent without a grade. */
++    /** Weight comes from the grade: LOW 1, MID 3, HIGH 5; absent without a grade. */
+     public Integer getWeight() {
+         return grade == null ? null : grade.weight();
+     }
