@@ -8,7 +8,7 @@ import jakarta.persistence.Table;
 
 /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
- * (thrust + 3 × drift). */
+ * (thrust + 3 × drift), which are absent until all three raw values are given. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -47,6 +47,10 @@ public class Person {
         return alpha;
     }
 
+    public void setAlpha(Integer alpha) {
+        this.alpha = alpha;
+    }
+
     public Integer getBeta() {
         return beta;
     }
@@ -63,14 +67,19 @@ public class Person {
         this.gamma = gamma;
     }
 
-    /** Thrust is alpha multiplied by beta; absent while either is absent. */
-    public Integer getThrust() {
-        return alpha == null || beta == null ? null : alpha * beta;
+    /** The derived values exist only once alpha, beta and gamma are all given. */
+    private boolean complete() {
+        return alpha != null && beta != null && gamma != null;
     }
 
-    /** Drift is gamma minus alpha; absent while either is absent. */
+    /** Thrust is alpha multiplied by beta; absent until alpha, beta and gamma are all given. */
+    public Integer getThrust() {
+        return complete() ? alpha * beta : null;
+    }
+
+    /** Drift is gamma minus alpha; absent until alpha, beta and gamma are all given. */
     public Integer getDrift() {
-        return gamma == null || alpha == null ? null : gamma - alpha;
+        return complete() ? gamma - alpha : null;
     }
 
     /** Momentum is thrust plus three times drift; absent while either is absent. */

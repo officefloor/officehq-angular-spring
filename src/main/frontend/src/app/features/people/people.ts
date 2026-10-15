@@ -3,8 +3,9 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { PeopleService, Person } from './people.service';
 
 // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
-// (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Beta and gamma are
-// optional on add and can be filled in (or changed) on the row later.
+// (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
+// gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
+// derived values show "n/a".
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -57,6 +58,7 @@ import { PeopleService, Person } from './people.service';
           <th scope="col">Drift</th>
           <th scope="col">Momentum</th>
           <th scope="col">Tier</th>
+          <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
         </tr>
@@ -68,10 +70,26 @@ import { PeopleService, Person } from './people.service';
             <td data-testid="person-alpha">{{ p.alpha }}</td>
             <td data-testid="person-beta">{{ p.beta }}</td>
             <td data-testid="person-gamma">{{ p.gamma }}</td>
-            <td data-testid="concept-thrust">{{ p.thrust }}</td>
-            <td data-testid="concept-drift">{{ p.drift }}</td>
-            <td data-testid="concept-momentum">{{ p.momentum }}</td>
-            <td data-testid="concept-tier">{{ p.tier }}</td>
+            <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+            <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+            <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+            <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+            <td>
+              <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
+                <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">
+                  Alpha for {{ p.name }}
+                </label>
+                <input
+                  #alphaInput
+                  [id]="'person-alpha-edit-' + p.id"
+                  type="number"
+                  step="1"
+                  [value]="p.alpha ?? ''"
+                  data-testid="person-alpha-input"
+                />
+                <button type="submit" data-testid="person-alpha-save">Save</button>
+              </form>
+            </td>
             <td>
               <form (submit)="$event.preventDefault(); setBeta(p, betaInput.value)">
                 <label class="visually-hidden" [for]="'person-beta-edit-' + p.id">
@@ -118,7 +136,7 @@ export class People {
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
-    alpha: [null as number | null, [Validators.required, Validators.pattern(/^-?\d+$/)]],
+    alpha: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
     gamma: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
   });
@@ -129,7 +147,7 @@ export class People {
 
   protected add(): void {
     const { name, alpha, beta, gamma } = this.form.getRawValue();
-    if (this.form.invalid || alpha === null) return;
+    if (this.form.invalid) return;
     this.saving.set(true);
     this.service.add({ name, alpha, beta, gamma }).subscribe({
       next: () => {
@@ -139,6 +157,13 @@ export class People {
       },
       error: () => this.saving.set(false),
     });
+  }
+
+  protected setAlpha(person: Person, value: string): void {
+    const text = value.trim();
+    if (text !== '' && !/^-?\d+$/.test(text)) return;
+    const alpha = text === '' ? null : Number(text);
+    this.service.setAlpha(person.id, alpha).subscribe(() => this.load());
   }
 
   protected setBeta(person: Person, value: string): void {

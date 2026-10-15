@@ -26,8 +26,16 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String name, int alpha, Integer beta, Integer gamma) {
+    public Person add(String name, Integer alpha, Integer beta, Integer gamma) {
         return people.save(new Person(name.trim(), alpha, beta, gamma));
+    }
+
+    @Transactional
+    public Optional<Person> setAlpha(long id, Integer alpha) {
+        return people.findById(id).map(p -> {
+            p.setAlpha(alpha);
+            return p;
+        });
     }
 
     @Transactional

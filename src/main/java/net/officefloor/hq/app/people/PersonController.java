@@ -2,7 +2,6 @@ package net.officefloor.hq.app.people;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,7 +28,7 @@ public class PersonController {
         }
     }
 
-    public record NewPerson(@NotBlank String name, @NotNull Integer alpha, Integer beta, Integer gamma) {
+    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma) {
     }
 
     private final PersonService service;
@@ -49,10 +48,13 @@ public class PersonController {
         return PersonView.of(service.add(person.name(), person.alpha(), person.beta(), person.gamma()));
     }
 
-    /** Sets whichever of beta and gamma the body names; a null value clears it. */
+    /** Sets whichever of alpha, beta and gamma the body names; a null value clears it. */
     @PatchMapping("/{id}")
     public PersonView update(@PathVariable long id, @RequestBody Map<String, Integer> update) {
         Optional<Person> person = service.find(id);
+        if (update.containsKey("alpha")) {
+            person = service.setAlpha(id, update.get("alpha"));
+        }
         if (update.containsKey("beta")) {
             person = service.setBeta(id, update.get("beta"));
         }
