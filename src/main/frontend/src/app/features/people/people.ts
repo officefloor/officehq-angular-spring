@@ -137,6 +137,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // group or their scaled is "n/a").
 // Each person shows their weave: their scaled plus their group's cohesion ("n/a" when they have no
 // group or their scaled is "n/a").
+// Each person shows their mesh: their scaled multiplied by their group's size ("n/a" when they have no
+// group or their scaled is "n/a").
 // Each person shows their anchorage: how many groups they belong to (1 in a group, 0 without one).
 @Component({
   selector: 'app-people',
@@ -420,6 +422,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Belonging</th>
           <th scope="col">Tether</th>
           <th scope="col">Weave</th>
+          <th scope="col">Mesh</th>
           <th scope="col">Anchorage</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
@@ -521,6 +524,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-belonging">{{ belongingOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-tether">{{ tetherOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-weave">{{ weaveOf(p) ?? 'n/a' }}</td>
+            <td data-testid="concept-mesh">{{ meshOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-anchorage">{{ anchorageOf(p) }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
@@ -882,6 +886,10 @@ export class People {
     if (p.groupId === null || p.scaled === null) return null;
     const cohesion = this.groupCohesions().get(p.groupId);
     return cohesion === undefined ? null : p.scaled + cohesion;
+  }
+  protected meshOf(p: Person): number | null {
+    if (p.groupId === null || p.scaled === null) return null;
+    return p.scaled * (this.groupSizes().get(p.groupId) ?? 0);
   }
   protected anchorageOf(p: Person): number {
     return p.groupId === null ? 0 : 1;
