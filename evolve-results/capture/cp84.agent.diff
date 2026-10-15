@@ -1,0 +1,31 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0e6200d3..862b6486 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -72,7 +72,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // A from 500 ("n/a" while adjusted is "n/a").
+ // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
+ // adjusted is "n/a").
+-// Their thrum is their scaled plus their torque ("n/a" while either is "n/a").
++// Their thrum is their scaled plus two times their torque ("n/a" while either is "n/a").
+ // The sheet's max thrum is the name of the person with the highest thrum, ties going to the name that
+ // comes first alphabetically ("n/a" when nobody has a thrum).
+ // Their spool is their thrum minus their blend ("n/a" while either is "n/a").
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index a1f23705..93453805 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -546,11 +546,11 @@ public class Person {
+         return adjusted * multiplier;
+     }
+ 
+-    /** Thrum is scaled plus torque; absent while either is absent. */
++    /** Thrum is scaled plus two times torque; absent while either is absent. */
+     public Integer getThrum() {
+         Integer scaled = getScaled();
+         Integer torque = getTorque();
+-        return scaled == null || torque == null ? null : scaled + torque;
++        return scaled == null || torque == null ? null : scaled + 2 * torque;
+     }
+ 
+     /** Spool is thrum minus blend; absent while either is absent. */
