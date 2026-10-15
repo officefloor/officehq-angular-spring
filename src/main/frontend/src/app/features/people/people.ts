@@ -136,6 +136,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // none do); people whose pulse is "n/a" are not counted.
 // The sheet's bracket counts show how many of its people are in each bracket, Q4 down to Q1 (zero when
 // none are); people whose bracket is "n/a" are not counted.
+// The sheet's bracket share shows, for each bracket, Q4 down to Q1, how many of its people are in it as a
+// percentage of the sheet's headcount, rounded down ("n/a" when the sheet has nobody on it).
 // The sheet's bracket ledger shows the total scaled of its people in each bracket, Q4 down to Q1 (zero
 // when none are); people whose bracket is "n/a" add nothing.
 // The sheet's top per bracket shows, for each bracket, Q4 down to Q1, the name of the person in it with
@@ -650,6 +652,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (c of bracketCounts(); track c.bracket) {
           <li>
             {{ c.bracket }}: <strong [attr.data-testid]="'bracket-count-' + c.bracket">{{ c.count }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="bracket-share-heading">
+      <h2 id="bracket-share-heading">Share per bracket (%)</h2>
+      <ul>
+        @for (b of bracketShare(); track b.bracket) {
+          <li>
+            {{ b.bracket }}: <strong [attr.data-testid]="'bracket-share-' + b.bracket">{{ b.percent ?? 'n/a' }}</strong>
           </li>
         }
       </ul>
@@ -1673,6 +1685,16 @@ export class People {
       count: this.people().filter((p) => this.bracketOf(p) === bracket).length,
     })),
   );
+  protected readonly bracketShare = computed(() => {
+    const headcount = this.headcount();
+    return BRACKETS.map((bracket) => ({
+      bracket,
+      percent:
+        headcount === 0
+          ? null
+          : Math.floor((this.people().filter((p) => this.bracketOf(p) === bracket).length * 100) / headcount),
+    }));
+  });
   protected readonly bracketLedger = computed(() =>
     BRACKETS.map((bracket) => ({
       bracket,
