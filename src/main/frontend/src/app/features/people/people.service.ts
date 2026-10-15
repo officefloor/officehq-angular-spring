@@ -16,6 +16,7 @@ export interface Person {
   backing: number | null;
   net: number | null;
   rank: number | null;
+  percentile: number | null;
 }
 
 export interface Patron {

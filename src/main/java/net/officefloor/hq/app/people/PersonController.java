@@ -26,13 +26,28 @@ public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
-            Integer backing, Integer net, Integer rank) {
-        static PersonView of(Person p, Integer rank) {
+            Integer backing, Integer net, Integer rank, Integer percentile) {
+        static PersonView of(Person p, Map<Long, Integer> ranks) {
+            Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
-                    p.getBacking(), p.getNet(), rank);
+                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()));
         }
+    }
+
+    /**
+     * A rank as a percentile of the ranked people: the best 100, the worst 0, evenly spread between
+     * by rank and rounded to a whole number. A lone ranked person is 100; unranked has none.
+     */
+    static Integer percentile(Integer rank, int ranked) {
+        if (rank == null) {
+            return null;
+        }
+        if (ranked <= 1) {
+            return 100;
+        }
+        return (int) Math.round((ranked - rank) * 100.0 / (ranked - 1));
     }
 
     /** Highest momentum first; equal momentum by name, earlier in the alphabet first. */
@@ -57,7 +72,7 @@ public class PersonController {
     public List<PersonView> list(@RequestParam(required = false) String sheet) {
         List<Person> people = service.list(sheetId(sheet));
         Map<Long, Integer> ranks = ranks(people);
-        return people.stream().map(p -> PersonView.of(p, ranks.get(p.getLocalId()))).toList();
+        return people.stream().map(p -> PersonView.of(p, ranks)).toList();
     }
 
     @PostMapping
@@ -105,7 +120,7 @@ public class PersonController {
 
     /** A person's view, ranked among the people on their sheet. */
     private PersonView view(String sheetId, Person person) {
-        return PersonView.of(person, ranks(service.list(sheetId)).get(person.getLocalId()));
+        return PersonView.of(person, ranks(service.list(sheetId)));
     }
 
     /**
