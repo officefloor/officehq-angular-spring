@@ -1,0 +1,96 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 732bf2b5..b1f66831 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -26,6 +26,7 @@ export interface Person {
+   blend: number | null;
+   flux: number | null;
+   crest: number | null;
++  swing: number | null;
+   phase: string | null;
+   load: number | null;
+   tier: string | null;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d655040b..23cd4804 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -14,7 +14,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // momentum + torque ("n/a" while either is missing). Their flux is the average of their patrons' force, rounded down (0 without
+ // patrons, "n/a" while any patron's force is missing). Their crest is blend + flux ("n/a" while either is missing).
+ // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
+-// comes first alphabetically ("n/a" when nobody has a crest).
++// comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the torque of the people
++// they follow (0 when they follow no one, "n/a" while any followed person's torque is missing).
+ // Each person may have any number of patrons (other
+ // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
+ // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
+@@ -235,6 +236,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Blend</th>
+           <th scope="col">Flux</th>
+           <th scope="col">Crest</th>
++          <th scope="col">Swing</th>
+           <th scope="col">Phase</th>
+           <th scope="col">Reach</th>
+           <th scope="col">Load</th>
+@@ -304,6 +306,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="concept-blend">{{ p.blend ?? 'n/a' }}</td>
+             <td data-testid="concept-flux">{{ p.flux ?? 'n/a' }}</td>
+             <td data-testid="concept-crest">{{ p.crest ?? 'n/a' }}</td>
++            <td data-testid="concept-swing">{{ p.swing ?? 'n/a' }}</td>
+             <td data-testid="concept-phase">{{ p.phase ?? 'n/a' }}</td>
+             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
+             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 28e847d7..a7dff1b9 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -25,7 +25,7 @@ import java.util.Set;
+ /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
+  * given), a second raw axis of whole-number "delta" and "epsilon" (each absent until given) with the derived "force"
+  * (delta × epsilon), a whole-number "zeta" (absent until given) with the derived "sway"
+- * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the average of the patrons' force, rounded down, zero without patrons), "crest" (blend + flux, absent while either is), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
++ * (zeta − delta) and "torque" (force + 3 × sway), each absent while any of delta, epsilon or zeta is, "blend" (momentum + torque, absent while either is), "flux" (the average of the patrons' force, rounded down, zero without patrons), "crest" (blend + flux, absent while either is), "swing" (the torque of the people followed added together, zero without any), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+@@ -394,6 +394,19 @@ public class Person {
+         return blend == null || flux == null ? null : blend + flux;
+     }
+ 
++    /** Swing is the sum of the torque of the people followed; zero without allies, absent while any ally's torque is absent. */
++    public Integer getSwing() {
++        int sum = 0;
++        for (Person ally : getAllies()) {
++            Integer torque = ally.getTorque();
++            if (torque == null) {
++                return null;
++            }
++            sum += torque;
++        }
++        return sum;
++    }
++
+     /** Synergy is the sum of the thrust of the people followed; zero without allies, absent while any ally's thrust is absent. */
+     public Integer getSynergy() {
+         int sum = 0;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 777412bb..f8208b0c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -29,14 +29,14 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
+-            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer blend, Integer flux, Integer crest, String phase, Integer load, String tier, List<PatronView> patrons,
++            Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer blend, Integer flux, Integer crest, Integer swing, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+-                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getBlend(), p.getFlux(), p.getCrest(), p.getPhase(), p.getLoad(), p.getTier(),
++                    p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getPhase(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
