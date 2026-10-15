@@ -42,7 +42,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // The sheet's region counts show, for each region its people have, how many of them are in it
 // (a person counts once in every region they belong to), ordered by region code.
 // Each person may have any number of allies (other people), chosen on the row; being allies goes both
-// ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are.
+// ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are,
+// and their synergy: the allies' thrust added together (zero without allies).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -158,6 +159,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Patrons</th>
           <th scope="col">Allies</th>
           <th scope="col">Ally count</th>
+          <th scope="col">Synergy</th>
           <th scope="col">Backing</th>
           <th scope="col">Net</th>
           <th scope="col">Effective</th>
@@ -199,6 +201,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
             <td data-testid="person-allies">{{ allyNames(p) }}</td>
             <td data-testid="person-ally-count">{{ p.allyCount }}</td>
+            <td data-testid="concept-synergy">{{ p.synergy ?? 'n/a' }}</td>
             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>

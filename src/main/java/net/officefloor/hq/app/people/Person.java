@@ -34,7 +34,8 @@ import java.util.Set;
  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
  * person's regions, of momentum times that region's multiplier. A person may have any number of "allies":
- * other people on the list, where being allies goes both ways. */
+ * other people on the list, where being allies goes both ways. "Synergy" is the allies' thrust added
+ * together (zero without allies). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -280,6 +281,19 @@ public class Person {
         int sum = 0;
         for (Person patron : patrons) {
             Integer thrust = patron.getThrust();
+            if (thrust == null) {
+                return null;
+            }
+            sum += thrust;
+        }
+        return sum;
+    }
+
+    /** Synergy is the sum of the allies' thrust; zero without allies, absent while any ally's thrust is absent. */
+    public Integer getSynergy() {
+        int sum = 0;
+        for (Person ally : getAllies()) {
+            Integer thrust = ally.getThrust();
             if (thrust == null) {
                 return null;
             }

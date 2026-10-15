@@ -31,7 +31,7 @@ public class PersonController {
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, List<String> regions, Integer reach,
-            List<PatronView> allies, int allyCount) {
+            List<PatronView> allies, int allyCount, Integer synergy) {
         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
@@ -41,7 +41,7 @@ public class PersonController {
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
                     p.getInfluence(), p.getRegions(), p.getReach(),
                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
-                    p.getAllies().size());
+                    p.getAllies().size(), p.getSynergy());
         }
     }
 
