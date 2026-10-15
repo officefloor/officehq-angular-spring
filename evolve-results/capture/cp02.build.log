@@ -1,0 +1,15 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610160010/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 4 tests using 1 worker
+
+[1A[2K[1/4] [chromium] › cp01_people_alpha.spec.ts:8:7 › people with alpha › lists seeded people with their alpha
+[1A[2K[2/4] [chromium] › cp01_people_alpha.spec.ts:25:7 › people with alpha › adds a person
+[1A[2K[3/4] [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta
+[1A[2K[4/4] [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative
+[1A[2K  4 passed (2.1s)

@@ -1,0 +1,317 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 9d50d17..9cb96a4 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -6,11 +6,14 @@ export interface Person {
+   id: number;
+   name: string;
+   alpha: number | null;
++  beta: number | null;
++  thrust: number | null;
+ }
+ 
+ export interface NewPerson {
+   name: string;
+   alpha: number;
++  beta: number | null;
+ }
+ 
+ // The people REST API (/api/people).
+@@ -25,4 +28,8 @@ export class PeopleService {
+   add(person: NewPerson): Observable<Person> {
+     return this.http.post<Person>('/api/people', person);
+   }
++
++  setBeta(id: number, beta: number | null): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { beta });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4f1036d..8bf62bb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,8 @@ import { Component, inject, signal } from '@angular/core';
+ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { PeopleService, Person } from './people.service';
+ 
+-// The people list: every person with their name and alpha, plus a form to add one.
++// The people list: every person with their name, alpha, beta and thrust (alpha × beta), plus a
++// form to add one. Beta is optional on add and can be filled in (or changed) on the row later.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -20,6 +21,14 @@ import { PeopleService, Person } from './people.service';
+         formControlName="alpha"
+         data-testid="person-form-alpha"
+       />
++      <label for="person-beta">Beta</label>
++      <input
++        id="person-beta"
++        type="number"
++        step="1"
++        formControlName="beta"
++        data-testid="person-form-beta"
++      />
+       <button type="submit" [disabled]="form.invalid || saving()" data-testid="person-form-submit">
+         Add person
+       </button>
+@@ -33,6 +42,9 @@ import { PeopleService, Person } from './people.service';
+         <tr>
+           <th scope="col">Name</th>
+           <th scope="col">Alpha</th>
++          <th scope="col">Beta</th>
++          <th scope="col">Thrust</th>
++          <th scope="col">Set beta</th>
+         </tr>
+       </thead>
+       <tbody>
+@@ -40,6 +52,24 @@ import { PeopleService, Person } from './people.service';
+           <tr [attr.data-testid]="'person-row-' + p.id">
+             <td data-testid="person-name">{{ p.name }}</td>
+             <td data-testid="person-alpha">{{ p.alpha }}</td>
++            <td data-testid="person-beta">{{ p.beta }}</td>
++            <td data-testid="concept-thrust">{{ p.thrust }}</td>
++            <td>
++              <form (submit)="$event.preventDefault(); setBeta(p, betaInput.value)">
++                <label class="visually-hidden" [for]="'person-beta-edit-' + p.id">
++                  Beta for {{ p.name }}
++                </label>
++                <input
++                  #betaInput
++                  [id]="'person-beta-edit-' + p.id"
++                  type="number"
++                  step="1"
++                  [value]="p.beta ?? ''"
++                  data-testid="person-beta-input"
++                />
++                <button type="submit" data-testid="person-beta-save">Save</button>
++              </form>
++            </td>
+           </tr>
+         }
+       </tbody>
+@@ -55,6 +85,7 @@ export class People {
+   protected readonly form = inject(NonNullableFormBuilder).group({
+     name: ['', [Validators.required, Validators.pattern(/\S/)]],
+     alpha: [null as number | null, [Validators.required, Validators.pattern(/^-?\d+$/)]],
++    beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+   });
+ 
+   constructor() {
+@@ -62,10 +93,10 @@ export class People {
+   }
+ 
+   protected add(): void {
+-    const { name, alpha } = this.form.getRawValue();
++    const { name, alpha, beta } = this.form.getRawValue();
+     if (this.form.invalid || alpha === null) return;
+     this.saving.set(true);
+-    this.service.add({ name, alpha }).subscribe({
++    this.service.add({ name, alpha, beta }).subscribe({
+       next: () => {
+         this.form.reset();
+         this.saving.set(false);
+@@ -75,6 +106,13 @@ export class People {
+     });
+   }
+ 
++  protected setBeta(person: Person, value: string): void {
++    const text = value.trim();
++    if (text !== '' && !/^-?\d+$/.test(text)) return;
++    const beta = text === '' ? null : Number(text);
++    this.service.setBeta(person.id, beta).subscribe(() => this.load());
++  }
++
+   private load(): void {
+     this.service.list().subscribe((people) => this.people.set(people));
+   }
+diff --git a/src/main/frontend/src/styles.css b/src/main/frontend/src/styles.css
+index e69de29..cac64dc 100644
+--- a/src/main/frontend/src/styles.css
++++ b/src/main/frontend/src/styles.css
+@@ -0,0 +1,9 @@
++
++.visually-hidden {
++  position: absolute;
++  width: 1px;
++  height: 1px;
++  overflow: hidden;
++  clip: rect(0 0 0 0);
++  white-space: nowrap;
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 2807912..bfb2e86 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -66,11 +66,12 @@ public class TestSupportController {
+             }
+             Object id = row.get("id");
+             Integer alpha = integer(row.get("alpha"), "people.alpha");
++            Integer beta = integer(row.get("beta"), "people.beta");
+             if (id == null) {
+-                jdbc.update("INSERT INTO person (name, alpha) VALUES (?, ?)", name, alpha);
++                jdbc.update("INSERT INTO person (name, alpha, beta) VALUES (?, ?, ?)", name, alpha, beta);
+             } else {
+-                jdbc.update("INSERT INTO person (id, name, alpha) VALUES (?, ?, ?)",
+-                        integer(id, "people.id"), name, alpha);
++                jdbc.update("INSERT INTO person (id, name, alpha, beta) VALUES (?, ?, ?, ?)",
++                        integer(id, "people.id"), name, alpha, beta);
+             }
+         }
+         // Keep generated ids clear of the seeded ones.
+@@ -85,7 +86,8 @@ public class TestSupportController {
+     @GetMapping("/fixture")
+     public Map<String, Object> fixture() {
+         Map<String, Object> out = new LinkedHashMap<>();
+-        out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\" "
++        out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
++                + "beta AS \"beta\" "
+                 + "FROM person ORDER BY id"));
+         return out;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 5bbcc16..e27d020 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -6,7 +6,8 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** A person on the list: a name and a whole-number "alpha" (absent until given). */
++/** A person on the list: a name and whole-number "alpha" and "beta" (each absent until
++ * given), and the derived "thrust" (alpha × beta). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -19,12 +20,15 @@ public class Person {
+ 
+     private Integer alpha;
+ 
++    private Integer beta;
++
+     protected Person() {
+     }
+ 
+-    public Person(String name, Integer alpha) {
++    public Person(String name, Integer alpha, Integer beta) {
+         this.name = name;
+         this.alpha = alpha;
++        this.beta = beta;
+     }
+ 
+     public Long getId() {
+@@ -38,4 +42,17 @@ public class Person {
+     public Integer getAlpha() {
+         return alpha;
+     }
++
++    public Integer getBeta() {
++        return beta;
++    }
++
++    public void setBeta(Integer beta) {
++        this.beta = beta;
++    }
++
++    /** Thrust is alpha multiplied by beta; absent while either is absent. */
++    public Integer getThrust() {
++        return alpha == null || beta == null ? null : alpha * beta;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 754cfb8..26543ae 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -6,23 +6,29 @@ import jakarta.validation.constraints.NotNull;
+ import java.util.List;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PatchMapping;
++import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ @RestController
+ @RequestMapping("/api/people")
+ public class PersonController {
+ 
+-    public record PersonView(Long id, String name, Integer alpha) {
++    public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer thrust) {
+         static PersonView of(Person p) {
+-            return new PersonView(p.getId(), p.getName(), p.getAlpha());
++            return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getThrust());
+         }
+     }
+ 
+-    public record NewPerson(@NotBlank String name, @NotNull Integer alpha) {
++    public record NewPerson(@NotBlank String name, @NotNull Integer alpha, Integer beta) {
++    }
++
++    public record BetaUpdate(Integer beta) {
+     }
+ 
+     private final PersonService service;
+@@ -39,6 +45,12 @@ public class PersonController {
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public PersonView add(@Valid @RequestBody NewPerson person) {
+-        return PersonView.of(service.add(person.name(), person.alpha()));
++        return PersonView.of(service.add(person.name(), person.alpha(), person.beta()));
++    }
++
++    @PatchMapping("/{id}")
++    public PersonView update(@PathVariable long id, @RequestBody BetaUpdate update) {
++        return service.setBeta(id, update.beta()).map(PersonView::of)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index b31424d..5952e10 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.people;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.domain.Sort;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -20,7 +21,15 @@ public class PersonService {
+     }
+ 
+     @Transactional
+-    public Person add(String name, int alpha) {
+-        return people.save(new Person(name.trim(), alpha));
++    public Person add(String name, int alpha, Integer beta) {
++        return people.save(new Person(name.trim(), alpha, beta));
++    }
++
++    @Transactional
++    public Optional<Person> setBeta(long id, Integer beta) {
++        return people.findById(id).map(p -> {
++            p.setBeta(beta);
++            return p;
++        });
+     }
+ }
+diff --git a/src/main/resources/db/migration/V2__person_beta.sql b/src/main/resources/db/migration/V2__person_beta.sql
+new file mode 100644
+index 0000000..fddfb58
+--- /dev/null
++++ b/src/main/resources/db/migration/V2__person_beta.sql
+@@ -0,0 +1 @@
++ALTER TABLE person ADD COLUMN beta INTEGER;
