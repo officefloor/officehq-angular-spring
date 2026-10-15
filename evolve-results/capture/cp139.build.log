@@ -1,0 +1,225 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610160010/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+it record
+[1A[2K[10/156] [chromium] › cp08_tier_recalibrate.spec.ts:8:7 › tier recalibrated › tier uses the new wider STEADY band
+[1A[2K[11/156] [chromium] › cp09_patron.spec.ts:6:7 › patron › shows each person their patron by name
+[1A[2K[12/156] [chromium] › cp10_backing.spec.ts:6:7 › backing › backing is the patron thrust, n/a without a patron
+[1A[2K[13/156] [chromium] › cp100_yield_coefficient.spec.ts:9:7 › yield coefficient raised to 2 › yield = pivot + 2*lift; grip and total follow
+[1A[2K[14/156] [chromium] › cp101_strain.spec.ts:9:7 › strain › strain is crest minus brace
+[1A[2K[15/156] [chromium] › cp102_pulse.spec.ts:7:7 › pulse › pulse classifies strain with a tolerance band
+[1A[2K[16/156] [chromium] › cp103_pulse_counts.spec.ts:6:7 › pulse counts › counts people per pulse value
+[1A[2K[17/156] [chromium] › cp104_pulse_tolerance.spec.ts:8:7 › pulse tolerance band › small strain is FLAT under the tolerance band
+[1A[2K[18/156] [chromium] › cp105_vector.spec.ts:6:7 › vector › vector averages the patrons blend
+[1A[2K[19/156] [chromium] › cp106_charge.spec.ts:6:7 › charge › charge is vector plus yield
+[1A[2K[20/156] [chromium] › cp107_top_charge.spec.ts:7:7 › top charge › names the highest-charge person
+[1A[2K[21/156] [chromium] › cp107_top_charge.spec.ts:31:7 › top charge › breaks a charge tie alphabetically
+[1A[2K[22/156] [chromium] › cp108_vector_average.spec.ts:9:7 › vector as average › vector averages patrons blend; charge follows
+[1A[2K[23/156] [chromium] › cp109_tide.spec.ts:6:7 › tide › tide sums only positive followed brace
+[1A[2K[24/156] [chromium] › cp11_net.spec.ts:6:7 › net › net is momentum plus summed backing (0 when no patron)
+[1A[2K[25/156] [chromium] › cp110_churn.spec.ts:6:7 › churn › churn is tide minus vector
+[1A[2K[26/156] [chromium] › cp111_total_tide.spec.ts:6:7 › total tide › total tide sums the tides
+[1A[2K[27/156] [chromium] › cp112_tide_positive.spec.ts:9:7 › tide positive only › tide counts only positive followed brace
+[1A[2K[28/156] [chromium] › cp113_ebb.spec.ts:6:7 › ebb › ebb is blend minus the mean blend
+[1A[2K[29/156] [chromium] › cp114_stray.spec.ts:7:7 › stray › stray flags a large ebb magnitude
+[1A[2K[30/156] [chromium] › cp115_stray_count.spec.ts:6:7 › stray count › counts the strays on the sheet
+[1A[2K[31/156] [chromium] › cp116_ebb_mean.spec.ts:9:7 › ebb against the mean › ebb, strays and count use the mean
+[1A[2K[32/156] [chromium] › cp117_flow.spec.ts:6:7 › flow › flow is yield plus charge
+[1A[2K[33/156] [chromium] › cp118_grand_flow.spec.ts:6:7 › grand flow › grand flow sums the flows
+[1A[2K[34/156] [chromium] › cp119_top_flow.spec.ts:7:7 › top flow › names the highest-flow person
+[1A[2K[35/156] [chromium] › cp119_top_flow.spec.ts:32:7 › top flow › breaks a flow tie alphabetically
+[1A[2K[36/156] [chromium] › cp12_patron_many.spec.ts:9:7 › many patrons › patrons list all names sorted
+[1A[2K[37/156] [chromium] › cp12_patron_many.spec.ts:31:7 › many patrons › backing sums all patron thrust; net adds it to momentum
+[1A[2K[38/156] [chromium] › cp120_flow_drop_tide.spec.ts:8:7 › flow drops tide › flow = yield + charge; grand follows
+[1A[2K[39/156] [chromium] › cp121_groups.spec.ts:6:7 › groups › people belong to one named group
+[1A[2K[40/156] [chromium] › cp121_groups.spec.ts:25:7 › groups › each person shows their group
+[1A[2K[41/156] [chromium] › cp122_group_strength.spec.ts:5:7 › group strength › strength sums members' effective
+[1A[2K[42/156] [chromium] › cp123_group_size.spec.ts:6:7 › group size › size counts members
+[1A[2K[43/156] [chromium] › cp124_strength_effective.spec.ts:5:7 › strength from effective › strength sums members' effective
+[1A[2K[44/156] [chromium] › cp125_group_cohesion.spec.ts:6:7 › cohesion › cohesion is strength over size
+[1A[2K[45/156] [chromium] › cp126_group_spread.spec.ts:5:7 › spread › spread uses effective
+[1A[2K[46/156] [chromium] › cp127_group_apex.spec.ts:6:7 › apex › apex names the top-scaled member
+[1A[2K[47/156] [chromium] › cp127_group_apex.spec.ts:29:7 › apex › apex breaks ties by earlier name
+[1A[2K[48/156] [chromium] › cp128_spread_effective.spec.ts:5:7 › spread from effective › spread uses effective
+[1A[2K[49/156] [chromium] › cp129_share.spec.ts:5:7 › share › share rounds to nearest
+[1A[2K[50/156] [chromium] › cp13_worksheet_id.spec.ts:9:7 › worksheet id › opening a sheet shows its id and its people, and adds belong to it
+[1A[2K[51/156] [chromium] › cp130_standing.spec.ts:6:7 › standing › standing ranks within the group
+[1A[2K[52/156] [chromium] › cp130_standing.spec.ts:33:7 › standing › standing breaks ties by higher alpha
+[1A[2K[53/156] [chromium] › cp131_belonging.spec.ts:6:7 › belonging › belonging is strength minus scaled
+[1A[2K[54/156] [chromium] › cp132_share_nearest.spec.ts:5:7 › share rounded nearest › share rounds to nearest
+[1A[2K[55/156] [chromium] › cp133_group_density.spec.ts:5:7 › density › density uses effective
+[1A[2K[56/156] [chromium] › cp134_tether.spec.ts:6:7 › tether › tether is scaled minus cohesion
+[1A[2K[57/156] [chromium] › cp135_biggest_group.spec.ts:6:7 › biggest group › names the strongest group
+[1A[2K[58/156] [chromium] › cp136_density_effective.spec.ts:5:7 › density from effective › density uses effective
+[1A[2K[59/156] [chromium] › cp137_anchorage.spec.ts:6:7 › anchorage › anchorage counts the person's groups
+[1A[2K[60/156] [chromium] › cp138_weave.spec.ts:6:7 › weave › weave is scaled plus cohesion
+[1A[2K[61/156] [chromium] › cp139_mesh.spec.ts:6:7 › mesh › mesh is scaled times size
+[1A[2K[62/156] [chromium] › cp14_worksheet_recall.spec.ts:6:7 › worksheet recall › a sheet recalls its data after a page refresh
+[1A[2K[63/156] [chromium] › cp14_worksheet_recall.spec.ts:26:7 › worksheet recall › opening an unknown sheet starts it empty
+[1A[2K[64/156] [chromium] › cp15_worksheet_isolation.spec.ts:6:7 › worksheet isolation › people do not leak between sheets
+[1A[2K[65/156] [chromium] › cp16_unknown_sheet_blank.spec.ts:5:7 › unknown sheet starts blank › opening an unknown id starts an empty sheet with that id
+[1A[2K[66/156] [chromium] › cp17_rank.spec.ts:6:7 › rank › rank orders by momentum desc, ties by higher alpha
+[1A[2K[67/156] [chromium] › cp18_leader.spec.ts:6:7 › leader › leader is the rank-1 person
+[1A[2K[68/156] [chromium] › cp19_percentile.spec.ts:7:7 › percentile › percentile spreads 100..0 evenly by rank
+[1A[2K[69/156] [chromium] › cp19_percentile.spec.ts:26:7 › percentile › a single person is 100
+[1A[2K[70/156] [chromium] › cp20_rank_tiebreak.spec.ts:6:7 › rank tie-break by alpha › a momentum tie is broken by higher alpha
+[1A[2K[71/156] [chromium] › cp21_grade_weight.spec.ts:5:7 › grade weight › weight comes from grade
+[1A[2K[72/156] [chromium] › cp22_load.spec.ts:5:7 › load › load is momentum times weight
+[1A[2K[73/156] [chromium] › cp23_total_load.spec.ts:5:7 › total load › total load sums computable loads only
+[1A[2K[74/156] [chromium] › cp24_grade_weight_remap.spec.ts:5:7 › grade weight remapped › wider weights change load and total load
+[1A[2K[75/156] [chromium] › cp25_onset_anchor.spec.ts:7:7 › onset and anchor › shows the sheet anchor and each onset
+[1A[2K[76/156] [chromium] › cp26_age.spec.ts:6:7 › age in days › age is complete weeks from onset to anchor
+[1A[2K[77/156] [chromium] › cp27_decay.spec.ts:5:7 › decay › decay is momentum minus age
+[1A[2K[78/156] [chromium] › cp28_age_in_weeks.spec.ts:6:7 › age in weeks › age is complete weeks and decay follows
+[1A[2K[79/156] [chromium] › cp29_active.spec.ts:6:7 › active flag › shows whether each person is active
+[1A[2K[80/156] [chromium] › cp30_effective.spec.ts:6:7 › effective › effective is net when active, else half of net rounded down
+[1A[2K[81/156] [chromium] › cp31_active_rollups.spec.ts:7:7 › active rollups › active count and total effective
+[1A[2K[82/156] [chromium] › cp32_inactive_halved.spec.ts:7:7 › inactive halved › inactive effective is half of net rounded down
+[1A[2K[83/156] [chromium] › cp33_clout.spec.ts:6:7 › clout › clout averages the patrons effective
+[1A[2K[84/156] [chromium] › cp34_influence.spec.ts:7:7 › influence › influence is effective plus clout
+[1A[2K[85/156] [chromium] › cp35_top_influence.spec.ts:6:7 › top influence › names the highest-influence person
+[1A[2K[86/156] [chromium] › cp35_top_influence.spec.ts:31:7 › top influence › top influence tie is broken by name ascending
+[1A[2K[87/156] [chromium] › cp36_clout_average.spec.ts:10:7 › clout as average › clout averages patrons effective and the leader flips
+[1A[2K[88/156] [chromium] › cp37_region.spec.ts:6:7 › region › shows each person their regions
+[1A[2K[89/156] [chromium] › cp38_reach.spec.ts:7:7 › reach › reach sums over the regions
+[1A[2K[90/156] [chromium] › cp39_region_counts.spec.ts:6:7 › region counts › counts people per region, once per membership
+[1A[2K[91/156] [chromium] › cp40_region_many.spec.ts:9:7 › many regions › a person has several regions and reach sums over them
+[1A[2K[92/156] [chromium] › cp40_region_many.spec.ts:33:7 › many regions › counts count a person once per region
+[1A[2K[93/156] [chromium] › cp41_allies.spec.ts:6:7 › allies › allies are the followed people and counted
+[1A[2K[94/156] [chromium] › cp42_synergy.spec.ts:6:7 › synergy › synergy sums the followed thrust
+[1A[2K[95/156] [chromium] › cp43_combined.spec.ts:6:7 › combined › combined is influence plus synergy
+[1A[2K[96/156] [chromium] › cp44_allies_directed.spec.ts:12:7 › directed allies › allies are the followed people
+[1A[2K[97/156] [chromium] › cp44_allies_directed.spec.ts:35:7 › directed allies › synergy and combined follow only the followed people
+[1A[2K[98/156] [chromium] › cp45_notes.spec.ts:7:7 › notes › shows the single score and its total
+[1A[2K  3) [chromium] › cp45_notes.spec.ts:7:7 › notes › shows the single score and its total ────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('person-notes')
+    Expected string: [32m"42"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('person-notes')[22m
+
+
+      15 |     await page.goto('/');
+      16 |
+    > 17 |     await expect(page.getByTestId('person-row-1').getByTestId('person-notes')).toHaveText('42');
+         |                                                                                ^
+      18 |     await expect(page.getByTestId('person-row-2').getByTestId('person-notes')).toHaveText('5');
+      19 |     await expect(page.getByTestId('person-row-3').getByTestId('person-notes')).toHaveText('');
+      20 |
+
+        at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp45_notes.spec.ts:17:80
+
+
+[1A[2K[99/156] [chromium] › cp46_quality.spec.ts:6:7 › quality › quality is the score, n/a without one
+[1A[2K[100/156] [chromium] › cp47_adjusted.spec.ts:7:7 › adjusted › adjusted is combined plus quality
+[1A[2K[101/156] [chromium] › cp48_notes_folded.spec.ts:11:7 › notes folded to a single score › note-sum, quality and adjusted use the single score
+[1A[2K[102/156] [chromium] › cp49_band.spec.ts:7:7 › band › band classifies adjusted into five bands
+[1A[2K[103/156] [chromium] › cp50_scaled.spec.ts:8:7 › scaled › scaled is adjusted times the band multiplier
+[1A[2K[104/156] [chromium] › cp51_band_histogram.spec.ts:7:7 › band histogram › counts people per band
+[1A[2K[105/156] [chromium] › cp52_band_recalibrate.spec.ts:8:7 › band recalibrated › new boundaries reclassify and rescale
+[1A[2K[106/156] [chromium] › cp53_norm.spec.ts:6:7 › norm › norm is scaled minus the median scaled
+[1A[2K[107/156] [chromium] › cp54_outlier.spec.ts:7:7 › outlier › outlier when the norm magnitude exceeds 100
+[1A[2K[108/156] [chromium] › cp55_outlier_count.spec.ts:6:7 › outlier count › counts the outliers on the sheet
+[1A[2K[109/156] [chromium] › cp56_norm_median.spec.ts:10:7 › norm against the median › norm, outliers and count use the median
+[1A[2K[110/156] [chromium] › cp56_norm_median.spec.ts:33:7 › norm against the median › an even number of people uses the lower of the two middle values
+[1A[2K[111/156] [chromium] › cp57_state.spec.ts:8:7 › state workflow › advances DRAFT -> REVIEW -> FINAL with audit; FINAL offers rework
+[1A[2K[112/156] [chromium] › cp58_final_total.spec.ts:9:7 › final total › final total sums scaled of FINAL people only
+[1A[2K[113/156] [chromium] › cp59_state_guard.spec.ts:7:7 › state guard › FINAL cannot go back; other states can
+[1A[2K[114/156] [chromium] › cp60_rework.spec.ts:8:7 › rework state › FINAL can move to REWORK and back, with audit
+[1A[2K[115/156] [chromium] › cp61_axis_raw.spec.ts:6:7 › second axis raw values › shows delta and epsilon
+[1A[2K[116/156] [chromium] › cp62_force.spec.ts:6:7 › force › force is delta times epsilon
+[1A[2K  4) [chromium] › cp62_force.spec.ts:6:7 › force › force is delta times epsilon ────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-1').getByTestId('concept-force')
+    Expected string: [32m"12"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-1').getByTestId('concept-force')[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="concept-force">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      14 |     await page.goto('/');
+      15 |
+    > 16 |     await expect(page.getByTestId('person-row-1').getByTestId('concept-force')).toHaveText('12');
+         |                                                                                 ^
+      17 |     await expect(page.getByTestId('person-row-2').getByTestId('concept-force')).toHaveText('10');
+      18 |     await expect(page.getByTestId('person-row-3').getByTestId('concept-force')).toHaveText('-10');
+      19 |   });
+
+        at /home/daniel/ui-work/202610160010/just-solve-chain1/e2e/specs/cp62_force.spec.ts:16:81
+
+
+[1A[2K[117/156] [chromium] › cp63_torque.spec.ts:5:7 › sway and torque › sway and torque build on force
+[1A[2K[118/156] [chromium] › cp64_torque_coefficient.spec.ts:5:7 › torque coefficient raised to 3 › torque is force + 3*sway
+[1A[2K[119/156] [chromium] › cp65_phase.spec.ts:6:7 › phase › phase classifies torque
+[1A[2K[120/156] [chromium] › cp66_blend.spec.ts:6:7 › blend › blend is momentum plus torque
+[1A[2K[121/156] [chromium] › cp67_axis_nullability.spec.ts:6:7 › axis nullability › missing second-axis value makes dependents n/a
+[1A[2K[122/156] [chromium] › cp68_phase_recalibrate.spec.ts:5:7 › phase recalibrated › phase uses the wider RUN band
+[1A[2K[123/156] [chromium] › cp69_flux.spec.ts:6:7 › flux › flux averages the patrons force
+[1A[2K[124/156] [chromium] › cp70_crest.spec.ts:6:7 › crest › crest is blend plus flux
+[1A[2K[125/156] [chromium] › cp71_top_crest.spec.ts:7:7 › top crest › names the highest-crest person
+[1A[2K[126/156] [chromium] › cp71_top_crest.spec.ts:27:7 › top crest › breaks a crest tie alphabetically
+[1A[2K[127/156] [chromium] › cp72_flux_average.spec.ts:10:7 › flux as average › flux averages patrons force; crest follows
+[1A[2K[128/156] [chromium] › cp73_swing.spec.ts:6:7 › swing › swing sums only positive followed torque
+[1A[2K[129/156] [chromium] › cp74_haul.spec.ts:6:7 › haul › haul is crest plus swing
+[1A[2K[130/156] [chromium] › cp75_total_haul.spec.ts:6:7 › total haul › total haul sums the hauls
+[1A[2K[131/156] [chromium] › cp76_swing_positive.spec.ts:9:7 › swing positive only › swing counts only positive followed torque
+[1A[2K[132/156] [chromium] › cp77_verge.spec.ts:6:7 › verge › verge comes from kind
+[1A[2K[133/156] [chromium] › cp78_pivot.spec.ts:6:7 › pivot › pivot is torque times verge
+[1A[2K[134/156] [chromium] › cp79_total_pivot.spec.ts:6:7 › total pivot › total pivot sums the pivots
+[1A[2K[135/156] [chromium] › cp80_verge_remap.spec.ts:7:7 › verge remapped › wider verge changes pivot and total pivot
+[1A[2K[136/156] [chromium] › cp81_thrum.spec.ts:6:7 › thrum › thrum is scaled plus 2*torque
+[1A[2K[137/156] [chromium] › cp82_spool.spec.ts:6:7 › spool › spool is thrum minus blend
+[1A[2K[138/156] [chromium] › cp83_max_thrum.spec.ts:7:7 › max thrum › names the highest-thrum person
+[1A[2K[139/156] [chromium] › cp83_max_thrum.spec.ts:23:7 › max thrum › breaks a thrum tie alphabetically
+[1A[2K[140/156] [chromium] › cp84_thrum_coefficient.spec.ts:9:7 › thrum coefficient raised to 2 › thrum = scaled + 2*torque; spool follows
+[1A[2K[141/156] [chromium] › cp85_drag.spec.ts:6:7 › drag › drag classifies blend into four levels
+[1A[2K[142/156] [chromium] › cp86_lift.spec.ts:7:7 › lift › lift is blend times the drag multiplier
+[1A[2K[143/156] [chromium] › cp87_drag_counts.spec.ts:6:7 › drag counts › counts people per drag level
+[1A[2K[144/156] [chromium] › cp88_drag_recalibrate.spec.ts:9:7 › drag recalibrated › new thresholds reclassify and rescale
+[1A[2K[145/156] [chromium] › cp89_gust.spec.ts:6:7 › gust › gust is reach plus 2*torque
+[1A[2K[146/156] [chromium] › cp90_coil.spec.ts:6:7 › coil › coil is gust minus momentum
+[1A[2K[147/156] [chromium] › cp91_total_gust.spec.ts:6:7 › total gust › total gust sums the gusts
+[1A[2K[148/156] [chromium] › cp92_gust_coefficient.spec.ts:9:7 › gust coefficient raised to 2 › gust = reach + 2*torque; coil and total follow
+[1A[2K[149/156] [chromium] › cp93_brace.spec.ts:6:7 › brace › brace is influence plus 2*force
+[1A[2K[150/156] [chromium] › cp94_total_brace.spec.ts:6:7 › total brace › total brace sums the braces
+[1A[2K[151/156] [chromium] › cp95_top_brace.spec.ts:7:7 › top brace › names the highest-brace person
+[1A[2K[152/156] [chromium] › cp95_top_brace.spec.ts:23:7 › top brace › breaks a brace tie alphabetically
+[1A[2K[153/156] [chromium] › cp96_brace_coefficient.spec.ts:8:7 › brace coefficient raised to 2 › brace = influence + 2*force; total follows
+[1A[2K[154/156] [chromium] › cp97_yield.spec.ts:6:7 › yield › yield is pivot plus 2*lift
+[1A[2K[155/156] [chromium] › cp98_grip.spec.ts:6:7 › grip › grip is yield minus coil
+[1A[2K[156/156] [chromium] › cp99_total_yield.spec.ts:6:7 › total yield › total yield sums the yields
+[1A[2K  4 failed
+    [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta ─────────────────────
+    [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative ───────────────
+    [chromium] › cp45_notes.spec.ts:7:7 › notes › shows the single score and its total ─────────────
+    [chromium] › cp62_force.spec.ts:6:7 › force › force is delta times epsilon ─────────────────────
+  152 passed (55.0s)
