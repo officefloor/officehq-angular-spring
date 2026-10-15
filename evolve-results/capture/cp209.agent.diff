@@ -1,0 +1,23 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 01ff1487..870b6bc8 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -69,6 +69,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // Their coil is their gust minus their momentum ("n/a" while either is "n/a").
+ // The sheet's region counts show, for each region its people have, how many of them are in it
+ // (a person counts once in every region they belong to), ordered by region code.
++// Each count is also the region's tally (region-tally-<code>), the same number.
+ // Each person may follow any number of other people, chosen on the row; following is one-directional,
+ // so A following B does not make B follow A. A person's allies are the people they follow, listed by name, with how many there are,
+ // and their synergy: the allies' thrust added together (zero without allies).
+@@ -413,7 +414,9 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+         <ul>
+           @for (r of regionCounts(); track r.region) {
+             <li>
+-              {{ r.region }}: <strong [attr.data-testid]="'region-count-' + r.region">{{ r.count }}</strong>
++              {{ r.region }}: <strong [attr.data-testid]="'region-count-' + r.region"
++                ><span [attr.data-testid]="'region-tally-' + r.region">{{ r.count }}</span></strong
++              >
+             </li>
+           }
+         </ul>
