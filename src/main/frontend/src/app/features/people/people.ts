@@ -119,6 +119,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a".
 // The sheet's tier tally shows how many of its people are in each tier, SURGE, STEADY and SINK (zero when
 // none are); people without a tier are not counted.
+// The sheet's tier ledger shows the total scaled of its people in each tier, SURGE, STEADY and SINK (zero
+// when none are); people without a tier, or whose scaled is "n/a", add nothing.
 // The sheet's stratum counts show how many of its people are in each stratum, TOP and BOT (zero when
 // none are); people whose stratum is "n/a" are not counted.
 // The sheet's band counts show how many of its people are in each band, A through E (zero when none
@@ -475,6 +477,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (t of tierTally(); track t.tier) {
           <li>
             {{ t.tier }}: <strong [attr.data-testid]="'tier-tally-' + t.tier">{{ t.count }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="tier-ledger-heading">
+      <h2 id="tier-ledger-heading">Ledger per tier</h2>
+      <ul>
+        @for (t of tierLedger(); track t.tier) {
+          <li>
+            {{ t.tier }}: <strong [attr.data-testid]="'tier-ledger-' + t.tier">{{ t.total }}</strong>
           </li>
         }
       </ul>
@@ -1424,6 +1436,14 @@ export class People {
   });
   protected readonly tierTally = computed(() =>
     TIERS.map((tier) => ({ tier, count: this.people().filter((p) => p.tier === tier).length })),
+  );
+  protected readonly tierLedger = computed(() =>
+    TIERS.map((tier) => ({
+      tier,
+      total: this.people()
+        .filter((p) => p.tier === tier)
+        .reduce((total, p) => total + (p.scaled ?? 0), 0),
+    })),
   );
   protected readonly gradeTally = computed(() =>
     [...GRADES].reverse().map((grade) => ({
