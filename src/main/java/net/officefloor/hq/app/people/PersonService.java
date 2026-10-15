@@ -148,6 +148,21 @@ public class PersonService {
         });
     }
 
+    /** Moves the person back to their previous state, recorded in the audit like {@link #advance}; refused once FINAL or at DRAFT. */
+    @Transactional
+    public Optional<Person> demote(String sheetId, long id) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            State current = p.getState();
+            State previous = current.previous();
+            if (previous == null) {
+                throw new IllegalStateException("a person at " + current + " cannot move back");
+            }
+            p.setState(previous);
+            audit.record("STATE_CHANGED id=" + id + " from=" + current + " to=" + previous);
+            return p;
+        });
+    }
+
     /** Sets the person's whole-number score; null clears it. */
     @Transactional
     public Optional<Person> setScore(String sheetId, long id, Integer score) {

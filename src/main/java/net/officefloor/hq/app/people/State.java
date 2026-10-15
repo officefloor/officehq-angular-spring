@@ -1,6 +1,9 @@
 package net.officefloor.hq.app.people;
 
-/** A person's workflow state; a person moves forward from DRAFT to REVIEW to FINAL, and FINAL is terminal. */
+/**
+ * A person's workflow state; a person moves forward from DRAFT to REVIEW to FINAL, and back a step from REVIEW to DRAFT. FINAL is
+ * terminal: once there a person cannot move forward or back.
+ */
 public enum State {
     DRAFT, REVIEW, FINAL;
 
@@ -9,6 +12,15 @@ public enum State {
         return switch (this) {
             case DRAFT -> REVIEW;
             case REVIEW -> FINAL;
+            case FINAL -> null;
+        };
+    }
+
+    /** The state a step back from this one; none from DRAFT, and none from FINAL as it is terminal. */
+    public State previous() {
+        return switch (this) {
+            case DRAFT -> null;
+            case REVIEW -> DRAFT;
             case FINAL -> null;
         };
     }

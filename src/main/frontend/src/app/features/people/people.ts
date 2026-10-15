@@ -25,7 +25,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
 // Their decay is momentum minus age ("n/a" while either is missing).
 // Each person has a state, starting at DRAFT; the row's Advance button moves it forward to REVIEW and
-// then FINAL, after which there is no Advance button. Every change is recorded in the audit.
+// then FINAL, after which there is no Advance button. The row's Back button moves a REVIEW person back
+// to DRAFT; a FINAL person cannot go back, and trying shows that it is not allowed. Every change is
+// recorded in the audit.
 // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
 // Their effective is their net while active, and half their net rounded down while not active
 // ("n/a" while net is).
@@ -168,6 +170,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
     @if (people().length === 0) {
       <p data-testid="people-empty">No people yet.</p>
     }
+    @if (stateError(); as error) {
+      <p role="alert" data-testid="person-state-error">{{ error }}</p>
+    }
     <table data-testid="people-table">
       <thead>
         <tr>
@@ -216,6 +221,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
           <th scope="col">Advance</th>
+          <th scope="col">Back</th>
           <th scope="col">Set patrons</th>
           <th scope="col">Set allies</th>
           <th scope="col">Set score</th>
@@ -367,6 +373,18 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
               }
             </td>
             <td>
+              @if (p.state !== 'DRAFT') {
+                <button
+                  type="button"
+                  (click)="demote(p)"
+                  [attr.aria-label]="'Move ' + p.name + ' back'"
+                  [attr.data-testid]="'person-demote-' + p.id"
+                >
+                  Back
+                </button>
+              }
+            </td>
+            <td>
               <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
                 Patrons for {{ p.name }}
               </label>
@@ -442,6 +460,7 @@ export class People {
   protected readonly sheet = signal<string | null>(null);
   protected readonly anchor = signal('');
   protected readonly saving = signal(false);
+  protected readonly stateError = signal<string | null>(null);
   protected readonly editing = signal<Person | null>(null);
   protected readonly leader = computed(() => this.people().find((p) => p.rank === 1)?.name ?? null);
   protected readonly totalLoad = computed(() =>
@@ -577,7 +596,16 @@ export class People {
   }
 
   protected advance(person: Person): void {
+    this.stateError.set(null);
     this.service.advance(this.sheet(), person.id).subscribe(() => this.load());
+  }
+
+  protected demote(person: Person): void {
+    this.stateError.set(null);
+    this.service.demote(this.sheet(), person.id).subscribe({
+      next: () => this.load(),
+      error: () => this.stateError.set(`${person.name} is ${person.state} and cannot move back.`),
+    });
   }
 
   protected patronNames(person: Person): string {

@@ -132,6 +132,18 @@ public class PersonController {
         }
     }
 
+    /** Moves the person with this id on the request's sheet back to their previous state; refused once FINAL or at DRAFT. */
+    @PostMapping("/{id}/demote")
+    public PersonView demote(@RequestParam(required = false) String sheet, @PathVariable long id) {
+        String sheetId = sheetId(sheet);
+        try {
+            return service.demote(sheetId, id).map(p -> view(sheetId, p))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
+    }
+
     /**
      * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, score, grade, regions (a list of codes), active
      * (true or false), patronIds and allyIds (lists of ids on that sheet) the body names; a null value clears it.

@@ -136,6 +136,11 @@ export class PeopleService {
     return this.http.post<Person>(`/api/people/${id}/advance`, null, { params: sheetParams(sheet) });
   }
 
+  // Moves a person back to their previous state (REVIEW -> DRAFT); refused once FINAL.
+  demote(sheet: string | null, id: number): Observable<Person> {
+    return this.http.post<Person>(`/api/people/${id}/demote`, null, { params: sheetParams(sheet) });
+  }
+
   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
   }
