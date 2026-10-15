@@ -121,6 +121,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
 // Each group shows its spread: the highest scaled of the people in it minus the lowest, ignoring "n/a"
 // ("n/a" when none of its people have a scaled).
+// Each group shows its apex: the name of the person in it with the highest scaled, ties going to the name
+// earlier in the alphabet ("n/a" when none of its people have a scaled).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -246,6 +248,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
               — size <span data-testid="group-concept-size">{{ groupSizes().get(g.id) ?? 0 }}</span>
               — cohesion <span data-testid="group-concept-cohesion">{{ groupCohesions().get(g.id) ?? 'n/a' }}</span>
               — spread <span data-testid="group-concept-spread">{{ groupSpreads().get(g.id) ?? 'n/a' }}</span>
+              — apex <span data-testid="group-concept-apex">{{ groupApexes().get(g.id)?.name ?? 'n/a' }}</span>
             </li>
           }
         </ul>
@@ -850,6 +853,17 @@ export class People {
     const spreads = new Map<number, number>();
     for (const [groupId, { min, max }] of ranges) spreads.set(groupId, max - min);
     return spreads;
+  });
+  protected readonly groupApexes = computed(() => {
+    const apexes = new Map<number, { name: string; scaled: number }>();
+    for (const p of this.people()) {
+      if (p.groupId === null || p.scaled === null) continue;
+      const apex = apexes.get(p.groupId);
+      if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
+        apexes.set(p.groupId, { name: p.name, scaled: p.scaled });
+      }
+    }
+    return apexes;
   });
   protected readonly regionCounts = computed(() => {
     const counts = new Map<string, number>();
