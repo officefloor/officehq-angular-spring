@@ -1,0 +1,36 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e12eb149..d78625e2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -134,6 +134,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // people have an effective).
+ // Each group shows its max: the highest scaled of the people in it, ignoring "n/a" ("n/a" when none of its
+ // people have a scaled).
++// Each group shows its headroom: its max minus its cohesion ("n/a" while either is "n/a").
+ // Each person shows their share: their scaled as a percentage of their group's strength, rounded to the nearest whole percent
+ // ("n/a" when their group's strength is zero, they have no group or their scaled is "n/a").
+ // Each person shows their standing: their place within their group by scaled, highest first (1), with
+@@ -286,6 +287,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+               — density <span data-testid="group-concept-density">{{ groupDensities().get(g.id) ?? 0 }}</span>
+               — min <span data-testid="group-concept-min">{{ groupMins().get(g.id) ?? 'n/a' }}</span>
+               — max <span data-testid="group-concept-max">{{ groupMaxes().get(g.id) ?? 'n/a' }}</span>
++              — headroom <span data-testid="group-concept-headroom">{{ groupHeadrooms().get(g.id) ?? 'n/a' }}</span>
+             </li>
+           }
+         </ul>
+@@ -1036,6 +1038,15 @@ export class People {
+     }
+     return maxes;
+   });
++  protected readonly groupHeadrooms = computed(() => {
++    const cohesions = this.groupCohesions();
++    const headrooms = new Map<number, number>();
++    for (const [groupId, max] of this.groupMaxes()) {
++      const cohesion = cohesions.get(groupId);
++      if (cohesion !== undefined) headrooms.set(groupId, max - cohesion);
++    }
++    return headrooms;
++  });
+   protected readonly standings = computed(() => {
+     const ranked = this.people()
+       .filter((p) => p.scaled !== null)
