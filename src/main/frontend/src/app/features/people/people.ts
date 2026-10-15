@@ -304,6 +304,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
               — min <span data-testid="group-concept-min">{{ groupMins().get(g.id) ?? 'n/a' }}</span>
               — max <span data-testid="group-concept-max">{{ groupMaxes().get(g.id) ?? 'n/a' }}</span>
               — headroom <span data-testid="group-concept-headroom">{{ groupHeadrooms().get(g.id) ?? 'n/a' }}</span>
+              — even <span data-testid="group-concept-even">{{ (groupSizes().get(g.id) ?? 0) % 2 === 0 ? 'yes' : 'no' }}</span>
             </li>
           }
         </ul>
