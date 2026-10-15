@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f43e5525..8a5a93d7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -102,6 +102,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // out; for an even count, the lower of the two middle values ("n/a" while their blend is "n/a").
+ // They are a stray ("yes") when their ebb is more than 100 away from zero in either direction, and
+ // otherwise "no" (also "no" while their ebb is "n/a").
++// The sheet's stray count is how many of its people are strays.
+ // The sheet's final total is the sum of the scaled of its people whose state is FINAL, counting
+ // "n/a" as zero.
+ // The sheet's band counts show how many of its people are in each band, A through E (zero when none
+@@ -226,6 +227,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+     <p>Total yield: <strong data-testid="rollup-total-yield">{{ totalYield() }}</strong></p>
+     <p>Total tide: <strong data-testid="rollup-total-tide">{{ totalTide() }}</strong></p>
+     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
++    <p>Strays: <strong data-testid="rollup-stray-count">{{ strayCount() }}</strong></p>
+     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
+     <section aria-labelledby="region-counts-heading">
+       <h2 id="region-counts-heading">People per region</h2>
+@@ -719,6 +721,7 @@ export class People {
+   );
+   protected readonly activeCount = computed(() => this.people().filter((p) => p.active).length);
+   protected readonly outlierCount = computed(() => this.people().filter((p) => p.outlier).length);
++  protected readonly strayCount = computed(() => this.people().filter((p) => p.stray).length);
+   protected readonly totalEffective = computed(() =>
+     this.people().reduce((total, p) => total + (p.effective ?? 0), 0),
+   );
