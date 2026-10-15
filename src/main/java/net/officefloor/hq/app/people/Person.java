@@ -194,6 +194,13 @@ public class Person {
         return notes.isEmpty() ? null : Math.floorDiv(getNoteSum(), notes.size());
     }
 
+    /** Adjusted is combined plus quality (quality counted as zero without notes); absent while combined is. */
+    public Integer getAdjusted() {
+        Integer combined = getCombined();
+        Integer quality = getQuality();
+        return combined == null ? null : combined + (quality == null ? 0 : quality);
+    }
+
     public LocalDate getOnset() {
         return onset;
     }

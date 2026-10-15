@@ -48,6 +48,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // Each person may have any number of notes, each with a whole-number score, added on the row. Their
 // notes are listed by score, sorted ascending, with their note sum: the scores added together (zero without notes).
 // Their quality is the average of their note scores, rounded down ("n/a" without notes).
+// Their adjusted is their combined plus their quality, counting quality as zero without notes ("n/a" while
+// combined is "n/a").
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -173,6 +175,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Notes</th>
           <th scope="col">Note sum</th>
           <th scope="col">Quality</th>
+          <th scope="col">Adjusted</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -220,6 +223,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="person-notes">{{ p.notes.join(', ') }}</td>
             <td data-testid="concept-note-sum">{{ p.noteSum }}</td>
             <td data-testid="concept-quality">{{ p.quality ?? 'n/a' }}</td>
+            <td data-testid="concept-adjusted">{{ p.adjusted ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>
