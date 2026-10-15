@@ -29,7 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active");
 
     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
@@ -133,11 +133,13 @@ public class TestSupportController {
             Integer gamma = integer(row.get("gamma"), prefix + "people.gamma");
             String grade = grade(row.get("grade"), prefix + "people.grade");
             LocalDate onset = date(row.get("onset"), prefix + "people.onset");
+            Boolean active = bool(row.get("active"), prefix + "people.active");
             // A person's id is their id within the sheet; the internal key is generated.
             Integer localId = integer(row.get("id"), prefix + "people.id");
-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset);
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset,
+                    active != null ? active : true);
         }
         // Patrons link people by id, so add them once every person exists.
         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
@@ -191,7 +193,7 @@ public class TestSupportController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
                 + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\", "
-                + "CAST(onset AS VARCHAR) AS \"onset\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\" FROM person p WHERE " + where + " ORDER BY local_id", args));
         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
@@ -231,6 +233,19 @@ public class TestSupportController {
         } catch (IllegalArgumentException e) {
             throw badRequest(field + ": " + e.getMessage());
         }
+    }
+
+    private static Boolean bool(Object value, String field) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof String s && (s.equals("true") || s.equals("false"))) {
+            return Boolean.valueOf(s);
+        }
+        throw badRequest(field + " must be true or false, got " + value);
     }
 
     private static LocalDate date(Object value, String field) {

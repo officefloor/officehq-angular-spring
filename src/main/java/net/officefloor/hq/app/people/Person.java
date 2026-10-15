@@ -26,7 +26,7 @@ import java.util.Set;
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
- * "Decay" is momentum minus age. */
+ * "Decay" is momentum minus age. A person is "active" or not; a new person is active. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -51,6 +51,8 @@ public class Person {
     private Grade grade;
 
     private LocalDate onset;
+
+    private boolean active = true;
 
     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
     @Column(name = "sheet_id")
@@ -119,6 +121,14 @@ public class Person {
 
     public void setGrade(Grade grade) {
         this.grade = grade;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
     }
 
     public LocalDate getOnset() {

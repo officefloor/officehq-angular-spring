@@ -27,14 +27,14 @@ public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
-            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay) {
+            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active) {
         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
-                    p.getAge(anchor), p.getDecay(anchor));
+                    p.getAge(anchor), p.getDecay(anchor), p.isActive());
         }
     }
 
@@ -88,8 +88,8 @@ public class PersonController {
     }
 
     /**
-     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade and
-     * patronIds (a list of ids on that sheet) the body names; a null value clears it.
+     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, active
+     * (true or false) and patronIds (a list of ids on that sheet) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
     public PersonView update(@RequestParam(required = false) String sheet, @PathVariable long id,
@@ -107,6 +107,12 @@ public class PersonController {
         }
         if (update.containsKey("grade")) {
             person = service.setGrade(sheetId, id, grade(update.get("grade")));
+        }
+        if (update.containsKey("active")) {
+            if (!(update.get("active") instanceof Boolean active)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "active must be true or false");
+            }
+            person = service.setActive(sheetId, id, active);
         }
         if (update.containsKey("patronIds")) {
             List<Long> patronIds = new ArrayList<>();

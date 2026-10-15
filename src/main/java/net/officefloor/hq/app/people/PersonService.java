@@ -116,6 +116,14 @@ public class PersonService {
         });
     }
 
+    @Transactional
+    public Optional<Person> setActive(String sheetId, long id, boolean active) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            p.setActive(active);
+            return p;
+        });
+    }
+
     /** Sets the patrons (other people on the same sheet) by their id on that sheet; an empty list clears them. Refuses oneself or an unknown person. */
     @Transactional
     public Optional<Person> setPatrons(String sheetId, long id, Collection<Long> patronIds) {

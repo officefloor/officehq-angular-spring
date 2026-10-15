@@ -23,6 +23,7 @@ export interface Person {
   onset: string | null;
   age: number | null;
   decay: number | null;
+  active: boolean;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
@@ -92,6 +93,10 @@ export class PeopleService {
 
   setGrade(sheet: string | null, id: number, grade: Grade | null): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { grade }, { params: sheetParams(sheet) });
+  }
+
+  setActive(sheet: string | null, id: number, active: boolean): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { active }, { params: sheetParams(sheet) });
   }
 
   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {
