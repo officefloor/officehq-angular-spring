@@ -1,0 +1,34 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e65527ee..64725fbd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -210,6 +210,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // of its ledger, rounded down ("n/a" when the ledger is zero).
+ // The sheet's skew is the average scaled, rounded down, minus its median scaled, of everyone whose scaled
+ // can be worked out ("n/a" when nobody has a scaled).
++// The sheet's tilt is how many people have a scaled above the average scaled minus how many have one
++// below it, of everyone whose scaled can be worked out (0 when nobody has a scaled).
+ // A person may be in several groups; a group's figures count every person in it. Where a person's own
+ // figure depends on "their group", it is the group, of those they are in, whose name comes first
+ // alphabetically.
+@@ -394,6 +396,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+     <p>Coverage (scaled 500 or more): <strong data-testid="rollup-coverage">{{ coverage() }}</strong></p>
+     <p>Concentration (top three share %): <strong data-testid="rollup-concentration">{{ concentration() ?? 'n/a' }}</strong></p>
+     <p>Skew (average minus median scaled): <strong data-testid="rollup-skewval">{{ skewVal() ?? 'n/a' }}</strong></p>
++    <p>Tilt (above average minus below average scaled): <strong data-testid="rollup-tilt">{{ tilt() }}</strong></p>
+     <section aria-labelledby="region-counts-heading">
+       <h2 id="region-counts-heading">People per region</h2>
+       @if (regionCounts().length === 0) {
+@@ -1416,6 +1419,12 @@ export class People {
+     const total = order.reduce((sum, p) => sum + p.scaled!, 0);
+     return Math.floor(total / order.length) - median;
+   });
++  protected readonly tilt = computed(() => {
++    const order = this.scaledOrder();
++    const total = order.reduce((sum, p) => sum + p.scaled!, 0);
++    // Compare scaled * count with the total to avoid fractional averages.
++    return order.reduce((tilt, p) => tilt + Math.sign(p.scaled! * order.length - total), 0);
++  });
+   protected readonly concentration = computed(() => {
+     const total = this.ledger();
+     const topThree = this.scaledOrder()
