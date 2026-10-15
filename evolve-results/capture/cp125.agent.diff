@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8bd6150e..89d39472 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -118,6 +118,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
+ // add, through Edit or on the row, and the row shows its name.
+ // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
++// Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -241,6 +242,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+               <span data-testid="group-name">{{ g.name }}</span>
+               — strength <span data-testid="group-concept-strength">{{ groupStrengths().get(g.id) ?? 0 }}</span>
+               — size <span data-testid="group-concept-size">{{ groupSizes().get(g.id) ?? 0 }}</span>
++              — cohesion <span data-testid="group-concept-cohesion">{{ groupCohesions().get(g.id) ?? 'n/a' }}</span>
+             </li>
+           }
+         </ul>
+@@ -824,6 +826,14 @@ export class People {
+     }
+     return sizes;
+   });
++  protected readonly groupCohesions = computed(() => {
++    const strengths = this.groupStrengths();
++    const cohesions = new Map<number, number>();
++    for (const [groupId, size] of this.groupSizes()) {
++      cohesions.set(groupId, Math.floor((strengths.get(groupId) ?? 0) / size));
++    }
++    return cohesions;
++  });
+   protected readonly regionCounts = computed(() => {
+     const counts = new Map<string, number>();
+     for (const p of this.people()) {
