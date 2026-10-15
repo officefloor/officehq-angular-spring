@@ -26,7 +26,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // by higher alpha first, then by name; without a momentum the rank shows "n/a". The sheet's leader
 // is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
 // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100. Their quota is "yes" when their
-// rank is in the top half of the ranked people (the half rounded up, so an odd count's middle is in it).
+// rank is in the top third of the ranked people (the third rounded down, dropping any remainder).
 // Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
 // weight comes from it (LOW 1, MID 3, HIGH 5, "n/a" without a grade). Their load is momentum × weight
 // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving

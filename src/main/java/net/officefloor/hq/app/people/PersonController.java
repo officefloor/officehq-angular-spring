@@ -71,11 +71,11 @@ public class PersonController {
     }
 
     /**
-     * Whether a rank is in the top half of the ranked people, the half rounded up so that with an odd
-     * count the middle person is in it. Unranked is not.
+     * Whether a rank is in the top third of the ranked people, the third rounded down so that only a
+     * whole third is taken and any remainder is dropped. Unranked is not.
      */
     static boolean quota(Integer rank, int ranked) {
-        return rank != null && rank <= (ranked + 1) / 2;
+        return rank != null && rank <= ranked / 3;
     }
 
     /** Norm is scaled minus the sheet's median scaled; absent while either is absent. */
