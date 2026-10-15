@@ -212,6 +212,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // of its ledger, rounded down ("n/a" when the ledger is zero).
 // The sheet's skew is the average scaled, rounded down, minus its median scaled, of everyone whose scaled
 // can be worked out ("n/a" when nobody has a scaled).
+// The sheet's digest is the average scaled, rounded down, of everyone whose scaled can be worked out
+// ("n/a" when nobody has a scaled).
 // The sheet's tilt is how many people have a scaled above the median scaled minus how many have one
 // below it, of everyone whose scaled can be worked out (0 when nobody has a scaled).
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
@@ -399,6 +401,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
     <p>Concentration (top three share %): <strong data-testid="rollup-concentration">{{ concentration() ?? 'n/a' }}</strong></p>
     <p>Bands in use: <strong data-testid="rollup-spanwidth">{{ spanWidth() }}</strong></p>
     <p>Skew (average minus median scaled): <strong data-testid="rollup-skewval">{{ skewVal() ?? 'n/a' }}</strong></p>
+    <p>Digest (average scaled per person): <strong data-testid="rollup-digest">{{ digest() ?? 'n/a' }}</strong></p>
     <p>Tilt (above median minus below median scaled): <strong data-testid="rollup-tilt">{{ tilt() }}</strong></p>
     <section aria-labelledby="region-counts-heading">
       <h2 id="region-counts-heading">People per region</h2>
@@ -1424,6 +1427,11 @@ export class People {
     if (median === null) return null;
     const total = order.reduce((sum, p) => sum + p.scaled!, 0);
     return Math.floor(total / order.length) - median;
+  });
+  protected readonly digest = computed(() => {
+    const order = this.scaledOrder();
+    if (order.length === 0) return null;
+    return Math.floor(order.reduce((sum, p) => sum + p.scaled!, 0) / order.length);
   });
   protected readonly tilt = computed(() => {
     const median = this.medianScaled();
