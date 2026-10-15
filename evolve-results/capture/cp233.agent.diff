@@ -1,0 +1,139 @@
+diff --git a/src/main/frontend/src/app/app.routes.ts b/src/main/frontend/src/app/app.routes.ts
+index b8c93f39..12e24819 100644
+--- a/src/main/frontend/src/app/app.routes.ts
++++ b/src/main/frontend/src/app/app.routes.ts
+@@ -14,4 +14,9 @@ export const routes: Routes = [
+     data: { section: 'people', label: 'People', order: 1 },
+     loadComponent: () => import('./features/people/people').then((m) => m.People),
+   },
++  {
++    path: 'report',
++    data: { section: 'report', label: 'Report', order: 2 },
++    loadComponent: () => import('./features/report/report').then((m) => m.Report),
++  },
+ ];
+diff --git a/src/main/frontend/src/app/app.ts b/src/main/frontend/src/app/app.ts
+index cdda2575..b3028d72 100644
+--- a/src/main/frontend/src/app/app.ts
++++ b/src/main/frontend/src/app/app.ts
+@@ -1,12 +1,15 @@
+ import { Component, inject } from '@angular/core';
+-import { Route, Router, RouterLink, RouterOutlet } from '@angular/router';
++import { toSignal } from '@angular/core/rxjs-interop';
++import { NavigationEnd, Route, Router, RouterLink, RouterOutlet } from '@angular/router';
++import { filter, map } from 'rxjs';
++import { Report } from './features/report/report';
+ 
+ // Minimal base shell. It renders the nav bar and the routed page. The nav comes from the ROUTER'S
+ // OWN CONFIG — every route carrying `data.section` becomes a link — so the shell holds no list of
+ // pages and is not edited when one is added. Every observable element carries a stable data-testid.
+ @Component({
+   selector: 'app-root',
+-  imports: [RouterOutlet, RouterLink],
++  imports: [RouterOutlet, RouterLink, Report],
+   template: `
+     <div data-testid="app-root">
+       <nav data-testid="app-nav">
+@@ -21,11 +24,25 @@ import { Route, Router, RouterLink, RouterOutlet } from '@angular/router';
+       <main data-testid="app-home">
+         <router-outlet />
+       </main>
++      @if (!onReport()) {
++        <aside data-testid="app-report">
++          <app-report />
++        </aside>
++      }
+     </div>
+   `,
+ })
+ export class App {
+-  protected readonly nav: Route[] = inject(Router)
++  private readonly router = inject(Router);
++  // The report shows beside every page except its own screen, where it is the page.
++  protected readonly onReport = toSignal(
++    this.router.events.pipe(
++      filter((e) => e instanceof NavigationEnd),
++      map((e) => e.urlAfterRedirects.split(/[?#]/)[0] === '/report'),
++    ),
++    { initialValue: false },
++  );
++  protected readonly nav: Route[] = this.router
+     .config.filter((r) => !!r.data?.['section'])
+     .sort(
+       (a, b) =>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 2d5d148d..ec36bb66 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpParams } from '@angular/common/http';
+-import { Injectable, inject } from '@angular/core';
++import { Injectable, inject, signal } from '@angular/core';
+ import { Observable, map } from 'rxjs';
+ 
+ // A person's workflow state, moved forward from DRAFT to REVIEW to FINAL; a FINAL person may be
+@@ -141,6 +141,14 @@ export interface NewPerson {
+ @Injectable({ providedIn: 'root' })
+ export class PeopleService {
+   private readonly http = inject(HttpClient);
++  private readonly changes = signal(0);
++
++  // Bumped whenever the people have been (re)loaded, so views of them elsewhere can re-read theirs.
++  readonly revision = this.changes.asReadonly();
++
++  changed(): void {
++    this.changes.update((n) => n + 1);
++  }
+ 
+   // The people on a sheet; null is the unnamed sheet.
+   list(sheet: string | null): Observable<Person[]> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 09a06667..2e8caded 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2082,6 +2082,7 @@ export class People {
+     });
+     this.service.list(sheet).subscribe((people) => {
+       if (this.sheet() === sheet) this.people.set(people);
++      this.service.changed();
+     });
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/report/report.ts b/src/main/frontend/src/app/features/report/report.ts
+new file mode 100644
+index 00000000..1aa1cac1
+--- /dev/null
++++ b/src/main/frontend/src/app/features/report/report.ts
+@@ -0,0 +1,32 @@
++import { Component, computed, effect, inject, signal } from '@angular/core';
++import { PeopleService, Person } from '../people/people.service';
++
++// The report: the unnamed sheet's ledger (the grand total of everyone's scaled, leaving out anyone
++// whose scaled is "n/a") and its headcount, the same figures the worksheet shows. It reads them from
++// the server itself and re-reads them whenever the people change.
++@Component({
++  selector: 'app-report',
++  template: `
++    <section aria-labelledby="report-title" data-testid="report">
++      <h2 id="report-title">Report</h2>
++      <p>Grand total: <strong data-testid="report-ledger">{{ ledger() }}</strong></p>
++      <p>People: <strong data-testid="report-headcount">{{ headcount() }}</strong></p>
++    </section>
++  `,
++})
++export class Report {
++  private readonly service = inject(PeopleService);
++
++  private readonly people = signal<Person[]>([]);
++  protected readonly ledger = computed(() =>
++    this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
++  );
++  protected readonly headcount = computed(() => this.people().length);
++
++  constructor() {
++    effect(() => {
++      this.service.revision();
++      this.service.list(null).subscribe((people) => this.people.set(people));
++    });
++  }
++}
