@@ -87,6 +87,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their yield is their pivot plus two times their lift ("n/a" while either is "n/a").
 // Their grip is their yield minus their coil ("n/a" while either is "n/a").
 // Their charge is their vector plus their yield ("n/a" while either is "n/a").
+// The sheet's top charge is the name of the person with the highest charge, ties going to the name
+// that comes first alphabetically ("n/a" when nobody has a charge).
 // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
 // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
@@ -209,6 +211,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
     <p>Top crest: <strong data-testid="rollup-top-crest">{{ topCrest() ?? 'n/a' }}</strong></p>
     <p>Top brace: <strong data-testid="rollup-top-brace">{{ topBrace() ?? 'n/a' }}</strong></p>
     <p>Max thrum: <strong data-testid="rollup-max-thrum">{{ maxThrum() ?? 'n/a' }}</strong></p>
+    <p>Top charge: <strong data-testid="rollup-top-charge">{{ topCharge() ?? 'n/a' }}</strong></p>
     <p>Total haul: <strong data-testid="rollup-total-haul">{{ totalHaul() }}</strong></p>
     <p>Total pivot: <strong data-testid="rollup-total-pivot">{{ totalPivot() }}</strong></p>
     <p>Total gust: <strong data-testid="rollup-total-gust">{{ totalGust() }}</strong></p>
@@ -777,6 +780,20 @@ export class People {
         top === null ||
         p.brace > top.brace! ||
         (p.brace === top.brace && p.name.localeCompare(top.name) < 0)
+      ) {
+        top = p;
+      }
+    }
+    return top?.name ?? null;
+  });
+  protected readonly topCharge = computed(() => {
+    let top: Person | null = null;
+    for (const p of this.people()) {
+      if (p.charge === null) continue;
+      if (
+        top === null ||
+        p.charge > top.charge! ||
+        (p.charge === top.charge && p.name.localeCompare(top.name) < 0)
       ) {
         top = p;
       }
