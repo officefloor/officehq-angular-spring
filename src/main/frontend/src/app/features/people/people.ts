@@ -119,6 +119,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a".
 // The sheet's tier tally shows how many of its people are in each tier, SURGE, STEADY and SINK (zero when
 // none are); people without a tier are not counted.
+// The sheet's tier share shows, for each tier, SURGE, STEADY and SINK, its tally as a percentage of the
+// sheet's headcount, rounded down ("n/a" when the sheet has nobody on it).
 // The sheet's tier ledger shows the total scaled of its people in each tier, SURGE, STEADY and SINK (zero
 // when none are); people without a tier, or whose scaled is "n/a", add nothing.
 // The sheet's top per tier shows, for each tier, SURGE, STEADY and SINK, the name of the person in it with
@@ -479,6 +481,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (t of tierTally(); track t.tier) {
           <li>
             {{ t.tier }}: <strong [attr.data-testid]="'tier-tally-' + t.tier">{{ t.count }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="tier-share-heading">
+      <h2 id="tier-share-heading">Share per tier (%)</h2>
+      <ul>
+        @for (t of tierShare(); track t.tier) {
+          <li>
+            {{ t.tier }}: <strong [attr.data-testid]="'tier-share-' + t.tier">{{ t.percent ?? 'n/a' }}</strong>
           </li>
         }
       </ul>
@@ -1462,6 +1474,13 @@ export class People {
   protected readonly tierTally = computed(() =>
     TIERS.map((tier) => ({ tier, count: this.people().filter((p) => p.tier === tier).length })),
   );
+  protected readonly tierShare = computed(() => {
+    const headcount = this.headcount();
+    return this.tierTally().map(({ tier, count }) => ({
+      tier,
+      percent: headcount === 0 ? null : Math.floor((count * 100) / headcount),
+    }));
+  });
   protected readonly tierLedger = computed(() =>
     TIERS.map((tier) => ({
       tier,
