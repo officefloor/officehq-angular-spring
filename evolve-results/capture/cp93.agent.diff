@@ -1,0 +1,89 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 1a09c943..e0208c35 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -47,6 +47,7 @@ export interface Person {
+   effective: number | null;
+   clout: number | null;
+   influence: number | null;
++  brace: number | null;
+   regions: string[];
+   reach: number | null;
+   gust: number | null;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2e0f9919..c73b75da 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -51,6 +51,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their clout is the average of their patrons' effective, rounded down (zero without patrons; "n/a" while any
+ // patron's effective is "n/a").
+ // Their influence is their effective plus their clout ("n/a" while either is "n/a").
++// Their brace is their influence plus their force ("n/a" while either is "n/a").
+ // The sheet's top influence is the name of the person with the highest influence, ties going to the
+ // name that comes first alphabetically ("n/a" when nobody has an influence).
+ // Each person may belong to any number of regions: short codes typed in (like N1 or S2), separated by
+@@ -291,6 +292,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+           <th scope="col">Effective</th>
+           <th scope="col">Clout</th>
+           <th scope="col">Influence</th>
++          <th scope="col">Brace</th>
+           <th scope="col">Combined</th>
+           <th scope="col">Score</th>
+           <th scope="col">Note sum</th>
+@@ -372,6 +374,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
+             <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
+             <td data-testid="concept-influence">{{ p.influence ?? 'n/a' }}</td>
++            <td data-testid="concept-brace">{{ p.brace ?? 'n/a' }}</td>
+             <td data-testid="concept-combined">{{ p.combined ?? 'n/a' }}</td>
+             <td data-testid="person-score">{{ p.score }}</td>
+             <td data-testid="concept-note-sum">{{ p.noteSum }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index cc203792..169d4d39 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -34,7 +34,7 @@ import java.util.Set;
+  * "Pivot" is torque times verge, absent while either is.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+- * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
++ * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus force.
+  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+  * person's regions, of momentum times that region's multiplier. "Gust" is reach plus two times torque. "Coil" is gust minus momentum. A person may follow any number of other people on
+@@ -496,6 +496,13 @@ public class Person {
+         return effective == null || clout == null ? null : effective + clout;
+     }
+ 
++    /** Brace is influence plus force; absent while either is. */
++    public Integer getBrace() {
++        Integer influence = getInfluence();
++        Integer force = getForce();
++        return influence == null || force == null ? null : influence + force;
++    }
++
+     /** Combined is influence plus synergy; absent while either is. */
+     public Integer getCombined() {
+         Integer influence = getInfluence();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 448dfc25..485668bb 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -31,7 +31,7 @@ public class PersonController {
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
+             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+-            Integer clout, Integer influence, List<String> regions, Integer reach, Integer gust, Integer coil,
++            Integer clout, Integer influence, Integer brace, List<String> regions, Integer reach, Integer gust, Integer coil,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+@@ -40,7 +40,7 @@ public class PersonController {
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+-                    p.getInfluence(), p.getRegions(), p.getReach(), p.getGust(), p.getCoil(),
++                    p.getInfluence(), p.getBrace(), p.getRegions(), p.getReach(), p.getGust(), p.getCoil(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(),
+                     PersonController.norm(p.getScaled(), medianScaled),
