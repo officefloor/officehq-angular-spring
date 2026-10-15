@@ -15,6 +15,7 @@ export interface Person {
   patronId: number | null;
   patronName: string | null;
   backing: number | null;
+  net: number | null;
 }
 
 export interface NewPerson {

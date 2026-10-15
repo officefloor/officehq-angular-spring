@@ -7,7 +7,8 @@ import { PeopleService, Person } from './people.service';
 // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
 // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
 // their alpha, beta and gamma instead of adding. Each person may have a patron (another person), shown
-// by name and chosen on the row; their backing is the patron's thrust ("n/a" without a patron).
+// by name and chosen on the row; their backing is the patron's thrust ("n/a" without a patron),
+// and their net is momentum plus backing (backing counted as zero without a patron).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -65,6 +66,7 @@ import { PeopleService, Person } from './people.service';
           <th scope="col">Tier</th>
           <th scope="col">Patron</th>
           <th scope="col">Backing</th>
+          <th scope="col">Net</th>
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
@@ -85,6 +87,7 @@ import { PeopleService, Person } from './people.service';
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
             <td data-testid="person-patrons">{{ p.patronName ?? '' }}</td>
             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+            <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
             <td>
               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">

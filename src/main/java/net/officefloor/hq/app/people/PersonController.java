@@ -22,13 +22,13 @@ public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Integer thrust, Integer drift, Integer momentum, String tier, Long patronId,
-            String patronName, Integer backing) {
+            String patronName, Integer backing, Integer net) {
         static PersonView of(Person p) {
             Person patron = p.getPatron();
             return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
                     patron == null ? null : patron.getId(), patron == null ? null : patron.getName(),
-                    p.getBacking());
+                    p.getBacking(), p.getNet());
         }
     }
 
