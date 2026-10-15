@@ -34,7 +34,7 @@ public class PersonController {
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer norm, boolean outlier, State state, Integer ebb, boolean stray) {
-        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer medianBlend, LocalDate anchor) {
+        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer meanBlend, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
                     p.getGrade(), p.getWeight(), p.getKind(), p.getVerge(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getPivot(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getHaul(), p.getVector(), p.getPhase(), p.getLoad(), p.getTier(),
@@ -46,8 +46,8 @@ public class PersonController {
                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(),
                     PersonController.norm(p.getScaled(), medianScaled),
                     PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState(),
-                    PersonController.ebb(p.getBlend(), medianBlend),
-                    PersonController.stray(PersonController.ebb(p.getBlend(), medianBlend)));
+                    PersonController.ebb(p.getBlend(), meanBlend),
+                    PersonController.stray(PersonController.ebb(p.getBlend(), meanBlend)));
         }
     }
 
@@ -70,9 +70,9 @@ public class PersonController {
         return scaled == null || medianScaled == null ? null : scaled - medianScaled;
     }
 
-    /** Ebb is blend minus the sheet's median blend; absent while either is absent. */
-    static Integer ebb(Integer blend, Integer medianBlend) {
-        return blend == null || medianBlend == null ? null : blend - medianBlend;
+    /** Ebb is blend minus the sheet's mean blend (rounded down); absent while either is absent. */
+    static Integer ebb(Integer blend, Integer meanBlend) {
+        return blend == null || meanBlend == null ? null : blend - meanBlend;
     }
 
     /** A stray has an ebb more than 100 away from zero in either direction; without an ebb, not a stray. */
@@ -94,11 +94,16 @@ public class PersonController {
     }
 
     /**
-     * The median blend of the people whose blend can be worked out; for an even count, the lower of
-     * the two middle values. Absent when there are none.
+     * The mean blend of the people whose blend can be worked out, rounded down. Absent when there are
+     * none.
      */
-    private static Integer medianBlend(List<Person> people) {
-        return median(people, Person::getBlend);
+    private static Integer meanBlend(List<Person> people) {
+        List<Integer> values = people.stream().map(Person::getBlend).filter(v -> v != null).toList();
+        if (values.isEmpty()) {
+            return null;
+        }
+        long sum = values.stream().mapToLong(Integer::longValue).sum();
+        return (int) Math.floorDiv(sum, (long) values.size());
     }
 
     /** The median of a value over the people who have it, the lower middle for an even count; absent when none do. */
@@ -135,9 +140,9 @@ public class PersonController {
         List<Person> people = service.list(sheetId);
         Map<Long, Integer> ranks = ranks(people);
         Integer medianScaled = medianScaled(people);
-        Integer medianBlend = medianBlend(people);
+        Integer meanBlend = meanBlend(people);
         LocalDate anchor = service.anchor(sheetId);
-        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, medianBlend, anchor)).toList();
+        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, meanBlend, anchor)).toList();
     }
 
     @PostMapping
@@ -276,7 +281,7 @@ public class PersonController {
     /** A person's view, ranked among the people on their sheet. */
     private PersonView view(String sheetId, Person person) {
         List<Person> people = service.list(sheetId);
-        return PersonView.of(person, ranks(people), medianScaled(people), medianBlend(people), service.anchor(sheetId));
+        return PersonView.of(person, ranks(people), medianScaled(people), meanBlend(people), service.anchor(sheetId));
     }
 
     /**

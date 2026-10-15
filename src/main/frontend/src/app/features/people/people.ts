@@ -98,8 +98,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
 // otherwise "no" (also "no" while their norm is "n/a").
 // The sheet's outlier count is how many of its people are outliers.
-// Their ebb is their blend minus the median blend of everyone on the sheet whose blend can be worked
-// out; for an even count, the lower of the two middle values ("n/a" while their blend is "n/a").
+// Their ebb is their blend minus the mean blend of everyone on the sheet whose blend can be worked
+// out, rounded down ("n/a" while their blend is "n/a").
 // They are a stray ("yes") when their ebb is more than 100 away from zero in either direction, and
 // otherwise "no" (also "no" while their ebb is "n/a").
 // The sheet's stray count is how many of its people are strays.
