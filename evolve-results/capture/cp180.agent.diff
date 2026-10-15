@@ -1,0 +1,24 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 14a6dac2..7b05eee3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -175,7 +175,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // Each person shows their anchor strength: the strength of their home group ("n/a" without one).
+ // Each person shows their group rank: the rank of their home group by strength ("n/a" without one).
+ // Each person shows their anchor cohesion: the cohesion of their home group ("n/a" without one).
+-// Each person shows their reach span: their home group's strength plus its cohesion ("n/a" without one).
++// Each person shows their reach span: their home group's strength ("n/a" without one).
+ // Each person shows their global rank: their place among everyone on the sheet by scaled, highest
+ // first (1), with equal scaled placed by name ("n/a" while their scaled is "n/a").
+ // The sheet's strongest member is the name of the person with the highest scaled anywhere on the sheet,
+@@ -1030,9 +1030,7 @@ export class People {
+     return p.groupId === null ? null : (this.groupCohesions().get(p.groupId) ?? null);
+   }
+   protected reachSpanOf(p: Person): number | null {
+-    const strength = this.anchorStrengthOf(p);
+-    const cohesion = this.anchorCohesionOf(p);
+-    return strength === null || cohesion === null ? null : strength + cohesion;
++    return this.anchorStrengthOf(p);
+   }
+   protected belongingOf(p: Person): number | null {
+     if (p.groupId === null || p.scaled === null) return null;
