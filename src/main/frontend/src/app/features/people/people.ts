@@ -149,6 +149,9 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them have a scaled).
 // The sheet's state tally shows how many of its people are in each state, DRAFT, REVIEW, FINAL and
 // REWORK (zero when none are).
+// The sheet's top per state shows, for each state, DRAFT, REVIEW, FINAL and REWORK, the name of the person
+// in it with the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them
+// have a scaled).
 // The sheet's state share shows what percent of its people are in each state, rounded down (zero when
 // the sheet has no people).
 // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
@@ -591,6 +594,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (s of stateLedger(); track s.state) {
           <li>
             {{ s.state }}: <strong [attr.data-testid]="'state-ledger-' + s.state">{{ s.total }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="state-apex-heading">
+      <h2 id="state-apex-heading">Top per state</h2>
+      <ul>
+        @for (s of stateApexes(); track s.state) {
+          <li>
+            {{ s.state }}: <strong [attr.data-testid]="'apexname-state-' + s.state">{{ s.name ?? 'n/a' }}</strong>
           </li>
         }
       </ul>
@@ -1602,6 +1615,18 @@ export class People {
         .filter((p) => p.state === state)
         .reduce((total, p) => total + (p.scaled ?? 0), 0),
     })),
+  );
+  protected readonly stateApexes = computed(() =>
+    STATES.map((state) => {
+      let apex: { name: string; scaled: number } | null = null;
+      for (const p of this.people()) {
+        if (p.state !== state || p.scaled === null) continue;
+        if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
+          apex = { name: p.name, scaled: p.scaled };
+        }
+      }
+      return { state, name: apex?.name ?? null };
+    }),
   );
   protected readonly stratumCounts = computed(() =>
     STRATA.map((stratum) => ({ stratum, count: this.people().filter((p) => p.stratum === stratum).length })),
