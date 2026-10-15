@@ -340,6 +340,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
     <p>Groups above 200: <strong data-testid="rollup-groups-above">{{ groupsAbove() }}</strong></p>
     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
+    <p>Headcount: <strong data-testid="rollup-headcount">{{ headcount() }}</strong></p>
     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
     <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
     <p>Top influence: <strong data-testid="rollup-top-influence">{{ topInfluence() ?? 'n/a' }}</strong></p>
@@ -933,6 +934,7 @@ export class People {
   protected readonly totalLoad = computed(() =>
     this.people().reduce((total, p) => total + (p.load ?? 0), 0),
   );
+  protected readonly headcount = computed(() => this.people().length);
   protected readonly activeCount = computed(() => this.people().filter((p) => p.active).length);
   protected readonly outlierCount = computed(() => this.people().filter((p) => p.outlier).length);
   protected readonly strayCount = computed(() => this.people().filter((p) => p.stray).length);
