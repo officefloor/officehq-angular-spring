@@ -1,0 +1,135 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 0ba2d24..f45f3cd 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -1,6 +1,6 @@
+-import { HttpClient, HttpParams } from '@angular/common/http';
++import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+-import { Observable } from 'rxjs';
++import { Observable, catchError, map, of, throwError } from 'rxjs';
+ 
+ export interface Person {
+   id: number;
+@@ -39,6 +39,14 @@ export class PeopleService {
+     return this.http.get<Person[]>('/api/people', { params: sheetParams(sheet) });
+   }
+ 
++  // Whether a named sheet is stored; false when no sheet has that id.
++  sheetExists(sheet: string): Observable<boolean> {
++    return this.http.get(`/api/sheets/${encodeURIComponent(sheet)}`).pipe(
++      map(() => true),
++      catchError((error: HttpErrorResponse) => (error.status === 404 ? of(false) : throwError(() => error))),
++    );
++  }
++
+   // Adds a person to a sheet; null is the unnamed sheet.
+   add(sheet: string | null, person: NewPerson): Observable<Person> {
+     return this.http.post<Person>('/api/people', person, { params: sheetParams(sheet) });
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9eed73c..be9a77a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -10,7 +10,8 @@ import { PeopleService, Person } from './people.service';
+ // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
+ // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
+ // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
+-// shown, and people added belong to it. Until one is opened the unnamed sheet is shown.
++// shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
++// id no sheet has yet says so; adding a person to it creates it.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -30,6 +31,9 @@ import { PeopleService, Person } from './people.service';
+         <span data-testid="sheet-none">none</span>
+       }
+     </p>
++    @if (missing()) {
++      <p role="status" data-testid="sheet-missing">No sheet named "{{ sheet() }}" exists yet.</p>
++    }
+ 
+     <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
+       <label for="person-name">Name</label>
+@@ -191,6 +195,7 @@ export class People {
+ 
+   protected readonly people = signal<Person[]>([]);
+   protected readonly sheet = signal<string | null>(null);
++  protected readonly missing = signal(false);
+   protected readonly saving = signal(false);
+   protected readonly editing = signal<Person | null>(null);
+ 
+@@ -208,6 +213,7 @@ export class People {
+   protected openSheet(value: string): void {
+     const id = value.trim();
+     this.sheet.set(id === '' ? null : id);
++    this.missing.set(false);
+     this.cancelEdit();
+     this.load();
+   }
+@@ -281,6 +287,11 @@ export class People {
+     this.service.list(sheet).subscribe((people) => {
+       if (this.sheet() === sheet) this.people.set(people);
+     });
++    if (sheet !== null) {
++      this.service.sheetExists(sheet).subscribe((exists) => {
++        if (this.sheet() === sheet) this.missing.set(!exists);
++      });
++    }
+   }
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index d347d53..8e231b5 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -32,6 +32,12 @@ public class PersonService {
+         return people.findBySheetId(sheetId, Sort.by("id"));
+     }
+ 
++    /** Whether a named sheet has been stored. */
++    @Transactional(readOnly = true)
++    public boolean sheetExists(String sheetId) {
++        return sheets.existsById(sheetId);
++    }
++
+     @Transactional(readOnly = true)
+     public Optional<Person> find(long id) {
+         return people.findById(id);
+diff --git a/src/main/java/net/officefloor/hq/app/people/SheetController.java b/src/main/java/net/officefloor/hq/app/people/SheetController.java
+new file mode 100644
+index 0000000..cab5951
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/SheetController.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app.people;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
++
++@RestController
++@RequestMapping("/api/sheets")
++public class SheetController {
++
++    public record SheetView(String id) {
++    }
++
++    private final PersonService service;
++
++    public SheetController(PersonService service) {
++        this.service = service;
++    }
++
++    /** The named sheet, or 404 when no sheet has that id. */
++    @GetMapping("/{id}")
++    public SheetView get(@PathVariable String id) {
++        String sheetId = id.trim();
++        if (!service.sheetExists(sheetId)) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "no sheet " + sheetId);
++        }
++        return new SheetView(sheetId);
++    }
++}
