@@ -121,8 +121,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // none are); people without a tier are not counted.
 // The sheet's tier share shows, for each tier, SURGE, STEADY and SINK, its tally as a percentage of the
 // sheet's headcount, rounded down ("n/a" when the sheet has nobody on it).
-// The sheet's tier ledger shows the total scaled of its people in each tier, SURGE, STEADY and SINK (zero
-// when none are); people without a tier, or whose scaled is "n/a", add nothing.
+// The sheet's tier ledger shows the total momentum of its people in each tier, SURGE, STEADY and SINK (zero
+// when none are); people without a tier add nothing.
 // The sheet's top per tier shows, for each tier, SURGE, STEADY and SINK, the name of the person in it with
 // the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them have a scaled).
 // The sheet's stratum counts show how many of its people are in each stratum, TOP and BOT (zero when
@@ -1486,7 +1486,7 @@ export class People {
       tier,
       total: this.people()
         .filter((p) => p.tier === tier)
-        .reduce((total, p) => total + (p.scaled ?? 0), 0),
+        .reduce((total, p) => total + (p.momentum ?? 0), 0),
     })),
   );
   protected readonly gradeTally = computed(() =>
