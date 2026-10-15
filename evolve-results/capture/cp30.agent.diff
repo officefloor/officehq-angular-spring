@@ -1,0 +1,77 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index bb7deec..525add2 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -24,6 +24,7 @@ export interface Person {
+   age: number | null;
+   decay: number | null;
+   active: boolean;
++  effective: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4e24941..e29e5a4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -25,6 +25,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
+ // Their decay is momentum minus age ("n/a" while either is missing).
+ // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
++// Their effective is their net while active ("n/a" while net is), and 0 while not active.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -115,6 +116,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Patrons</th>
+           <th scope="col">Backing</th>
+           <th scope="col">Net</th>
++          <th scope="col">Effective</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -147,6 +149,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
++            <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 76407c5..673211e 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -221,6 +221,11 @@ public class Person {
+         Integer backing = getBacking();
+         return backing == null ? null : momentum + backing;
+     }
++
++    /** Effective is net while active (absent while net is), and zero while not active. */
++    public Integer getEffective() {
++        return active ? getNet() : Integer.valueOf(0);
++    }
+     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
+     public String getTier() {
+         Integer momentum = getMomentum();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 512a252..0358e64 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -27,14 +27,14 @@ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+-            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active) {
++            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+-                    p.getAge(anchor), p.getDecay(anchor), p.isActive());
++                    p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective());
+         }
+     }
+ 
