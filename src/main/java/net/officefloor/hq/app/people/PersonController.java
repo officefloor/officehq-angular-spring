@@ -30,7 +30,8 @@ public class PersonController {
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
-            Integer clout, Integer influence, List<String> regions, Integer reach) {
+            Integer clout, Integer influence, List<String> regions, Integer reach,
+            List<PatronView> allies, int allyCount) {
         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
@@ -38,7 +39,9 @@ public class PersonController {
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
-                    p.getInfluence(), p.getRegions(), p.getReach());
+                    p.getInfluence(), p.getRegions(), p.getReach(),
+                    p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                    p.getAllies().size());
         }
     }
 
@@ -93,7 +96,7 @@ public class PersonController {
 
     /**
      * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, regions (a list of codes), active
-     * (true or false) and patronIds (a list of ids on that sheet) the body names; a null value clears it.
+     * (true or false), patronIds and allyIds (lists of ids on that sheet) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
     public PersonView update(@RequestParam(required = false) String sheet, @PathVariable long id,
@@ -143,6 +146,21 @@ public class PersonController {
             }
             try {
                 person = service.setPatrons(sheetId, id, patronIds);
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            }
+        }
+        if (update.containsKey("allyIds")) {
+            List<Long> allyIds = new ArrayList<>();
+            if (update.get("allyIds") instanceof List<?> ids) {
+                for (Object allyId : ids) {
+                    allyIds.add(integer(allyId).longValue());
+                }
+            } else if (update.get("allyIds") != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "allyIds must be a list");
+            }
+            try {
+                person = service.setAllies(sheetId, id, allyIds);
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }

@@ -33,7 +33,8 @@ import java.util.Set;
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
- * person's regions, of momentum times that region's multiplier. */
+ * person's regions, of momentum times that region's multiplier. A person may have any number of "allies":
+ * other people on the list, where being allies goes both ways. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -72,6 +73,16 @@ public class Person {
     @JoinTable(name = "person_patron", joinColumns = @JoinColumn(name = "person_id"),
             inverseJoinColumns = @JoinColumn(name = "patron_id"))
     private Set<Person> patrons = new HashSet<>();
+
+    /** Allies linked from this person; each pair is stored once, on whichever side it was made from. */
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "person_ally", joinColumns = @JoinColumn(name = "person_id"),
+            inverseJoinColumns = @JoinColumn(name = "ally_id"))
+    private Set<Person> alliesMade = new HashSet<>();
+
+    /** Allies linked to this person from the other side. */
+    @ManyToMany(mappedBy = "alliesMade", fetch = FetchType.EAGER)
+    private Set<Person> alliesOf = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_region", joinColumns = @JoinColumn(name = "person_id"))
@@ -186,6 +197,32 @@ public class Person {
 
     public void setPatrons(Set<Person> patrons) {
         this.patrons = new HashSet<>(patrons);
+    }
+
+    /** The allies, from either side of the link, sorted by name. */
+    public List<Person> getAllies() {
+        Set<Person> allies = new HashSet<>(alliesMade);
+        allies.addAll(alliesOf);
+        return allies.stream()
+                .sorted(Comparator.comparing(Person::getName).thenComparing(Person::getId))
+                .toList();
+    }
+
+    /** Replaces the allies, unlinking any no longer given from both sides and linking new ones from this side. */
+    public void setAllies(Set<Person> allies) {
+        for (Person other : new HashSet<>(alliesOf)) {
+            if (!allies.contains(other)) {
+                other.alliesMade.remove(this);
+                alliesOf.remove(other);
+            }
+        }
+        alliesMade.retainAll(allies);
+        for (Person ally : allies) {
+            if (!alliesMade.contains(ally) && !alliesOf.contains(ally)) {
+                alliesMade.add(ally);
+                ally.alliesOf.add(this);
+            }
+        }
     }
 
     /** The derived values exist only once alpha, beta and gamma are all given. */

@@ -29,6 +29,8 @@ export interface Person {
   influence: number | null;
   regions: string[];
   reach: number | null;
+  allies: Ally[];
+  allyCount: number;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
@@ -42,6 +44,12 @@ export type Grade = 'LOW' | 'MID' | 'HIGH';
 export const GRADES: readonly Grade[] = ['LOW', 'MID', 'HIGH'];
 
 export interface Patron {
+  id: number;
+  name: string;
+}
+
+// An ally: being allies goes both ways, so each of two allies lists the other.
+export interface Ally {
   id: number;
   name: string;
 }
@@ -111,6 +119,11 @@ export class PeopleService {
 
   setPatrons(sheet: string | null, id: number, patronIds: number[]): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { patronIds }, { params: sheetParams(sheet) });
+  }
+
+  // Sets a person's allies by id; each ally then also has this person as an ally.
+  setAllies(sheet: string | null, id: number, allyIds: number[]): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { allyIds }, { params: sheetParams(sheet) });
   }
 }
 

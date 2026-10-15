@@ -41,6 +41,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
 // The sheet's region counts show, for each region its people have, how many of them are in it
 // (a person counts once in every region they belong to), ordered by region code.
+// Each person may have any number of allies (other people), chosen on the row; being allies goes both
+// ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -154,6 +156,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Load</th>
           <th scope="col">Tier</th>
           <th scope="col">Patrons</th>
+          <th scope="col">Allies</th>
+          <th scope="col">Ally count</th>
           <th scope="col">Backing</th>
           <th scope="col">Net</th>
           <th scope="col">Effective</th>
@@ -168,6 +172,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
           <th scope="col">Set patrons</th>
+          <th scope="col">Set allies</th>
           <th scope="col">Edit</th>
         </tr>
       </thead>
@@ -192,6 +197,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
             <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+            <td data-testid="person-allies">{{ allyNames(p) }}</td>
+            <td data-testid="person-ally-count">{{ p.allyCount }}</td>
             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
@@ -304,6 +311,24 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
                 @for (other of people(); track other.id) {
                   @if (other.id !== p.id) {
                     <option [value]="other.id" [selected]="hasPatron(p, other)">{{ other.name }}</option>
+                  }
+                }
+              </select>
+            </td>
+            <td>
+              <label class="visually-hidden" [for]="'person-ally-edit-' + p.id">
+                Allies for {{ p.name }}
+              </label>
+              <select
+                multiple
+                [id]="'person-ally-edit-' + p.id"
+                (change)="setAllies(p, allySelect)"
+                #allySelect
+                data-testid="person-ally-select"
+              >
+                @for (other of people(); track other.id) {
+                  @if (other.id !== p.id) {
+                    <option [value]="other.id" [selected]="hasAlly(p, other)">{{ other.name }}</option>
                   }
                 }
               </select>
@@ -468,6 +493,19 @@ export class People {
   protected setPatrons(person: Person, select: HTMLSelectElement): void {
     const patronIds = Array.from(select.selectedOptions, (option) => Number(option.value));
     this.service.setPatrons(this.sheet(), person.id, patronIds).subscribe(() => this.load());
+  }
+
+  protected allyNames(person: Person): string {
+    return person.allies.map((ally) => ally.name).join(', ');
+  }
+
+  protected hasAlly(person: Person, other: Person): boolean {
+    return person.allies.some((ally) => ally.id === other.id);
+  }
+
+  protected setAllies(person: Person, select: HTMLSelectElement): void {
+    const allyIds = Array.from(select.selectedOptions, (option) => Number(option.value));
+    this.service.setAllies(this.sheet(), person.id, allyIds).subscribe(() => this.load());
   }
 
   private load(): void {

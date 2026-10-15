@@ -149,4 +149,21 @@ public class PersonService {
             return p;
         });
     }
+
+    /** Sets the allies (other people on the same sheet) by their id on that sheet, both ways; an empty list clears them. Refuses oneself or an unknown person. */
+    @Transactional
+    public Optional<Person> setAllies(String sheetId, long id, Collection<Long> allyIds) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            Set<Person> allies = new HashSet<>();
+            for (Long allyId : allyIds) {
+                if (allyId == id) {
+                    throw new IllegalArgumentException("a person cannot be their own ally");
+                }
+                allies.add(people.findBySheetIdAndLocalId(sheetId, allyId)
+                        .orElseThrow(() -> new IllegalArgumentException("no person " + allyId + " on this sheet")));
+            }
+            p.setAllies(allies);
+            return p;
+        });
+    }
 }

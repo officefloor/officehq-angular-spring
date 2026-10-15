@@ -36,7 +36,9 @@ public class TestSupportController {
 
     private static final Set<String> REGION_FIELDS = Set.of("personId", "region");
 
-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions");
+    private static final Set<String> ALLY_FIELDS = Set.of("a", "b");
+
+    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "allies");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -53,6 +55,7 @@ public class TestSupportController {
         audit.clear();
         // Person is referenced by its patrons, so delete rather than truncate.
         jdbc.update("DELETE FROM person_patron");
+        jdbc.update("DELETE FROM person_ally");
         jdbc.update("DELETE FROM person_region");
         jdbc.update("DELETE FROM person");
         jdbc.update("DELETE FROM sheet");
@@ -69,7 +72,7 @@ public class TestSupportController {
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
             if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
-                    && !key.equals("sheets")) {
+                    && !key.equals("allies") && !key.equals("sheets")) {
                 throw badRequest("unknown fixture key: " + key);
             }
         }
@@ -79,7 +82,7 @@ public class TestSupportController {
             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
         }
         // People, patrons and regions at the top level are on the unnamed sheet.
-        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), "");
+        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("allies"), "");
         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
             for (String field : sheet.keySet()) {
                 if (!SHEET_FIELDS.contains(field)) {
@@ -90,7 +93,7 @@ public class TestSupportController {
                 throw badRequest("sheets.id is required");
             }
             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
-            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), "sheets.");
+            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("allies"), "sheets.");
         }
     }
 
@@ -122,8 +125,9 @@ public class TestSupportController {
         return ids.get(0);
     }
 
-    /** Inserts one sheet's people and then their patrons and regions; a null sheet id is the unnamed sheet. */
-    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, String prefix) {
+    /** Inserts one sheet's people and then their patrons, regions and allies; a null sheet id is the unnamed sheet. */
+    private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, Object allyRows,
+            String prefix) {
         for (Map<String, Object> row : rows(peopleRows, prefix + "people")) {
             for (String field : row.keySet()) {
                 if (!PERSON_FIELDS.contains(field)) {
@@ -177,6 +181,24 @@ public class TestSupportController {
             jdbc.update("INSERT INTO person_region (person_id, region) VALUES (?, ?)",
                     internalId(sheetId, personId, prefix + "regions.personId"), region);
         }
+        // Allies link two people by id, both ways; each pair is stored once as given.
+        for (Map<String, Object> row : rows(allyRows, prefix + "allies")) {
+            for (String field : row.keySet()) {
+                if (!ALLY_FIELDS.contains(field)) {
+                    throw badRequest("cannot store " + prefix + "allies." + field);
+                }
+            }
+            Integer a = integer(row.get("a"), prefix + "allies.a");
+            Integer b = integer(row.get("b"), prefix + "allies.b");
+            if (a == null || b == null) {
+                throw badRequest(prefix + "allies rows need a and b");
+            }
+            if (a.equals(b)) {
+                throw badRequest(prefix + "allies: a person cannot be their own ally");
+            }
+            jdbc.update("INSERT INTO person_ally (person_id, ally_id) VALUES (?, ?)",
+                    internalId(sheetId, a, prefix + "allies.a"), internalId(sheetId, b, prefix + "allies.b"));
+        }
     }
 
     /**
@@ -220,6 +242,9 @@ public class TestSupportController {
         out.put("regions", jdbc.queryForList("SELECT p.local_id AS \"personId\", pr.region AS \"region\" "
                 + "FROM person_region pr JOIN person p ON p.id = pr.person_id "
                 + "WHERE " + where + " ORDER BY p.local_id, pr.region", args));
+        out.put("allies", jdbc.queryForList("SELECT p.local_id AS \"a\", o.local_id AS \"b\" "
+                + "FROM person_ally pa JOIN person p ON p.id = pa.person_id JOIN person o ON o.id = pa.ally_id "
+                + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
         return out;
     }
 
