@@ -25,7 +25,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // Each person's rank orders the sheet by momentum, highest first (rank 1), with equal momentum ranked
 // by higher alpha first, then by name; without a momentum the rank shows "n/a". The sheet's leader
 // is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
-// 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100.
+// 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100. Their quota is "yes" when their
+// rank is in the top half of the ranked people (the half rounded up, so an odd count's middle is in it).
 // Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
 // weight comes from it (LOW 1, MID 3, HIGH 5, "n/a" without a grade). Their load is momentum × weight
 // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
@@ -584,6 +585,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
           <th scope="col">Depth</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
+          <th scope="col">Quota</th>
           <th scope="col">Global rank</th>
           <th scope="col">Bracket</th>
           <th scope="col">Cume</th>
@@ -702,6 +704,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
             <td data-testid="concept-depth">{{ depthOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+            <td data-testid="concept-quota">{{ p.quota ? 'yes' : 'no' }}</td>
             <td data-testid="concept-rank-global">{{ globalRanks().get(p.id) ?? 'n/a' }}</td>
             <td data-testid="concept-bracket">{{ bracketOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-cume">{{ cumes().get(p.id) ?? 'n/a' }}</td>

@@ -42,6 +42,7 @@ export interface Person {
   net: number | null;
   rank: number | null;
   percentile: number | null;
+  quota: boolean;
   onset: string | null;
   age: number | null;
   decay: number | null;
