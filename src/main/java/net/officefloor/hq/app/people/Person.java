@@ -371,13 +371,13 @@ public class Person {
         return momentum < 0 ? "SINK" : momentum <= 199 ? "STEADY" : "SURGE";
     }
 
-    /** Band classifies adjusted: E below 0, D up to 49, C up to 149, B up to 299, A from 300; absent with adjusted. */
+    /** Band classifies adjusted: E below 0, D up to 99, C up to 249, B up to 499, A from 500; absent with adjusted. */
     public String getBand() {
         Integer adjusted = getAdjusted();
         if (adjusted == null) {
             return null;
         }
-        return adjusted < 0 ? "E" : adjusted <= 49 ? "D" : adjusted <= 149 ? "C" : adjusted <= 299 ? "B" : "A";
+        return adjusted < 0 ? "E" : adjusted <= 99 ? "D" : adjusted <= 249 ? "C" : adjusted <= 499 ? "B" : "A";
     }
 
     /** Scaled is adjusted times the band's multiplier: A 4, B 3, C 2, D 1, E 0; absent with adjusted. */

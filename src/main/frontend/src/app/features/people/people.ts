@@ -49,8 +49,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // without one) and their quality is their score ("n/a" without one).
 // Their adjusted is their combined plus their quality, counting quality as zero without a score ("n/a" while
 // combined is "n/a").
-// Their band classifies their adjusted: E below 0, D from 0 to 49, C from 50 to 149, B from 150 to 299 and
-// A from 300 ("n/a" while adjusted is "n/a").
+// Their band classifies their adjusted: E below 0, D from 0 to 99, C from 100 to 249, B from 250 to 499 and
+// A from 500 ("n/a" while adjusted is "n/a").
 // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
 // adjusted is "n/a").
 // The sheet's band counts show how many of its people are in each band, A through E (zero when none
