@@ -1,0 +1,577 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 4555b3be..90bef355 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -79,9 +79,12 @@ export interface Person {
+   outlier: boolean;
+   ebb: number | null;
+   stray: boolean;
+-  // The group the person is in: its id and name; absent until put in one.
++  // "Their group": the id and name of the group, of those they are in, whose name comes first
++  // alphabetically; absent until put in one.
+   groupId: number | null;
+   groupName: string | null;
++  // Every group the person is in, sorted by name.
++  groups: Group[];
+ }
+ 
+ // A named group of people on a sheet.
+@@ -159,18 +162,23 @@ export class PeopleService {
+     return this.http.post<Group>('/api/groups', { name }, { params: sheetParams(sheet) });
+   }
+ 
+-  // Puts a person in a group by its id; null takes them out of any group.
++  // Puts a person in just one group by its id; null takes them out of every group.
+   setGroup(sheet: string | null, id: number, groupId: number | null): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { groupId }, { params: sheetParams(sheet) });
+   }
+ 
++  // Puts a person in just the groups with these ids; none takes them out of every group.
++  setGroups(sheet: string | null, id: number, groupIds: number[]): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { groupIds }, { params: sheetParams(sheet) });
++  }
++
+   // Adds a person to a sheet; null is the unnamed sheet.
+   add(sheet: string | null, person: NewPerson): Observable<Person> {
+     return this.http.post<Person>('/api/people', person, { params: sheetParams(sheet) });
+   }
+ 
+   // Updates the person with an id on a sheet (ids are per sheet); null is the unnamed sheet.
+-  update(sheet: string | null, id: number, values: Omit<NewPerson, 'name'>): Observable<Person> {
++  update(sheet: string | null, id: number, values: Omit<NewPerson, 'name' | 'groupId'> & { groupId?: number | null }): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, values, { params: sheetParams(sheet) });
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9caf45b8..c8097a57 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -139,7 +139,10 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // group or their scaled is "n/a").
+ // Each person shows their mesh: their scaled multiplied by their group's size ("n/a" when they have no
+ // group or their scaled is "n/a").
+-// Each person shows their anchorage: how many groups they belong to (1 in a group, 0 without one).
++// Each person shows their anchorage: how many groups they belong to (0 without one).
++// A person may be in several groups; a group's figures count every person in it. Where a person's own
++// figure depends on "their group", it is the group, of those they are in, whose name comes first
++// alphabetically.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -435,6 +438,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+           <th scope="col">Set grade</th>
+           <th scope="col">Set kind</th>
+           <th scope="col">Set group</th>
++          <th scope="col">Groups</th>
+           <th scope="col">Set regions</th>
+           <th scope="col">Set active</th>
+           <th scope="col">Advance</th>
+@@ -458,7 +462,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+             <td data-testid="person-zeta">{{ p.zeta }}</td>
+             <td data-testid="person-grade">{{ p.grade }}</td>
+             <td data-testid="person-kind">{{ p.kind }}</td>
+-            <td data-testid="person-group">{{ p.groupName ?? '' }}</td>
++            <td data-testid="person-group">{{ groupNamesOf(p) }}</td>
+             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
+             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+             <td data-testid="person-state">{{ p.state }}</td>
+@@ -672,6 +676,23 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+                 }
+               </select>
+             </td>
++            <td>
++              <fieldset [attr.data-testid]="'person-groups-' + p.id">
++                <legend class="visually-hidden">Groups for {{ p.name }}</legend>
++                @for (g of groups(); track g.id) {
++                  <label>
++                    <input
++                      type="checkbox"
++                      [checked]="isInGroup(p, g.id)"
++                      (change)="toggleGroup(p, g.id, groupBox.checked)"
++                      #groupBox
++                      [attr.data-testid]="'person-group-member-' + g.id"
++                    />
++                    {{ g.name }}
++                  </label>
++                }
++              </fieldset>
++            </td>
+             <td>
+               <form (submit)="$event.preventDefault(); setRegions(p, regionInput.value)">
+                 <label class="visually-hidden" [for]="'person-region-edit-' + p.id">
+@@ -854,7 +875,7 @@ export class People {
+   protected readonly groupStrengths = computed(() => {
+     const strengths = new Map<number, number>();
+     for (const p of this.people()) {
+-      if (p.groupId !== null) strengths.set(p.groupId, (strengths.get(p.groupId) ?? 0) + (p.effective ?? 0));
++      for (const g of p.groups) strengths.set(g.id, (strengths.get(g.id) ?? 0) + (p.effective ?? 0));
+     }
+     return strengths;
+   });
+@@ -892,12 +913,18 @@ export class People {
+     return p.scaled * (this.groupSizes().get(p.groupId) ?? 0);
+   }
+   protected anchorageOf(p: Person): number {
+-    return p.groupId === null ? 0 : 1;
++    return p.groups.length;
++  }
++  protected groupNamesOf(p: Person): string {
++    return p.groups.map((g) => g.name).join(', ');
++  }
++  protected isInGroup(p: Person, groupId: number): boolean {
++    return p.groups.some((g) => g.id === groupId);
+   }
+   protected readonly groupSizes = computed(() => {
+     const sizes = new Map<number, number>();
+     for (const p of this.people()) {
+-      if (p.groupId !== null) sizes.set(p.groupId, (sizes.get(p.groupId) ?? 0) + 1);
++      for (const g of p.groups) sizes.set(g.id, (sizes.get(g.id) ?? 0) + 1);
+     }
+     return sizes;
+   });
+@@ -913,21 +940,25 @@ export class People {
+     const cohesions = this.groupCohesions();
+     const densities = new Map<number, number>();
+     for (const p of this.people()) {
+-      if (p.groupId === null || p.effective === null) continue;
+-      const cohesion = cohesions.get(p.groupId);
+-      if (cohesion !== undefined && p.effective >= cohesion) densities.set(p.groupId, (densities.get(p.groupId) ?? 0) + 1);
++      if (p.effective === null) continue;
++      for (const g of p.groups) {
++        const cohesion = cohesions.get(g.id);
++        if (cohesion !== undefined && p.effective >= cohesion) densities.set(g.id, (densities.get(g.id) ?? 0) + 1);
++      }
+     }
+     return densities;
+   });
+   protected readonly groupSpreads = computed(() => {
+     const ranges = new Map<number, { min: number; max: number }>();
+     for (const p of this.people()) {
+-      if (p.groupId === null || p.effective === null) continue;
+-      const range = ranges.get(p.groupId);
+-      ranges.set(p.groupId, {
+-        min: Math.min(range?.min ?? p.effective, p.effective),
+-        max: Math.max(range?.max ?? p.effective, p.effective),
+-      });
++      if (p.effective === null) continue;
++      for (const g of p.groups) {
++        const range = ranges.get(g.id);
++        ranges.set(g.id, {
++          min: Math.min(range?.min ?? p.effective, p.effective),
++          max: Math.max(range?.max ?? p.effective, p.effective),
++        });
++      }
+     }
+     const spreads = new Map<number, number>();
+     for (const [groupId, { min, max }] of ranges) spreads.set(groupId, max - min);
+@@ -936,17 +967,19 @@ export class People {
+   protected readonly groupApexes = computed(() => {
+     const apexes = new Map<number, { name: string; scaled: number }>();
+     for (const p of this.people()) {
+-      if (p.groupId === null || p.scaled === null) continue;
+-      const apex = apexes.get(p.groupId);
+-      if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
+-        apexes.set(p.groupId, { name: p.name, scaled: p.scaled });
++      if (p.scaled === null) continue;
++      for (const g of p.groups) {
++        const apex = apexes.get(g.id);
++        if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
++          apexes.set(g.id, { name: p.name, scaled: p.scaled });
++        }
+       }
+     }
+     return apexes;
+   });
+   protected readonly standings = computed(() => {
+     const ranked = this.people()
+-      .filter((p) => p.groupId !== null && p.scaled !== null)
++      .filter((p) => p.scaled !== null)
+       .sort(
+         (a, b) =>
+           b.scaled! - a.scaled! ||
+@@ -955,10 +988,13 @@ export class People {
+       );
+     const places = new Map<number, number>();
+     const standings = new Map<number, number>();
++    // Places are counted among everyone in a group; a person's standing is their place in their group.
+     for (const p of ranked) {
+-      const place = (places.get(p.groupId!) ?? 0) + 1;
+-      places.set(p.groupId!, place);
+-      standings.set(p.id, place);
++      for (const g of p.groups) {
++        const place = (places.get(g.id) ?? 0) + 1;
++        places.set(g.id, place);
++        if (g.id === p.groupId) standings.set(p.id, place);
++      }
+     }
+     return standings;
+   });
+@@ -1120,7 +1156,9 @@ export class People {
+     if (this.form.invalid) return;
+     const editing = this.editing();
+     const request = editing
+-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, kind, regions, groupId })
++      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, kind, regions,
++          // Only a changed group replaces the person's groups, so saving keeps every group they are in.
++          ...(groupId === editing.groupId ? {} : { groupId }) })
+       : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, regions, groupId });
+     this.saving.set(true);
+     request.subscribe({
+@@ -1258,6 +1296,12 @@ export class People {
+     this.service.setGroup(this.sheet(), person.id, groupId).subscribe(() => this.load());
+   }
+ 
++  protected toggleGroup(person: Person, groupId: number, member: boolean): void {
++    const others = person.groups.map((g) => g.id).filter((id) => id !== groupId);
++    const groupIds = member ? [...others, groupId] : others;
++    this.service.setGroups(this.sheet(), person.id, groupIds).subscribe(() => this.load());
++  }
++
+   private load(): void {
+     const sheet = this.sheet();
+     this.service.sheet(sheet).subscribe((s) => {
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 1c8f2682..ca690ce6 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -40,9 +40,11 @@ public class TestSupportController {
+ 
+     private static final Set<String> GROUP_FIELDS = Set.of("id", "name");
+ 
++    private static final Set<String> MEMBERSHIP_FIELDS = Set.of("personId", "groupId");
++
+     private static final Set<String> FOLLOW_FIELDS = Set.of("from", "to");
+ 
+-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows", "groups");
++    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows", "groups", "memberships");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -61,6 +63,7 @@ public class TestSupportController {
+         jdbc.update("DELETE FROM person_patron");
+         jdbc.update("DELETE FROM person_follow");
+         jdbc.update("DELETE FROM person_region");
++        jdbc.update("DELETE FROM person_membership");
+         jdbc.update("DELETE FROM person");
+         jdbc.update("DELETE FROM person_group");
+         jdbc.update("DELETE FROM sheet");
+@@ -78,7 +81,7 @@ public class TestSupportController {
+     public void seed(@RequestBody Map<String, Object> fixture) {
+         for (String key : fixture.keySet()) {
+             if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
+-                    && !key.equals("follows") && !key.equals("groups") && !key.equals("sheets")) {
++                    && !key.equals("follows") && !key.equals("groups") && !key.equals("memberships") && !key.equals("sheets")) {
+                 throw badRequest("unknown fixture key: " + key);
+             }
+         }
+@@ -88,7 +91,8 @@ public class TestSupportController {
+             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
+         }
+         // People, patrons and regions at the top level are on the unnamed sheet.
+-        seedSheet(null, fixture.get("groups"), fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), "");
++        seedSheet(null, fixture.get("groups"), fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"),
++                fixture.get("memberships"), "");
+         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
+             for (String field : sheet.keySet()) {
+                 if (!SHEET_FIELDS.contains(field)) {
+@@ -99,7 +103,8 @@ public class TestSupportController {
+                 throw badRequest("sheets.id is required");
+             }
+             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
+-            seedSheet(id, sheet.get("groups"), sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), "sheets.");
++            seedSheet(id, sheet.get("groups"), sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"),
++                    sheet.get("memberships"), "sheets.");
+         }
+     }
+ 
+@@ -143,7 +148,7 @@ public class TestSupportController {
+ 
+     /** Inserts one sheet's groups, its people and then their patrons, regions and follows; a null sheet id is the unnamed sheet. */
+     private void seedSheet(String sheetId, Object groupRows, Object peopleRows, Object patronRows, Object regionRows, Object followRows,
+-            String prefix) {
++            Object membershipRows, String prefix) {
+         for (Map<String, Object> row : rows(groupRows, prefix + "groups")) {
+             for (String field : row.keySet()) {
+                 if (!GROUP_FIELDS.contains(field)) {
+@@ -185,10 +190,15 @@ public class TestSupportController {
+             // A person's id is their id within the sheet; the internal key is generated.
+             Integer givenId = integer(row.get("id"), prefix + "people.id");
+             long localId = givenId != null ? givenId : nextLocalId(sheetId);
+-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset, active, score, state, group_id) "
+-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset, active, score, state) "
++                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     sheetId, localId, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset,
+-                    active != null ? active : true, score, state != null ? state : State.DRAFT.name(), groupKey);
++                    active != null ? active : true, score, state != null ? state : State.DRAFT.name());
++            // A person's single group (from before people could be in several) is one of their groups.
++            if (groupKey != null) {
++                jdbc.update("MERGE INTO person_membership (person_id, group_id) KEY (person_id, group_id) VALUES (?, ?)",
++                        internalId(sheetId, localId, prefix + "people.id"), groupKey);
++            }
+             // A person's single region (from before people had several) is one of their regions.
+             String region = text(row.get("region"), prefix + "people.region");
+             if (region != null) {
+@@ -227,6 +237,22 @@ public class TestSupportController {
+             jdbc.update("MERGE INTO person_region (person_id, region) KEY (person_id, region) VALUES (?, ?)",
+                     internalId(sheetId, personId, prefix + "regions.personId"), region);
+         }
++        // Memberships link a person by id to each group they are in, by id.
++        for (Map<String, Object> row : rows(membershipRows, prefix + "memberships")) {
++            for (String field : row.keySet()) {
++                if (!MEMBERSHIP_FIELDS.contains(field)) {
++                    throw badRequest("cannot store " + prefix + "memberships." + field);
++                }
++            }
++            Integer personId = integer(row.get("personId"), prefix + "memberships.personId");
++            Integer groupId = integer(row.get("groupId"), prefix + "memberships.groupId");
++            if (personId == null || groupId == null) {
++                throw badRequest(prefix + "memberships rows need personId and groupId");
++            }
++            jdbc.update("MERGE INTO person_membership (person_id, group_id) KEY (person_id, group_id) VALUES (?, ?)",
++                    internalId(sheetId, personId, prefix + "memberships.personId"),
++                    internalGroupId(sheetId, groupId, prefix + "memberships.groupId"));
++        }
+         // Follows link a follower to the person they follow, by id; one direction only.
+         for (Map<String, Object> row : rows(followRows, prefix + "follows")) {
+             for (String field : row.keySet()) {
+@@ -285,7 +311,11 @@ public class TestSupportController {
+                 + "beta AS \"beta\", gamma AS \"gamma\", delta AS \"delta\", epsilon AS \"epsilon\", zeta AS \"zeta\", grade AS \"grade\", kind AS \"kind\", "
+                 + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\", "
+                 + "(SELECT MIN(pr.region) FROM person_region pr WHERE pr.person_id = p.id) AS \"region\", "
+-                + "(SELECT g.local_id FROM person_group g WHERE g.id = p.group_id) AS \"groupId\" FROM person p WHERE " + where + " ORDER BY local_id", args));
++                + "(SELECT g.local_id FROM person_membership pm JOIN person_group g ON g.id = pm.group_id WHERE pm.person_id = p.id "
++                + "ORDER BY g.name, g.local_id FETCH FIRST 1 ROW ONLY) AS \"groupId\" FROM person p WHERE " + where + " ORDER BY local_id", args));
++        out.put("memberships", jdbc.queryForList("SELECT p.local_id AS \"personId\", g.local_id AS \"groupId\" "
++                + "FROM person_membership pm JOIN person p ON p.id = pm.person_id JOIN person_group g ON g.id = pm.group_id "
++                + "WHERE " + where + " ORDER BY p.local_id, g.local_id", args));
+         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
+                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index a872dbe4..a9a44671 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -13,7 +13,6 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.JoinTable;
+ import jakarta.persistence.ManyToMany;
+-import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+@@ -44,7 +43,8 @@ import java.util.Set;
+  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
+  * without one) and their "quality" is the score (absent without one). A person has a workflow "state",
+  * starting at DRAFT and moved forward to REVIEW and then FINAL; a FINAL person may be reopened to REWORK
+- * and moved forward to FINAL again. A person is in one named "group" of the sheet (absent until put in one). */
++ * and moved forward to FINAL again. A person may be in any number of named "groups" of the sheet (none until put in one); where "their group"
++ * is needed, it is the one whose name comes first alphabetically. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -109,10 +109,11 @@ public class Person {
+ 
+     private Integer score;
+ 
+-    /** The group the person is in; absent until put in one. */
+-    @ManyToOne(fetch = FetchType.EAGER)
+-    @JoinColumn(name = "group_id")
+-    private PersonGroup group;
++    /** The groups the person is in; none until put in one. */
++    @ManyToMany(fetch = FetchType.EAGER)
++    @JoinTable(name = "person_membership", joinColumns = @JoinColumn(name = "person_id"),
++            inverseJoinColumns = @JoinColumn(name = "group_id"))
++    private Set<PersonGroup> groups = new HashSet<>();
+ 
+     protected Person() {
+     }
+@@ -231,12 +232,20 @@ public class Person {
+         this.regions = new HashSet<>(regions);
+     }
+ 
+-    public PersonGroup getGroup() {
+-        return group;
++    /** The groups the person is in, sorted by name. */
++    public List<PersonGroup> getGroups() {
++        return groups.stream()
++                .sorted(Comparator.comparing(PersonGroup::getName).thenComparing(PersonGroup::getLocalId))
++                .toList();
+     }
+ 
+-    public void setGroup(PersonGroup group) {
+-        this.group = group;
++    public void setGroups(Collection<PersonGroup> groups) {
++        this.groups = new HashSet<>(groups);
++    }
++
++    /** "Their group": the group whose name comes first alphabetically; absent when in none. */
++    public PersonGroup getGroup() {
++        return getGroups().stream().findFirst().orElse(null);
+     }
+ 
+     public Integer getScore() {
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index d3bc969e..64bf899d 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -34,7 +34,7 @@ public class PersonController {
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, State state, Integer ebb, boolean stray,
+-            Long groupId, String groupName) {
++            Long groupId, String groupName, List<GroupController.GroupView> groups) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer meanBlend, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+@@ -50,7 +50,8 @@ public class PersonController {
+                     PersonController.ebb(p.getBlend(), meanBlend),
+                     PersonController.stray(PersonController.ebb(p.getBlend(), meanBlend)),
+                     p.getGroup() == null ? null : p.getGroup().getLocalId(),
+-                    p.getGroup() == null ? null : p.getGroup().getName());
++                    p.getGroup() == null ? null : p.getGroup().getName(),
++                    p.getGroups().stream().map(GroupController.GroupView::of).toList());
+         }
+     }
+ 
+@@ -128,7 +129,7 @@ public class PersonController {
+     public record PatronView(Long id, String name) {
+     }
+ 
+-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta, Grade grade, Kind kind, List<String> regions, Long groupId) {
++    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta, Grade grade, Kind kind, List<String> regions, Long groupId, List<Long> groupIds) {
+     }
+ 
+     private final PersonService service;
+@@ -154,7 +155,7 @@ public class PersonController {
+         try {
+             return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
+                     person.delta(), person.epsilon(), person.zeta(), person.grade(), person.kind(), regions(person.regions()),
+-                    person.groupId()));
++                    groupIds(person.groupId(), person.groupIds())));
+         } catch (IllegalArgumentException e) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+         }
+@@ -198,7 +199,7 @@ public class PersonController {
+ 
+     /**
+      * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, delta, epsilon, zeta, score, grade, kind, regions (a list of codes), active
+-     * (true or false), patronIds and allyIds (lists of ids on that sheet) and groupId (a group's id on that sheet) the body names; a null value clears it.
++     * (true or false), patronIds and allyIds (lists of ids on that sheet) and groupId (a group's id on that sheet, putting the person in just that group) or groupIds (a list of group ids on that sheet, the groups the person is in) the body names; a null value clears it.
+      */
+     @PatchMapping("/{id}")
+     public PersonView update(@RequestParam(required = false) String sheet, @PathVariable long id,
+@@ -282,10 +283,20 @@ public class PersonController {
+                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+             }
+         }
+-        if (update.containsKey("groupId")) {
+-            Integer groupId = integer(update.get("groupId"));
++        if (update.containsKey("groupId") || update.containsKey("groupIds")) {
++            List<Long> groupIds = new ArrayList<>();
++            if (update.get("groupIds") instanceof List<?> ids) {
++                for (Object groupId : ids) {
++                    groupIds.add(integer(groupId).longValue());
++                }
++            } else if (update.get("groupIds") != null) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "groupIds must be a list");
++            } else if (update.get("groupId") != null) {
++                // A single groupId puts the person in just that group.
++                groupIds.add(integer(update.get("groupId")).longValue());
++            }
+             try {
+-                person = service.setGroup(sheetId, id, groupId == null ? null : groupId.longValue());
++                person = service.setGroups(sheetId, id, groupIds);
+             } catch (IllegalArgumentException e) {
+                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+             }
+@@ -294,6 +305,14 @@ public class PersonController {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+     }
+ 
++    /** The groups a new person is put in: the listed ones, or the single one given, or none. */
++    private static List<Long> groupIds(Long groupId, List<Long> groupIds) {
++        if (groupIds != null) {
++            return groupIds;
++        }
++        return groupId == null ? List.of() : List.of(groupId);
++    }
++
+     /** A person's view, ranked among the people on their sheet. */
+     private PersonView view(String sheetId, Person person) {
+         List<Person> people = service.list(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonGroup.java b/src/main/java/net/officefloor/hq/app/people/PersonGroup.java
+index 688815dd..ffb0a3af 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonGroup.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonGroup.java
+@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** A named group of people on one sheet (null for the unnamed sheet), numbered within it. Every person is in one group. */
++/** A named group of people on one sheet (null for the unnamed sheet), numbered within it. A person may be in any number of groups. */
+ @Entity
+ @Table(name = "person_group")
+ public class PersonGroup {
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index 5e40011f..cb601cad 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -73,9 +73,9 @@ public class PersonService {
+     @Transactional
+     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
+     public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
+-            Grade grade, Kind kind, Collection<String> regions, Long groupId) {
++            Grade grade, Kind kind, Collection<String> regions, Collection<Long> groupIds) {
+         ensureSheet(sheetId);
+-        PersonGroup group = group(sheetId, groupId);
++        List<PersonGroup> memberOf = groupIds.stream().map(g -> group(sheetId, g)).toList();
+         long id = people.maxLocalId(sheetId) + 1;
+         Person person = new Person(sheetId, id, name.trim(), alpha, beta, gamma);
+         person.setDelta(delta);
+@@ -84,7 +84,7 @@ public class PersonService {
+         person.setGrade(grade);
+         person.setKind(kind);
+         person.setRegions(regions);
+-        person.setGroup(group);
++        person.setGroups(memberOf);
+         return people.save(person);
+     }
+ 
+@@ -101,19 +101,16 @@ public class PersonService {
+         return groups.save(new PersonGroup(sheetId, groups.maxLocalId(sheetId) + 1, name.trim()));
+     }
+ 
+-    /** Puts the person in the group with an id on the same sheet; null takes them out of any group. Refuses an unknown group. */
++    /** Puts the person in just the groups with these ids on the same sheet; none takes them out of every group. Refuses an unknown group. */
+     @Transactional
+-    public Optional<Person> setGroup(String sheetId, long id, Long groupId) {
++    public Optional<Person> setGroups(String sheetId, long id, Collection<Long> groupIds) {
+         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+-            p.setGroup(group(sheetId, groupId));
++            p.setGroups(groupIds.stream().map(g -> group(sheetId, g)).toList());
+             return p;
+         });
+     }
+ 
+     private PersonGroup group(String sheetId, Long groupId) {
+-        if (groupId == null) {
+-            return null;
+-        }
+         return groups.findBySheetIdAndLocalId(sheetId, groupId)
+                 .orElseThrow(() -> new IllegalArgumentException("no group " + groupId + " on this sheet"));
+     }
+diff --git a/src/main/resources/db/migration/V22__person_memberships.sql b/src/main/resources/db/migration/V22__person_memberships.sql
+new file mode 100644
+index 00000000..5f34d1f9
+--- /dev/null
++++ b/src/main/resources/db/migration/V22__person_memberships.sql
+@@ -0,0 +1,8 @@
++-- A person may be in any number of groups of their sheet, not just one.
++CREATE TABLE person_membership (
++    person_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    group_id BIGINT NOT NULL REFERENCES person_group (id) ON DELETE CASCADE,
++    PRIMARY KEY (person_id, group_id)
++);
++INSERT INTO person_membership (person_id, group_id) SELECT id, group_id FROM person WHERE group_id IS NOT NULL;
++ALTER TABLE person DROP COLUMN group_id;
