@@ -26,8 +26,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // Their decay is momentum minus age ("n/a" while either is missing).
 // Each person has a state, starting at DRAFT; the row's Advance button moves it forward to REVIEW and
 // then FINAL, after which there is no Advance button. The row's Back button moves a REVIEW person back
-// to DRAFT; a FINAL person cannot go back, and trying shows that it is not allowed. Every change is
-// recorded in the audit.
+// to DRAFT; a FINAL person cannot go back, and trying shows that it is not allowed. The row's Rework
+// button reopens a FINAL person to REWORK, and Advance moves a REWORK person forward to FINAL again
+// (a REWORK person cannot go back either). Every change is recorded in the audit.
 // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
 // Their effective is their net while active, and half their net rounded down while not active
 // ("n/a" while net is).
@@ -222,6 +223,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set active</th>
           <th scope="col">Advance</th>
           <th scope="col">Back</th>
+          <th scope="col">Rework</th>
           <th scope="col">Set patrons</th>
           <th scope="col">Set allies</th>
           <th scope="col">Set score</th>
@@ -381,6 +383,18 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
                   [attr.data-testid]="'person-demote-' + p.id"
                 >
                   Back
+                </button>
+              }
+            </td>
+            <td>
+              @if (p.state === 'FINAL') {
+                <button
+                  type="button"
+                  (click)="rework(p)"
+                  [attr.aria-label]="'Rework ' + p.name"
+                  [attr.data-testid]="'person-rework-' + p.id"
+                >
+                  Rework
                 </button>
               }
             </td>
@@ -598,6 +612,11 @@ export class People {
   protected advance(person: Person): void {
     this.stateError.set(null);
     this.service.advance(this.sheet(), person.id).subscribe(() => this.load());
+  }
+
+  protected rework(person: Person): void {
+    this.stateError.set(null);
+    this.service.rework(this.sheet(), person.id).subscribe(() => this.load());
   }
 
   protected demote(person: Person): void {

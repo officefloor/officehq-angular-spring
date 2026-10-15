@@ -120,7 +120,7 @@ public class PersonController {
                 person.grade(), regions(person.regions())));
     }
 
-    /** Moves the person with this id on the request's sheet forward to their next state; refused once FINAL. */
+    /** Moves the person with this id on the request's sheet forward to their next state (REWORK back to FINAL); refused once FINAL. */
     @PostMapping("/{id}/advance")
     public PersonView advance(@RequestParam(required = false) String sheet, @PathVariable long id) {
         String sheetId = sheetId(sheet);
@@ -132,7 +132,19 @@ public class PersonController {
         }
     }
 
-    /** Moves the person with this id on the request's sheet back to their previous state; refused once FINAL or at DRAFT. */
+    /** Reopens the FINAL person with this id on the request's sheet to REWORK; refused unless FINAL. */
+    @PostMapping("/{id}/rework")
+    public PersonView rework(@RequestParam(required = false) String sheet, @PathVariable long id) {
+        String sheetId = sheetId(sheet);
+        try {
+            return service.rework(sheetId, id).map(p -> view(sheetId, p))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
+    }
+
+    /** Moves the person with this id on the request's sheet back to their previous state; refused once FINAL, at REWORK or at DRAFT. */
     @PostMapping("/{id}/demote")
     public PersonView demote(@RequestParam(required = false) String sheet, @PathVariable long id) {
         String sheetId = sheetId(sheet);

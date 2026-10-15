@@ -38,7 +38,8 @@ import java.util.Set;
  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
  * without one) and their "quality" is the score (absent without one). A person has a workflow "state",
- * starting at DRAFT and moved forward to REVIEW and then FINAL. */
+ * starting at DRAFT and moved forward to REVIEW and then FINAL; a FINAL person may be reopened to REWORK
+ * and moved forward to FINAL again. */
 @Entity
 @Table(name = "person")
 public class Person {

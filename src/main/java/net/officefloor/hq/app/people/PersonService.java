@@ -133,7 +133,7 @@ public class PersonService {
         });
     }
 
-    /** Moves the person forward to their next state, recorded in the audit as STATE_CHANGED id=.. from=.. to=...; refused once FINAL. */
+    /** Moves the person forward to their next state (REWORK back to FINAL), recorded in the audit as STATE_CHANGED id=.. from=.. to=...; refused once FINAL. */
     @Transactional
     public Optional<Person> advance(String sheetId, long id) {
         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
@@ -148,7 +148,22 @@ public class PersonService {
         });
     }
 
-    /** Moves the person back to their previous state, recorded in the audit like {@link #advance}; refused once FINAL or at DRAFT. */
+    /** Reopens a FINAL person to REWORK, recorded in the audit like {@link #advance}; refused unless FINAL. */
+    @Transactional
+    public Optional<Person> rework(String sheetId, long id) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            State current = p.getState();
+            State reopened = current.reopened();
+            if (reopened == null) {
+                throw new IllegalStateException("a person at " + current + " cannot be reworked");
+            }
+            p.setState(reopened);
+            audit.record("STATE_CHANGED id=" + id + " from=" + current + " to=" + reopened);
+            return p;
+        });
+    }
+
+    /** Moves the person back to their previous state, recorded in the audit like {@link #advance}; refused once FINAL, at REWORK or at DRAFT. */
     @Transactional
     public Optional<Person> demote(String sheetId, long id) {
         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {

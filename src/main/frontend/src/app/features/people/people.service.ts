@@ -2,8 +2,9 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
-// A person's workflow state, moved forward from DRAFT to REVIEW to FINAL.
-export type State = 'DRAFT' | 'REVIEW' | 'FINAL';
+// A person's workflow state, moved forward from DRAFT to REVIEW to FINAL; a FINAL person may be
+// reopened to REWORK and moved forward to FINAL again.
+export type State = 'DRAFT' | 'REVIEW' | 'FINAL' | 'REWORK';
 
 export interface Person {
   id: number;
@@ -131,9 +132,14 @@ export class PeopleService {
     return this.http.patch<Person>(`/api/people/${id}`, { active }, { params: sheetParams(sheet) });
   }
 
-  // Moves a person forward to their next state (DRAFT -> REVIEW -> FINAL).
+  // Moves a person forward to their next state (DRAFT -> REVIEW -> FINAL, REWORK -> FINAL).
   advance(sheet: string | null, id: number): Observable<Person> {
     return this.http.post<Person>(`/api/people/${id}/advance`, null, { params: sheetParams(sheet) });
+  }
+
+  // Reopens a FINAL person to REWORK.
+  rework(sheet: string | null, id: number): Observable<Person> {
+    return this.http.post<Person>(`/api/people/${id}/rework`, null, { params: sheetParams(sheet) });
   }
 
   // Moves a person back to their previous state (REVIEW -> DRAFT); refused once FINAL.
