@@ -1,0 +1,22 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 538e621f..1f23a28d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -152,6 +152,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // The sheet's top per state shows, for each state, DRAFT, REVIEW, FINAL and REWORK, the name of the person
+ // in it with the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them
+ // have a scaled).
++// The sheet's state ledger shows, for each state, the total scaled of its people in it, counting "n/a" as
++// zero. Only FINAL and REVIEW are totalled; DRAFT and REWORK are still listed but always total zero.
+ // The sheet's state share shows what percent of its people are in each state, rounded down (zero when
+ // the sheet has no people).
+ // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
+@@ -1612,7 +1614,7 @@ export class People {
+     STATES.map((state) => ({
+       state,
+       total: this.people()
+-        .filter((p) => p.state === state)
++        .filter((p) => p.state === state && (state === 'FINAL' || state === 'REVIEW'))
+         .reduce((total, p) => total + (p.scaled ?? 0), 0),
+     })),
+   );
