@@ -12,7 +12,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // way; their sway is zeta − delta and their torque is force + 3 × sway ("n/a" while any part is missing),
 // and their phase classifies torque: EBB below zero, RUN up to 199, PEAK from 200. Their blend is
 // momentum + torque ("n/a" while either is missing). Their flux is the sum of their patrons' force (0 without
-// patrons, "n/a" while any patron's force is missing).
+// patrons, "n/a" while any patron's force is missing). Their crest is blend + flux ("n/a" while either is missing).
 // Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
@@ -231,6 +231,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Torque</th>
           <th scope="col">Blend</th>
           <th scope="col">Flux</th>
+          <th scope="col">Crest</th>
           <th scope="col">Phase</th>
           <th scope="col">Reach</th>
           <th scope="col">Load</th>
@@ -299,6 +300,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-torque">{{ p.torque ?? 'n/a' }}</td>
             <td data-testid="concept-blend">{{ p.blend ?? 'n/a' }}</td>
             <td data-testid="concept-flux">{{ p.flux ?? 'n/a' }}</td>
+            <td data-testid="concept-crest">{{ p.crest ?? 'n/a' }}</td>
             <td data-testid="concept-phase">{{ p.phase ?? 'n/a' }}</td>
             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
