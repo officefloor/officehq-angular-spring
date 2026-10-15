@@ -1,0 +1,89 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index cc82695..a47eb07 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -22,6 +22,7 @@ export interface Person {
+   percentile: number | null;
+   onset: string | null;
+   age: number | null;
++  decay: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 29b59dc..2bbc27f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -23,6 +23,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // its own people, and a sheet only ever shows (and edits) its own.
+ // The sheet shows its anchor date (today when none is set), and each person their onset date and
+ // their age: whole days from onset to the anchor, negative when onset is after it ("n/a" without onset).
++// Their decay is momentum minus age ("n/a" while either is missing).
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -102,6 +103,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Grade</th>
+           <th scope="col">Onset</th>
+           <th scope="col">Age</th>
++          <th scope="col">Decay</th>
+           <th scope="col">Weight</th>
+           <th scope="col">Thrust</th>
+           <th scope="col">Drift</th>
+@@ -131,6 +133,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-grade">{{ p.grade }}</td>
+             <td data-testid="person-onset">{{ p.onset }}</td>
+             <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
++            <td data-testid="concept-decay">{{ p.decay ?? 'n/a' }}</td>
+             <td data-testid="concept-weight">{{ p.weight ?? 'n/a' }}</td>
+             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 43738c3..1f73013 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -25,7 +25,8 @@ import java.util.Set;
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+- * A person may have an "onset" date (absent until given); their "age" is the whole days from onset to the sheet's anchor. */
++ * A person may have an "onset" date (absent until given); their "age" is the whole days from onset to the sheet's anchor.
++ * "Decay" is momentum minus age. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -129,6 +130,13 @@ public class Person {
+         return onset == null ? null : ChronoUnit.DAYS.between(onset, anchor);
+     }
+ 
++    /** Decay is momentum minus age; absent while either is absent. */
++    public Long getDecay(LocalDate anchor) {
++        Integer momentum = getMomentum();
++        Long age = getAge(anchor);
++        return momentum == null || age == null ? null : momentum - age;
++    }
++
+     /** Weight comes from the grade: LOW 1, MID 3, HIGH 5; absent without a grade. */
+     public Integer getWeight() {
+         return grade == null ? null : grade.weight();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index ea0408c..477867b 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -27,14 +27,14 @@ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+-            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age) {
++            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+-                    p.getAge(anchor));
++                    p.getAge(anchor), p.getDecay(anchor));
+         }
+     }
+ 
