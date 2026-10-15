@@ -34,7 +34,7 @@ import java.util.Set;
  * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus two times lift, absent while either is. "Grip" is yield minus coil, absent while either is.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
- * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force. "Strain" is crest minus brace.
+ * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force. "Strain" is crest minus brace. "Pulse" classifies strain by sign.
  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
  * person's regions, of momentum times that region's multiplier. "Gust" is reach plus two times torque. "Coil" is gust minus momentum. A person may follow any number of other people on
@@ -508,6 +508,15 @@ public class Person {
         Integer crest = getCrest();
         Integer brace = getBrace();
         return crest == null || brace == null ? null : crest - brace;
+    }
+
+    /** Pulse classifies strain by sign: NEG below zero, FLAT at zero, POS above; absent with strain. */
+    public String getPulse() {
+        Integer strain = getStrain();
+        if (strain == null) {
+            return null;
+        }
+        return strain < 0 ? "NEG" : strain == 0 ? "FLAT" : "POS";
     }
 
     /** Combined is influence plus synergy; absent while either is. */

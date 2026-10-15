@@ -49,6 +49,7 @@ export interface Person {
   influence: number | null;
   brace: number | null;
   strain: number | null;
+  pulse: string | null;
   regions: string[];
   reach: number | null;
   gust: number | null;

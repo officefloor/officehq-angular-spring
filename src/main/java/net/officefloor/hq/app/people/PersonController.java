@@ -31,7 +31,7 @@ public class PersonController {
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, String phase, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
-            Integer clout, Integer influence, Integer brace, Integer strain, List<String> regions, Integer reach, Integer gust, Integer coil,
+            Integer clout, Integer influence, Integer brace, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer norm, boolean outlier, State state) {
         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
@@ -40,7 +40,7 @@ public class PersonController {
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
-                    p.getInfluence(), p.getBrace(), p.getStrain(), p.getRegions(), p.getReach(), p.getGust(), p.getCoil(),
+                    p.getInfluence(), p.getBrace(), p.getStrain(), p.getPulse(), p.getRegions(), p.getReach(), p.getGust(), p.getCoil(),
                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(),
                     PersonController.norm(p.getScaled(), medianScaled),
