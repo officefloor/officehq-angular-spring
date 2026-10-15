@@ -127,6 +127,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // ("n/a" when their group's strength is zero, they have no group or their scaled is "n/a").
 // Each person shows their standing: their place within their group by scaled, highest first (1), with
 // equal scaled placed by higher alpha first, then by name ("n/a" when they have no group or no scaled).
+// Each person shows their belonging: their group's strength minus their scaled ("n/a" when they have no
+// group or their scaled is "n/a").
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -404,6 +406,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Stray</th>
           <th scope="col">Share</th>
           <th scope="col">Standing</th>
+          <th scope="col">Belonging</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -501,6 +504,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-stray">{{ p.stray ? 'yes' : 'no' }}</td>
             <td data-testid="concept-share">{{ shareOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-standing">{{ standings().get(p.id) ?? 'n/a' }}</td>
+            <td data-testid="concept-belonging">{{ belongingOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>
@@ -836,6 +840,10 @@ export class People {
   protected shareOf(p: Person): number | null {
     const strength = p.groupId === null ? 0 : (this.groupStrengths().get(p.groupId) ?? 0);
     return p.scaled === null || strength === 0 ? null : Math.floor((p.scaled * 100) / strength);
+  }
+  protected belongingOf(p: Person): number | null {
+    if (p.groupId === null || p.scaled === null) return null;
+    return (this.groupStrengths().get(p.groupId) ?? 0) - p.scaled;
   }
   protected readonly groupSizes = computed(() => {
     const sizes = new Map<number, number>();
