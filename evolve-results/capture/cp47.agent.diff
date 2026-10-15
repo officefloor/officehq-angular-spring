@@ -1,0 +1,81 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 3cb0c03..a4b2658 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -36,6 +36,7 @@ export interface Person {
+   notes: number[];
+   noteSum: number;
+   quality: number | null;
++  adjusted: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d784694..4429b4a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -48,6 +48,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // Each person may have any number of notes, each with a whole-number score, added on the row. Their
+ // notes are listed by score, sorted ascending, with their note sum: the scores added together (zero without notes).
+ // Their quality is the average of their note scores, rounded down ("n/a" without notes).
++// Their adjusted is their combined plus their quality, counting quality as zero without notes ("n/a" while
++// combined is "n/a").
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -173,6 +175,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Notes</th>
+           <th scope="col">Note sum</th>
+           <th scope="col">Quality</th>
++          <th scope="col">Adjusted</th>
+           <th scope="col">Rank</th>
+           <th scope="col">Percentile</th>
+           <th scope="col">Set alpha</th>
+@@ -220,6 +223,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-notes">{{ p.notes.join(', ') }}</td>
+             <td data-testid="concept-note-sum">{{ p.noteSum }}</td>
+             <td data-testid="concept-quality">{{ p.quality ?? 'n/a' }}</td>
++            <td data-testid="concept-adjusted">{{ p.adjusted ?? 'n/a' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
+             <td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 0d7ac1d..edb0cc9 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -194,6 +194,13 @@ public class Person {
+         return notes.isEmpty() ? null : Math.floorDiv(getNoteSum(), notes.size());
+     }
+ 
++    /** Adjusted is combined plus quality (quality counted as zero without notes); absent while combined is. */
++    public Integer getAdjusted() {
++        Integer combined = getCombined();
++        Integer quality = getQuality();
++        return combined == null ? null : combined + (quality == null ? 0 : quality);
++    }
++
+     public LocalDate getOnset() {
+         return onset;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index c865eb6..8346024 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -32,7 +32,7 @@ public class PersonController {
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, List<Integer> notes, int noteSum, Integer quality) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, List<Integer> notes, int noteSum, Integer quality, Integer adjusted) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -42,7 +42,7 @@ public class PersonController {
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+                     p.getInfluence(), p.getRegions(), p.getReach(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getNotes(), p.getNoteSum(), p.getQuality());
++                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getNotes(), p.getNoteSum(), p.getQuality(), p.getAdjusted());
+         }
+     }
+ 
