@@ -27,10 +27,14 @@ import java.util.Set;
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
- * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. */
+ * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
+ * A person may have a "region": a short code typed in, like N1 or S2 (absent until given). */
 @Entity
 @Table(name = "person")
 public class Person {
+
+    /** The longest region code that can be stored. */
+    public static final int REGION_MAX_LENGTH = 16;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -52,6 +56,8 @@ public class Person {
     private Grade grade;
 
     private LocalDate onset;
+
+    private String region;
 
     private boolean active = true;
 
@@ -130,6 +136,14 @@ public class Person {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public String getRegion() {
+        return region;
+    }
+
+    public void setRegion(String region) {
+        this.region = region;
     }
 
     public LocalDate getOnset() {

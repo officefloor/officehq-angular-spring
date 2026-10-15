@@ -28,7 +28,7 @@ public class PersonController {
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
-            Integer clout, Integer influence) {
+            Integer clout, Integer influence, String region) {
         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
@@ -36,7 +36,7 @@ public class PersonController {
                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
-                    p.getInfluence());
+                    p.getInfluence(), p.getRegion());
         }
     }
 
@@ -64,7 +64,7 @@ public class PersonController {
     public record PatronView(Long id, String name) {
     }
 
-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade) {
+    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade, String region) {
     }
 
     private final PersonService service;
@@ -86,11 +86,11 @@ public class PersonController {
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
         return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
-                person.grade()));
+                person.grade(), region(person.region())));
     }
 
     /**
-     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, active
+     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, region, active
      * (true or false) and patronIds (a list of ids on that sheet) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
@@ -109,6 +109,12 @@ public class PersonController {
         }
         if (update.containsKey("grade")) {
             person = service.setGrade(sheetId, id, grade(update.get("grade")));
+        }
+        if (update.containsKey("region")) {
+            if (update.get("region") != null && !(update.get("region") instanceof String)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "region must be text");
+            }
+            person = service.setRegion(sheetId, id, region((String) update.get("region")));
         }
         if (update.containsKey("active")) {
             if (!(update.get("active") instanceof Boolean active)) {
@@ -156,6 +162,19 @@ public class PersonController {
     /** The sheet named by the request, trimmed; blank or absent means the unnamed sheet. */
     private static String sheetId(String sheet) {
         return sheet == null || sheet.isBlank() ? null : sheet.trim();
+    }
+
+    /** A region as typed, trimmed; blank means none. Refuses one longer than {@link Person#REGION_MAX_LENGTH}. */
+    static String region(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String region = value.trim();
+        if (region.length() > Person.REGION_MAX_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "region must be at most " + Person.REGION_MAX_LENGTH + " characters");
+        }
+        return region;
     }
 
     private static Grade grade(Object value) {
