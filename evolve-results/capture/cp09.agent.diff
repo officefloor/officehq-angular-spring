@@ -1,0 +1,277 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index cce134b..6ef91ab 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -12,6 +12,8 @@ export interface Person {
+   drift: number | null;
+   momentum: number | null;
+   tier: string | null;
++  patronId: number | null;
++  patronName: string | null;
+ }
+ 
+ export interface NewPerson {
+@@ -49,4 +51,8 @@ export class PeopleService {
+   setGamma(id: number, gamma: number | null): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { gamma });
+   }
++
++  setPatron(id: number, patronId: number | null): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { patronId });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 45f394a..63f4dd7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,7 +6,8 @@ import { PeopleService, Person } from './people.service';
+ // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
+ // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
+ // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
+-// their alpha, beta and gamma instead of adding.
++// their alpha, beta and gamma instead of adding. Each person may have a patron (another person), shown
++// by name and chosen on the row.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -62,9 +63,11 @@ import { PeopleService, Person } from './people.service';
+           <th scope="col">Drift</th>
+           <th scope="col">Momentum</th>
+           <th scope="col">Tier</th>
++          <th scope="col">Patron</th>
+           <th scope="col">Set alpha</th>
+           <th scope="col">Set beta</th>
+           <th scope="col">Set gamma</th>
++          <th scope="col">Set patron</th>
+           <th scope="col">Edit</th>
+         </tr>
+       </thead>
+@@ -79,6 +82,7 @@ import { PeopleService, Person } from './people.service';
+             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
++            <td data-testid="person-patrons">{{ p.patronName ?? '' }}</td>
+             <td>
+               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
+                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">
+@@ -127,6 +131,24 @@ import { PeopleService, Person } from './people.service';
+                 <button type="submit" data-testid="person-gamma-save">Save</button>
+               </form>
+             </td>
++            <td>
++              <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
++                Patron for {{ p.name }}
++              </label>
++              <select
++                [id]="'person-patron-edit-' + p.id"
++                (change)="setPatron(p, patronSelect.value)"
++                #patronSelect
++                data-testid="person-patron-select"
++              >
++                <option value="" [selected]="p.patronId === null">No patron</option>
++                @for (other of people(); track other.id) {
++                  @if (other.id !== p.id) {
++                    <option [value]="other.id" [selected]="p.patronId === other.id">{{ other.name }}</option>
++                  }
++                }
++              </select>
++            </td>
+             <td>
+               <button
+                 type="button"
+@@ -212,6 +234,11 @@ export class People {
+     this.service.setGamma(person.id, gamma).subscribe(() => this.load());
+   }
+ 
++  protected setPatron(person: Person, value: string): void {
++    const patronId = value === '' ? null : Number(value);
++    this.service.setPatron(person.id, patronId).subscribe(() => this.load());
++  }
++
+   private load(): void {
+     this.service.list().subscribe((people) => this.people.set(people));
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 9b3b671..92b2085 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "patronId");
+ 
+     private final Audit audit;
+     private final JdbcTemplate jdbc;
+@@ -40,7 +40,9 @@ public class TestSupportController {
+     @Transactional
+     public void reset() {
+         audit.clear();
+-        jdbc.execute("TRUNCATE TABLE person RESTART IDENTITY");
++        // Person references itself (patron), so delete rather than truncate.
++        jdbc.update("DELETE FROM person");
++        jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
+     }
+ 
+     /**
+@@ -55,7 +57,8 @@ public class TestSupportController {
+                 throw badRequest("unknown fixture key: " + key);
+             }
+         }
+-        for (Map<String, Object> row : rows(fixture.get("people"), "people")) {
++        List<Map<String, Object>> people = rows(fixture.get("people"), "people");
++        for (Map<String, Object> row : people) {
+             for (String field : row.keySet()) {
+                 if (!PERSON_FIELDS.contains(field)) {
+                     throw badRequest("cannot store people." + field);
+@@ -76,6 +79,17 @@ public class TestSupportController {
+                         integer(id, "people.id"), name, alpha, beta, gamma);
+             }
+         }
++        // Patrons link people by id, so set them once every person exists.
++        for (Map<String, Object> row : people) {
++            Integer patronId = integer(row.get("patronId"), "people.patronId");
++            if (patronId != null) {
++                if (row.get("id") == null) {
++                    throw badRequest("people.patronId needs the person's id");
++                }
++                jdbc.update("UPDATE person SET patron_id = ? WHERE id = ?", patronId,
++                        integer(row.get("id"), "people.id"));
++            }
++        }
+         // Keep generated ids clear of the seeded ones.
+         Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM person", Long.class);
+         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH " + next);
+@@ -89,7 +103,7 @@ public class TestSupportController {
+     public Map<String, Object> fixture() {
+         Map<String, Object> out = new LinkedHashMap<>();
+         out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+-                + "beta AS \"beta\", gamma AS \"gamma\" "
++                + "beta AS \"beta\", gamma AS \"gamma\", patron_id AS \"patronId\" "
+                 + "FROM person ORDER BY id"));
+         return out;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index d83cbea..ed1c197 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -4,11 +4,14 @@ import jakarta.persistence.Entity;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.ManyToOne;
+ import jakarta.persistence.Table;
+ 
+ /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
+  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+- * (thrust + 3 × drift), which are absent until all three raw values are given. */
++ * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
++ * a "patron": another person on the list. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -25,6 +28,10 @@ public class Person {
+ 
+     private Integer gamma;
+ 
++    @ManyToOne
++    @JoinColumn(name = "patron_id")
++    private Person patron;
++
+     protected Person() {
+     }
+ 
+@@ -67,6 +74,14 @@ public class Person {
+         this.gamma = gamma;
+     }
+ 
++    public Person getPatron() {
++        return patron;
++    }
++
++    public void setPatron(Person patron) {
++        this.patron = patron;
++    }
++
+     /** The derived values exist only once alpha, beta and gamma are all given. */
+     private boolean complete() {
+         return alpha != null && beta != null && gamma != null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 6bf0801..35c9d27 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -21,10 +21,13 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+-            Integer thrust, Integer drift, Integer momentum, String tier) {
++            Integer thrust, Integer drift, Integer momentum, String tier, Long patronId,
++            String patronName) {
+         static PersonView of(Person p) {
++            Person patron = p.getPatron();
+             return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+-                    p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier());
++                    p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
++                    patron == null ? null : patron.getId(), patron == null ? null : patron.getName());
+         }
+     }
+ 
+@@ -48,7 +51,7 @@ public class PersonController {
+         return PersonView.of(service.add(person.name(), person.alpha(), person.beta(), person.gamma()));
+     }
+ 
+-    /** Sets whichever of alpha, beta and gamma the body names; a null value clears it. */
++    /** Sets whichever of alpha, beta, gamma and patronId the body names; a null value clears it. */
+     @PatchMapping("/{id}")
+     public PersonView update(@PathVariable long id, @RequestBody Map<String, Integer> update) {
+         Optional<Person> person = service.find(id);
+@@ -61,6 +64,14 @@ public class PersonController {
+         if (update.containsKey("gamma")) {
+             person = service.setGamma(id, update.get("gamma"));
+         }
++        if (update.containsKey("patronId")) {
++            Integer patronId = update.get("patronId");
++            try {
++                person = service.setPatron(id, patronId == null ? null : patronId.longValue());
++            } catch (IllegalArgumentException e) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
++            }
++        }
+         return person.map(PersonView::of)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index 2efa9b6..dc8bf74 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -63,4 +63,21 @@ public class PersonService {
+             return p;
+         });
+     }
++
++    /** Sets the patron (another person) by id; null clears it. Refuses oneself or an unknown person. */
++    @Transactional
++    public Optional<Person> setPatron(long id, Long patronId) {
++        return people.findById(id).map(p -> {
++            if (patronId == null) {
++                p.setPatron(null);
++            } else {
++                if (patronId == id) {
++                    throw new IllegalArgumentException("a person cannot be their own patron");
++                }
++                p.setPatron(people.findById(patronId)
++                        .orElseThrow(() -> new IllegalArgumentException("no person " + patronId)));
++            }
++            return p;
++        });
++    }
+ }
+diff --git a/src/main/resources/db/migration/V4__person_patron.sql b/src/main/resources/db/migration/V4__person_patron.sql
+new file mode 100644
+index 0000000..6669e0b
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__person_patron.sql
+@@ -0,0 +1 @@
++ALTER TABLE person ADD COLUMN patron_id BIGINT REFERENCES person (id) ON DELETE SET NULL;
