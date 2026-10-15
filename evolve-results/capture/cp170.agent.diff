@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f56ee200..ee1258ec 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -123,6 +123,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // The sheet's top group size is the size of its biggest group ("n/a" when there are no groups).
+ // The sheet's total strength is the sum of the strengths of all its groups (0 when there are none).
+ // The sheet's group count is how many groups it has (0 when there are none).
++// The sheet's mean size is the average size of its groups, rounded down ("n/a" when there are no groups).
+ // The sheet's median strength is the middle of its groups' strengths; for an even count, the lower of
+ // the two middle values ("n/a" when there are no groups).
+ // The sheet's strength range is the strongest group's strength minus the weakest's ("n/a" when there
+@@ -315,6 +316,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+     <p>Top group size: <strong data-testid="rollup-top-group-size">{{ topGroupSize() ?? 'n/a' }}</strong></p>
+     <p>Total strength: <strong data-testid="rollup-total-strength">{{ totalStrength() }}</strong></p>
+     <p>Groups: <strong data-testid="rollup-group-count">{{ groupCount() }}</strong></p>
++    <p>Average group size: <strong data-testid="rollup-mean-size">{{ meanSize() ?? 'n/a' }}</strong></p>
+     <p>Median strength: <strong data-testid="rollup-median-strength">{{ medianStrength() ?? 'n/a' }}</strong></p>
+     <p>Strength range: <strong data-testid="rollup-strength-range">{{ strengthRange() ?? 'n/a' }}</strong></p>
+     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
+@@ -944,6 +946,12 @@ export class People {
+     return this.groups().reduce((total, g) => total + (strengths.get(g.id) ?? 0), 0);
+   });
+   protected readonly groupCount = computed(() => this.groups().length);
++  protected readonly meanSize = computed(() => {
++    const sizes = this.groupSizes();
++    const groups = this.groups();
++    if (groups.length === 0) return null;
++    return Math.floor(groups.reduce((total, g) => total + (sizes.get(g.id) ?? 0), 0) / groups.length);
++  });
+   protected readonly medianStrength = computed(() => {
+     const strengths = this.groupStrengths();
+     const sorted = this.groups()
