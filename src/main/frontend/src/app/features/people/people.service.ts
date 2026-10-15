@@ -80,7 +80,7 @@ export interface Person {
   flow: number | null;
   norm: number | null;
   outlier: boolean;
-  // TOP when scaled is at or above the sheet's median scaled, otherwise BOT; absent without a scaled.
+  // TOP when scaled is at or above the sheet's mean scaled, otherwise BOT; absent without a scaled.
   stratum: 'TOP' | 'BOT' | null;
   ebb: number | null;
   stray: boolean;
