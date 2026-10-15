@@ -1,0 +1,42 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e1a2c0aa..46664c50 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -53,7 +53,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their influence is their effective plus their clout ("n/a" while either is "n/a").
+ // Their brace is their influence plus two times their force ("n/a" while either is "n/a").
+ // Their strain is their crest minus their brace ("n/a" while either is "n/a").
+-// Their pulse classifies their strain by sign: NEG below zero, FLAT at zero, POS above ("n/a" while strain is "n/a").
++// Their pulse classifies their strain against a tolerance band: NEG below -10, FLAT within 10 of zero, POS above 10 ("n/a" while strain is "n/a").
+ // The sheet's top influence is the name of the person with the highest influence, ties going to the
+ // name that comes first alphabetically ("n/a" when nobody has an influence).
+ // Each person may belong to any number of regions: short codes typed in (like N1 or S2), separated by
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 4c2a8ed0..36761119 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -34,7 +34,7 @@ import java.util.Set;
+  * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus two times lift, absent while either is. "Grip" is yield minus coil, absent while either is.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+- * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force. "Strain" is crest minus brace. "Pulse" classifies strain by sign.
++ * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force. "Strain" is crest minus brace. "Pulse" classifies strain against a tolerance band of 10 either side of zero.
+  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+  * person's regions, of momentum times that region's multiplier. "Gust" is reach plus two times torque. "Coil" is gust minus momentum. A person may follow any number of other people on
+@@ -510,13 +510,13 @@ public class Person {
+         return crest == null || brace == null ? null : crest - brace;
+     }
+ 
+-    /** Pulse classifies strain by sign: NEG below zero, FLAT at zero, POS above; absent with strain. */
++    /** Pulse classifies strain against a tolerance band: NEG below -10, FLAT within 10 of zero, POS above 10; absent with strain. */
+     public String getPulse() {
+         Integer strain = getStrain();
+         if (strain == null) {
+             return null;
+         }
+-        return strain < 0 ? "NEG" : strain == 0 ? "FLAT" : "POS";
++        return strain < -10 ? "NEG" : strain > 10 ? "POS" : "FLAT";
+     }
+ 
+     /** Combined is influence plus synergy; absent while either is. */
