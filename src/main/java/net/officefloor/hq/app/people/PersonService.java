@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.people;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,7 +21,15 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String name, int alpha) {
-        return people.save(new Person(name.trim(), alpha));
+    public Person add(String name, int alpha, Integer beta) {
+        return people.save(new Person(name.trim(), alpha, beta));
+    }
+
+    @Transactional
+    public Optional<Person> setBeta(long id, Integer beta) {
+        return people.findById(id).map(p -> {
+            p.setBeta(beta);
+            return p;
+        });
     }
 }

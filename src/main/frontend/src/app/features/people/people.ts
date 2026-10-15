@@ -2,7 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PeopleService, Person } from './people.service';
 
-// The people list: every person with their name and alpha, plus a form to add one.
+// The people list: every person with their name, alpha, beta and thrust (alpha × beta), plus a
+// form to add one. Beta is optional on add and can be filled in (or changed) on the row later.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -20,6 +21,14 @@ import { PeopleService, Person } from './people.service';
         formControlName="alpha"
         data-testid="person-form-alpha"
       />
+      <label for="person-beta">Beta</label>
+      <input
+        id="person-beta"
+        type="number"
+        step="1"
+        formControlName="beta"
+        data-testid="person-form-beta"
+      />
       <button type="submit" [disabled]="form.invalid || saving()" data-testid="person-form-submit">
         Add person
       </button>
@@ -33,6 +42,9 @@ import { PeopleService, Person } from './people.service';
         <tr>
           <th scope="col">Name</th>
           <th scope="col">Alpha</th>
+          <th scope="col">Beta</th>
+          <th scope="col">Thrust</th>
+          <th scope="col">Set beta</th>
         </tr>
       </thead>
       <tbody>
@@ -40,6 +52,24 @@ import { PeopleService, Person } from './people.service';
           <tr [attr.data-testid]="'person-row-' + p.id">
             <td data-testid="person-name">{{ p.name }}</td>
             <td data-testid="person-alpha">{{ p.alpha }}</td>
+            <td data-testid="person-beta">{{ p.beta }}</td>
+            <td data-testid="concept-thrust">{{ p.thrust }}</td>
+            <td>
+              <form (submit)="$event.preventDefault(); setBeta(p, betaInput.value)">
+                <label class="visually-hidden" [for]="'person-beta-edit-' + p.id">
+                  Beta for {{ p.name }}
+                </label>
+                <input
+                  #betaInput
+                  [id]="'person-beta-edit-' + p.id"
+                  type="number"
+                  step="1"
+                  [value]="p.beta ?? ''"
+                  data-testid="person-beta-input"
+                />
+                <button type="submit" data-testid="person-beta-save">Save</button>
+              </form>
+            </td>
           </tr>
         }
       </tbody>
@@ -55,6 +85,7 @@ export class People {
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
     alpha: [null as number | null, [Validators.required, Validators.pattern(/^-?\d+$/)]],
+    beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
   });
 
   constructor() {
@@ -62,10 +93,10 @@ export class People {
   }
 
   protected add(): void {
-    const { name, alpha } = this.form.getRawValue();
+    const { name, alpha, beta } = this.form.getRawValue();
     if (this.form.invalid || alpha === null) return;
     this.saving.set(true);
-    this.service.add({ name, alpha }).subscribe({
+    this.service.add({ name, alpha, beta }).subscribe({
       next: () => {
         this.form.reset();
         this.saving.set(false);
@@ -73,6 +104,13 @@ export class People {
       },
       error: () => this.saving.set(false),
     });
+  }
+
+  protected setBeta(person: Person, value: string): void {
+    const text = value.trim();
+    if (text !== '' && !/^-?\d+$/.test(text)) return;
+    const beta = text === '' ? null : Number(text);
+    this.service.setBeta(person.id, beta).subscribe(() => this.load());
   }
 
   private load(): void {

@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -66,11 +66,12 @@ public class TestSupportController {
             }
             Object id = row.get("id");
             Integer alpha = integer(row.get("alpha"), "people.alpha");
+            Integer beta = integer(row.get("beta"), "people.beta");
             if (id == null) {
-                jdbc.update("INSERT INTO person (name, alpha) VALUES (?, ?)", name, alpha);
+                jdbc.update("INSERT INTO person (name, alpha, beta) VALUES (?, ?, ?)", name, alpha, beta);
             } else {
-                jdbc.update("INSERT INTO person (id, name, alpha) VALUES (?, ?, ?)",
-                        integer(id, "people.id"), name, alpha);
+                jdbc.update("INSERT INTO person (id, name, alpha, beta) VALUES (?, ?, ?, ?)",
+                        integer(id, "people.id"), name, alpha, beta);
             }
         }
         // Keep generated ids clear of the seeded ones.
@@ -85,7 +86,8 @@ public class TestSupportController {
     @GetMapping("/fixture")
     public Map<String, Object> fixture() {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\" "
+        out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+                + "beta AS \"beta\" "
                 + "FROM person ORDER BY id"));
         return out;
     }

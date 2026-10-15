@@ -6,11 +6,14 @@ export interface Person {
   id: number;
   name: string;
   alpha: number | null;
+  beta: number | null;
+  thrust: number | null;
 }
 
 export interface NewPerson {
   name: string;
   alpha: number;
+  beta: number | null;
 }
 
 // The people REST API (/api/people).
@@ -24,5 +27,9 @@ export class PeopleService {
 
   add(person: NewPerson): Observable<Person> {
     return this.http.post<Person>('/api/people', person);
+  }
+
+  setBeta(id: number, beta: number | null): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { beta });
   }
 }
