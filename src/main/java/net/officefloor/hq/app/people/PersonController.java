@@ -2,6 +2,7 @@ package net.officefloor.hq.app.people;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,7 +32,7 @@ public class PersonController {
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, List<String> regions, Integer reach,
-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined) {
+            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, List<Integer> notes, int noteSum) {
         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
@@ -41,7 +42,7 @@ public class PersonController {
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
                     p.getInfluence(), p.getRegions(), p.getReach(),
                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
-                    p.getAllies().size(), p.getSynergy(), p.getCombined());
+                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getNotes(), p.getNoteSum());
         }
     }
 
@@ -166,6 +167,19 @@ public class PersonController {
             }
         }
         return person.map(p -> view(sheetId, p))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    public record NewNote(@NotNull Integer score) {
+    }
+
+    /** Adds a note with a whole-number score to the person with this id on the request's sheet. */
+    @PostMapping("/{id}/notes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PersonView addNote(@RequestParam(required = false) String sheet, @PathVariable long id,
+            @Valid @RequestBody NewNote note) {
+        String sheetId = sheetId(sheet);
+        return service.addNote(sheetId, id, note.score()).map(p -> view(sheetId, p))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 

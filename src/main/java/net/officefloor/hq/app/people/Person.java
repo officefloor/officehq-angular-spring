@@ -13,10 +13,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -35,7 +37,9 @@ import java.util.Set;
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
  * person's regions, of momentum times that region's multiplier. A person may follow any number of other people on
  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
- * allies' thrust added together (zero without allies). "Combined" is influence plus synergy. */
+ * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
+ * A person may have any number of "notes", each with a whole-number score; their "note sum" is the
+ * scores added together (zero without notes). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -85,6 +89,13 @@ public class Person {
     @CollectionTable(name = "person_region", joinColumns = @JoinColumn(name = "person_id"))
     @Column(name = "region")
     private Set<String> regions = new HashSet<>();
+
+    /** The scores of the person's notes, in the order they were added. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_note", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "position")
+    @Column(name = "score")
+    private List<Integer> notes = new ArrayList<>();
 
     protected Person() {
     }
@@ -161,6 +172,20 @@ public class Person {
 
     public void setRegions(Collection<String> regions) {
         this.regions = new HashSet<>(regions);
+    }
+
+    /** The note scores, sorted ascending. */
+    public List<Integer> getNotes() {
+        return notes.stream().sorted().toList();
+    }
+
+    public void addNote(int score) {
+        notes.add(score);
+    }
+
+    /** The note sum is the note scores added together; zero without notes. */
+    public int getNoteSum() {
+        return notes.stream().mapToInt(Integer::intValue).sum();
     }
 
     public LocalDate getOnset() {

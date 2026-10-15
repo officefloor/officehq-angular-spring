@@ -38,7 +38,9 @@ public class TestSupportController {
 
     private static final Set<String> FOLLOW_FIELDS = Set.of("from", "to");
 
-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows");
+    private static final Set<String> NOTE_FIELDS = Set.of("personId", "score");
+
+    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows", "notes");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -57,6 +59,7 @@ public class TestSupportController {
         jdbc.update("DELETE FROM person_patron");
         jdbc.update("DELETE FROM person_follow");
         jdbc.update("DELETE FROM person_region");
+        jdbc.update("DELETE FROM person_note");
         jdbc.update("DELETE FROM person");
         jdbc.update("DELETE FROM sheet");
         jdbc.update("DELETE FROM unnamed_sheet");
@@ -72,7 +75,7 @@ public class TestSupportController {
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
             if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
-                    && !key.equals("follows") && !key.equals("sheets")) {
+                    && !key.equals("follows") && !key.equals("notes") && !key.equals("sheets")) {
                 throw badRequest("unknown fixture key: " + key);
             }
         }
@@ -82,7 +85,7 @@ public class TestSupportController {
             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
         }
         // People, patrons and regions at the top level are on the unnamed sheet.
-        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), "");
+        seedSheet(null, fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), fixture.get("notes"), "");
         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
             for (String field : sheet.keySet()) {
                 if (!SHEET_FIELDS.contains(field)) {
@@ -93,7 +96,7 @@ public class TestSupportController {
                 throw badRequest("sheets.id is required");
             }
             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
-            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), "sheets.");
+            seedSheet(id, sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), sheet.get("notes"), "sheets.");
         }
     }
 
@@ -125,9 +128,9 @@ public class TestSupportController {
         return ids.get(0);
     }
 
-    /** Inserts one sheet's people and then their patrons, regions and follows; a null sheet id is the unnamed sheet. */
+    /** Inserts one sheet's people and then their patrons, regions, follows and notes; a null sheet id is the unnamed sheet. */
     private void seedSheet(String sheetId, Object peopleRows, Object patronRows, Object regionRows, Object followRows,
-            String prefix) {
+            Object noteRows, String prefix) {
         for (Map<String, Object> row : rows(peopleRows, prefix + "people")) {
             for (String field : row.keySet()) {
                 if (!PERSON_FIELDS.contains(field)) {
@@ -199,6 +202,22 @@ public class TestSupportController {
             jdbc.update("INSERT INTO person_follow (follower_id, followed_id) VALUES (?, ?)",
                     internalId(sheetId, from, prefix + "follows.from"), internalId(sheetId, to, prefix + "follows.to"));
         }
+        // Notes give a person by id a whole-number score each; a person may have several, even with equal scores.
+        for (Map<String, Object> row : rows(noteRows, prefix + "notes")) {
+            for (String field : row.keySet()) {
+                if (!NOTE_FIELDS.contains(field)) {
+                    throw badRequest("cannot store " + prefix + "notes." + field);
+                }
+            }
+            Integer personId = integer(row.get("personId"), prefix + "notes.personId");
+            Integer score = integer(row.get("score"), prefix + "notes.score");
+            if (personId == null || score == null) {
+                throw badRequest(prefix + "notes rows need personId and score");
+            }
+            long person = internalId(sheetId, personId, prefix + "notes.personId");
+            jdbc.update("INSERT INTO person_note (person_id, position, score) "
+                    + "VALUES (?, (SELECT COUNT(*) FROM person_note WHERE person_id = ?), ?)", person, person, score);
+        }
     }
 
     /**
@@ -245,6 +264,9 @@ public class TestSupportController {
         out.put("follows", jdbc.queryForList("SELECT p.local_id AS \"from\", o.local_id AS \"to\" "
                 + "FROM person_follow pf JOIN person p ON p.id = pf.follower_id JOIN person o ON o.id = pf.followed_id "
                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+        out.put("notes", jdbc.queryForList("SELECT p.local_id AS \"personId\", pn.score AS \"score\" "
+                + "FROM person_note pn JOIN person p ON p.id = pn.person_id "
+                + "WHERE " + where + " ORDER BY p.local_id, pn.position", args));
         return out;
     }
 

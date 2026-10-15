@@ -45,6 +45,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // so A following B does not make B follow A. A person's allies are the people they follow, listed by name, with how many there are,
 // and their synergy: the allies' thrust added together (zero without allies).
 // Their combined is their influence plus their synergy ("n/a" while either is "n/a").
+// Each person may have any number of notes, each with a whole-number score, added on the row. Their
+// notes are listed by score, sorted ascending, with their note sum: the scores added together (zero without notes).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -167,6 +169,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Clout</th>
           <th scope="col">Influence</th>
           <th scope="col">Combined</th>
+          <th scope="col">Notes</th>
+          <th scope="col">Note sum</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -177,6 +181,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Set active</th>
           <th scope="col">Set patrons</th>
           <th scope="col">Set allies</th>
+          <th scope="col">Add note</th>
           <th scope="col">Edit</th>
         </tr>
       </thead>
@@ -210,6 +215,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
             <td data-testid="concept-influence">{{ p.influence ?? 'n/a' }}</td>
             <td data-testid="concept-combined">{{ p.combined ?? 'n/a' }}</td>
+            <td data-testid="person-notes">{{ p.notes.join(', ') }}</td>
+            <td data-testid="concept-note-sum">{{ p.noteSum }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>
@@ -338,6 +345,21 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
                   }
                 }
               </select>
+            </td>
+            <td>
+              <form (submit)="$event.preventDefault(); addNote(p, noteInput)">
+                <label class="visually-hidden" [for]="'person-note-add-' + p.id">
+                  Note score for {{ p.name }}
+                </label>
+                <input
+                  #noteInput
+                  [id]="'person-note-add-' + p.id"
+                  type="number"
+                  step="1"
+                  data-testid="person-note-input"
+                />
+                <button type="submit" data-testid="person-note-add">Add</button>
+              </form>
             </td>
             <td>
               <button
@@ -512,6 +534,15 @@ export class People {
   protected setAllies(person: Person, select: HTMLSelectElement): void {
     const allyIds = Array.from(select.selectedOptions, (option) => Number(option.value));
     this.service.setAllies(this.sheet(), person.id, allyIds).subscribe(() => this.load());
+  }
+
+  protected addNote(person: Person, input: HTMLInputElement): void {
+    const text = input.value.trim();
+    if (!/^-?\d+$/.test(text)) return;
+    this.service.addNote(this.sheet(), person.id, Number(text)).subscribe(() => {
+      input.value = '';
+      this.load();
+    });
   }
 
   private load(): void {

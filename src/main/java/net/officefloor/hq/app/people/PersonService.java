@@ -133,6 +133,15 @@ public class PersonService {
         });
     }
 
+    /** Adds a note with a whole-number score to the person. */
+    @Transactional
+    public Optional<Person> addNote(String sheetId, long id, int score) {
+        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+            p.addNote(score);
+            return p;
+        });
+    }
+
     /** Sets the patrons (other people on the same sheet) by their id on that sheet; an empty list clears them. Refuses oneself or an unknown person. */
     @Transactional
     public Optional<Person> setPatrons(String sheetId, long id, Collection<Long> patronIds) {
