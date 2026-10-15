@@ -16,7 +16,8 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
 // comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the positive torque of the people
 // they follow (0 when they follow no one, "n/a" while any followed person's torque is missing). Their haul is
-// crest + swing ("n/a" while either is missing). The sheet's total haul is everyone's haul added together,
+// crest + swing ("n/a" while either is missing). Their vector is the sum of their patrons' blend (0 without patrons,
+// "n/a" while any patron's blend is missing). The sheet's total haul is everyone's haul added together,
 // leaving out anyone whose haul is "n/a".
 // Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
@@ -297,6 +298,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Crest</th>
           <th scope="col">Swing</th>
           <th scope="col">Haul</th>
+          <th scope="col">Vector</th>
           <th scope="col">Phase</th>
           <th scope="col">Reach</th>
           <th scope="col">Gust</th>
@@ -383,6 +385,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-crest">{{ p.crest ?? 'n/a' }}</td>
             <td data-testid="concept-swing">{{ p.swing ?? 'n/a' }}</td>
             <td data-testid="concept-haul">{{ p.haul ?? 'n/a' }}</td>
+            <td data-testid="concept-vector">{{ p.vector ?? 'n/a' }}</td>
             <td data-testid="concept-phase">{{ p.phase ?? 'n/a' }}</td>
             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
             <td data-testid="concept-gust">{{ p.gust ?? 'n/a' }}</td>
