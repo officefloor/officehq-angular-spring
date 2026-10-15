@@ -136,6 +136,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // none do); people whose pulse is "n/a" are not counted.
 // The sheet's bracket counts show how many of its people are in each bracket, Q4 down to Q1 (zero when
 // none are); people whose bracket is "n/a" are not counted.
+// The sheet's bracket ledger shows the total scaled of its people in each bracket, Q4 down to Q1 (zero
+// when none are); people whose bracket is "n/a" add nothing.
 // The sheet's grade tally shows how many of its people have each grade, HIGH and LOW (zero when none
 // do), with MID folded into HIGH; MID is still listed but always counts zero. People without a grade
 // are not counted.
@@ -646,6 +648,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (c of bracketCounts(); track c.bracket) {
           <li>
             {{ c.bracket }}: <strong [attr.data-testid]="'bracket-count-' + c.bracket">{{ c.count }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="bracket-ledger-heading">
+      <h2 id="bracket-ledger-heading">Ledger per bracket</h2>
+      <ul>
+        @for (b of bracketLedger(); track b.bracket) {
+          <li>
+            {{ b.bracket }}: <strong [attr.data-testid]="'bracket-ledger-' + b.bracket">{{ b.total }}</strong>
           </li>
         }
       </ul>
@@ -1647,6 +1659,14 @@ export class People {
     BRACKETS.map((bracket) => ({
       bracket,
       count: this.people().filter((p) => this.bracketOf(p) === bracket).length,
+    })),
+  );
+  protected readonly bracketLedger = computed(() =>
+    BRACKETS.map((bracket) => ({
+      bracket,
+      total: this.people()
+        .filter((p) => this.bracketOf(p) === bracket)
+        .reduce((total, p) => total + (p.scaled ?? 0), 0),
     })),
   );
   protected readonly topInfluence = computed(() => {
