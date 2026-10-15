@@ -144,6 +144,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // nobody on it).
 // The sheet's grade ledger shows the total scaled of its people with each grade, LOW, MID and HIGH (zero
 // when none do), counting "n/a" as zero; people without a grade add nothing.
+// The sheet's top per grade shows, for each grade, LOW, MID and HIGH, the name of the person with it with
+// the highest scaled, ties going to the name earlier in the alphabet ("n/a" when none of them have a scaled).
 // The sheet's state tally shows how many of its people are in each state, DRAFT, REVIEW, FINAL and
 // REWORK (zero when none are).
 // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
@@ -546,6 +548,16 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
         @for (g of gradeLedger(); track g.grade) {
           <li>
             {{ g.grade }}: <strong [attr.data-testid]="'grade-ledger-' + g.grade">{{ g.total }}</strong>
+          </li>
+        }
+      </ul>
+    </section>
+    <section aria-labelledby="grade-apex-heading">
+      <h2 id="grade-apex-heading">Top per grade</h2>
+      <ul>
+        @for (g of gradeApexes(); track g.grade) {
+          <li>
+            {{ g.grade }}: <strong [attr.data-testid]="'apexname-grade-' + g.grade">{{ g.name ?? 'n/a' }}</strong>
           </li>
         }
       </ul>
@@ -1537,6 +1549,18 @@ export class People {
         .filter((p) => p.grade === grade)
         .reduce((total, p) => total + (p.scaled ?? 0), 0),
     })),
+  );
+  protected readonly gradeApexes = computed(() =>
+    GRADES.map((grade) => {
+      let apex: { name: string; scaled: number } | null = null;
+      for (const p of this.people()) {
+        if (p.grade !== grade || p.scaled === null) continue;
+        if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
+          apex = { name: p.name, scaled: p.scaled };
+        }
+      }
+      return { grade, name: apex?.name ?? null };
+    }),
   );
   protected readonly stateTally = computed(() =>
     STATES.map((state) => ({ state, count: this.people().filter((p) => p.state === state).length })),
