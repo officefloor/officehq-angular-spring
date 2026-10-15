@@ -34,7 +34,7 @@ import java.util.Set;
  * "Pivot" is torque times verge, absent while either is.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
- * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
+ * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus force.
  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
  * person's regions, of momentum times that region's multiplier. "Gust" is reach plus two times torque. "Coil" is gust minus momentum. A person may follow any number of other people on
@@ -494,6 +494,13 @@ public class Person {
         Integer effective = getEffective();
         Integer clout = getClout();
         return effective == null || clout == null ? null : effective + clout;
+    }
+
+    /** Brace is influence plus force; absent while either is. */
+    public Integer getBrace() {
+        Integer influence = getInfluence();
+        Integer force = getForce();
+        return influence == null || force == null ? null : influence + force;
     }
 
     /** Combined is influence plus synergy; absent while either is. */

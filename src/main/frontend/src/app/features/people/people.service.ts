@@ -47,6 +47,7 @@ export interface Person {
   effective: number | null;
   clout: number | null;
   influence: number | null;
+  brace: number | null;
   regions: string[];
   reach: number | null;
   gust: number | null;

@@ -51,6 +51,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their clout is the average of their patrons' effective, rounded down (zero without patrons; "n/a" while any
 // patron's effective is "n/a").
 // Their influence is their effective plus their clout ("n/a" while either is "n/a").
+// Their brace is their influence plus their force ("n/a" while either is "n/a").
 // The sheet's top influence is the name of the person with the highest influence, ties going to the
 // name that comes first alphabetically ("n/a" when nobody has an influence).
 // Each person may belong to any number of regions: short codes typed in (like N1 or S2), separated by
@@ -291,6 +292,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Effective</th>
           <th scope="col">Clout</th>
           <th scope="col">Influence</th>
+          <th scope="col">Brace</th>
           <th scope="col">Combined</th>
           <th scope="col">Score</th>
           <th scope="col">Note sum</th>
@@ -372,6 +374,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
             <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
             <td data-testid="concept-influence">{{ p.influence ?? 'n/a' }}</td>
+            <td data-testid="concept-brace">{{ p.brace ?? 'n/a' }}</td>
             <td data-testid="concept-combined">{{ p.combined ?? 'n/a' }}</td>
             <td data-testid="person-score">{{ p.score }}</td>
             <td data-testid="concept-note-sum">{{ p.noteSum }}</td>
