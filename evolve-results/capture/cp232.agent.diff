@@ -1,0 +1,22 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 849c8654..09a06667 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -138,7 +138,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // none are); people whose bracket is "n/a" are not counted.
+ // The sheet's bracket share shows, for each bracket, Q4 down to Q1, how many of its people are in it as a
+ // percentage of the sheet's headcount, rounded down ("n/a" when the sheet has nobody on it).
+-// The sheet's bracket ledger shows the total scaled of its people in each bracket, Q4 down to Q1 (zero
++// The sheet's bracket ledger shows the total momentum of its people in each bracket, Q4 down to Q1 (zero
+ // when none are); people whose bracket is "n/a" add nothing.
+ // The sheet's top per bracket shows, for each bracket, Q4 down to Q1, the name of the person in it with
+ // the highest scaled, ties going to the name earlier in the alphabet ("n/a" when nobody is in it).
+@@ -1700,7 +1700,7 @@ export class People {
+       bracket,
+       total: this.people()
+         .filter((p) => this.bracketOf(p) === bracket)
+-        .reduce((total, p) => total + (p.scaled ?? 0), 0),
++        .reduce((total, p) => total + (p.momentum ?? 0), 0),
+     })),
+   );
+   protected readonly bracketApexes = computed(() =>
