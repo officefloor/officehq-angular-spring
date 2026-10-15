@@ -1,8 +1,8 @@
 package net.officefloor.hq.app.people;
 
-/** A person's grade, each with its weight: LOW is 1, MID is 2, HIGH is 3. */
+/** A person's grade, each with its weight: LOW is 1, MID is 3, HIGH is 5. */
 public enum Grade {
-    LOW(1), MID(2), HIGH(3);
+    LOW(1), MID(3), HIGH(5);
 
     private final int weight;
 

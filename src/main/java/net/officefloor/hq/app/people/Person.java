@@ -22,7 +22,7 @@ import java.util.Set;
  * (thrust + 3 × drift), which are absent until all three raw values are given. A person may have
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
- * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 2 or 3. "Load" is momentum times weight. */
+ * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -115,7 +115,7 @@ public class Person {
         this.grade = grade;
     }
 
-    /** Weight comes from the grade: LOW 1, MID 2, HIGH 3; absent without a grade. */
+    /** Weight comes from the grade: LOW 1, MID 3, HIGH 5; absent without a grade. */
     public Integer getWeight() {
         return grade == null ? null : grade.weight();
     }

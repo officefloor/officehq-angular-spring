@@ -14,7 +14,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // is the name of the rank-1 person ("n/a" when nobody is ranked). Each ranked person's percentile spreads the ranks evenly from
 // 100 (the best) to 0 (the worst), rounded; a lone ranked person is 100.
 // Each person may have a grade (LOW, MID or HIGH), chosen on add, in the edit form or on the row; their
-// weight comes from it (LOW 1, MID 2, HIGH 3, "n/a" without a grade). Their load is momentum × weight
+// weight comes from it (LOW 1, MID 3, HIGH 5, "n/a" without a grade). Their load is momentum × weight
 // ("n/a" while either is missing). The sheet's total load is everyone's load added together, leaving
 // out anyone whose load is "n/a".
 // The list shows one sheet: typing a sheet id and loading it opens that sheet, whose id is then
