@@ -59,6 +59,7 @@ export interface Person {
   adjusted: number | null;
   band: string | null;
   scaled: number | null;
+  thrum: number | null;
   norm: number | null;
   outlier: boolean;
 }

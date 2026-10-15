@@ -72,6 +72,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // A from 500 ("n/a" while adjusted is "n/a").
 // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
 // adjusted is "n/a").
+// Their thrum is their scaled plus their torque ("n/a" while either is "n/a").
 // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
@@ -274,6 +275,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Adjusted</th>
           <th scope="col">Band</th>
           <th scope="col">Scaled</th>
+          <th scope="col">Thrum</th>
           <th scope="col">Norm</th>
           <th scope="col">Outlier</th>
           <th scope="col">Rank</th>
@@ -349,6 +351,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-adjusted">{{ p.adjusted ?? 'n/a' }}</td>
             <td data-testid="concept-band">{{ p.band ?? 'n/a' }}</td>
             <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
+            <td data-testid="concept-thrum">{{ p.thrum ?? 'n/a' }}</td>
             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
