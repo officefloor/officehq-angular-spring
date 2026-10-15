@@ -80,6 +80,8 @@ export interface Person {
   flow: number | null;
   norm: number | null;
   outlier: boolean;
+  // TOP when scaled is at or above the sheet's median scaled, otherwise BOT; absent without a scaled.
+  stratum: 'TOP' | 'BOT' | null;
   ebb: number | null;
   stray: boolean;
   // "Their group": the id and name of the group, of those they are in, whose name comes first

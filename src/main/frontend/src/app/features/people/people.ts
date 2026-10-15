@@ -102,6 +102,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
 // otherwise "no" (also "no" while their norm is "n/a").
+// Their stratum is TOP when their scaled is at or above the sheet's median scaled, otherwise BOT
+// ("n/a" while their scaled is "n/a").
 // The sheet's outlier count is how many of its people are outliers.
 // Their ebb is their blend minus the mean blend of everyone on the sheet whose blend can be worked
 // out, rounded down ("n/a" while their blend is "n/a").
@@ -565,6 +567,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
           <th scope="col">Flow</th>
           <th scope="col">Norm</th>
           <th scope="col">Outlier</th>
+          <th scope="col">Stratum</th>
           <th scope="col">Ebb</th>
           <th scope="col">Stray</th>
           <th scope="col">Share</th>
@@ -684,6 +687,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
             <td data-testid="concept-flow">{{ p.flow ?? 'n/a' }}</td>
             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
+            <td data-testid="concept-stratum">{{ p.stratum ?? 'n/a' }}</td>
             <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
             <td data-testid="concept-stray">{{ p.stray ? 'yes' : 'no' }}</td>
             <td data-testid="concept-share">{{ shareOf(p) ?? 'n/a' }}</td>
