@@ -1,0 +1,229 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index dfe32f2..7e3cd73 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -2,8 +2,9 @@ import { HttpClient, HttpParams } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable, map } from 'rxjs';
+ 
+-// A person's workflow state, moved forward from DRAFT to REVIEW to FINAL.
+-export type State = 'DRAFT' | 'REVIEW' | 'FINAL';
++// A person's workflow state, moved forward from DRAFT to REVIEW to FINAL; a FINAL person may be
++// reopened to REWORK and moved forward to FINAL again.
++export type State = 'DRAFT' | 'REVIEW' | 'FINAL' | 'REWORK';
+ 
+ export interface Person {
+   id: number;
+@@ -131,11 +132,16 @@ export class PeopleService {
+     return this.http.patch<Person>(`/api/people/${id}`, { active }, { params: sheetParams(sheet) });
+   }
+ 
+-  // Moves a person forward to their next state (DRAFT -> REVIEW -> FINAL).
++  // Moves a person forward to their next state (DRAFT -> REVIEW -> FINAL, REWORK -> FINAL).
+   advance(sheet: string | null, id: number): Observable<Person> {
+     return this.http.post<Person>(`/api/people/${id}/advance`, null, { params: sheetParams(sheet) });
+   }
+ 
++  // Reopens a FINAL person to REWORK.
++  rework(sheet: string | null, id: number): Observable<Person> {
++    return this.http.post<Person>(`/api/people/${id}/rework`, null, { params: sheetParams(sheet) });
++  }
++
+   // Moves a person back to their previous state (REVIEW -> DRAFT); refused once FINAL.
+   demote(sheet: string | null, id: number): Observable<Person> {
+     return this.http.post<Person>(`/api/people/${id}/demote`, null, { params: sheetParams(sheet) });
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3541205..733b192 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -26,8 +26,9 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // Their decay is momentum minus age ("n/a" while either is missing).
+ // Each person has a state, starting at DRAFT; the row's Advance button moves it forward to REVIEW and
+ // then FINAL, after which there is no Advance button. The row's Back button moves a REVIEW person back
+-// to DRAFT; a FINAL person cannot go back, and trying shows that it is not allowed. Every change is
+-// recorded in the audit.
++// to DRAFT; a FINAL person cannot go back, and trying shows that it is not allowed. The row's Rework
++// button reopens a FINAL person to REWORK, and Advance moves a REWORK person forward to FINAL again
++// (a REWORK person cannot go back either). Every change is recorded in the audit.
+ // Each person is active or not ("yes" or "no"; a new person is active), marked with the row's checkbox.
+ // Their effective is their net while active, and half their net rounded down while not active
+ // ("n/a" while net is).
+@@ -222,6 +223,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Set active</th>
+           <th scope="col">Advance</th>
+           <th scope="col">Back</th>
++          <th scope="col">Rework</th>
+           <th scope="col">Set patrons</th>
+           <th scope="col">Set allies</th>
+           <th scope="col">Set score</th>
+@@ -384,6 +386,18 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+                 </button>
+               }
+             </td>
++            <td>
++              @if (p.state === 'FINAL') {
++                <button
++                  type="button"
++                  (click)="rework(p)"
++                  [attr.aria-label]="'Rework ' + p.name"
++                  [attr.data-testid]="'person-rework-' + p.id"
++                >
++                  Rework
++                </button>
++              }
++            </td>
+             <td>
+               <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
+                 Patrons for {{ p.name }}
+@@ -600,6 +614,11 @@ export class People {
+     this.service.advance(this.sheet(), person.id).subscribe(() => this.load());
+   }
+ 
++  protected rework(person: Person): void {
++    this.stateError.set(null);
++    this.service.rework(this.sheet(), person.id).subscribe(() => this.load());
++  }
++
+   protected demote(person: Person): void {
+     this.stateError.set(null);
+     this.service.demote(this.sheet(), person.id).subscribe({
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 4d63ed7..fe5c191 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -38,7 +38,8 @@ import java.util.Set;
+  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
+  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
+  * without one) and their "quality" is the score (absent without one). A person has a workflow "state",
+- * starting at DRAFT and moved forward to REVIEW and then FINAL. */
++ * starting at DRAFT and moved forward to REVIEW and then FINAL; a FINAL person may be reopened to REWORK
++ * and moved forward to FINAL again. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index b98e43c..5a50832 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -120,7 +120,7 @@ public class PersonController {
+                 person.grade(), regions(person.regions())));
+     }
+ 
+-    /** Moves the person with this id on the request's sheet forward to their next state; refused once FINAL. */
++    /** Moves the person with this id on the request's sheet forward to their next state (REWORK back to FINAL); refused once FINAL. */
+     @PostMapping("/{id}/advance")
+     public PersonView advance(@RequestParam(required = false) String sheet, @PathVariable long id) {
+         String sheetId = sheetId(sheet);
+@@ -132,7 +132,19 @@ public class PersonController {
+         }
+     }
+ 
+-    /** Moves the person with this id on the request's sheet back to their previous state; refused once FINAL or at DRAFT. */
++    /** Reopens the FINAL person with this id on the request's sheet to REWORK; refused unless FINAL. */
++    @PostMapping("/{id}/rework")
++    public PersonView rework(@RequestParam(required = false) String sheet, @PathVariable long id) {
++        String sheetId = sheetId(sheet);
++        try {
++            return service.rework(sheetId, id).map(p -> view(sheetId, p))
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
++        } catch (IllegalStateException e) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
++        }
++    }
++
++    /** Moves the person with this id on the request's sheet back to their previous state; refused once FINAL, at REWORK or at DRAFT. */
+     @PostMapping("/{id}/demote")
+     public PersonView demote(@RequestParam(required = false) String sheet, @PathVariable long id) {
+         String sheetId = sheetId(sheet);
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index af44aa7..e12b570 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -133,7 +133,7 @@ public class PersonService {
+         });
+     }
+ 
+-    /** Moves the person forward to their next state, recorded in the audit as STATE_CHANGED id=.. from=.. to=...; refused once FINAL. */
++    /** Moves the person forward to their next state (REWORK back to FINAL), recorded in the audit as STATE_CHANGED id=.. from=.. to=...; refused once FINAL. */
+     @Transactional
+     public Optional<Person> advance(String sheetId, long id) {
+         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+@@ -148,7 +148,22 @@ public class PersonService {
+         });
+     }
+ 
+-    /** Moves the person back to their previous state, recorded in the audit like {@link #advance}; refused once FINAL or at DRAFT. */
++    /** Reopens a FINAL person to REWORK, recorded in the audit like {@link #advance}; refused unless FINAL. */
++    @Transactional
++    public Optional<Person> rework(String sheetId, long id) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            State current = p.getState();
++            State reopened = current.reopened();
++            if (reopened == null) {
++                throw new IllegalStateException("a person at " + current + " cannot be reworked");
++            }
++            p.setState(reopened);
++            audit.record("STATE_CHANGED id=" + id + " from=" + current + " to=" + reopened);
++            return p;
++        });
++    }
++
++    /** Moves the person back to their previous state, recorded in the audit like {@link #advance}; refused once FINAL, at REWORK or at DRAFT. */
+     @Transactional
+     public Optional<Person> demote(String sheetId, long id) {
+         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+diff --git a/src/main/java/net/officefloor/hq/app/people/State.java b/src/main/java/net/officefloor/hq/app/people/State.java
+index a387d7d..a1af9b1 100644
+--- a/src/main/java/net/officefloor/hq/app/people/State.java
++++ b/src/main/java/net/officefloor/hq/app/people/State.java
+@@ -1,36 +1,43 @@
+ package net.officefloor.hq.app.people;
+ 
+ /**
+- * A person's workflow state; a person moves forward from DRAFT to REVIEW to FINAL, and back a step from REVIEW to DRAFT. FINAL is
+- * terminal: once there a person cannot move forward or back.
++ * A person's workflow state; a person moves forward from DRAFT to REVIEW to FINAL, and back a step from REVIEW to DRAFT. A FINAL
++ * person cannot move forward or back, but may be reopened to REWORK, from which they move forward to FINAL again.
+  */
+ public enum State {
+-    DRAFT, REVIEW, FINAL;
++    DRAFT, REVIEW, FINAL, REWORK;
+ 
+-    /** The state after this one; none after FINAL. */
++    /** The state after this one; none after FINAL, and FINAL again after REWORK. */
+     public State next() {
+         return switch (this) {
+             case DRAFT -> REVIEW;
+             case REVIEW -> FINAL;
+             case FINAL -> null;
++            case REWORK -> FINAL;
+         };
+     }
+ 
+-    /** The state a step back from this one; none from DRAFT, and none from FINAL as it is terminal. */
++    /** The state a step back from this one; none from DRAFT, none from FINAL as it is only reopened, and none from REWORK. */
+     public State previous() {
+         return switch (this) {
+             case DRAFT -> null;
+             case REVIEW -> DRAFT;
+             case FINAL -> null;
++            case REWORK -> null;
+         };
+     }
+ 
+-    /** The state with this name; refuses anything other than DRAFT, REVIEW or FINAL. */
++    /** The state a person is reopened to; only a FINAL person may be reopened, to REWORK. */
++    public State reopened() {
++        return this == FINAL ? REWORK : null;
++    }
++
++    /** The state with this name; refuses anything other than DRAFT, REVIEW, FINAL or REWORK. */
+     public static State parse(String value) {
+         try {
+             return State.valueOf(value);
+         } catch (IllegalArgumentException e) {
+-            throw new IllegalArgumentException("state must be DRAFT, REVIEW or FINAL, got " + value);
++            throw new IllegalArgumentException("state must be DRAFT, REVIEW, FINAL or REWORK, got " + value);
+         }
+     }
+ }
