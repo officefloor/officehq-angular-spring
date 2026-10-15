@@ -183,6 +183,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // first (1), with equal scaled placed by name ("n/a" while their scaled is "n/a").
 // Each person shows their bracket: the quartile of their scaled — Q4 from 800, Q3 from 200 to 799,
 // Q2 from 50 to 199 and Q1 below 50 ("n/a" while their scaled is "n/a").
+// Each person shows their cume: going down the global rank, the scaled of everyone so far added
+// together, their own included ("n/a" while their scaled is "n/a").
 // The sheet's strongest member is the name of the person with the highest scaled anywhere on the sheet,
 // ties going to the name earlier in the alphabet ("n/a" when nobody has a scaled).
 // The sheet's apex name is the name of the person with the highest scaled anywhere on the sheet, and its
@@ -533,6 +535,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Percentile</th>
           <th scope="col">Global rank</th>
           <th scope="col">Bracket</th>
+          <th scope="col">Cume</th>
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
@@ -650,6 +653,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td data-testid="concept-rank-global">{{ globalRanks().get(p.id) ?? 'n/a' }}</td>
             <td data-testid="concept-bracket">{{ bracketOf(p) ?? 'n/a' }}</td>
+            <td data-testid="concept-cume">{{ cumes().get(p.id) ?? 'n/a' }}</td>
             <td>
               <form (submit)="$event.preventDefault(); setAlpha(p, alphaInput.value)">
                 <label class="visually-hidden" [for]="'person-alpha-edit-' + p.id">
@@ -1325,6 +1329,10 @@ export class People {
       .filter((p) => p.scaled !== null)
       .sort((a, b) => b.scaled! - a.scaled! || a.name.localeCompare(b.name)),
   );
+  protected readonly cumes = computed(() => {
+    let total = 0;
+    return new Map(this.scaledOrder().map((p) => [p.id, (total += p.scaled!)]));
+  });
   protected readonly apexName = computed(() => this.scaledOrder()[0]?.name ?? null);
   protected readonly runnerUp = computed(() => this.scaledOrder()[1]?.name ?? null);
   protected readonly topSet = computed(() => {
