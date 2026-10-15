@@ -1,0 +1,392 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index d638aa5..ae8758f 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -27,6 +27,7 @@ export interface Person {
+   effective: number | null;
+   clout: number | null;
+   influence: number | null;
++  region: string | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+@@ -50,6 +51,7 @@ export interface NewPerson {
+   beta: number | null;
+   gamma: number | null;
+   grade: Grade | null;
++  region: string | null;
+ }
+ 
+ // The people REST API (/api/people).
+@@ -98,6 +100,10 @@ export class PeopleService {
+     return this.http.patch<Person>(`/api/people/${id}`, { grade }, { params: sheetParams(sheet) });
+   }
+ 
++  setRegion(sheet: string | null, id: number, region: string | null): Observable<Person> {
++    return this.http.patch<Person>(`/api/people/${id}`, { region }, { params: sheetParams(sheet) });
++  }
++
+   setActive(sheet: string | null, id: number, active: boolean): Observable<Person> {
+     return this.http.patch<Person>(`/api/people/${id}`, { active }, { params: sheetParams(sheet) });
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 365e2a5..87748bb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -34,6 +34,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // Their influence is their effective plus their clout ("n/a" while either is "n/a").
+ // The sheet's top influence is the name of the person with the highest influence, ties going to the
+ // name that comes first alphabetically ("n/a" when nobody has an influence).
++// Each person may have a region: a short code typed in (like N1 or S2), given on add, in the edit form
++// or on the row; clearing it removes it.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -89,6 +91,13 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <option [ngValue]="g">{{ g }}</option>
+         }
+       </select>
++      <label for="person-region">Region</label>
++      <input
++        id="person-region"
++        formControlName="region"
++        maxlength="16"
++        data-testid="person-form-region"
++      />
+       <button type="submit" [disabled]="form.invalid || saving()" data-testid="person-form-submit">
+         {{ editing() ? 'Save ' + editing()!.name : 'Add person' }}
+       </button>
+@@ -114,6 +123,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Beta</th>
+           <th scope="col">Gamma</th>
+           <th scope="col">Grade</th>
++          <th scope="col">Region</th>
+           <th scope="col">Active</th>
+           <th scope="col">Onset</th>
+           <th scope="col">Age</th>
+@@ -136,6 +146,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Set beta</th>
+           <th scope="col">Set gamma</th>
+           <th scope="col">Set grade</th>
++          <th scope="col">Set region</th>
+           <th scope="col">Set active</th>
+           <th scope="col">Set patrons</th>
+           <th scope="col">Edit</th>
+@@ -149,6 +160,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-beta">{{ p.beta }}</td>
+             <td data-testid="person-gamma">{{ p.gamma }}</td>
+             <td data-testid="person-grade">{{ p.grade }}</td>
++            <td data-testid="person-region">{{ p.region }}</td>
+             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+             <td data-testid="person-onset">{{ p.onset }}</td>
+             <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
+@@ -231,6 +243,21 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+                 }
+               </select>
+             </td>
++            <td>
++              <form (submit)="$event.preventDefault(); setRegion(p, regionInput.value)">
++                <label class="visually-hidden" [for]="'person-region-edit-' + p.id">
++                  Region for {{ p.name }}
++                </label>
++                <input
++                  #regionInput
++                  [id]="'person-region-edit-' + p.id"
++                  maxlength="16"
++                  [value]="p.region ?? ''"
++                  data-testid="person-region-input"
++                />
++                <button type="submit" data-testid="person-region-save">Save</button>
++              </form>
++            </td>
+             <td>
+               <label class="visually-hidden" [for]="'person-active-edit-' + p.id">
+                 {{ p.name }} is active
+@@ -316,6 +343,7 @@ export class People {
+     beta: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+     gamma: [null as number | null, [Validators.pattern(/^-?\d+$/)]],
+     grade: [null as Grade | null],
++    region: ['', [Validators.maxLength(16)]],
+   });
+ 
+   constructor() {
+@@ -338,7 +366,7 @@ export class People {
+ 
+   protected edit(person: Person): void {
+     this.editing.set(person);
+-    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, grade: person.grade });
++    this.form.reset({ name: person.name, alpha: person.alpha, beta: person.beta, gamma: person.gamma, grade: person.grade, region: person.region ?? '' });
+     this.form.controls.name.disable();
+   }
+ 
+@@ -349,12 +377,13 @@ export class People {
+   }
+ 
+   protected submit(): void {
+-    const { name, alpha, beta, gamma, grade } = this.form.getRawValue();
++    const { name, alpha, beta, gamma, grade, region: regionText } = this.form.getRawValue();
++    const region = toRegion(regionText);
+     if (this.form.invalid) return;
+     const editing = this.editing();
+     const request = editing
+-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), grade })
+-      : this.service.add(this.sheet(), { name, alpha, beta, gamma, grade });
++      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), grade, region })
++      : this.service.add(this.sheet(), { name, alpha, beta, gamma, grade, region });
+     this.saving.set(true);
+     request.subscribe({
+       next: () => {
+@@ -392,6 +421,10 @@ export class People {
+     this.service.setGrade(this.sheet(), person.id, grade).subscribe(() => this.load());
+   }
+ 
++  protected setRegion(person: Person, value: string): void {
++    this.service.setRegion(this.sheet(), person.id, toRegion(value)).subscribe(() => this.load());
++  }
++
+   protected setActive(person: Person, active: boolean): void {
+     this.service.setActive(this.sheet(), person.id, active).subscribe(() => this.load());
+   }
+@@ -424,3 +457,9 @@ export class People {
+ function toNumber(value: number | string | null): number | null {
+   return value === null || value === '' ? null : Number(value);
+ }
++
++// A typed region, trimmed, or null when it is blank.
++function toRegion(value: string): string | null {
++  const region = value.trim();
++  return region === '' ? null : region;
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index b55952f..9ef5d97 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -8,6 +8,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.people.Grade;
++import net.officefloor.hq.app.people.Person;
+ import org.springframework.context.annotation.Profile;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.jdbc.core.JdbcTemplate;
+@@ -29,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
+-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active");
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "grade", "onset", "active", "region");
+ 
+     private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
+ 
+@@ -134,12 +135,13 @@ public class TestSupportController {
+             String grade = grade(row.get("grade"), prefix + "people.grade");
+             LocalDate onset = date(row.get("onset"), prefix + "people.onset");
+             Boolean active = bool(row.get("active"), prefix + "people.active");
++            String region = text(row.get("region"), prefix + "people.region");
+             // A person's id is their id within the sheet; the internal key is generated.
+             Integer localId = integer(row.get("id"), prefix + "people.id");
+-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active) "
+-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
++            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, grade, onset, active, region) "
++                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     sheetId, localId != null ? localId : nextLocalId(sheetId), name, alpha, beta, gamma, grade, onset,
+-                    active != null ? active : true);
++                    active != null ? active : true, region);
+         }
+         // Patrons link people by id, so add them once every person exists.
+         for (Map<String, Object> row : rows(patronRows, prefix + "patrons")) {
+@@ -193,7 +195,7 @@ public class TestSupportController {
+         Map<String, Object> out = new LinkedHashMap<>();
+         out.put("people", jdbc.queryForList("SELECT local_id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
+                 + "beta AS \"beta\", gamma AS \"gamma\", grade AS \"grade\", "
+-                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\" FROM person p WHERE " + where + " ORDER BY local_id", args));
++                + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", region AS \"region\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
+                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
+                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));
+@@ -235,6 +237,19 @@ public class TestSupportController {
+         }
+     }
+ 
++    private static String text(Object value, String field) {
++        if (value == null) {
++            return null;
++        }
++        if (!(value instanceof String s)) {
++            throw badRequest(field + " must be text, got " + value);
++        }
++        if (s.length() > Person.REGION_MAX_LENGTH) {
++            throw badRequest(field + " must be at most " + Person.REGION_MAX_LENGTH + " characters, got " + s);
++        }
++        return s;
++    }
++
+     private static Boolean bool(Object value, String field) {
+         if (value == null) {
+             return null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index ec7fd66..da9aa8c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -27,11 +27,15 @@ import java.util.Set;
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
+- * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. */
++ * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
++ * A person may have a "region": a short code typed in, like N1 or S2 (absent until given). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+ 
++    /** The longest region code that can be stored. */
++    public static final int REGION_MAX_LENGTH = 16;
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+@@ -53,6 +57,8 @@ public class Person {
+ 
+     private LocalDate onset;
+ 
++    private String region;
++
+     private boolean active = true;
+ 
+     /** The id of the sheet the person belongs to; null for the unnamed sheet. */
+@@ -132,6 +138,14 @@ public class Person {
+         this.active = active;
+     }
+ 
++    public String getRegion() {
++        return region;
++    }
++
++    public void setRegion(String region) {
++        this.region = region;
++    }
++
+     public LocalDate getOnset() {
+         return onset;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index e157a57..3a016d6 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -28,7 +28,7 @@ public class PersonController {
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+-            Integer clout, Integer influence) {
++            Integer clout, Integer influence, String region) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+@@ -36,7 +36,7 @@ public class PersonController {
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+-                    p.getInfluence());
++                    p.getInfluence(), p.getRegion());
+         }
+     }
+ 
+@@ -64,7 +64,7 @@ public class PersonController {
+     public record PatronView(Long id, String name) {
+     }
+ 
+-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade) {
++    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Grade grade, String region) {
+     }
+ 
+     private final PersonService service;
+@@ -86,11 +86,11 @@ public class PersonController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public PersonView add(@RequestParam(required = false) String sheet, @Valid @RequestBody NewPerson person) {
+         return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
+-                person.grade()));
++                person.grade(), region(person.region())));
+     }
+ 
+     /**
+-     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, active
++     * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, grade, region, active
+      * (true or false) and patronIds (a list of ids on that sheet) the body names; a null value clears it.
+      */
+     @PatchMapping("/{id}")
+@@ -110,6 +110,12 @@ public class PersonController {
+         if (update.containsKey("grade")) {
+             person = service.setGrade(sheetId, id, grade(update.get("grade")));
+         }
++        if (update.containsKey("region")) {
++            if (update.get("region") != null && !(update.get("region") instanceof String)) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "region must be text");
++            }
++            person = service.setRegion(sheetId, id, region((String) update.get("region")));
++        }
+         if (update.containsKey("active")) {
+             if (!(update.get("active") instanceof Boolean active)) {
+                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "active must be true or false");
+@@ -158,6 +164,19 @@ public class PersonController {
+         return sheet == null || sheet.isBlank() ? null : sheet.trim();
+     }
+ 
++    /** A region as typed, trimmed; blank means none. Refuses one longer than {@link Person#REGION_MAX_LENGTH}. */
++    static String region(String value) {
++        if (value == null || value.isBlank()) {
++            return null;
++        }
++        String region = value.trim();
++        if (region.length() > Person.REGION_MAX_LENGTH) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "region must be at most " + Person.REGION_MAX_LENGTH + " characters");
++        }
++        return region;
++    }
++
+     private static Grade grade(Object value) {
+         if (value == null) {
+             return null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonService.java b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+index 39d3907..bc49f64 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonService.java
+@@ -69,13 +69,14 @@ public class PersonService {
+ 
+     @Transactional
+     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
+-    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Grade grade) {
++    public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Grade grade, String region) {
+         if (sheetId != null && !sheets.existsById(sheetId)) {
+             sheets.save(new Sheet(sheetId));
+         }
+         long id = people.maxLocalId(sheetId) + 1;
+         Person person = new Person(sheetId, id, name.trim(), alpha, beta, gamma);
+         person.setGrade(grade);
++        person.setRegion(region);
+         return people.save(person);
+     }
+ 
+@@ -116,6 +117,14 @@ public class PersonService {
+         });
+     }
+ 
++    @Transactional
++    public Optional<Person> setRegion(String sheetId, long id, String region) {
++        return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
++            p.setRegion(region);
++            return p;
++        });
++    }
++
+     @Transactional
+     public Optional<Person> setActive(String sheetId, long id, boolean active) {
+         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
+diff --git a/src/main/resources/db/migration/V11__person_region.sql b/src/main/resources/db/migration/V11__person_region.sql
+new file mode 100644
+index 0000000..4060c96
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__person_region.sql
+@@ -0,0 +1,2 @@
++-- A person's region: a short code typed in (like N1 or S2); absent until given.
++ALTER TABLE person ADD COLUMN region VARCHAR(16);
