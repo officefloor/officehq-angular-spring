@@ -118,6 +118,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // The sheet's groups are listed by name, with a form to add one. Each person is in one group, chosen on
 // add, through Edit or on the row, and the row shows its name.
 // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
+// The sheet's biggest group is the name of the group with the highest strength, ties going to the name
+// that comes first alphabetically ("n/a" when there are no groups).
 // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
 // Each group shows its spread: the highest effective of the people in it minus the lowest, ignoring "n/a"
 // ("n/a" when none of its people have an effective).
@@ -265,6 +267,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
         </ul>
       }
     </section>
+    <p>Biggest group: <strong data-testid="rollup-biggest-group">{{ biggestGroup() ?? 'n/a' }}</strong></p>
     <p>Leader: <strong data-testid="rollup-leader">{{ leader() ?? 'n/a' }}</strong></p>
     <p>Total load: <strong data-testid="rollup-total-load">{{ totalLoad() }}</strong></p>
     <p>Active: <strong data-testid="rollup-active-count">{{ activeCount() }}</strong></p>
@@ -843,6 +846,17 @@ export class People {
       if (p.groupId !== null) strengths.set(p.groupId, (strengths.get(p.groupId) ?? 0) + (p.effective ?? 0));
     }
     return strengths;
+  });
+  protected readonly biggestGroup = computed(() => {
+    const strengths = this.groupStrengths();
+    let top: { name: string; strength: number } | null = null;
+    for (const g of this.groups()) {
+      const strength = strengths.get(g.id) ?? 0;
+      if (top === null || strength > top.strength || (strength === top.strength && g.name.localeCompare(top.name) < 0)) {
+        top = { name: g.name, strength };
+      }
+    }
+    return top?.name ?? null;
   });
   protected shareOf(p: Person): number | null {
     const strength = p.groupId === null ? 0 : (this.groupStrengths().get(p.groupId) ?? 0);
