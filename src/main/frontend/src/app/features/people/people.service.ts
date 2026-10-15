@@ -27,6 +27,7 @@ export interface Person {
   flux: number | null;
   crest: number | null;
   swing: number | null;
+  haul: number | null;
   phase: string | null;
   load: number | null;
   tier: string | null;
