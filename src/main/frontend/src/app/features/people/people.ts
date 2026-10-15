@@ -94,6 +94,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // The sheet's top charge is the name of the person with the highest charge, ties going to the name
 // that comes first alphabetically ("n/a" when nobody has a charge).
 // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
+// The sheet's grand flow is everyone's flow added together, leaving out anyone whose flow is "n/a".
 // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
@@ -227,6 +228,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
     <p>Total brace: <strong data-testid="rollup-total-brace">{{ totalBrace() }}</strong></p>
     <p>Total yield: <strong data-testid="rollup-total-yield">{{ totalYield() }}</strong></p>
     <p>Total tide: <strong data-testid="rollup-total-tide">{{ totalTide() }}</strong></p>
+    <p>Grand flow: <strong data-testid="rollup-grand-flow">{{ grandFlow() }}</strong></p>
     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
     <p>Strays: <strong data-testid="rollup-stray-count">{{ strayCount() }}</strong></p>
     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
@@ -745,6 +747,9 @@ export class People {
   );
   protected readonly totalTide = computed(() =>
     this.people().reduce((total, p) => total + (p.tide ?? 0), 0),
+  );
+  protected readonly grandFlow = computed(() =>
+    this.people().reduce((total, p) => total + (p.flow ?? 0), 0),
   );
   protected readonly finalTotal = computed(() =>
     this.people()
