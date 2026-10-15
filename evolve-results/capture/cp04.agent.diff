@@ -1,0 +1,39 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 19b2157..21d6415 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
+ import { PeopleService, Person } from './people.service';
+ 
+ // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
+-// (gamma − alpha) and momentum (thrust + 2 × drift), plus a form to add one. Beta and gamma are
++// (gamma − alpha) and momentum (thrust + 3 × drift), plus a form to add one. Beta and gamma are
+ // optional on add and can be filled in (or changed) on the row later.
+ @Component({
+   selector: 'app-people',
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 0a48cd5..51d3a60 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -8,7 +8,7 @@ import jakarta.persistence.Table;
+ 
+ /** A person on the list: a name and whole-number "alpha", "beta" and "gamma" (each absent until
+  * given), and the derived "thrust" (alpha × beta), "drift" (gamma − alpha) and "momentum"
+- * (thrust + 2 × drift). */
++ * (thrust + 3 × drift). */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -73,10 +73,10 @@ public class Person {
+         return gamma == null || alpha == null ? null : gamma - alpha;
+     }
+ 
+-    /** Momentum is thrust plus two times drift; absent while either is absent. */
++    /** Momentum is thrust plus three times drift; absent while either is absent. */
+     public Integer getMomentum() {
+         Integer thrust = getThrust();
+         Integer drift = getDrift();
+-        return thrust == null || drift == null ? null : thrust + 2 * drift;
++        return thrust == null || drift == null ? null : thrust + 3 * drift;
+     }
+ }
