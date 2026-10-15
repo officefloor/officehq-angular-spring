@@ -1,0 +1,42 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 66205bab..539c77c0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -150,6 +150,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // percentage, rounded; a group of one is 100 ("n/a" without a standing).
+ // Each person shows their anchorage: how many groups they belong to (0 without one).
+ // Each person shows their home group: the name of their group ("n/a" without one).
++// The sheet's strongest member is the name of the person with the highest scaled anywhere on the sheet,
++// ties going to the name earlier in the alphabet ("n/a" when nobody has a scaled).
+ // A person may be in several groups; a group's figures count every person in it. Where a person's own
+ // figure depends on "their group", it is the group, of those they are in, whose name comes first
+ // alphabetically.
+@@ -310,6 +312,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
+     <p>Strays: <strong data-testid="rollup-stray-count">{{ strayCount() }}</strong></p>
+     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
++    <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
+     <section aria-labelledby="region-counts-heading">
+       <h2 id="region-counts-heading">People per region</h2>
+       @if (regionCounts().length === 0) {
+@@ -1110,6 +1113,20 @@ export class People {
+     }
+     return top?.name ?? null;
+   });
++  protected readonly strongestMember = computed(() => {
++    let top: Person | null = null;
++    for (const p of this.people()) {
++      if (p.scaled === null) continue;
++      if (
++        top === null ||
++        p.scaled > top.scaled! ||
++        (p.scaled === top.scaled && p.name.localeCompare(top.name) < 0)
++      ) {
++        top = p;
++      }
++    }
++    return top?.name ?? null;
++  });
+   protected readonly topBrace = computed(() => {
+     let top: Person | null = null;
+     for (const p of this.people()) {
