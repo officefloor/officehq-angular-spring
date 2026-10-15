@@ -944,8 +944,7 @@ export class People {
     return p.groups.length;
   }
   protected breadthOf(p: Person): number {
-    const sizes = this.groupSizes();
-    return p.groups.reduce((sum, g) => sum + (sizes.get(g.id) ?? 0), 0);
+    return p.groups.length;
   }
   protected groupNamesOf(p: Person): string {
     return p.groups.map((g) => g.name).join(', ');
