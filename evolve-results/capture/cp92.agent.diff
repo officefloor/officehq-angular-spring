@@ -1,0 +1,40 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fa4648b7..2e0f9919 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -58,7 +58,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // sorted ascending.
+ // Their reach is the sum, over their regions, of momentum times the region's multiplier, from its first
+ // letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
+-// Their gust is their reach plus their torque ("n/a" while either is "n/a").
++// Their gust is their reach plus two times their torque ("n/a" while either is "n/a").
+ // Their coil is their gust minus their momentum ("n/a" while either is "n/a").
+ // The sheet's region counts show, for each region its people have, how many of them are in it
+ // (a person counts once in every region they belong to), ordered by region code.
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 740fa000..cc203792 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -37,7 +37,7 @@ import java.util.Set;
+  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout.
+  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
+  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
+- * person's regions, of momentum times that region's multiplier. "Gust" is reach plus torque. "Coil" is gust minus momentum. A person may follow any number of other people on
++ * person's regions, of momentum times that region's multiplier. "Gust" is reach plus two times torque. "Coil" is gust minus momentum. A person may follow any number of other people on
+  * the list, without being followed back; their "allies" are the people they follow. "Synergy" is the
+  * allies' thrust added together (zero without allies). "Combined" is influence plus synergy.
+  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
+@@ -584,11 +584,11 @@ public class Person {
+         return thrum == null || blend == null ? null : thrum - blend;
+     }
+ 
+-    /** Gust is reach plus torque; absent while either is absent. */
++    /** Gust is reach plus two times torque; absent while either is absent. */
+     public Integer getGust() {
+         Integer reach = getReach();
+         Integer torque = getTorque();
+-        return reach == null || torque == null ? null : reach + torque;
++        return reach == null || torque == null ? null : reach + 2 * torque;
+     }
+ 
+     /** Coil is gust minus momentum; absent while either is absent. */
