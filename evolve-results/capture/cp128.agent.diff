@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b1ea9c4a..fc3ce150 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -119,8 +119,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
+ // add, through Edit or on the row, and the row shows its name.
+ // Each group shows its strength: the sum of the effective of the people in it, counting "n/a" as zero.
+ // Each group shows its cohesion: its strength divided by its size, rounded down ("n/a" when empty).
+-// Each group shows its spread: the highest scaled of the people in it minus the lowest, ignoring "n/a"
+-// ("n/a" when none of its people have a scaled).
++// Each group shows its spread: the highest effective of the people in it minus the lowest, ignoring "n/a"
++// ("n/a" when none of its people have an effective).
+ // Each group shows its apex: the name of the person in it with the highest scaled, ties going to the name
+ // earlier in the alphabet ("n/a" when none of its people have a scaled).
+ @Component({
+@@ -843,11 +843,11 @@ export class People {
+   protected readonly groupSpreads = computed(() => {
+     const ranges = new Map<number, { min: number; max: number }>();
+     for (const p of this.people()) {
+-      if (p.groupId === null || p.scaled === null) continue;
++      if (p.groupId === null || p.effective === null) continue;
+       const range = ranges.get(p.groupId);
+       ranges.set(p.groupId, {
+-        min: Math.min(range?.min ?? p.scaled, p.scaled),
+-        max: Math.max(range?.max ?? p.scaled, p.scaled),
++        min: Math.min(range?.min ?? p.effective, p.effective),
++        max: Math.max(range?.max ?? p.effective, p.effective),
+       });
+     }
+     const spreads = new Map<number, number>();
