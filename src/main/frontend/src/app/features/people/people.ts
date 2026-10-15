@@ -59,6 +59,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their reach is the sum, over their regions, of momentum times the region's multiplier, from its first
 // letter: N 2, S 3, any other 1 ("n/a" while momentum is missing or they have no region).
 // Their gust is their reach plus their torque ("n/a" while either is "n/a").
+// Their coil is their gust minus their momentum ("n/a" while either is "n/a").
 // The sheet's region counts show, for each region its people have, how many of them are in it
 // (a person counts once in every region they belong to), ordered by region code.
 // Each person may follow any number of other people, chosen on the row; following is one-directional,
@@ -277,6 +278,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Phase</th>
           <th scope="col">Reach</th>
           <th scope="col">Gust</th>
+          <th scope="col">Coil</th>
           <th scope="col">Load</th>
           <th scope="col">Tier</th>
           <th scope="col">Patrons</th>
@@ -357,6 +359,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-phase">{{ p.phase ?? 'n/a' }}</td>
             <td data-testid="concept-reach">{{ p.reach ?? 'n/a' }}</td>
             <td data-testid="concept-gust">{{ p.gust ?? 'n/a' }}</td>
+            <td data-testid="concept-coil">{{ p.coil ?? 'n/a' }}</td>
             <td data-testid="concept-load">{{ p.load ?? 'n/a' }}</td>
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
             <td data-testid="person-patrons">{{ patronNames(p) }}</td>

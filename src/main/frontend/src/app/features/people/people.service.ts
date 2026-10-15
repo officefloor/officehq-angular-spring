@@ -50,6 +50,7 @@ export interface Person {
   regions: string[];
   reach: number | null;
   gust: number | null;
+  coil: number | null;
   allies: Ally[];
   allyCount: number;
   synergy: number | null;
