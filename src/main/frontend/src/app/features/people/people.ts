@@ -16,7 +16,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // The sheet's top crest is the name of the person with the highest crest, ties going to the name that
 // comes first alphabetically ("n/a" when nobody has a crest). Their swing is the sum of the torque of the people
 // they follow (0 when they follow no one, "n/a" while any followed person's torque is missing). Their haul is
-// crest + swing ("n/a" while either is missing).
+// crest + swing ("n/a" while either is missing). The sheet's total haul is everyone's haul added together,
+// leaving out anyone whose haul is "n/a".
 // Each person may have any number of patrons (other
 // people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
 // ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
@@ -177,6 +178,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
     <p>Total effective: <strong data-testid="rollup-total-effective">{{ totalEffective() }}</strong></p>
     <p>Top influence: <strong data-testid="rollup-top-influence">{{ topInfluence() ?? 'n/a' }}</strong></p>
     <p>Top crest: <strong data-testid="rollup-top-crest">{{ topCrest() ?? 'n/a' }}</strong></p>
+    <p>Total haul: <strong data-testid="rollup-total-haul">{{ totalHaul() }}</strong></p>
     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
     <section aria-labelledby="region-counts-heading">
@@ -595,6 +597,9 @@ export class People {
   protected readonly outlierCount = computed(() => this.people().filter((p) => p.outlier).length);
   protected readonly totalEffective = computed(() =>
     this.people().reduce((total, p) => total + (p.effective ?? 0), 0),
+  );
+  protected readonly totalHaul = computed(() =>
+    this.people().reduce((total, p) => total + (p.haul ?? 0), 0),
   );
   protected readonly finalTotal = computed(() =>
     this.people()
