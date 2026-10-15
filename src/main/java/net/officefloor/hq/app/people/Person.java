@@ -26,7 +26,8 @@ import java.util.Set;
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
  * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
- * "Decay" is momentum minus age. A person is "active" or not; a new person is active. */
+ * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the sum of the
+ * patrons' effective (zero without patrons). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -230,6 +231,20 @@ public class Person {
         }
         return Math.floorDiv(net, 2);
     }
+
+    /** Clout is the sum of the patrons' effective; zero without patrons, absent while any patron's effective is absent. */
+    public Integer getClout() {
+        int sum = 0;
+        for (Person patron : patrons) {
+            Integer effective = patron.getEffective();
+            if (effective == null) {
+                return null;
+            }
+            sum += effective;
+        }
+        return sum;
+    }
+
     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */
     public String getTier() {
         Integer momentum = getMomentum();
