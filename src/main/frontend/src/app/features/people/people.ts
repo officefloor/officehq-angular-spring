@@ -150,6 +150,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // group or their scaled is "n/a").
 // Each person shows their weave: their scaled plus their group's cohesion ("n/a" when they have no
 // group or their scaled is "n/a").
+// Each person shows their uplift: their weave plus their tether ("n/a" when either is "n/a").
 // Each person shows their mesh: their scaled multiplied by their group's size ("n/a" when they have no
 // group or their scaled is "n/a").
 // Each person shows their rung: (their group's size less their standing in it) over the group's size, as a
@@ -455,6 +456,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Belonging</th>
           <th scope="col">Tether</th>
           <th scope="col">Weave</th>
+          <th scope="col">Uplift</th>
           <th scope="col">Mesh</th>
           <th scope="col">Anchorage</th>
           <th scope="col">Breadth</th>
@@ -564,6 +566,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="concept-belonging">{{ belongingOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-tether">{{ tetherOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-weave">{{ weaveOf(p) ?? 'n/a' }}</td>
+            <td data-testid="concept-uplift">{{ upliftOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-mesh">{{ meshOf(p) ?? 'n/a' }}</td>
             <td data-testid="concept-anchorage">{{ anchorageOf(p) }}</td>
             <td data-testid="concept-breadth">{{ breadthOf(p) }}</td>
@@ -974,6 +977,11 @@ export class People {
     if (p.groupId === null || p.scaled === null) return null;
     const cohesion = this.groupCohesions().get(p.groupId);
     return cohesion === undefined ? null : p.scaled + cohesion;
+  }
+  protected upliftOf(p: Person): number | null {
+    const weave = this.weaveOf(p);
+    const tether = this.tetherOf(p);
+    return weave === null || tether === null ? null : weave + tether;
   }
   protected meshOf(p: Person): number | null {
     if (p.groupId === null || p.scaled === null) return null;
