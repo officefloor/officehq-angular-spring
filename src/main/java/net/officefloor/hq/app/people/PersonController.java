@@ -34,7 +34,7 @@ public class PersonController {
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, State state, Integer ebb, boolean stray,
-            Long groupId, String groupName) {
+            Long groupId, String groupName, List<GroupController.GroupView> groups) {
         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer meanBlend, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
@@ -50,7 +50,8 @@ public class PersonController {
                     PersonController.ebb(p.getBlend(), meanBlend),
                     PersonController.stray(PersonController.ebb(p.getBlend(), meanBlend)),
                     p.getGroup() == null ? null : p.getGroup().getLocalId(),
-                    p.getGroup() == null ? null : p.getGroup().getName());
+                    p.getGroup() == null ? null : p.getGroup().getName(),
+                    p.getGroups().stream().map(GroupController.GroupView::of).toList());
         }
     }
 
@@ -128,7 +129,7 @@ public class PersonController {
     public record PatronView(Long id, String name) {
     }
 
-    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta, Grade grade, Kind kind, List<String> regions, Long groupId) {
+    public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta, Grade grade, Kind kind, List<String> regions, Long groupId, List<Long> groupIds) {
     }
 
     private final PersonService service;
@@ -154,7 +155,7 @@ public class PersonController {
         try {
             return view(sheetId(sheet), service.add(sheetId(sheet), person.name(), person.alpha(), person.beta(), person.gamma(),
                     person.delta(), person.epsilon(), person.zeta(), person.grade(), person.kind(), regions(person.regions()),
-                    person.groupId()));
+                    groupIds(person.groupId(), person.groupIds())));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -198,7 +199,7 @@ public class PersonController {
 
     /**
      * Sets, on the person with this id on the request's sheet, whichever of alpha, beta, gamma, delta, epsilon, zeta, score, grade, kind, regions (a list of codes), active
-     * (true or false), patronIds and allyIds (lists of ids on that sheet) and groupId (a group's id on that sheet) the body names; a null value clears it.
+     * (true or false), patronIds and allyIds (lists of ids on that sheet) and groupId (a group's id on that sheet, putting the person in just that group) or groupIds (a list of group ids on that sheet, the groups the person is in) the body names; a null value clears it.
      */
     @PatchMapping("/{id}")
     public PersonView update(@RequestParam(required = false) String sheet, @PathVariable long id,
@@ -282,16 +283,34 @@ public class PersonController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }
         }
-        if (update.containsKey("groupId")) {
-            Integer groupId = integer(update.get("groupId"));
+        if (update.containsKey("groupId") || update.containsKey("groupIds")) {
+            List<Long> groupIds = new ArrayList<>();
+            if (update.get("groupIds") instanceof List<?> ids) {
+                for (Object groupId : ids) {
+                    groupIds.add(integer(groupId).longValue());
+                }
+            } else if (update.get("groupIds") != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "groupIds must be a list");
+            } else if (update.get("groupId") != null) {
+                // A single groupId puts the person in just that group.
+                groupIds.add(integer(update.get("groupId")).longValue());
+            }
             try {
-                person = service.setGroup(sheetId, id, groupId == null ? null : groupId.longValue());
+                person = service.setGroups(sheetId, id, groupIds);
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }
         }
         return person.map(p -> view(sheetId, p))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    /** The groups a new person is put in: the listed ones, or the single one given, or none. */
+    private static List<Long> groupIds(Long groupId, List<Long> groupIds) {
+        if (groupIds != null) {
+            return groupIds;
+        }
+        return groupId == null ? List.of() : List.of(groupId);
     }
 
     /** A person's view, ranked among the people on their sheet. */

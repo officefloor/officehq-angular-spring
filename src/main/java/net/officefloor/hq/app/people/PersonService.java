@@ -73,9 +73,9 @@ public class PersonService {
     @Transactional
     /** Adds a person to a sheet (null for the unnamed sheet), creating the sheet on first use. */
     public Person add(String sheetId, String name, Integer alpha, Integer beta, Integer gamma, Integer delta, Integer epsilon, Integer zeta,
-            Grade grade, Kind kind, Collection<String> regions, Long groupId) {
+            Grade grade, Kind kind, Collection<String> regions, Collection<Long> groupIds) {
         ensureSheet(sheetId);
-        PersonGroup group = group(sheetId, groupId);
+        List<PersonGroup> memberOf = groupIds.stream().map(g -> group(sheetId, g)).toList();
         long id = people.maxLocalId(sheetId) + 1;
         Person person = new Person(sheetId, id, name.trim(), alpha, beta, gamma);
         person.setDelta(delta);
@@ -84,7 +84,7 @@ public class PersonService {
         person.setGrade(grade);
         person.setKind(kind);
         person.setRegions(regions);
-        person.setGroup(group);
+        person.setGroups(memberOf);
         return people.save(person);
     }
 
@@ -101,19 +101,16 @@ public class PersonService {
         return groups.save(new PersonGroup(sheetId, groups.maxLocalId(sheetId) + 1, name.trim()));
     }
 
-    /** Puts the person in the group with an id on the same sheet; null takes them out of any group. Refuses an unknown group. */
+    /** Puts the person in just the groups with these ids on the same sheet; none takes them out of every group. Refuses an unknown group. */
     @Transactional
-    public Optional<Person> setGroup(String sheetId, long id, Long groupId) {
+    public Optional<Person> setGroups(String sheetId, long id, Collection<Long> groupIds) {
         return people.findBySheetIdAndLocalId(sheetId, id).map(p -> {
-            p.setGroup(group(sheetId, groupId));
+            p.setGroups(groupIds.stream().map(g -> group(sheetId, g)).toList());
             return p;
         });
     }
 
     private PersonGroup group(String sheetId, Long groupId) {
-        if (groupId == null) {
-            return null;
-        }
         return groups.findBySheetIdAndLocalId(sheetId, groupId)
                 .orElseThrow(() -> new IllegalArgumentException("no group " + groupId + " on this sheet"));
     }

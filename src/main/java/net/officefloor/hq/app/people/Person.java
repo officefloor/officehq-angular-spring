@@ -13,7 +13,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -44,7 +43,8 @@ import java.util.Set;
  * A person may have a whole-number "score" (absent until given); their "note sum" is the score (zero
  * without one) and their "quality" is the score (absent without one). A person has a workflow "state",
  * starting at DRAFT and moved forward to REVIEW and then FINAL; a FINAL person may be reopened to REWORK
- * and moved forward to FINAL again. A person is in one named "group" of the sheet (absent until put in one). */
+ * and moved forward to FINAL again. A person may be in any number of named "groups" of the sheet (none until put in one); where "their group"
+ * is needed, it is the one whose name comes first alphabetically. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -109,10 +109,11 @@ public class Person {
 
     private Integer score;
 
-    /** The group the person is in; absent until put in one. */
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "group_id")
-    private PersonGroup group;
+    /** The groups the person is in; none until put in one. */
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "person_membership", joinColumns = @JoinColumn(name = "person_id"),
+            inverseJoinColumns = @JoinColumn(name = "group_id"))
+    private Set<PersonGroup> groups = new HashSet<>();
 
     protected Person() {
     }
@@ -231,12 +232,20 @@ public class Person {
         this.regions = new HashSet<>(regions);
     }
 
-    public PersonGroup getGroup() {
-        return group;
+    /** The groups the person is in, sorted by name. */
+    public List<PersonGroup> getGroups() {
+        return groups.stream()
+                .sorted(Comparator.comparing(PersonGroup::getName).thenComparing(PersonGroup::getLocalId))
+                .toList();
     }
 
-    public void setGroup(PersonGroup group) {
-        this.group = group;
+    public void setGroups(Collection<PersonGroup> groups) {
+        this.groups = new HashSet<>(groups);
+    }
+
+    /** "Their group": the group whose name comes first alphabetically; absent when in none. */
+    public PersonGroup getGroup() {
+        return getGroups().stream().findFirst().orElse(null);
     }
 
     public Integer getScore() {

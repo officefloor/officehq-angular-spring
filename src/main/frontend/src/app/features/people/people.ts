@@ -139,7 +139,10 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
 // group or their scaled is "n/a").
 // Each person shows their mesh: their scaled multiplied by their group's size ("n/a" when they have no
 // group or their scaled is "n/a").
-// Each person shows their anchorage: how many groups they belong to (1 in a group, 0 without one).
+// Each person shows their anchorage: how many groups they belong to (0 without one).
+// A person may be in several groups; a group's figures count every person in it. Where a person's own
+// figure depends on "their group", it is the group, of those they are in, whose name comes first
+// alphabetically.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -435,6 +438,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
           <th scope="col">Set grade</th>
           <th scope="col">Set kind</th>
           <th scope="col">Set group</th>
+          <th scope="col">Groups</th>
           <th scope="col">Set regions</th>
           <th scope="col">Set active</th>
           <th scope="col">Advance</th>
@@ -458,7 +462,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
             <td data-testid="person-zeta">{{ p.zeta }}</td>
             <td data-testid="person-grade">{{ p.grade }}</td>
             <td data-testid="person-kind">{{ p.kind }}</td>
-            <td data-testid="person-group">{{ p.groupName ?? '' }}</td>
+            <td data-testid="person-group">{{ groupNamesOf(p) }}</td>
             <td data-testid="person-region">{{ p.regions.join(', ') }}</td>
             <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
             <td data-testid="person-state">{{ p.state }}</td>
@@ -673,6 +677,23 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person } from './peop
               </select>
             </td>
             <td>
+              <fieldset [attr.data-testid]="'person-groups-' + p.id">
+                <legend class="visually-hidden">Groups for {{ p.name }}</legend>
+                @for (g of groups(); track g.id) {
+                  <label>
+                    <input
+                      type="checkbox"
+                      [checked]="isInGroup(p, g.id)"
+                      (change)="toggleGroup(p, g.id, groupBox.checked)"
+                      #groupBox
+                      [attr.data-testid]="'person-group-member-' + g.id"
+                    />
+                    {{ g.name }}
+                  </label>
+                }
+              </fieldset>
+            </td>
+            <td>
               <form (submit)="$event.preventDefault(); setRegions(p, regionInput.value)">
                 <label class="visually-hidden" [for]="'person-region-edit-' + p.id">
                   Regions for {{ p.name }}
@@ -854,7 +875,7 @@ export class People {
   protected readonly groupStrengths = computed(() => {
     const strengths = new Map<number, number>();
     for (const p of this.people()) {
-      if (p.groupId !== null) strengths.set(p.groupId, (strengths.get(p.groupId) ?? 0) + (p.effective ?? 0));
+      for (const g of p.groups) strengths.set(g.id, (strengths.get(g.id) ?? 0) + (p.effective ?? 0));
     }
     return strengths;
   });
@@ -892,12 +913,18 @@ export class People {
     return p.scaled * (this.groupSizes().get(p.groupId) ?? 0);
   }
   protected anchorageOf(p: Person): number {
-    return p.groupId === null ? 0 : 1;
+    return p.groups.length;
+  }
+  protected groupNamesOf(p: Person): string {
+    return p.groups.map((g) => g.name).join(', ');
+  }
+  protected isInGroup(p: Person, groupId: number): boolean {
+    return p.groups.some((g) => g.id === groupId);
   }
   protected readonly groupSizes = computed(() => {
     const sizes = new Map<number, number>();
     for (const p of this.people()) {
-      if (p.groupId !== null) sizes.set(p.groupId, (sizes.get(p.groupId) ?? 0) + 1);
+      for (const g of p.groups) sizes.set(g.id, (sizes.get(g.id) ?? 0) + 1);
     }
     return sizes;
   });
@@ -913,21 +940,25 @@ export class People {
     const cohesions = this.groupCohesions();
     const densities = new Map<number, number>();
     for (const p of this.people()) {
-      if (p.groupId === null || p.effective === null) continue;
-      const cohesion = cohesions.get(p.groupId);
-      if (cohesion !== undefined && p.effective >= cohesion) densities.set(p.groupId, (densities.get(p.groupId) ?? 0) + 1);
+      if (p.effective === null) continue;
+      for (const g of p.groups) {
+        const cohesion = cohesions.get(g.id);
+        if (cohesion !== undefined && p.effective >= cohesion) densities.set(g.id, (densities.get(g.id) ?? 0) + 1);
+      }
     }
     return densities;
   });
   protected readonly groupSpreads = computed(() => {
     const ranges = new Map<number, { min: number; max: number }>();
     for (const p of this.people()) {
-      if (p.groupId === null || p.effective === null) continue;
-      const range = ranges.get(p.groupId);
-      ranges.set(p.groupId, {
-        min: Math.min(range?.min ?? p.effective, p.effective),
-        max: Math.max(range?.max ?? p.effective, p.effective),
-      });
+      if (p.effective === null) continue;
+      for (const g of p.groups) {
+        const range = ranges.get(g.id);
+        ranges.set(g.id, {
+          min: Math.min(range?.min ?? p.effective, p.effective),
+          max: Math.max(range?.max ?? p.effective, p.effective),
+        });
+      }
     }
     const spreads = new Map<number, number>();
     for (const [groupId, { min, max }] of ranges) spreads.set(groupId, max - min);
@@ -936,17 +967,19 @@ export class People {
   protected readonly groupApexes = computed(() => {
     const apexes = new Map<number, { name: string; scaled: number }>();
     for (const p of this.people()) {
-      if (p.groupId === null || p.scaled === null) continue;
-      const apex = apexes.get(p.groupId);
-      if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
-        apexes.set(p.groupId, { name: p.name, scaled: p.scaled });
+      if (p.scaled === null) continue;
+      for (const g of p.groups) {
+        const apex = apexes.get(g.id);
+        if (!apex || p.scaled > apex.scaled || (p.scaled === apex.scaled && p.name.localeCompare(apex.name) < 0)) {
+          apexes.set(g.id, { name: p.name, scaled: p.scaled });
+        }
       }
     }
     return apexes;
   });
   protected readonly standings = computed(() => {
     const ranked = this.people()
-      .filter((p) => p.groupId !== null && p.scaled !== null)
+      .filter((p) => p.scaled !== null)
       .sort(
         (a, b) =>
           b.scaled! - a.scaled! ||
@@ -955,10 +988,13 @@ export class People {
       );
     const places = new Map<number, number>();
     const standings = new Map<number, number>();
+    // Places are counted among everyone in a group; a person's standing is their place in their group.
     for (const p of ranked) {
-      const place = (places.get(p.groupId!) ?? 0) + 1;
-      places.set(p.groupId!, place);
-      standings.set(p.id, place);
+      for (const g of p.groups) {
+        const place = (places.get(g.id) ?? 0) + 1;
+        places.set(g.id, place);
+        if (g.id === p.groupId) standings.set(p.id, place);
+      }
     }
     return standings;
   });
@@ -1120,7 +1156,9 @@ export class People {
     if (this.form.invalid) return;
     const editing = this.editing();
     const request = editing
-      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, kind, regions, groupId })
+      ? this.service.update(this.sheet(), editing.id, { alpha: toNumber(alpha), beta: toNumber(beta), gamma: toNumber(gamma), delta: toNumber(delta), epsilon: toNumber(epsilon), zeta: toNumber(zeta), grade, kind, regions,
+          // Only a changed group replaces the person's groups, so saving keeps every group they are in.
+          ...(groupId === editing.groupId ? {} : { groupId }) })
       : this.service.add(this.sheet(), { name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, regions, groupId });
     this.saving.set(true);
     request.subscribe({
@@ -1256,6 +1294,12 @@ export class People {
   protected setGroup(person: Person, value: string): void {
     const groupId = value === '' ? null : Number(value);
     this.service.setGroup(this.sheet(), person.id, groupId).subscribe(() => this.load());
+  }
+
+  protected toggleGroup(person: Person, groupId: number, member: boolean): void {
+    const others = person.groups.map((g) => g.id).filter((id) => id !== groupId);
+    const groupIds = member ? [...others, groupId] : others;
+    this.service.setGroups(this.sheet(), person.id, groupIds).subscribe(() => this.load());
   }
 
   private load(): void {

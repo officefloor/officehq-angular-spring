@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** A named group of people on one sheet (null for the unnamed sheet), numbered within it. Every person is in one group. */
+/** A named group of people on one sheet (null for the unnamed sheet), numbered within it. A person may be in any number of groups. */
 @Entity
 @Table(name = "person_group")
 public class PersonGroup {

@@ -40,9 +40,11 @@ public class TestSupportController {
 
     private static final Set<String> GROUP_FIELDS = Set.of("id", "name");
 
+    private static final Set<String> MEMBERSHIP_FIELDS = Set.of("personId", "groupId");
+
     private static final Set<String> FOLLOW_FIELDS = Set.of("from", "to");
 
-    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows", "groups");
+    private static final Set<String> SHEET_FIELDS = Set.of("id", "anchor", "people", "patrons", "regions", "follows", "groups", "memberships");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -61,6 +63,7 @@ public class TestSupportController {
         jdbc.update("DELETE FROM person_patron");
         jdbc.update("DELETE FROM person_follow");
         jdbc.update("DELETE FROM person_region");
+        jdbc.update("DELETE FROM person_membership");
         jdbc.update("DELETE FROM person");
         jdbc.update("DELETE FROM person_group");
         jdbc.update("DELETE FROM sheet");
@@ -78,7 +81,7 @@ public class TestSupportController {
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
             if (!key.equals("anchor") && !key.equals("people") && !key.equals("patrons") && !key.equals("regions")
-                    && !key.equals("follows") && !key.equals("groups") && !key.equals("sheets")) {
+                    && !key.equals("follows") && !key.equals("groups") && !key.equals("memberships") && !key.equals("sheets")) {
                 throw badRequest("unknown fixture key: " + key);
             }
         }
@@ -88,7 +91,8 @@ public class TestSupportController {
             jdbc.update("INSERT INTO unnamed_sheet (id, anchor) VALUES (1, ?)", anchor);
         }
         // People, patrons and regions at the top level are on the unnamed sheet.
-        seedSheet(null, fixture.get("groups"), fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"), "");
+        seedSheet(null, fixture.get("groups"), fixture.get("people"), fixture.get("patrons"), fixture.get("regions"), fixture.get("follows"),
+                fixture.get("memberships"), "");
         for (Map<String, Object> sheet : rows(fixture.get("sheets"), "sheets")) {
             for (String field : sheet.keySet()) {
                 if (!SHEET_FIELDS.contains(field)) {
@@ -99,7 +103,8 @@ public class TestSupportController {
                 throw badRequest("sheets.id is required");
             }
             jdbc.update("INSERT INTO sheet (id, anchor) VALUES (?, ?)", id, date(sheet.get("anchor"), "sheets.anchor"));
-            seedSheet(id, sheet.get("groups"), sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"), "sheets.");
+            seedSheet(id, sheet.get("groups"), sheet.get("people"), sheet.get("patrons"), sheet.get("regions"), sheet.get("follows"),
+                    sheet.get("memberships"), "sheets.");
         }
     }
 
@@ -143,7 +148,7 @@ public class TestSupportController {
 
     /** Inserts one sheet's groups, its people and then their patrons, regions and follows; a null sheet id is the unnamed sheet. */
     private void seedSheet(String sheetId, Object groupRows, Object peopleRows, Object patronRows, Object regionRows, Object followRows,
-            String prefix) {
+            Object membershipRows, String prefix) {
         for (Map<String, Object> row : rows(groupRows, prefix + "groups")) {
             for (String field : row.keySet()) {
                 if (!GROUP_FIELDS.contains(field)) {
@@ -185,10 +190,15 @@ public class TestSupportController {
             // A person's id is their id within the sheet; the internal key is generated.
             Integer givenId = integer(row.get("id"), prefix + "people.id");
             long localId = givenId != null ? givenId : nextLocalId(sheetId);
-            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset, active, score, state, group_id) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            jdbc.update("INSERT INTO person (sheet_id, local_id, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset, active, score, state) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     sheetId, localId, name, alpha, beta, gamma, delta, epsilon, zeta, grade, kind, onset,
-                    active != null ? active : true, score, state != null ? state : State.DRAFT.name(), groupKey);
+                    active != null ? active : true, score, state != null ? state : State.DRAFT.name());
+            // A person's single group (from before people could be in several) is one of their groups.
+            if (groupKey != null) {
+                jdbc.update("MERGE INTO person_membership (person_id, group_id) KEY (person_id, group_id) VALUES (?, ?)",
+                        internalId(sheetId, localId, prefix + "people.id"), groupKey);
+            }
             // A person's single region (from before people had several) is one of their regions.
             String region = text(row.get("region"), prefix + "people.region");
             if (region != null) {
@@ -226,6 +236,22 @@ public class TestSupportController {
             }
             jdbc.update("MERGE INTO person_region (person_id, region) KEY (person_id, region) VALUES (?, ?)",
                     internalId(sheetId, personId, prefix + "regions.personId"), region);
+        }
+        // Memberships link a person by id to each group they are in, by id.
+        for (Map<String, Object> row : rows(membershipRows, prefix + "memberships")) {
+            for (String field : row.keySet()) {
+                if (!MEMBERSHIP_FIELDS.contains(field)) {
+                    throw badRequest("cannot store " + prefix + "memberships." + field);
+                }
+            }
+            Integer personId = integer(row.get("personId"), prefix + "memberships.personId");
+            Integer groupId = integer(row.get("groupId"), prefix + "memberships.groupId");
+            if (personId == null || groupId == null) {
+                throw badRequest(prefix + "memberships rows need personId and groupId");
+            }
+            jdbc.update("MERGE INTO person_membership (person_id, group_id) KEY (person_id, group_id) VALUES (?, ?)",
+                    internalId(sheetId, personId, prefix + "memberships.personId"),
+                    internalGroupId(sheetId, groupId, prefix + "memberships.groupId"));
         }
         // Follows link a follower to the person they follow, by id; one direction only.
         for (Map<String, Object> row : rows(followRows, prefix + "follows")) {
@@ -285,7 +311,11 @@ public class TestSupportController {
                 + "beta AS \"beta\", gamma AS \"gamma\", delta AS \"delta\", epsilon AS \"epsilon\", zeta AS \"zeta\", grade AS \"grade\", kind AS \"kind\", "
                 + "CAST(onset AS VARCHAR) AS \"onset\", active AS \"active\", score AS \"score\", state AS \"state\", "
                 + "(SELECT MIN(pr.region) FROM person_region pr WHERE pr.person_id = p.id) AS \"region\", "
-                + "(SELECT g.local_id FROM person_group g WHERE g.id = p.group_id) AS \"groupId\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+                + "(SELECT g.local_id FROM person_membership pm JOIN person_group g ON g.id = pm.group_id WHERE pm.person_id = p.id "
+                + "ORDER BY g.name, g.local_id FETCH FIRST 1 ROW ONLY) AS \"groupId\" FROM person p WHERE " + where + " ORDER BY local_id", args));
+        out.put("memberships", jdbc.queryForList("SELECT p.local_id AS \"personId\", g.local_id AS \"groupId\" "
+                + "FROM person_membership pm JOIN person p ON p.id = pm.person_id JOIN person_group g ON g.id = pm.group_id "
+                + "WHERE " + where + " ORDER BY p.local_id, g.local_id", args));
         out.put("patrons", jdbc.queryForList("SELECT p.local_id AS \"personId\", o.local_id AS \"patronId\" "
                 + "FROM person_patron pp JOIN person p ON p.id = pp.person_id JOIN person o ON o.id = pp.patron_id "
                 + "WHERE " + where + " ORDER BY p.local_id, o.local_id", args));

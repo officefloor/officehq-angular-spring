@@ -79,9 +79,12 @@ export interface Person {
   outlier: boolean;
   ebb: number | null;
   stray: boolean;
-  // The group the person is in: its id and name; absent until put in one.
+  // "Their group": the id and name of the group, of those they are in, whose name comes first
+  // alphabetically; absent until put in one.
   groupId: number | null;
   groupName: string | null;
+  // Every group the person is in, sorted by name.
+  groups: Group[];
 }
 
 // A named group of people on a sheet.
@@ -159,9 +162,14 @@ export class PeopleService {
     return this.http.post<Group>('/api/groups', { name }, { params: sheetParams(sheet) });
   }
 
-  // Puts a person in a group by its id; null takes them out of any group.
+  // Puts a person in just one group by its id; null takes them out of every group.
   setGroup(sheet: string | null, id: number, groupId: number | null): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, { groupId }, { params: sheetParams(sheet) });
+  }
+
+  // Puts a person in just the groups with these ids; none takes them out of every group.
+  setGroups(sheet: string | null, id: number, groupIds: number[]): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { groupIds }, { params: sheetParams(sheet) });
   }
 
   // Adds a person to a sheet; null is the unnamed sheet.
@@ -170,7 +178,7 @@ export class PeopleService {
   }
 
   // Updates the person with an id on a sheet (ids are per sheet); null is the unnamed sheet.
-  update(sheet: string | null, id: number, values: Omit<NewPerson, 'name'>): Observable<Person> {
+  update(sheet: string | null, id: number, values: Omit<NewPerson, 'name' | 'groupId'> & { groupId?: number | null }): Observable<Person> {
     return this.http.patch<Person>(`/api/people/${id}`, values, { params: sheetParams(sheet) });
   }
 
