@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 43d956b7..7bd91dbf 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -60,6 +60,7 @@ export interface Person {
+   band: string | null;
+   scaled: number | null;
+   thrum: number | null;
++  spool: number | null;
+   norm: number | null;
+   outlier: boolean;
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4bf0b2c1..1835c3e1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -73,6 +73,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+ // Their scaled is their adjusted times their band's multiplier: A 4, B 3, C 2, D 1, E 0 ("n/a" while
+ // adjusted is "n/a").
+ // Their thrum is their scaled plus their torque ("n/a" while either is "n/a").
++// Their spool is their thrum minus their blend ("n/a" while either is "n/a").
+ // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
+ // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
+ // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
+@@ -276,6 +277,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+           <th scope="col">Band</th>
+           <th scope="col">Scaled</th>
+           <th scope="col">Thrum</th>
++          <th scope="col">Spool</th>
+           <th scope="col">Norm</th>
+           <th scope="col">Outlier</th>
+           <th scope="col">Rank</th>
+@@ -352,6 +354,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
+             <td data-testid="concept-band">{{ p.band ?? 'n/a' }}</td>
+             <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
+             <td data-testid="concept-thrum">{{ p.thrum ?? 'n/a' }}</td>
++            <td data-testid="concept-spool">{{ p.spool ?? 'n/a' }}</td>
+             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
+             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index dd5d2ab2..a1f23705 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -552,4 +552,11 @@ public class Person {
+         Integer torque = getTorque();
+         return scaled == null || torque == null ? null : scaled + torque;
+     }
++
++    /** Spool is thrum minus blend; absent while either is absent. */
++    public Integer getSpool() {
++        Integer thrum = getThrum();
++        Integer blend = getBlend();
++        return thrum == null || blend == null ? null : thrum - blend;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index a3079361..df6b263d 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -32,7 +32,7 @@ public class PersonController {
+             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, String phase, Integer load, String tier, List<PatronView> patrons,
+             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
+             Integer clout, Integer influence, List<String> regions, Integer reach,
+-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer norm, boolean outlier, State state) {
++            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, Integer norm, boolean outlier, State state) {
+         static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+@@ -42,7 +42,7 @@ public class PersonController {
+                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
+                     p.getInfluence(), p.getRegions(), p.getReach(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(),
++                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(),
+                     PersonController.norm(p.getScaled(), medianScaled),
+                     PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState());
+         }
