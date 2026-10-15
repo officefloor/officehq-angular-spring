@@ -1,0 +1,42 @@
+diff --git a/src/main/frontend/src/app/features/report/report.ts b/src/main/frontend/src/app/features/report/report.ts
+index 10bfa834..c7a82a90 100644
+--- a/src/main/frontend/src/app/features/report/report.ts
++++ b/src/main/frontend/src/app/features/report/report.ts
+@@ -2,8 +2,9 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { PeopleService, Person } from '../people/people.service';
+ 
+ // The report: the unnamed sheet's ledger (the grand total of everyone's scaled, leaving out anyone
+-// whose scaled is "n/a"), its headcount and the mean (the ledger per person, rounded down), the same
+-// figures the worksheet shows, and the top person: the one with the highest scaled (the lowest id on
++// whose scaled is "n/a"), its headcount, the median (the middle scaled of the people whose scaled can
++// be worked out; for an even count, the lower of the two middle values; zero when nobody has one),
++// and the top person: the one with the highest scaled (the lowest id on
+ // a tie; "n/a" when nobody has a scaled). It reads them from the server itself and re-reads them
+ // whenever the people change.
+ @Component({
+@@ -13,7 +14,7 @@ import { PeopleService, Person } from '../people/people.service';
+       <h2 id="report-title">Report</h2>
+       <p>Grand total: <strong data-testid="report-ledger">{{ ledger() }}</strong></p>
+       <p>People: <strong data-testid="report-headcount">{{ headcount() }}</strong></p>
+-      <p>Average per person: <strong data-testid="report-mean">{{ mean() }}</strong></p>
++      <p>Median per person: <strong data-testid="report-mean">{{ median() }}</strong></p>
+       <p>Top person: <strong data-testid="report-top">{{ top()?.name ?? 'n/a' }}</strong></p>
+     </section>
+   `,
+@@ -26,9 +27,13 @@ export class Report {
+     this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
+   );
+   protected readonly headcount = computed(() => this.people().length);
+-  protected readonly mean = computed(() =>
+-    this.headcount() === 0 ? 0 : Math.floor(this.ledger() / this.headcount()),
+-  );
++  protected readonly median = computed(() => {
++    const values = this.people()
++      .map((p) => p.scaled)
++      .filter((v): v is number => v !== null)
++      .sort((a, b) => a - b);
++    return values.length === 0 ? 0 : values[Math.floor((values.length - 1) / 2)];
++  });
+   protected readonly top = computed(() =>
+     this.people()
+       .filter((p) => p.scaled !== null)
