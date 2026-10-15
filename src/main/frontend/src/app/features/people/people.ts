@@ -86,6 +86,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
 // Their lift is their blend times their drag's multiplier: L0 0, L1 1, L2 2, L3 3 ("n/a" while blend is).
 // Their yield is their pivot plus two times their lift ("n/a" while either is "n/a").
 // Their grip is their yield minus their coil ("n/a" while either is "n/a").
+// Their charge is their vector plus their yield ("n/a" while either is "n/a").
 // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
 // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
 // worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
@@ -330,6 +331,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
           <th scope="col">Lift</th>
           <th scope="col">Yield</th>
           <th scope="col">Grip</th>
+          <th scope="col">Charge</th>
           <th scope="col">Norm</th>
           <th scope="col">Outlier</th>
           <th scope="col">Rank</th>
@@ -417,6 +419,7 @@ import { GRADES, Grade, KINDS, Kind, PeopleService, Person } from './people.serv
             <td data-testid="concept-lift">{{ p.lift ?? 'n/a' }}</td>
             <td data-testid="concept-yield">{{ p.yield ?? 'n/a' }}</td>
             <td data-testid="concept-grip">{{ p.grip ?? 'n/a' }}</td>
+            <td data-testid="concept-charge">{{ p.charge ?? 'n/a' }}</td>
             <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>

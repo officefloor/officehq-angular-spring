@@ -71,6 +71,7 @@ export interface Person {
   lift: number | null;
   yield: number | null;
   grip: number | null;
+  charge: number | null;
   norm: number | null;
   outlier: boolean;
 }
