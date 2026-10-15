@@ -1,0 +1,120 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 5fd639e..cc82695 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -21,6 +21,7 @@ export interface Person {
+   rank: number | null;
+   percentile: number | null;
+   onset: string | null;
++  age: number | null;
+ }
+ 
+ // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2c6e6fd..29b59dc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -21,7 +21,8 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+ // shown, and people added belong to it. Until one is opened the unnamed sheet is shown. Opening an
+ // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
+ // its own people, and a sheet only ever shows (and edits) its own.
+-// The sheet shows its anchor date (today when none is set), and each person their onset date.
++// The sheet shows its anchor date (today when none is set), and each person their onset date and
++// their age: whole days from onset to the anchor, negative when onset is after it ("n/a" without onset).
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule],
+@@ -100,6 +101,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+           <th scope="col">Gamma</th>
+           <th scope="col">Grade</th>
+           <th scope="col">Onset</th>
++          <th scope="col">Age</th>
+           <th scope="col">Weight</th>
+           <th scope="col">Thrust</th>
+           <th scope="col">Drift</th>
+@@ -128,6 +130,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
+             <td data-testid="person-gamma">{{ p.gamma }}</td>
+             <td data-testid="person-grade">{{ p.grade }}</td>
+             <td data-testid="person-onset">{{ p.onset }}</td>
++            <td data-testid="concept-age">{{ p.age ?? 'n/a' }}</td>
+             <td data-testid="concept-weight">{{ p.weight ?? 'n/a' }}</td>
+             <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 7b0c3db..43738c3 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -13,6 +13,7 @@ import jakarta.persistence.JoinTable;
+ import jakarta.persistence.ManyToMany;
+ import jakarta.persistence.Table;
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.Comparator;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -24,7 +25,7 @@ import java.util.Set;
+  * any number of "patrons": other people on the list, whose thrust added together is the person's
+  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
+  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
+- * A person may have an "onset" date (absent until given). */
++ * A person may have an "onset" date (absent until given); their "age" is the whole days from onset to the sheet's anchor. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -123,6 +124,11 @@ public class Person {
+         return onset;
+     }
+ 
++    /** Age is the whole days from onset to the anchor, negative when onset is after it; absent without an onset. */
++    public Long getAge(LocalDate anchor) {
++        return onset == null ? null : ChronoUnit.DAYS.between(onset, anchor);
++    }
++
+     /** Weight comes from the grade: LOW 1, MID 3, HIGH 5; absent without a grade. */
+     public Integer getWeight() {
+         return grade == null ? null : grade.weight();
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 810a60e..ea0408c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -27,13 +27,14 @@ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
+-            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset) {
+-        static PersonView of(Person p, Map<Long, Integer> ranks) {
++            Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age) {
++        static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
+                     p.getPatrons().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+-                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset());
++                    p.getBacking(), p.getNet(), rank, PersonController.percentile(rank, ranks.size()), p.getOnset(),
++                    p.getAge(anchor));
+         }
+     }
+ 
+@@ -72,9 +73,11 @@ public class PersonController {
+ 
+     @GetMapping
+     public List<PersonView> list(@RequestParam(required = false) String sheet) {
+-        List<Person> people = service.list(sheetId(sheet));
++        String sheetId = sheetId(sheet);
++        List<Person> people = service.list(sheetId);
+         Map<Long, Integer> ranks = ranks(people);
+-        return people.stream().map(p -> PersonView.of(p, ranks)).toList();
++        LocalDate anchor = service.anchor(sheetId);
++        return people.stream().map(p -> PersonView.of(p, ranks, anchor)).toList();
+     }
+ 
+     @PostMapping
+@@ -126,7 +129,7 @@ public class PersonController {
+ 
+     /** A person's view, ranked among the people on their sheet. */
+     private PersonView view(String sheetId, Person person) {
+-        return PersonView.of(person, ranks(service.list(sheetId)));
++        return PersonView.of(person, ranks(service.list(sheetId)), service.anchor(sheetId));
+     }
+ 
+     /**
