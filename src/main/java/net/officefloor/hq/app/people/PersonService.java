@@ -1,8 +1,11 @@
 package net.officefloor.hq.app.people;
 
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -64,19 +67,19 @@ public class PersonService {
         });
     }
 
-    /** Sets the patron (another person) by id; null clears it. Refuses oneself or an unknown person. */
+    /** Sets the patrons (other people) by id; an empty list clears them. Refuses oneself or an unknown person. */
     @Transactional
-    public Optional<Person> setPatron(long id, Long patronId) {
+    public Optional<Person> setPatrons(long id, Collection<Long> patronIds) {
         return people.findById(id).map(p -> {
-            if (patronId == null) {
-                p.setPatron(null);
-            } else {
+            Set<Person> patrons = new HashSet<>();
+            for (Long patronId : patronIds) {
                 if (patronId == id) {
                     throw new IllegalArgumentException("a person cannot be their own patron");
                 }
-                p.setPatron(people.findById(patronId)
+                patrons.add(people.findById(patronId)
                         .orElseThrow(() -> new IllegalArgumentException("no person " + patronId)));
             }
+            p.setPatrons(patrons);
             return p;
         });
     }

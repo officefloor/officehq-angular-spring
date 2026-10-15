@@ -12,10 +12,14 @@ export interface Person {
   drift: number | null;
   momentum: number | null;
   tier: string | null;
-  patronId: number | null;
-  patronName: string | null;
+  patrons: Patron[];
   backing: number | null;
   net: number | null;
+}
+
+export interface Patron {
+  id: number;
+  name: string;
 }
 
 export interface NewPerson {
@@ -54,7 +58,7 @@ export class PeopleService {
     return this.http.patch<Person>(`/api/people/${id}`, { gamma });
   }
 
-  setPatron(id: number, patronId: number | null): Observable<Person> {
-    return this.http.patch<Person>(`/api/people/${id}`, { patronId });
+  setPatrons(id: number, patronIds: number[]): Observable<Person> {
+    return this.http.patch<Person>(`/api/people/${id}`, { patronIds });
   }
 }

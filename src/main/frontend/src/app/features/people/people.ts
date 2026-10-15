@@ -6,9 +6,9 @@ import { PeopleService, Person } from './people.service';
 // (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Alpha, beta and
 // gamma are optional on add and can be filled in (or changed) on the row later; while any is missing the
 // derived values show "n/a". Each row's Edit button loads that person into the form, which then saves
-// their alpha, beta and gamma instead of adding. Each person may have a patron (another person), shown
-// by name and chosen on the row; their backing is the patron's thrust ("n/a" without a patron),
-// and their net is momentum plus backing (backing counted as zero without a patron).
+// their alpha, beta and gamma instead of adding. Each person may have any number of patrons (other
+// people), listed by name and chosen on the row; their backing is the sum of their patrons' thrust
+// ("n/a" without patrons), and their net is momentum plus backing (counted as zero without patrons).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -64,13 +64,13 @@ import { PeopleService, Person } from './people.service';
           <th scope="col">Drift</th>
           <th scope="col">Momentum</th>
           <th scope="col">Tier</th>
-          <th scope="col">Patron</th>
+          <th scope="col">Patrons</th>
           <th scope="col">Backing</th>
           <th scope="col">Net</th>
           <th scope="col">Set alpha</th>
           <th scope="col">Set beta</th>
           <th scope="col">Set gamma</th>
-          <th scope="col">Set patron</th>
+          <th scope="col">Set patrons</th>
           <th scope="col">Edit</th>
         </tr>
       </thead>
@@ -85,7 +85,7 @@ import { PeopleService, Person } from './people.service';
             <td data-testid="concept-drift">{{ p.drift ?? 'n/a' }}</td>
             <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
             <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
-            <td data-testid="person-patrons">{{ p.patronName ?? '' }}</td>
+            <td data-testid="person-patrons">{{ patronNames(p) }}</td>
             <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
             <td data-testid="concept-net">{{ p.net ?? 'n/a' }}</td>
             <td>
@@ -138,18 +138,18 @@ import { PeopleService, Person } from './people.service';
             </td>
             <td>
               <label class="visually-hidden" [for]="'person-patron-edit-' + p.id">
-                Patron for {{ p.name }}
+                Patrons for {{ p.name }}
               </label>
               <select
+                multiple
                 [id]="'person-patron-edit-' + p.id"
-                (change)="setPatron(p, patronSelect.value)"
+                (change)="setPatrons(p, patronSelect)"
                 #patronSelect
                 data-testid="person-patron-select"
               >
-                <option value="" [selected]="p.patronId === null">No patron</option>
                 @for (other of people(); track other.id) {
                   @if (other.id !== p.id) {
-                    <option [value]="other.id" [selected]="p.patronId === other.id">{{ other.name }}</option>
+                    <option [value]="other.id" [selected]="hasPatron(p, other)">{{ other.name }}</option>
                   }
                 }
               </select>
@@ -239,9 +239,17 @@ export class People {
     this.service.setGamma(person.id, gamma).subscribe(() => this.load());
   }
 
-  protected setPatron(person: Person, value: string): void {
-    const patronId = value === '' ? null : Number(value);
-    this.service.setPatron(person.id, patronId).subscribe(() => this.load());
+  protected patronNames(person: Person): string {
+    return person.patrons.map((patron) => patron.name).join(', ');
+  }
+
+  protected hasPatron(person: Person, other: Person): boolean {
+    return person.patrons.some((patron) => patron.id === other.id);
+  }
+
+  protected setPatrons(person: Person, select: HTMLSelectElement): void {
+    const patronIds = Array.from(select.selectedOptions, (option) => Number(option.value));
+    this.service.setPatrons(person.id, patronIds).subscribe(() => this.load());
   }
 
   private load(): void {

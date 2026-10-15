@@ -2,6 +2,7 @@ package net.officefloor.hq.app.people;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,15 +22,17 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonController {
 
     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
-            Integer thrust, Integer drift, Integer momentum, String tier, Long patronId,
-            String patronName, Integer backing, Integer net) {
+            Integer thrust, Integer drift, Integer momentum, String tier, List<PatronView> patrons,
+            Integer backing, Integer net) {
         static PersonView of(Person p) {
-            Person patron = p.getPatron();
             return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier(),
-                    patron == null ? null : patron.getId(), patron == null ? null : patron.getName(),
+                    p.getPatrons().stream().map(o -> new PatronView(o.getId(), o.getName())).toList(),
                     p.getBacking(), p.getNet());
         }
+    }
+
+    public record PatronView(Long id, String name) {
     }
 
     public record NewPerson(@NotBlank String name, Integer alpha, Integer beta, Integer gamma) {
@@ -52,28 +55,48 @@ public class PersonController {
         return PersonView.of(service.add(person.name(), person.alpha(), person.beta(), person.gamma()));
     }
 
-    /** Sets whichever of alpha, beta, gamma and patronId the body names; a null value clears it. */
+    /**
+     * Sets whichever of alpha, beta, gamma and patronIds (a list of ids) the body names; a null
+     * value clears it.
+     */
     @PatchMapping("/{id}")
-    public PersonView update(@PathVariable long id, @RequestBody Map<String, Integer> update) {
+    public PersonView update(@PathVariable long id, @RequestBody Map<String, Object> update) {
         Optional<Person> person = service.find(id);
         if (update.containsKey("alpha")) {
-            person = service.setAlpha(id, update.get("alpha"));
+            person = service.setAlpha(id, integer(update.get("alpha")));
         }
         if (update.containsKey("beta")) {
-            person = service.setBeta(id, update.get("beta"));
+            person = service.setBeta(id, integer(update.get("beta")));
         }
         if (update.containsKey("gamma")) {
-            person = service.setGamma(id, update.get("gamma"));
+            person = service.setGamma(id, integer(update.get("gamma")));
         }
-        if (update.containsKey("patronId")) {
-            Integer patronId = update.get("patronId");
+        if (update.containsKey("patronIds")) {
+            List<Long> patronIds = new ArrayList<>();
+            if (update.get("patronIds") instanceof List<?> ids) {
+                for (Object patronId : ids) {
+                    patronIds.add(integer(patronId).longValue());
+                }
+            } else if (update.get("patronIds") != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "patronIds must be a list");
+            }
             try {
-                person = service.setPatron(id, patronId == null ? null : patronId.longValue());
+                person = service.setPatrons(id, patronIds);
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
             }
         }
         return person.map(PersonView::of)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    private static Integer integer(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Integer i) {
+            return i;
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "expected a whole number, got " + value);
     }
 }

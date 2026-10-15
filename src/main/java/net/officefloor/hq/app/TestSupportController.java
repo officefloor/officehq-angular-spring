@@ -25,7 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/__test__")
 public class TestSupportController {
 
-    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "patronId");
+    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma");
+
+    private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
 
     private final Audit audit;
     private final JdbcTemplate jdbc;
@@ -40,7 +42,8 @@ public class TestSupportController {
     @Transactional
     public void reset() {
         audit.clear();
-        // Person references itself (patron), so delete rather than truncate.
+        // Person is referenced by its patrons, so delete rather than truncate.
+        jdbc.update("DELETE FROM person_patron");
         jdbc.update("DELETE FROM person");
         jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
     }
@@ -53,7 +56,7 @@ public class TestSupportController {
     @Transactional
     public void seed(@RequestBody Map<String, Object> fixture) {
         for (String key : fixture.keySet()) {
-            if (!key.equals("people")) {
+            if (!key.equals("people") && !key.equals("patrons")) {
                 throw badRequest("unknown fixture key: " + key);
             }
         }
@@ -79,16 +82,19 @@ public class TestSupportController {
                         integer(id, "people.id"), name, alpha, beta, gamma);
             }
         }
-        // Patrons link people by id, so set them once every person exists.
-        for (Map<String, Object> row : people) {
-            Integer patronId = integer(row.get("patronId"), "people.patronId");
-            if (patronId != null) {
-                if (row.get("id") == null) {
-                    throw badRequest("people.patronId needs the person's id");
+        // Patrons link people by id, so add them once every person exists.
+        for (Map<String, Object> row : rows(fixture.get("patrons"), "patrons")) {
+            for (String field : row.keySet()) {
+                if (!PATRON_FIELDS.contains(field)) {
+                    throw badRequest("cannot store patrons." + field);
                 }
-                jdbc.update("UPDATE person SET patron_id = ? WHERE id = ?", patronId,
-                        integer(row.get("id"), "people.id"));
             }
+            Integer personId = integer(row.get("personId"), "patrons.personId");
+            Integer patronId = integer(row.get("patronId"), "patrons.patronId");
+            if (personId == null || patronId == null) {
+                throw badRequest("patrons rows need personId and patronId");
+            }
+            jdbc.update("INSERT INTO person_patron (person_id, patron_id) VALUES (?, ?)", personId, patronId);
         }
         // Keep generated ids clear of the seeded ones.
         Long next = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM person", Long.class);
@@ -103,8 +109,9 @@ public class TestSupportController {
     public Map<String, Object> fixture() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("people", jdbc.queryForList("SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", "
-                + "beta AS \"beta\", gamma AS \"gamma\", patron_id AS \"patronId\" "
-                + "FROM person ORDER BY id"));
+                + "beta AS \"beta\", gamma AS \"gamma\" FROM person ORDER BY id"));
+        out.put("patrons", jdbc.queryForList("SELECT person_id AS \"personId\", patron_id AS \"patronId\" "
+                + "FROM person_patron ORDER BY person_id, patron_id"));
         return out;
     }
 
