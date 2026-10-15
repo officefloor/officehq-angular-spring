@@ -32,8 +32,8 @@ public class PersonController {
             Grade grade, Integer weight, Integer thrust, Integer drift, Integer momentum, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, List<String> regions, Integer reach,
-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled) {
-        static PersonView of(Person p, Map<Long, Integer> ranks, LocalDate anchor) {
+            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer norm) {
+        static PersonView of(Person p, Map<Long, Integer> ranks, Integer meanScaled, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
                     p.getGrade(), p.getWeight(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getLoad(), p.getTier(),
@@ -42,7 +42,8 @@ public class PersonController {
                     p.getAge(anchor), p.getDecay(anchor), p.isActive(), p.getEffective(), p.getClout(),
                     p.getInfluence(), p.getRegions(), p.getReach(),
                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
-                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled());
+                    p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(),
+                    PersonController.norm(p.getScaled(), meanScaled));
         }
     }
 
@@ -58,6 +59,21 @@ public class PersonController {
             return 100;
         }
         return (int) Math.round((ranked - rank) * 100.0 / (ranked - 1));
+    }
+
+    /** Norm is scaled minus the sheet's mean scaled; absent while either is absent. */
+    static Integer norm(Integer scaled, Integer meanScaled) {
+        return scaled == null || meanScaled == null ? null : scaled - meanScaled;
+    }
+
+    /** The average scaled of the people whose scaled can be worked out, rounded down; absent when there are none. */
+    private static Integer meanScaled(List<Person> people) {
+        List<Integer> scaled = people.stream().map(Person::getScaled).filter(s -> s != null).toList();
+        if (scaled.isEmpty()) {
+            return null;
+        }
+        long sum = scaled.stream().mapToLong(Integer::longValue).sum();
+        return (int) Math.floorDiv(sum, scaled.size());
     }
 
     /** Highest momentum first; equal momentum by higher alpha, then by name, earlier in the alphabet first. */
@@ -84,8 +100,9 @@ public class PersonController {
         String sheetId = sheetId(sheet);
         List<Person> people = service.list(sheetId);
         Map<Long, Integer> ranks = ranks(people);
+        Integer meanScaled = meanScaled(people);
         LocalDate anchor = service.anchor(sheetId);
-        return people.stream().map(p -> PersonView.of(p, ranks, anchor)).toList();
+        return people.stream().map(p -> PersonView.of(p, ranks, meanScaled, anchor)).toList();
     }
 
     @PostMapping
@@ -175,7 +192,8 @@ public class PersonController {
 
     /** A person's view, ranked among the people on their sheet. */
     private PersonView view(String sheetId, Person person) {
-        return PersonView.of(person, ranks(service.list(sheetId)), service.anchor(sheetId));
+        List<Person> people = service.list(sheetId);
+        return PersonView.of(person, ranks(people), meanScaled(people), service.anchor(sheetId));
     }
 
     /**

@@ -39,6 +39,7 @@ export interface Person {
   adjusted: number | null;
   band: string | null;
   scaled: number | null;
+  norm: number | null;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
