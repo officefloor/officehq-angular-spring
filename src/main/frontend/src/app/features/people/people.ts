@@ -22,7 +22,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
 // its own people, and a sheet only ever shows (and edits) its own.
 // The sheet shows its anchor date (today when none is set), and each person their onset date and
-// their age: whole days from onset to the anchor, negative when onset is after it ("n/a" without onset).
+// their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
 // Their decay is momentum minus age ("n/a" while either is missing).
 @Component({
   selector: 'app-people',

@@ -25,7 +25,7 @@ import java.util.Set;
  * any number of "patrons": other people on the list, whose thrust added together is the person's
  * "backing". A person belongs to one sheet (null for the unnamed sheet) and is numbered within it, so sheets never share people. "Net" is momentum plus backing (backing counted as zero without patrons). A person may have a
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
- * A person may have an "onset" date (absent until given); their "age" is the whole days from onset to the sheet's anchor.
+ * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
  * "Decay" is momentum minus age. */
 @Entity
 @Table(name = "person")
@@ -125,9 +125,10 @@ public class Person {
         return onset;
     }
 
-    /** Age is the whole days from onset to the anchor, negative when onset is after it; absent without an onset. */
+    /** Age is the complete seven-day weeks from onset to the anchor (leftover days dropped), negative when onset is
+     * after it and truncated toward zero; absent without an onset. */
     public Long getAge(LocalDate anchor) {
-        return onset == null ? null : ChronoUnit.DAYS.between(onset, anchor);
+        return onset == null ? null : ChronoUnit.WEEKS.between(onset, anchor);
     }
 
     /** Decay is momentum minus age; absent while either is absent. */
