@@ -35,7 +35,7 @@ import java.util.Set;
  * "multiplier" comes from its first letter: N is 2, S is 3, any other is 1. "Reach" is the sum, over the
  * person's regions, of momentum times that region's multiplier. A person may have any number of "allies":
  * other people on the list, where being allies goes both ways. "Synergy" is the allies' thrust added
- * together (zero without allies). */
+ * together (zero without allies). "Combined" is influence plus synergy. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -342,6 +342,13 @@ public class Person {
         Integer effective = getEffective();
         Integer clout = getClout();
         return effective == null || clout == null ? null : effective + clout;
+    }
+
+    /** Combined is influence plus synergy; absent while either is. */
+    public Integer getCombined() {
+        Integer influence = getInfluence();
+        Integer synergy = getSynergy();
+        return influence == null || synergy == null ? null : influence + synergy;
     }
 
     /** Tier classifies momentum: SINK below zero, STEADY up to 199, SURGE from 200; absent with momentum. */

@@ -44,6 +44,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
 // Each person may have any number of allies (other people), chosen on the row; being allies goes both
 // ways, so choosing A as B's ally also makes B A's ally. Allies are listed by name, with how many there are,
 // and their synergy: the allies' thrust added together (zero without allies).
+// Their combined is their influence plus their synergy ("n/a" while either is "n/a").
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule],
@@ -165,6 +166,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
           <th scope="col">Effective</th>
           <th scope="col">Clout</th>
           <th scope="col">Influence</th>
+          <th scope="col">Combined</th>
           <th scope="col">Rank</th>
           <th scope="col">Percentile</th>
           <th scope="col">Set alpha</th>
@@ -207,6 +209,7 @@ import { GRADES, Grade, PeopleService, Person } from './people.service';
             <td data-testid="concept-effective">{{ p.effective ?? 'n/a' }}</td>
             <td data-testid="concept-clout">{{ p.clout ?? 'n/a' }}</td>
             <td data-testid="concept-influence">{{ p.influence ?? 'n/a' }}</td>
+            <td data-testid="concept-combined">{{ p.combined ?? 'n/a' }}</td>
             <td data-testid="concept-rank">{{ p.rank ?? 'n/a' }}</td>
             <td data-testid="concept-percentile">{{ p.percentile ?? 'n/a' }}</td>
             <td>

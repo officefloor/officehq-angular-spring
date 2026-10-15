@@ -32,6 +32,7 @@ export interface Person {
   allies: Ally[];
   allyCount: number;
   synergy: number | null;
+  combined: number | null;
 }
 
 // A sheet: its id (null for the unnamed sheet) and its anchor date (yyyy-mm-dd; today when none is set).
