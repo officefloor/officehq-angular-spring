@@ -1,0 +1,18 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610160010/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 7 tests using 1 worker
+
+[1A[2K[1/7] [chromium] › cp01_people_alpha.spec.ts:8:7 › people with alpha › lists seeded people with their alpha
+[1A[2K[2/7] [chromium] › cp01_people_alpha.spec.ts:25:7 › people with alpha › adds a person
+[1A[2K[3/7] [chromium] › cp02_thrust.spec.ts:6:7 › thrust › thrust is alpha times beta
+[1A[2K[4/7] [chromium] › cp02_thrust.spec.ts:20:7 › thrust › thrust can be zero and negative
+[1A[2K[5/7] [chromium] › cp03_momentum.spec.ts:6:7 › drift and momentum › drift and momentum build on thrust
+[1A[2K[6/7] [chromium] › cp04_momentum_coefficient.spec.ts:5:7 › momentum coefficient raised to 3 › momentum is thrust + 3*drift
+[1A[2K[7/7] [chromium] › cp05_tier.spec.ts:9:7 › tier › tier classifies momentum including the boundaries
+[1A[2K  7 passed (2.5s)

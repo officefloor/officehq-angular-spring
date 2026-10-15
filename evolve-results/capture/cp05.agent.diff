@@ -1,0 +1,76 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index e08c0d7..81bd543 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -11,6 +11,7 @@ export interface Person {
+   thrust: number | null;
+   drift: number | null;
+   momentum: number | null;
++  tier: string | null;
+ }
+ 
+ export interface NewPerson {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 21d6415..6f7c0f2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
+ import { PeopleService, Person } from './people.service';
+ 
+ // The people list: every person with their name, alpha, beta, gamma, thrust (alpha × beta), drift
+-// (gamma − alpha) and momentum (thrust + 3 × drift), plus a form to add one. Beta and gamma are
++// (gamma − alpha) and momentum (thrust + 3 × drift) and its tier, plus a form to add one. Beta and gamma are
+ // optional on add and can be filled in (or changed) on the row later.
+ @Component({
+   selector: 'app-people',
+@@ -56,6 +56,7 @@ import { PeopleService, Person } from './people.service';
+           <th scope="col">Thrust</th>
+           <th scope="col">Drift</th>
+           <th scope="col">Momentum</th>
++          <th scope="col">Tier</th>
+           <th scope="col">Set beta</th>
+           <th scope="col">Set gamma</th>
+         </tr>
+@@ -70,6 +71,7 @@ import { PeopleService, Person } from './people.service';
+             <td data-testid="concept-thrust">{{ p.thrust }}</td>
+             <td data-testid="concept-drift">{{ p.drift }}</td>
+             <td data-testid="concept-momentum">{{ p.momentum }}</td>
++            <td data-testid="concept-tier">{{ p.tier }}</td>
+             <td>
+               <form (submit)="$event.preventDefault(); setBeta(p, betaInput.value)">
+                 <label class="visually-hidden" [for]="'person-beta-edit-' + p.id">
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+index 51d3a60..0e7f960 100644
+--- a/src/main/java/net/officefloor/hq/app/people/Person.java
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -79,4 +79,13 @@ public class Person {
+         Integer drift = getDrift();
+         return thrust == null || drift == null ? null : thrust + 3 * drift;
+     }
++
++    /** Tier classifies momentum: SINK below zero, STEADY up to 99, SURGE from 100; absent with momentum. */
++    public String getTier() {
++        Integer momentum = getMomentum();
++        if (momentum == null) {
++            return null;
++        }
++        return momentum < 0 ? "SINK" : momentum <= 99 ? "STEADY" : "SURGE";
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 9de822c..6ba14e6 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -22,10 +22,10 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PersonController {
+ 
+     public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma,
+-            Integer thrust, Integer drift, Integer momentum) {
++            Integer thrust, Integer drift, Integer momentum, String tier) {
+         static PersonView of(Person p) {
+             return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(),
+-                    p.getThrust(), p.getDrift(), p.getMomentum());
++                    p.getThrust(), p.getDrift(), p.getMomentum(), p.getTier());
+         }
+     }
+ 
