@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -32,8 +33,8 @@ public class PersonController {
             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, Integer vector, String phase, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer norm, boolean outlier, State state) {
-        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, LocalDate anchor) {
+            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer norm, boolean outlier, State state, Integer ebb) {
+        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Integer medianBlend, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
                     p.getGrade(), p.getWeight(), p.getKind(), p.getVerge(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getPivot(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getHaul(), p.getVector(), p.getPhase(), p.getLoad(), p.getTier(),
@@ -44,7 +45,8 @@ public class PersonController {
                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(),
                     PersonController.norm(p.getScaled(), medianScaled),
-                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState());
+                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)), p.getState(),
+                    PersonController.ebb(p.getBlend(), medianBlend));
         }
     }
 
@@ -67,6 +69,11 @@ public class PersonController {
         return scaled == null || medianScaled == null ? null : scaled - medianScaled;
     }
 
+    /** Ebb is blend minus the sheet's median blend; absent while either is absent. */
+    static Integer ebb(Integer blend, Integer medianBlend) {
+        return blend == null || medianBlend == null ? null : blend - medianBlend;
+    }
+
     /** An outlier has a norm more than 100 away from zero in either direction; without a norm, not an outlier. */
     static boolean outlier(Integer norm) {
         return norm != null && Math.abs(norm) > 100;
@@ -77,11 +84,24 @@ public class PersonController {
      * the two middle values. Absent when there are none.
      */
     private static Integer medianScaled(List<Person> people) {
-        List<Integer> scaled = people.stream().map(Person::getScaled).filter(s -> s != null).sorted().toList();
-        if (scaled.isEmpty()) {
+        return median(people, Person::getScaled);
+    }
+
+    /**
+     * The median blend of the people whose blend can be worked out; for an even count, the lower of
+     * the two middle values. Absent when there are none.
+     */
+    private static Integer medianBlend(List<Person> people) {
+        return median(people, Person::getBlend);
+    }
+
+    /** The median of a value over the people who have it, the lower middle for an even count; absent when none do. */
+    private static Integer median(List<Person> people, Function<Person, Integer> value) {
+        List<Integer> values = people.stream().map(value).filter(v -> v != null).sorted().toList();
+        if (values.isEmpty()) {
             return null;
         }
-        return scaled.get((scaled.size() - 1) / 2);
+        return values.get((values.size() - 1) / 2);
     }
 
     /** Highest momentum first; equal momentum by higher alpha, then by name, earlier in the alphabet first. */
@@ -109,8 +129,9 @@ public class PersonController {
         List<Person> people = service.list(sheetId);
         Map<Long, Integer> ranks = ranks(people);
         Integer medianScaled = medianScaled(people);
+        Integer medianBlend = medianBlend(people);
         LocalDate anchor = service.anchor(sheetId);
-        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, anchor)).toList();
+        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, medianBlend, anchor)).toList();
     }
 
     @PostMapping
@@ -249,7 +270,7 @@ public class PersonController {
     /** A person's view, ranked among the people on their sheet. */
     private PersonView view(String sheetId, Person person) {
         List<Person> people = service.list(sheetId);
-        return PersonView.of(person, ranks(people), medianScaled(people), service.anchor(sheetId));
+        return PersonView.of(person, ranks(people), medianScaled(people), medianBlend(people), service.anchor(sheetId));
     }
 
     /**
