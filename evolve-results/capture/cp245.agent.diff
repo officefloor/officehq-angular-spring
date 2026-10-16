@@ -1,0 +1,12 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 027b4afb..a2e94a70 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -445,6 +445,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+     <p>Grand scaled: <strong data-testid="rollup-grand-scaled">{{ grandScaled() }}</strong></p>
+     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
+     <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
++    <p>Apex by scaled: <strong data-testid="rollup-apex-v">{{ apexName() ?? 'n/a' }}</strong></p>
+     <p>Top non-final: <strong data-testid="rollup-apex-nonfinal">{{ apexNonFinal() ?? 'n/a' }}</strong></p>
+     <p>Runner-up: <strong data-testid="rollup-runnerup">{{ runnerUp() ?? 'n/a' }}</strong></p>
+     <p>Top three: <strong data-testid="rollup-topset">{{ topSet() ?? 'n/a' }}</strong></p>
