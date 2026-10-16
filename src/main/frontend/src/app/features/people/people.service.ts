@@ -85,6 +85,8 @@ export interface Person {
   // Scaled as a whole-number percentage of the sheet's grand scaled, rounded down; absent without a
   // scaled or while the grand scaled is zero.
   portion: number | null;
+  // Position when everyone is ordered by scaled, highest first (1), ties by name; absent without a scaled.
+  standing: number | null;
   ebb: number | null;
   stray: boolean;
   // "Their group": the id and name of the group, of those they are in, whose name comes first

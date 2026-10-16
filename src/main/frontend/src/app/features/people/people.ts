@@ -114,6 +114,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // Their portion is their scaled as a whole-number percentage of the grand scaled (the sum of the scaled
 // of everyone on the sheet whose scaled can be worked out), rounded down ("n/a" while their scaled is
 // "n/a" or the grand scaled is zero).
+// Their sheet standing is their position when everyone is ordered by scaled from highest to lowest,
+// highest 1, a tie going to the name earlier in the alphabet ("n/a" while their scaled is "n/a").
 // The sheet's outlier count is how many of its people are outliers.
 // Their ebb is their blend minus the mean blend of everyone on the sheet whose blend can be worked
 // out, rounded down ("n/a" while their blend is "n/a").
@@ -794,6 +796,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
           <th scope="col">Outlier</th>
           <th scope="col">Stratum</th>
           <th scope="col">Portion</th>
+          <th scope="col">Sheet standing</th>
           <th scope="col">Ebb</th>
           <th scope="col">Stray</th>
           <th scope="col">Share</th>
@@ -915,6 +918,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
             <td data-testid="concept-outlier">{{ p.outlier ? 'yes' : 'no' }}</td>
             <td data-testid="concept-stratum">{{ p.stratum ?? 'n/a' }}</td>
             <td data-testid="concept-portion">{{ p.portion ?? 'n/a' }}</td>
+            <td data-testid="concept-standing-v">{{ p.standing ?? 'n/a' }}</td>
             <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
             <td data-testid="concept-stray">{{ p.stray ? 'yes' : 'no' }}</td>
             <td data-testid="concept-share">{{ shareOf(p) ?? 'n/a' }}</td>

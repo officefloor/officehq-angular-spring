@@ -33,9 +33,9 @@ public class PersonController {
             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, Integer vector, String phase, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, boolean quota, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, String stratum, Integer portion, State state, Integer ebb, boolean stray,
+            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, String stratum, Integer portion, Integer standing, State state, Integer ebb, boolean stray,
             Long groupId, String groupName, List<GroupController.GroupView> groups) {
-        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Double meanScaled, Long grandScaled, Integer meanBlend, LocalDate anchor) {
+        static PersonView of(Person p, Map<Long, Integer> ranks, Map<Long, Integer> standings, Integer medianScaled, Double meanScaled, Long grandScaled, Integer meanBlend, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
                     p.getGrade(), p.getWeight(), p.getKind(), p.getVerge(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getPivot(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getHaul(), p.getVector(), p.getPhase(), p.getLoad(), p.getTier(),
@@ -48,7 +48,7 @@ public class PersonController {
                     PersonController.norm(p.getScaled(), medianScaled),
                     PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)),
                     PersonController.stratum(p.getScaled(), meanScaled),
-                    PersonController.portion(p.getScaled(), grandScaled), p.getState(),
+                    PersonController.portion(p.getScaled(), grandScaled), standings.get(p.getLocalId()), p.getState(),
                     PersonController.ebb(p.getBlend(), meanBlend),
                     PersonController.stray(PersonController.ebb(p.getBlend(), meanBlend)),
                     p.getGroup() == null ? null : p.getGroup().getLocalId(),
@@ -178,12 +178,13 @@ public class PersonController {
         String sheetId = sheetId(sheet);
         List<Person> people = service.list(sheetId);
         Map<Long, Integer> ranks = ranks(people);
+        Map<Long, Integer> standings = standings(people);
         Integer medianScaled = medianScaled(people);
         Double meanScaled = meanScaled(people);
         Long grandScaled = grandScaled(people);
         Integer meanBlend = meanBlend(people);
         LocalDate anchor = service.anchor(sheetId);
-        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, meanScaled, grandScaled, meanBlend, anchor)).toList();
+        return people.stream().map(p -> PersonView.of(p, ranks, standings, medianScaled, meanScaled, grandScaled, meanBlend, anchor)).toList();
     }
 
     @PostMapping
@@ -353,7 +354,7 @@ public class PersonController {
     /** A person's view, ranked among the people on their sheet. */
     private PersonView view(String sheetId, Person person) {
         List<Person> people = service.list(sheetId);
-        return PersonView.of(person, ranks(people), medianScaled(people), meanScaled(people), grandScaled(people), meanBlend(people), service.anchor(sheetId));
+        return PersonView.of(person, ranks(people), standings(people), medianScaled(people), meanScaled(people), grandScaled(people), meanBlend(people), service.anchor(sheetId));
     }
 
     /**
@@ -367,6 +368,20 @@ public class PersonController {
             ranks.put(ranked.get(i).getLocalId(), i + 1);
         }
         return ranks;
+    }
+
+    /**
+     * Each person's sheet standing by local id: 1 for the highest scaled, then 2, 3, ... with equal
+     * scaled ordered by name. People without a scaled have no standing.
+     */
+    private static Map<Long, Integer> standings(List<Person> people) {
+        List<Person> ordered = people.stream().filter(p -> p.getScaled() != null)
+                .sorted(Comparator.comparing(Person::getScaled, Comparator.reverseOrder()).thenComparing(Person::getName)).toList();
+        Map<Long, Integer> standings = new HashMap<>();
+        for (int i = 0; i < ordered.size(); i++) {
+            standings.put(ordered.get(i).getLocalId(), i + 1);
+        }
+        return standings;
     }
 
     /** The sheet named by the request, trimmed; blank or absent means the unnamed sheet. */
