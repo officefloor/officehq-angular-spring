@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 22497208..61cec247 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -245,6 +245,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // The sheet's median scaled is the middle of the scaled of everyone on the sheet whose scaled can be
+ // worked out; for an even count, the lower of the two middle values ("n/a" when nobody has a scaled).
+ // The sheet's coverage is how many of its people have a scaled of at least 500 (0 when nobody does).
++// The sheet's final coverage is how many of its people whose state is FINAL have a scaled of at least
++// 500 (0 when none do).
+ // The sheet's coverage share is its coverage as a percentage of its headcount, rounded down ("n/a" when
+ // the sheet has nobody on it).
+ // The sheet's concentration is the scaled of its three highest-scaled people added together as a percentage
+@@ -438,6 +440,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+     <p>Range: <strong data-testid="rollup-range-scaled">{{ rangeScaled() ?? 'n/a' }}</strong></p>
+     <p>Median scaled: <strong data-testid="rollup-median-scaled">{{ medianScaled() ?? 'n/a' }}</strong></p>
+     <p>Coverage (scaled 500 or more): <strong data-testid="rollup-coverage">{{ coverage() }}</strong></p>
++    <p>Final coverage (FINAL, scaled 500 or more): <strong data-testid="rollup-coverage-final">{{ coverageFinal() }}</strong></p>
+     <p>Coverage share (% of headcount): <strong data-testid="rollup-coverage-share">{{ coverageShare() ?? 'n/a' }}</strong></p>
+     <p>Concentration (top three share %): <strong data-testid="rollup-concentration">{{ concentration() ?? 'n/a' }}</strong></p>
+     <p>Bands in use: <strong data-testid="rollup-spanwidth">{{ spanWidth() }}</strong></p>
+@@ -1272,6 +1275,11 @@ export class People {
+   protected readonly coverage = computed(
+     () => this.people().filter((p) => p.scaled !== null && p.scaled >= 500).length,
+   );
++  protected readonly coverageFinal = computed(
++    () =>
++      this.people().filter((p) => p.state === 'FINAL' && p.scaled !== null && p.scaled >= 500)
++        .length,
++  );
+   protected readonly coverageShare = computed(() => {
+     const headcount = this.headcount();
+     return headcount === 0 ? null : Math.floor((this.coverage() * 100) / headcount);
