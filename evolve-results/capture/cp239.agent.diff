@@ -1,0 +1,29 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 61cec247..3340f5ef 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -236,6 +236,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // The sheet's apex name is the name of the person with the highest scaled anywhere on the sheet, and its
+ // runner-up the name of the second highest, ties going to the name earlier in the alphabet ("n/a" when
+ // there is no such person).
++// The sheet's top non-final is the name of the person with the highest scaled among those whose state is
++// not FINAL, ties going to the name earlier in the alphabet ("n/a" when no such person has a scaled).
+ // The sheet's top set is the names of the three people with the highest scaled, highest first, ties
+ // going to the name earlier in the alphabet, joined by commas (fewer when fewer have a scaled; "n/a"
+ // when nobody has one).
+@@ -434,6 +436,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+     <p>Ledger: <strong data-testid="rollup-ledger">{{ ledger() }}</strong></p>
+     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
+     <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
++    <p>Top non-final: <strong data-testid="rollup-apex-nonfinal">{{ apexNonFinal() ?? 'n/a' }}</strong></p>
+     <p>Runner-up: <strong data-testid="rollup-runnerup">{{ runnerUp() ?? 'n/a' }}</strong></p>
+     <p>Top three: <strong data-testid="rollup-topset">{{ topSet() ?? 'n/a' }}</strong></p>
+     <p>Gap: <strong data-testid="rollup-gapval">{{ gapVal() ?? 'n/a' }}</strong></p>
+@@ -1788,6 +1791,7 @@ export class People {
+     return new Map(this.scaledOrder().map((p) => [p.id, (total += p.scaled!)]));
+   });
+   protected readonly apexName = computed(() => this.scaledOrder()[0]?.name ?? null);
++  protected readonly apexNonFinal = computed(() => this.scaledOrder().find((p) => p.state !== 'FINAL')?.name ?? null);
+   protected readonly runnerUp = computed(() => this.scaledOrder()[1]?.name ?? null);
+   protected readonly topSet = computed(() => {
+     const top = this.scaledOrder().slice(0, 3);
