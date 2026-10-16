@@ -1,0 +1,20 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e655f6e7..40e0cfa0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -447,6 +447,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
+     <p>Ledger: <strong data-testid="rollup-ledger">{{ ledger() }}</strong></p>
+     <p>Grand scaled: <strong data-testid="rollup-grand-scaled">{{ grandScaled() }}</strong></p>
++    <p>Grand total (grand scaled plus grand influence): <strong data-testid="rollup-grand-total">{{ grandTotal() }}</strong></p>
+     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
+     <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
+     <p>Apex by scaled: <strong data-testid="rollup-apex-v">{{ apexName() ?? 'n/a' }}</strong></p>
+@@ -1298,6 +1299,7 @@ export class People {
+   protected readonly grandScaled = computed(() =>
+     this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
+   );
++  protected readonly grandTotal = computed(() => this.grandScaled() + this.grandInfluence());
+   protected readonly ledger = computed(() => {
+     const order = this.scaledOrder();
+     return this.grandScaled() - (order.length > 0 ? order[0].scaled! : 0);
