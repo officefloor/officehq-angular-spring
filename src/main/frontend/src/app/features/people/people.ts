@@ -453,6 +453,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
     <p>Top three: <strong data-testid="rollup-topset">{{ topSet() ?? 'n/a' }}</strong></p>
     <p>Gap: <strong data-testid="rollup-gapval">{{ gapVal() ?? 'n/a' }}</strong></p>
     <p>Range: <strong data-testid="rollup-range-scaled">{{ rangeScaled() ?? 'n/a' }}</strong></p>
+    <p>Scaled spread (highest minus lowest scaled): <strong data-testid="rollup-spread-v">{{ rangeScaled() ?? 'n/a' }}</strong></p>
     <p>Median scaled: <strong data-testid="rollup-median-scaled">{{ medianScaled() ?? 'n/a' }}</strong></p>
     <p>Coverage (scaled 500 or more): <strong data-testid="rollup-coverage">{{ coverage() }}</strong></p>
     <p>Final coverage (FINAL, scaled 500 or more): <strong data-testid="rollup-coverage-final">{{ coverageFinal() }}</strong></p>
