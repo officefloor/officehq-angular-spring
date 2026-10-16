@@ -1,0 +1,91 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3340f5ef..fe5ce7f2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -118,7 +118,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // The sheet's stray count is how many of its people are strays.
+ // The sheet's final total is the sum of the scaled of its people whose state is FINAL, counting
+ // "n/a" as zero.
+-// The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a".
++// The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a",
++// and leaving out the single highest scaled as an outlier (that person stays on the sheet).
+ // The sheet's tier tally shows how many of its people are in each tier, SURGE, STEADY and SINK (zero when
+ // none are); people without a tier are not counted.
+ // The sheet's tier share shows, for each tier, SURGE, STEADY and SINK, its tally as a percentage of the
+@@ -252,11 +253,11 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // The sheet's coverage share is its coverage as a percentage of its headcount, rounded down ("n/a" when
+ // the sheet has nobody on it).
+ // The sheet's concentration is the scaled of its three highest-scaled people added together as a percentage
+-// of its ledger, rounded down ("n/a" when the ledger is zero).
++// of everyone's scaled added together (the outlier included), rounded down ("n/a" when that total is zero).
+ // The sheet's skew is the average scaled, rounded down, minus its median scaled, of everyone whose scaled
+ // can be worked out ("n/a" when nobody has a scaled).
+-// The sheet's digest is the average scaled, rounded down, of everyone whose scaled can be worked out
+-// ("n/a" when nobody has a scaled).
++// The sheet's digest is the average scaled per person: its ledger (without the outlier) divided by the
++// full headcount, rounded down ("n/a" when nobody has a scaled).
+ // The sheet's tilt is how many people have a scaled above the median scaled minus how many have one
+ // below it, of everyone whose scaled can be worked out (0 when nobody has a scaled).
+ // A person may be in several groups; a group's figures count every person in it. Where a person's own
+@@ -1272,9 +1273,13 @@ export class People {
+       .filter((p) => p.state === 'FINAL')
+       .reduce((total, p) => total + (p.scaled ?? 0), 0),
+   );
+-  protected readonly ledger = computed(() =>
++  private readonly scaledTotal = computed(() =>
+     this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
+   );
++  protected readonly ledger = computed(() => {
++    const order = this.scaledOrder();
++    return this.scaledTotal() - (order.length > 0 ? order[0].scaled! : 0);
++  });
+   protected readonly coverage = computed(
+     () => this.people().filter((p) => p.scaled !== null && p.scaled >= 500).length,
+   );
+@@ -1819,7 +1824,7 @@ export class People {
+   protected readonly digest = computed(() => {
+     const order = this.scaledOrder();
+     if (order.length === 0) return null;
+-    return Math.floor(order.reduce((sum, p) => sum + p.scaled!, 0) / order.length);
++    return Math.floor(this.ledger() / this.headcount());
+   });
+   protected readonly tilt = computed(() => {
+     const median = this.medianScaled();
+@@ -1827,7 +1832,7 @@ export class People {
+     return this.scaledOrder().reduce((tilt, p) => tilt + Math.sign(p.scaled! - median), 0);
+   });
+   protected readonly concentration = computed(() => {
+-    const total = this.ledger();
++    const total = this.scaledTotal();
+     const topThree = this.scaledOrder()
+       .slice(0, 3)
+       .reduce((sum, p) => sum + p.scaled!, 0);
+diff --git a/src/main/frontend/src/app/features/report/report.ts b/src/main/frontend/src/app/features/report/report.ts
+index c7a82a90..1df6f1ff 100644
+--- a/src/main/frontend/src/app/features/report/report.ts
++++ b/src/main/frontend/src/app/features/report/report.ts
+@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { PeopleService, Person } from '../people/people.service';
+ 
+ // The report: the unnamed sheet's ledger (the grand total of everyone's scaled, leaving out anyone
+-// whose scaled is "n/a"), its headcount, the median (the middle scaled of the people whose scaled can
++// whose scaled is "n/a", and leaving out the single highest scaled as an outlier), its headcount, the median (the middle scaled of the people whose scaled can
+ // be worked out; for an even count, the lower of the two middle values; zero when nobody has one),
+ // and the top person: the one with the highest scaled (the lowest id on
+ // a tie; "n/a" when nobody has a scaled). It reads them from the server itself and re-reads them
+@@ -23,9 +23,12 @@ export class Report {
+   private readonly service = inject(PeopleService);
+ 
+   private readonly people = signal<Person[]>([]);
+-  protected readonly ledger = computed(() =>
+-    this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
+-  );
++  protected readonly ledger = computed(() => {
++    const scaled = this.people()
++      .map((p) => p.scaled)
++      .filter((v): v is number => v !== null);
++    return scaled.reduce((total, v) => total + v, 0) - (scaled.length > 0 ? Math.max(...scaled) : 0);
++  });
+   protected readonly headcount = computed(() => this.people().length);
+   protected readonly median = computed(() => {
+     const values = this.people()
