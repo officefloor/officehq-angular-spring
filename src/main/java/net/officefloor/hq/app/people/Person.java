@@ -32,7 +32,7 @@ import java.util.Set;
  * "grade" (LOW, MID or HIGH; absent until given), from which their "weight" is 1, 3 or 5. "Load" is momentum times weight.
  * A person may have a "kind" (A, B or C; absent until given), from which their "verge" is 2, 3 or 5.
  * "Pivot" is torque times verge, absent while either is. "Yield" is pivot plus two times lift, absent while either is. "Grip" is yield minus coil, absent while either is. "Charge" is vector plus yield, absent while either is. "Churn" is tide minus vector, absent while either is. "Flow" is yield plus charge, absent while either is.
- * A person may have an "onset" date (absent until given); their "age" is the complete weeks from onset to the sheet's anchor.
+ * A person may have an "onset" date (absent until given); their "age" is the whole days from onset to the sheet's anchor.
  * "Decay" is momentum minus age. A person is "active" or not; a new person is active. "Clout" is the average of the
  * patrons' effective, rounded down (zero without patrons). "Influence" is effective plus clout. "Brace" is influence plus two times force. "Tide" is the brace of the people followed added together, each followed brace taken as their momentum plus two times force and only positive braces counted (zero without any). "Strain" is crest minus brace. "Pulse" classifies strain against a tolerance band of 10 either side of zero.
  * A person may belong to any number of "regions": short codes typed in, like N1 or S2. A region's
@@ -277,10 +277,9 @@ public class Person {
         return onset;
     }
 
-    /** Age is the complete seven-day weeks from onset to the anchor (leftover days dropped), negative when onset is
-     * after it and truncated toward zero; absent without an onset. */
+    /** Age is the whole days from onset to the anchor, negative when onset is after it; absent without an onset. */
     public Long getAge(LocalDate anchor) {
-        return onset == null ? null : ChronoUnit.WEEKS.between(onset, anchor);
+        return onset == null ? null : ChronoUnit.DAYS.between(onset, anchor);
     }
 
     /** Decay is momentum minus age; absent while either is absent. */

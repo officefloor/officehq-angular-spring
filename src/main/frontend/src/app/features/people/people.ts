@@ -39,7 +39,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // id no sheet has yet starts a new empty sheet with that id. Sheets are kept apart: each numbers
 // its own people, and a sheet only ever shows (and edits) its own.
 // The sheet shows its anchor date (today when none is set), and each person their onset date and
-// their age: complete weeks from onset to the anchor, negative (toward zero) when onset is after it ("n/a" without onset).
+// their age: whole days from onset to the anchor, negative when onset is after it ("n/a" without onset).
 // Their decay is momentum minus age ("n/a" while either is missing).
 // Each person has a state, starting at DRAFT; the row's Advance button moves it forward to REVIEW and
 // then FINAL, after which there is no Advance button. The row's Back button moves a REVIEW person back
