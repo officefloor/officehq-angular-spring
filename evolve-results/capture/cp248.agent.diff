@@ -1,0 +1,121 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b6a3d8a6..515e5aa0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -105,8 +105,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // The sheet's grand influence is everyone's influence added together, leaving out anyone whose influence is "n/a".
+ // The sheet's top flow is the name of the person with the highest flow, ties going to the name
+ // that comes first alphabetically ("n/a" when nobody has a flow).
+-// Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
+-// worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
++// Their norm is their scaled minus the average (mean) scaled of everyone on the sheet whose scaled can
++// be worked out, rounded down ("n/a" while their scaled is "n/a").
+ // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
+ // otherwise "no" (also "no" while their norm is "n/a").
+ // Their stratum is TOP when their scaled is at or above the sheet's average (mean) scaled, otherwise BOT
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonController.java b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+index 8434ea1c..d4aa70b1 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonController.java
+@@ -12,7 +12,6 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.Set;
+-import java.util.function.Function;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PatchMapping;
+@@ -35,7 +34,7 @@ public class PersonController {
+             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
+             List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, String stratum, Integer portion, Integer standing, State state, Integer ebb, boolean stray,
+             Long groupId, String groupName, List<GroupController.GroupView> groups) {
+-        static PersonView of(Person p, Map<Long, Integer> ranks, Map<Long, Integer> standings, Integer medianScaled, Double meanScaled, Long grandScaled, Integer meanBlend, LocalDate anchor) {
++        static PersonView of(Person p, Map<Long, Integer> ranks, Map<Long, Integer> standings, Integer flooredMeanScaled, Double meanScaled, Long grandScaled, Integer meanBlend, LocalDate anchor) {
+             Integer rank = ranks.get(p.getLocalId());
+             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
+                     p.getGrade(), p.getWeight(), p.getKind(), p.getVerge(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getPivot(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getHaul(), p.getVector(), p.getPhase(), p.getLoad(), p.getTier(),
+@@ -45,8 +44,8 @@ public class PersonController {
+                     p.getInfluence(), p.getBrace(), p.getTide(), p.getStrain(), p.getPulse(), p.getRegions(), p.getReach(), p.getGust(), p.getCoil(),
+                     p.getAllies().stream().map(o -> new PatronView(o.getLocalId(), o.getName())).toList(),
+                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(), p.getFlow(),
+-                    PersonController.norm(p.getScaled(), medianScaled),
+-                    PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)),
++                    PersonController.norm(p.getScaled(), flooredMeanScaled),
++                    PersonController.outlier(PersonController.norm(p.getScaled(), flooredMeanScaled)),
+                     PersonController.stratum(p.getScaled(), meanScaled),
+                     PersonController.portion(p.getScaled(), grandScaled), standings.get(p.getLocalId()), p.getState(),
+                     PersonController.ebb(p.getBlend(), meanBlend),
+@@ -79,9 +78,9 @@ public class PersonController {
+         return rank != null && rank <= ranked / 3;
+     }
+ 
+-    /** Norm is scaled minus the sheet's median scaled; absent while either is absent. */
+-    static Integer norm(Integer scaled, Integer medianScaled) {
+-        return scaled == null || medianScaled == null ? null : scaled - medianScaled;
++    /** Norm is scaled minus the sheet's mean scaled (rounded down); absent while either is absent. */
++    static Integer norm(Integer scaled, Integer flooredMeanScaled) {
++        return scaled == null || flooredMeanScaled == null ? null : scaled - flooredMeanScaled;
+     }
+ 
+     /** Stratum is TOP when scaled is at or above the sheet's mean scaled, otherwise BOT; absent while either is absent. */
+@@ -113,11 +112,16 @@ public class PersonController {
+     }
+ 
+     /**
+-     * The median scaled of the people whose scaled can be worked out; for an even count, the lower of
+-     * the two middle values. Absent when there are none.
++     * The mean scaled of the people whose scaled can be worked out, rounded down. Absent when there are
++     * none.
+      */
+-    private static Integer medianScaled(List<Person> people) {
+-        return median(people, Person::getScaled);
++    private static Integer flooredMeanScaled(List<Person> people) {
++        List<Integer> values = people.stream().map(Person::getScaled).filter(v -> v != null).toList();
++        if (values.isEmpty()) {
++            return null;
++        }
++        long sum = values.stream().mapToLong(Integer::longValue).sum();
++        return (int) Math.floorDiv(sum, (long) values.size());
+     }
+ 
+     /** The mean scaled of the people whose scaled can be worked out, unrounded. Absent when there are none. */
+@@ -145,15 +149,6 @@ public class PersonController {
+         return (int) Math.floorDiv(sum, (long) values.size());
+     }
+ 
+-    /** The median of a value over the people who have it, the lower middle for an even count; absent when none do. */
+-    private static Integer median(List<Person> people, Function<Person, Integer> value) {
+-        List<Integer> values = people.stream().map(value).filter(v -> v != null).sorted().toList();
+-        if (values.isEmpty()) {
+-            return null;
+-        }
+-        return values.get((values.size() - 1) / 2);
+-    }
+-
+     /** Highest momentum first; equal momentum by higher alpha, then by name, earlier in the alphabet first. */
+     private static final Comparator<Person> RANK_ORDER = Comparator
+             .comparing(Person::getMomentum, Comparator.reverseOrder())
+@@ -179,12 +174,12 @@ public class PersonController {
+         List<Person> people = service.list(sheetId);
+         Map<Long, Integer> ranks = ranks(people);
+         Map<Long, Integer> standings = standings(people);
+-        Integer medianScaled = medianScaled(people);
++        Integer flooredMeanScaled = flooredMeanScaled(people);
+         Double meanScaled = meanScaled(people);
+         Long grandScaled = grandScaled(people);
+         Integer meanBlend = meanBlend(people);
+         LocalDate anchor = service.anchor(sheetId);
+-        return people.stream().map(p -> PersonView.of(p, ranks, standings, medianScaled, meanScaled, grandScaled, meanBlend, anchor)).toList();
++        return people.stream().map(p -> PersonView.of(p, ranks, standings, flooredMeanScaled, meanScaled, grandScaled, meanBlend, anchor)).toList();
+     }
+ 
+     @PostMapping
+@@ -354,7 +349,7 @@ public class PersonController {
+     /** A person's view, ranked among the people on their sheet. */
+     private PersonView view(String sheetId, Person person) {
+         List<Person> people = service.list(sheetId);
+-        return PersonView.of(person, ranks(people), standings(people), medianScaled(people), meanScaled(people), grandScaled(people), meanBlend(people), service.anchor(sheetId));
++        return PersonView.of(person, ranks(people), standings(people), flooredMeanScaled(people), meanScaled(people), grandScaled(people), meanBlend(people), service.anchor(sheetId));
+     }
+ 
+     /**
