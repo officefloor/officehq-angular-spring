@@ -120,6 +120,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // "n/a" as zero.
 // The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a",
 // and leaving out the single highest scaled as an outlier (that person stays on the sheet).
+// The sheet's grand scaled is everyone's scaled added together, leaving out anyone whose scaled is "n/a"
+// (0 when nobody has a scaled).
 // The sheet's tier tally shows how many of its people are in each tier, SURGE, STEADY and SINK (zero when
 // none are); people without a tier are not counted.
 // The sheet's tier share shows, for each tier, SURGE, STEADY and SINK, its tally as a percentage of the
@@ -435,6 +437,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
     <p>Meeting quota: <strong data-testid="rollup-quota-count">{{ quotaCount() }}</strong></p>
     <p>Final total: <strong data-testid="rollup-final-total">{{ finalTotal() }}</strong></p>
     <p>Ledger: <strong data-testid="rollup-ledger">{{ ledger() }}</strong></p>
+    <p>Grand scaled: <strong data-testid="rollup-grand-scaled">{{ grandScaled() }}</strong></p>
     <p>Strongest member: <strong data-testid="rollup-strongest-member">{{ strongestMember() ?? 'n/a' }}</strong></p>
     <p>Apex: <strong data-testid="rollup-apexname">{{ apexName() ?? 'n/a' }}</strong></p>
     <p>Top non-final: <strong data-testid="rollup-apex-nonfinal">{{ apexNonFinal() ?? 'n/a' }}</strong></p>
@@ -1273,12 +1276,12 @@ export class People {
       .filter((p) => p.state === 'FINAL')
       .reduce((total, p) => total + (p.scaled ?? 0), 0),
   );
-  private readonly scaledTotal = computed(() =>
+  protected readonly grandScaled = computed(() =>
     this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
   );
   protected readonly ledger = computed(() => {
     const order = this.scaledOrder();
-    return this.scaledTotal() - (order.length > 0 ? order[0].scaled! : 0);
+    return this.grandScaled() - (order.length > 0 ? order[0].scaled! : 0);
   });
   protected readonly coverage = computed(
     () => this.people().filter((p) => p.scaled !== null && p.scaled >= 500).length,
@@ -1832,7 +1835,7 @@ export class People {
     return this.scaledOrder().reduce((tilt, p) => tilt + Math.sign(p.scaled! - median), 0);
   });
   protected readonly concentration = computed(() => {
-    const total = this.scaledTotal();
+    const total = this.grandScaled();
     const topThree = this.scaledOrder()
       .slice(0, 3)
       .reduce((sum, p) => sum + p.scaled!, 0);
