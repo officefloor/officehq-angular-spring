@@ -82,6 +82,9 @@ export interface Person {
   outlier: boolean;
   // TOP when scaled is at or above the sheet's mean scaled, otherwise BOT; absent without a scaled.
   stratum: 'TOP' | 'BOT' | null;
+  // Scaled as a whole-number percentage of the sheet's grand scaled, rounded down; absent without a
+  // scaled or while the grand scaled is zero.
+  portion: number | null;
   ebb: number | null;
   stray: boolean;
   // "Their group": the id and name of the group, of those they are in, whose name comes first

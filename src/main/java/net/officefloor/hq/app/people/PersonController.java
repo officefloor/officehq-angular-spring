@@ -33,9 +33,9 @@ public class PersonController {
             Grade grade, Integer weight, Kind kind, Integer verge, Integer thrust, Integer drift, Integer momentum, Integer force, Integer sway, Integer torque, Integer pivot, Integer blend, Integer flux, Integer crest, Integer swing, Integer haul, Integer vector, String phase, Integer load, String tier, List<PatronView> patrons,
             Integer backing, Integer net, Integer rank, Integer percentile, boolean quota, LocalDate onset, Long age, Long decay, boolean active, Integer effective,
             Integer clout, Integer influence, Integer brace, Integer tide, Integer strain, String pulse, List<String> regions, Integer reach, Integer gust, Integer coil,
-            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, String stratum, State state, Integer ebb, boolean stray,
+            List<PatronView> allies, int allyCount, Integer synergy, Integer combined, Integer score, int noteSum, Integer quality, Integer adjusted, String band, Integer scaled, Integer thrum, Integer spool, String drag, Integer lift, Integer yield, Integer grip, Integer charge, Integer churn, Integer flow, Integer norm, boolean outlier, String stratum, Integer portion, State state, Integer ebb, boolean stray,
             Long groupId, String groupName, List<GroupController.GroupView> groups) {
-        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Double meanScaled, Integer meanBlend, LocalDate anchor) {
+        static PersonView of(Person p, Map<Long, Integer> ranks, Integer medianScaled, Double meanScaled, Long grandScaled, Integer meanBlend, LocalDate anchor) {
             Integer rank = ranks.get(p.getLocalId());
             return new PersonView(p.getLocalId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.getDelta(), p.getEpsilon(), p.getZeta(),
                     p.getGrade(), p.getWeight(), p.getKind(), p.getVerge(), p.getThrust(), p.getDrift(), p.getMomentum(), p.getForce(), p.getSway(), p.getTorque(), p.getPivot(), p.getBlend(), p.getFlux(), p.getCrest(), p.getSwing(), p.getHaul(), p.getVector(), p.getPhase(), p.getLoad(), p.getTier(),
@@ -47,7 +47,8 @@ public class PersonController {
                     p.getAllies().size(), p.getSynergy(), p.getCombined(), p.getScore(), p.getNoteSum(), p.getQuality(), p.getAdjusted(), p.getBand(), p.getScaled(), p.getThrum(), p.getSpool(), p.getDrag(), p.getLift(), p.getYield(), p.getGrip(), p.getCharge(), p.getChurn(), p.getFlow(),
                     PersonController.norm(p.getScaled(), medianScaled),
                     PersonController.outlier(PersonController.norm(p.getScaled(), medianScaled)),
-                    PersonController.stratum(p.getScaled(), meanScaled), p.getState(),
+                    PersonController.stratum(p.getScaled(), meanScaled),
+                    PersonController.portion(p.getScaled(), grandScaled), p.getState(),
                     PersonController.ebb(p.getBlend(), meanBlend),
                     PersonController.stray(PersonController.ebb(p.getBlend(), meanBlend)),
                     p.getGroup() == null ? null : p.getGroup().getLocalId(),
@@ -88,6 +89,14 @@ public class PersonController {
         return scaled == null || meanScaled == null ? null : scaled >= meanScaled ? "TOP" : "BOT";
     }
 
+    /**
+     * Portion is scaled as a whole-number percentage of the sheet's grand scaled, rounded down; absent
+     * while scaled is absent or the grand scaled is absent or zero.
+     */
+    static Integer portion(Integer scaled, Long grandScaled) {
+        return scaled == null || grandScaled == null || grandScaled == 0 ? null : (int) Math.floorDiv(scaled * 100L, grandScaled);
+    }
+
     /** Ebb is blend minus the sheet's mean blend (rounded down); absent while either is absent. */
     static Integer ebb(Integer blend, Integer meanBlend) {
         return blend == null || meanBlend == null ? null : blend - meanBlend;
@@ -115,6 +124,12 @@ public class PersonController {
     private static Double meanScaled(List<Person> people) {
         List<Integer> values = people.stream().map(Person::getScaled).filter(v -> v != null).toList();
         return values.isEmpty() ? null : values.stream().mapToLong(Integer::longValue).average().getAsDouble();
+    }
+
+    /** The grand scaled: the sum of scaled over the people whose scaled can be worked out. Absent when there are none. */
+    private static Long grandScaled(List<Person> people) {
+        List<Integer> values = people.stream().map(Person::getScaled).filter(v -> v != null).toList();
+        return values.isEmpty() ? null : values.stream().mapToLong(Integer::longValue).sum();
     }
 
     /**
@@ -165,9 +180,10 @@ public class PersonController {
         Map<Long, Integer> ranks = ranks(people);
         Integer medianScaled = medianScaled(people);
         Double meanScaled = meanScaled(people);
+        Long grandScaled = grandScaled(people);
         Integer meanBlend = meanBlend(people);
         LocalDate anchor = service.anchor(sheetId);
-        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, meanScaled, meanBlend, anchor)).toList();
+        return people.stream().map(p -> PersonView.of(p, ranks, medianScaled, meanScaled, grandScaled, meanBlend, anchor)).toList();
     }
 
     @PostMapping
@@ -337,7 +353,7 @@ public class PersonController {
     /** A person's view, ranked among the people on their sheet. */
     private PersonView view(String sheetId, Person person) {
         List<Person> people = service.list(sheetId);
-        return PersonView.of(person, ranks(people), medianScaled(people), meanScaled(people), meanBlend(people), service.anchor(sheetId));
+        return PersonView.of(person, ranks(people), medianScaled(people), meanScaled(people), grandScaled(people), meanBlend(people), service.anchor(sheetId));
     }
 
     /**
