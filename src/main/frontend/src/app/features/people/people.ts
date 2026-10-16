@@ -118,7 +118,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's stray count is how many of its people are strays.
 // The sheet's final total is the sum of the scaled of its people whose state is FINAL, counting
 // "n/a" as zero.
-// The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a".
+// The sheet's ledger is the grand total of everyone's scaled, leaving out anyone whose scaled is "n/a",
+// and leaving out the single highest scaled as an outlier (that person stays on the sheet).
 // The sheet's tier tally shows how many of its people are in each tier, SURGE, STEADY and SINK (zero when
 // none are); people without a tier are not counted.
 // The sheet's tier share shows, for each tier, SURGE, STEADY and SINK, its tally as a percentage of the
@@ -252,11 +253,11 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's coverage share is its coverage as a percentage of its headcount, rounded down ("n/a" when
 // the sheet has nobody on it).
 // The sheet's concentration is the scaled of its three highest-scaled people added together as a percentage
-// of its ledger, rounded down ("n/a" when the ledger is zero).
+// of everyone's scaled added together (the outlier included), rounded down ("n/a" when that total is zero).
 // The sheet's skew is the average scaled, rounded down, minus its median scaled, of everyone whose scaled
 // can be worked out ("n/a" when nobody has a scaled).
-// The sheet's digest is the average scaled, rounded down, of everyone whose scaled can be worked out
-// ("n/a" when nobody has a scaled).
+// The sheet's digest is the average scaled per person: its ledger (without the outlier) divided by the
+// full headcount, rounded down ("n/a" when nobody has a scaled).
 // The sheet's tilt is how many people have a scaled above the median scaled minus how many have one
 // below it, of everyone whose scaled can be worked out (0 when nobody has a scaled).
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
@@ -1272,9 +1273,13 @@ export class People {
       .filter((p) => p.state === 'FINAL')
       .reduce((total, p) => total + (p.scaled ?? 0), 0),
   );
-  protected readonly ledger = computed(() =>
+  private readonly scaledTotal = computed(() =>
     this.people().reduce((total, p) => total + (p.scaled ?? 0), 0),
   );
+  protected readonly ledger = computed(() => {
+    const order = this.scaledOrder();
+    return this.scaledTotal() - (order.length > 0 ? order[0].scaled! : 0);
+  });
   protected readonly coverage = computed(
     () => this.people().filter((p) => p.scaled !== null && p.scaled >= 500).length,
   );
@@ -1819,7 +1824,7 @@ export class People {
   protected readonly digest = computed(() => {
     const order = this.scaledOrder();
     if (order.length === 0) return null;
-    return Math.floor(order.reduce((sum, p) => sum + p.scaled!, 0) / order.length);
+    return Math.floor(this.ledger() / this.headcount());
   });
   protected readonly tilt = computed(() => {
     const median = this.medianScaled();
@@ -1827,7 +1832,7 @@ export class People {
     return this.scaledOrder().reduce((tilt, p) => tilt + Math.sign(p.scaled! - median), 0);
   });
   protected readonly concentration = computed(() => {
-    const total = this.ledger();
+    const total = this.scaledTotal();
     const topThree = this.scaledOrder()
       .slice(0, 3)
       .reduce((sum, p) => sum + p.scaled!, 0);
