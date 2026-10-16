@@ -105,8 +105,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // The sheet's grand influence is everyone's influence added together, leaving out anyone whose influence is "n/a".
 // The sheet's top flow is the name of the person with the highest flow, ties going to the name
 // that comes first alphabetically ("n/a" when nobody has a flow).
-// Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
-// worked out; for an even count, the lower of the two middle values ("n/a" while their scaled is "n/a").
+// Their norm is their scaled minus the average (mean) scaled of everyone on the sheet whose scaled can
+// be worked out, rounded down ("n/a" while their scaled is "n/a").
 // They are an outlier ("yes") when their norm is more than 100 away from zero in either direction, and
 // otherwise "no" (also "no" while their norm is "n/a").
 // Their stratum is TOP when their scaled is at or above the sheet's average (mean) scaled, otherwise BOT
