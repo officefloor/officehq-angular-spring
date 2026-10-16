@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f7a669aa..b0dbcad0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -102,6 +102,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+ // that comes first alphabetically ("n/a" when nobody has a charge).
+ // The sheet's total yield is everyone's yield added together, leaving out anyone whose yield is "n/a".
+ // The sheet's grand flow is everyone's flow added together, leaving out anyone whose flow is "n/a".
++// The sheet's grand influence is everyone's influence added together, leaving out anyone whose influence is "n/a".
+ // The sheet's top flow is the name of the person with the highest flow, ties going to the name
+ // that comes first alphabetically ("n/a" when nobody has a flow).
+ // Their norm is their scaled minus the median scaled of everyone on the sheet whose scaled can be
+@@ -431,6 +432,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
+     <p>Total yield: <strong data-testid="rollup-total-yield">{{ totalYield() }}</strong></p>
+     <p>Total tide: <strong data-testid="rollup-total-tide">{{ totalTide() }}</strong></p>
+     <p>Grand flow: <strong data-testid="rollup-grand-flow">{{ grandFlow() }}</strong></p>
++    <p>Grand influence: <strong data-testid="rollup-grand-influence">{{ grandInfluence() }}</strong></p>
+     <p>Top flow: <strong data-testid="rollup-top-flow">{{ topFlow() ?? 'n/a' }}</strong></p>
+     <p>Outliers: <strong data-testid="rollup-outlier-count">{{ outlierCount() }}</strong></p>
+     <p>Strays: <strong data-testid="rollup-stray-count">{{ strayCount() }}</strong></p>
+@@ -1271,6 +1273,9 @@ export class People {
+   protected readonly grandFlow = computed(() =>
+     this.people().reduce((total, p) => total + (p.flow ?? 0), 0),
+   );
++  protected readonly grandInfluence = computed(() =>
++    this.people().reduce((total, p) => total + (p.influence ?? 0), 0),
++  );
+   protected readonly finalTotal = computed(() =>
+     this.people()
+       .filter((p) => p.state === 'FINAL')
