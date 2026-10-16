@@ -268,6 +268,8 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
 // full headcount, rounded down ("n/a" when nobody has a scaled).
 // The sheet's tilt is how many people have a scaled above the median scaled minus how many have one
 // below it, of everyone whose scaled can be worked out (0 when nobody has a scaled).
+// The sheet's even count is how many of its people have an even scaled; people whose scaled is "n/a"
+// are not counted.
 // A person may be in several groups; a group's figures count every person in it. Where a person's own
 // figure depends on "their group", it is the group, of those they are in, whose name comes first
 // alphabetically.
@@ -463,6 +465,7 @@ import { GRADES, Grade, Group, KINDS, Kind, PeopleService, Person, STATES } from
     <p>Skew (average minus median scaled): <strong data-testid="rollup-skewval">{{ skewVal() ?? 'n/a' }}</strong></p>
     <p>Digest (average scaled per person): <strong data-testid="rollup-digest">{{ digest() ?? 'n/a' }}</strong></p>
     <p>Tilt (above median minus below median scaled): <strong data-testid="rollup-tilt">{{ tilt() }}</strong></p>
+    <p>Even scaled: <strong data-testid="rollup-even-count">{{ evenCount() }}</strong></p>
     <section aria-labelledby="region-counts-heading">
       <h2 id="region-counts-heading">People per region</h2>
       @if (regionCounts().length === 0) {
@@ -1850,6 +1853,9 @@ export class People {
     if (median === null) return 0;
     return this.scaledOrder().reduce((tilt, p) => tilt + Math.sign(p.scaled! - median), 0);
   });
+  protected readonly evenCount = computed(
+    () => this.people().filter((p) => p.scaled !== null && p.scaled % 2 === 0).length,
+  );
   protected readonly concentration = computed(() => {
     const total = this.grandScaled();
     const topThree = this.scaledOrder()
