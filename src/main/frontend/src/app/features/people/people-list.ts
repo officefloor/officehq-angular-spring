@@ -209,6 +209,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="30"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="19">Ripple low</th>
+              <td data-testid="rollup-ripple-low">{{ rippleLow() ?? 'n/a' }}</td>
+              <td colspan="30"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="21">Ballast total</th>
               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
               <td colspan="28"></td>
@@ -339,6 +344,15 @@ export class PeopleList {
   protected readonly rippleTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ripple, hold: p.hold }))),
   );
+
+  // The lowest ripple among the people not on hold (n/a ripples skipped); null (n/a) when nobody has one.
+  protected readonly rippleLow = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.ripple)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.min(...values);
+  });
 
   // Everyone's ballast added up, trimmed like every sheet total.
   protected readonly ballastTotal = computed(() =>
