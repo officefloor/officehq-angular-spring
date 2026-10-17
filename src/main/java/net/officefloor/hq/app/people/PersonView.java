@@ -20,12 +20,14 @@ import java.util.List;
  * (n/a) when keel or norm is. pitch is keel plus momentum, null (n/a) when keel is. tackle is keel
  * minus momentum, null (n/a) when keel is. yaw is keel plus scaled, null (n/a) when keel is. heave
  * is keel minus scaled, null (n/a) when keel is. camber is keel plus 100, null (n/a) when keel is.
+ * sheer is keel minus 100, null (n/a) when keel is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
         Long backing, Long quarter, String tier, Long keel,
         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
-        Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber) {
+        Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
+        Long sheer) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
@@ -36,7 +38,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
                 ripple(p, averageScaled), heading(p, averageScaled), ballast(p, averageScaled),
                 keystone(p, averageScaled), bearing(p, averageScaled), pitch(p, averageScaled),
                 tackle(p, averageScaled), yaw(p, averageScaled), heave(p, averageScaled),
-                camber(p, averageScaled));
+                camber(p, averageScaled), sheer(p, averageScaled));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -168,6 +170,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long camber(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
         return keel == null ? null : keel + 100L;
+    }
+
+    private static Long sheer(Person p, Long averageScaled) {
+        Long keel = keel(p, averageScaled);
+        return keel == null ? null : keel - 100L;
     }
 
     private static String tier(Person p) {
