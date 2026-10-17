@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index c27e515b..c2339444 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -218,6 +218,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-ripple-top">{{ rippleTop() ?? 'n/a' }}</td>
+               <td colspan="30"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="19">Ripple spread</th>
++              <td data-testid="rollup-ripple-spread">{{ rippleSpread() ?? 'n/a' }}</td>
++              <td colspan="30"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="21">Ballast total</th>
+               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
+@@ -368,6 +373,13 @@ export class PeopleList {
+     return values.length === 0 ? null : Math.max(...values);
+   });
+ 
++  // The highest ripple minus the lowest among the people not on hold; null (n/a) when nobody has one.
++  protected readonly rippleSpread = computed(() => {
++    const top = this.rippleTop();
++    const low = this.rippleLow();
++    return top === null || low === null ? null : top - low;
++  });
++
+   // Everyone's ballast added up, trimmed like every sheet total.
+   protected readonly ballastTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ballast, hold: p.hold }))),
