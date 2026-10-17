@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610172303/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 20 tests using 1 worker
+
+[1A[2K[1/20] [chromium] › cp01_signin-and-sheet.spec.ts:5:7 › signin and sheet › signin and sheet
+[1A[2K[2/20] [chromium] › cp02_sheet-today.spec.ts:5:7 › sheet today › sheet today
+[1A[2K[3/20] [chromium] › cp03_people.spec.ts:5:7 › people › people
+[1A[2K[4/20] [chromium] › cp04_name-uniqueness.spec.ts:5:7 › name uniqueness › name uniqueness
+[1A[2K[5/20] [chromium] › cp05_claims.spec.ts:5:7 › claims › claims
+[1A[2K[6/20] [chromium] › cp06_audit.spec.ts:5:7 › audit › audit
+[1A[2K[7/20] [chromium] › cp07_rates-and-due.spec.ts:5:7 › rates and due › rates and due
+[1A[2K  1) [chromium] › cp07_rates-and-due.spec.ts:5:7 › rates and due › rates and due ───────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-11').getByTestId('person-due-total')
+    Expected string: [32m"0.00"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      25 |     await expect(pg_uma.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("0.00");
+      26 |     await expect(pg_uma.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-due")).toHaveText("0.50");
+    > 27 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+         |                                                                                             ^
+      28 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-due")).toHaveText("n/a");
+      29 |     await expect(pg_uma.getByTestId("rollup-claimed-total")).toHaveText("24.50");
+      30 |     await expect(pg_uma.getByTestId("rollup-due-total")).toHaveText("2.04");
+
+        at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/specs/cp07_rates-and-due.spec.ts:27:93
+
+
+[1A[2K[8/20] [chromium] › cp08_workflow.spec.ts:5:7 › workflow › workflow
+[1A[2K[9/20] [chromium] › cp09_numbering.spec.ts:5:7 › numbering › numbering
+[1A[2K[10/20] [chromium] › cp10_settle-freezes-due.spec.ts:5:7 › settle freezes due › settle freezes due
+[1A[2K[11/20] [chromium] › cp11_rates-effective-dated.spec.ts:5:7 › rates effective dated › rates effective dated
+[1A[2K[12/20] [chromium] › cp12_half-even.spec.ts:5:7 › half even › half even
+[1A[2K[13/20] [chromium] › cp13_four-eyes.spec.ts:5:7 › four eyes › four eyes
+[1A[2K[14/20] [chromium] › cp14_edit-conflict.spec.ts:5:7 › edit conflict › edit conflict
+[1A[2K[15/20] [chromium] › cp15_import-people.spec.ts:5:7 › import people › import people
+[1A[2K[16/20] [chromium] › cp16_import-upserts.spec.ts:5:7 › import upserts › import upserts
+[1A[2K[17/20] [chromium] › cp17_periods.spec.ts:5:7 › periods › periods
+[1A[2K[18/20] [chromium] › cp18_close-period.spec.ts:5:7 › close period › close period
+[1A[2K[19/20] [chromium] › cp19_quick-add.spec.ts:5:7 › quick add › quick add
+[1A[2K  2) [chromium] › cp19_quick-add.spec.ts:5:7 › quick add › quick add ───────────────────────────────
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.getAttribute: Test ended.
+    Call log:
+      [2m- waiting for locator('[data-testid^="person-row-"]').filter({ has: getByTestId('person-name').filter({ hasText: /^\s*dot\s*$/ }) }).last().locator('[data-testid^="claim-row-"]').first()[22m
+
+
+       at ../support/ui.ts:210
+
+      208 |
+      209 | async function newestClaim(r: Locator): Promise<string> {
+    > 210 |   return idOf(await claimRows(r).first().getAttribute('data-testid'), 'claim-row-');
+          |                                          ^
+      211 | }
+      212 |
+      213 | /** Add a claim from the person's row. The new claim's id (listed newest first), or null. */
+
+        at newestClaim (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:210:42)
+        at Object.quickAdd (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:298:10)
+        at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/specs/cp19_quick-add.spec.ts:16:29
+
+
+[1A[2K[20/20] [chromium] › cp20_open-claims-immutable.spec.ts:5:7 › open claims immutable › open claims immutable
+[1A[2K  Slow test file: [chromium] › cp19_quick-add.spec.ts (30.0s)
+  Consider splitting slow test files to speed up parallel execution
+  2 failed
+    [chromium] › cp07_rates-and-due.spec.ts:5:7 › rates and due › rates and due ────────────────────
+    [chromium] › cp19_quick-add.spec.ts:5:7 › quick add › quick add ────────────────────────────────
+  18 passed (1.2m)

@@ -1,0 +1,121 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 12b7ca43..7be9dc4d 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -12,7 +12,7 @@ export interface Claim {
+   date: string;
+   note: string;
+   status: ClaimStatus;
+-  /** The sheet's number given when the claim was opened; null for a draft or a voided claim. */
++  /** The sheet's number given when the claim was opened; null for a draft; a voided claim keeps it. */
+   number: number | null;
+   /** The due fixed when the claim was settled, two decimals; null if not settled or it had no rate then. */
+   settledDue: string | null;
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 0fbe62b4..19778af5 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -7,6 +7,7 @@ import { Rates } from '../../core/rates';
+ import { Session } from '../../core/session';
+ 
+ const CLOSED = 'The claim is dated in a closed period, so it cannot be changed.';
++const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, void it and add a new one.';
+ 
+ // One person's claims, newest first, and the one form that adds a claim or edits an existing one.
+ @Component({
+@@ -135,6 +136,11 @@ export class PersonClaims {
+       this.rowError.set({ id: claim.id, message: CLOSED });
+       return;
+     }
++    if (claim.status !== 'DRAFT') {
++      this.reset();
++      this.rowError.set({ id: claim.id, message: NOT_DRAFT });
++      return;
++    }
+     this.editingId.set(claim.id);
+     this.amount.set(claim.amount);
+     this.date.set(claim.date);
+@@ -175,6 +181,8 @@ export class PersonClaims {
+     } catch (e) {
+       this.error.set(e instanceof HttpErrorResponse && e.status === 423
+         ? CLOSED
++        : e instanceof HttpErrorResponse && e.status === 409
++        ? NOT_DRAFT
+         : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+     } finally {
+       this.saving = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 402a006c..565c321a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,7 +39,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The sheet's number given when the claim was opened; none for a draft or a voided claim. */
++    /** The sheet's number given when the claim was opened; none for a draft, and kept when the claim is voided. */
+     @Column(name = "claim_number")
+     private Long number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ccc71d4c..1adb0f35 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -19,7 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * The claims kept on a sheet, newest first. A claim without a date takes the sheet's today; a
+- * missing note is stored empty. No claim dated in a closed period can be added, edited or change
++ * missing note is stored empty. Only a DRAFT claim can be edited (409); an open claim is changed by
++ * voiding it and adding a new one. No claim dated in a closed period can be added, edited or change
+  * status (423).
+  */
+ @Service
+@@ -67,6 +68,9 @@ public class ClaimService {
+         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+         LocalDate on = date != null ? date : sheets.today(sheetId);
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot be edited");
++        }
+         refuseIfClosed(sheetId, claim.getDate());
+         refuseIfClosed(sheetId, on);
+         claim.setAmount(scaled(amount));
+@@ -80,7 +84,7 @@ public class ClaimService {
+ 
+     /**
+      * Move a claim to the next status; a change its status does not allow is refused (409). Opening
+-     * gives the claim the sheet's next number; voiding clears it (the number is not given again).
++     * gives the claim the sheet's next number; a voided claim keeps it (the number is never given again).
+      * Opening records who opened it; that user cannot settle it (403).
+      * Settling fixes the claim's due at its person's grade's rate in force on the claim's date.
+      */
+@@ -104,7 +108,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         claim.setStatus(next);
+-        claim.setNumber(next == ClaimStatus.VOID ? null : number);
++        claim.setNumber(number);
+         if (next == ClaimStatus.OPEN) {
+             claim.setOpenedBy(user);
+         }
+@@ -141,8 +145,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. A claim with a number
+-     * (or, when voided, the number it had) adds number=&lt;number&gt;; any extra fields follow it.
++     * Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. A claim with a number adds number=&lt;number&gt;; any extra fields follow it.
+      */
+     private void record(String event, String user, Person person, Claim claim, Long number, List<String> extra) {
+         List<String> fields = new ArrayList<>(List.of("person=" + person.getName(),
+diff --git a/src/main/resources/db/migration/V15__claim_void_keeps_number.sql b/src/main/resources/db/migration/V15__claim_void_keeps_number.sql
+new file mode 100644
+index 00000000..9f20ab92
+--- /dev/null
++++ b/src/main/resources/db/migration/V15__claim_void_keeps_number.sql
+@@ -0,0 +1,4 @@
++-- Only a DRAFT claim can be edited; an OPEN claim is changed by voiding it and adding a new one.
++-- A voided claim now keeps the number it was given when opened (still never given again).
++-- Claims voided before this change had their number cleared, and it cannot be recovered.
++SELECT 1;
