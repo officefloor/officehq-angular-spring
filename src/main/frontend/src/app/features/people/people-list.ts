@@ -823,6 +823,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-mast-mean">{{ mastMean() ?? 'n/a' }}</td>
               <td colspan="9"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="41">Rigging total</th>
+              <td data-testid="rollup-rigging-total">{{ riggingTotal() }}</td>
+              <td colspan="8"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1384,6 +1389,11 @@ export class PeopleList {
   // Everyone's mast added up, trimmed like every sheet total.
   protected readonly mastTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.mast, hold: p.hold }))),
+  );
+
+  // Everyone's rigging added up, trimmed like every sheet total.
+  protected readonly riggingTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.rigging, hold: p.hold }))),
   );
 
   // The highest mast among the people not on hold, skipping n/a; n/a when there is none.
