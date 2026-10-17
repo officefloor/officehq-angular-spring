@@ -1,0 +1,154 @@
+{
+  "checkpoint": 10,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp10_settle-freezes-due",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Settling a claim fixes its due: the figure it had at the moment of settling is kept, and later\nchanges to rates do not alter it. Open claims stay live. Show the frozen figure in the same place\nas before, and add due=<due> at the end of the CLAIM_SETTLED line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSettling a claim fixes its due: the figure it had at the moment of settling is kept, and later\nchanges to rates do not alter it. Open claims stay live. Show the frozen figure in the same place\nas before, and add due=<due> at the end of the CLAIM_SETTLED line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d3067578e49d46d63338913b1ac17c8a7d3dec4a",
+  "reset_sha": "",
+  "preagent_sha": "975aaaf635d197cd1012b6bdede2231e6801a94c",
+  "prev_sha": "975aaaf635d197cd1012b6bdede2231e6801a94c",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.47081719999999994,
+    "input_tokens": 18,
+    "output_tokens": 7014,
+    "cache_read_tokens": 263286,
+    "cache_creation_tokens": 34726,
+    "num_turns": 9,
+    "duration_ms": 120671,
+    "duration_api_ms": 70564,
+    "model": "claude-opus-5-5",
+    "session_id": "a5c88af8-0478-46d5-b954-8d2be11177c6",
+    "stop_reason": "success",
+    "result_text": "Settling a claim now fixes its due, and `bin/e2e` passes.\n\n**What changed**\n- **Stored data:** a new migration, `V9__claim_settled_due.sql`, adds a `settled_due` column to claims.\n- **Server:** when a claim is settled, the server works out amount \u00d7 the current rate for the person's grade, rounded half up to cents (the same rounding the screen uses), and stores it. The `CLAIM_SETTLED` audit line now ends with `due=<due>`, and the claim data sent to the browser includes the frozen figure. The changes are in `ClaimService.changeStatus` and `ClaimController`.\n- **Front end:** the claim's due field (`claim-due`) shows the frozen figure for a settled claim. Open claims still follow the current rate.\n\n**Your test expects the totals to stay live.** The person's due total and the sheet's overall due total still use the current rate, including settled claims. In the test, after the rate goes from 10% to 20%, the settled claim shows 2.00 but the person's total is 4.60, which is 23.00 \u00d7 20%. If the totals used the frozen figure it would be 2.60. I tried that first and the test failed, so I put the totals back to how they were.\n\n**Two choices the request didn't cover:**\n- If a claim is settled while its grade has no rate, nothing is stored: the claim shows `n/a` and the audit line ends `due=n/a`.\n- Editing a settled claim's amount afterwards does not change its frozen due.\n\nSay if you want either of these handled differently.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.47081719999999994,
+        "num_turns": 9,
+        "duration_ms": 120671,
+        "duration_api_ms": 70564,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp10.agent.jsonl",
+  "agent_diff_file": "cp10.agent.diff",
+  "build_log_file": "cp10.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 10,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 965,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 924,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1297,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1406,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1655,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1179,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2094,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2061,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1749,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1496,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
