@@ -498,6 +498,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-heave-mean">{{ heaveMean() ?? 'n/a' }}</td>
               <td colspan="22"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="28">Camber total</th>
+              <td data-testid="rollup-camber-total">{{ camberTotal() }}</td>
+              <td colspan="21"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1004,6 +1009,11 @@ export class PeopleList {
   // Everyone's heave added up, trimmed like every sheet total.
   protected readonly heaveTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.heave, hold: p.hold }))),
+  );
+
+  // Everyone's camber added up, trimmed like every sheet total.
+  protected readonly camberTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.camber, hold: p.hold }))),
   );
 
   // The highest heave among the people not on hold (n/a heaves skipped); null (n/a) when nobody has one.
