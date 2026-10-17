@@ -598,6 +598,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-freeboard-mean">{{ freeboardMean() ?? 'n/a' }}</td>
               <td colspan="18"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="32">Buoyancy total</th>
+              <td data-testid="rollup-buoyancy-total">{{ buoyancyTotal() }}</td>
+              <td colspan="17"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1124,6 +1129,11 @@ export class PeopleList {
   // Everyone's freeboard added up, trimmed like every sheet total.
   protected readonly freeboardTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.freeboard, hold: p.hold }))),
+  );
+
+  // Everyone's buoyancy added up, trimmed like every sheet total.
+  protected readonly buoyancyTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.buoyancy, hold: p.hold }))),
   );
 
   // The highest freeboard among the people not on hold (n/a freeboards skipped); null (n/a) when
