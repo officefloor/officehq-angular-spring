@@ -563,6 +563,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-beam-spread">{{ beamSpread() ?? 'n/a' }}</td>
               <td colspan="19"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="30">Beam even</th>
+              <td data-testid="rollup-beam-even">{{ beamEven() }}</td>
+              <td colspan="19"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1262,6 +1267,11 @@ export class PeopleList {
   protected readonly sheerEven = computed(
     () =>
       countable(this.people() ?? []).filter((p) => p.sheer !== null && p.sheer % 2 === 0).length,
+  );
+
+  // How many counted people have an even beam (n/a beams are not counted).
+  protected readonly beamEven = computed(
+    () => countable(this.people() ?? []).filter((p) => p.beam !== null && p.beam % 2 === 0).length,
   );
 
   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
