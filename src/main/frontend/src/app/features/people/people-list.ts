@@ -284,6 +284,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="30"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="20">Heading total</th>
+              <td data-testid="rollup-heading-total">{{ headingTotal() }}</td>
+              <td colspan="29"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="21">Ballast total</th>
               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
               <td colspan="28"></td>
@@ -574,6 +579,11 @@ export class PeopleList {
       ? null
       : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
+
+  // Everyone's heading added up, trimmed like every sheet total.
+  protected readonly headingTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.heading, hold: p.hold }))),
+  );
 
   // Everyone's ballast added up, trimmed like every sheet total.
   protected readonly ballastTotal = computed(() =>
