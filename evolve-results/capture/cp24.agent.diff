@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 0b70f5c6..83a5bbc4 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -54,7 +54,7 @@ export interface Person {
+   yaw: number | null;
+   // keel minus scaled; null (n/a) when keel is.
+   heave: number | null;
+-  // keel plus 100; null (n/a) when keel is.
++  // keel plus 200; null (n/a) when keel is.
+   camber: number | null;
+   // keel minus 100; null (n/a) when keel is.
+   sheer: number | null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 576b89e0..a39d8d73 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -19,7 +19,7 @@ import java.util.List;
+  * keystone is ballast plus norm, null (n/a) when ballast or norm is. bearing is keel minus norm, null
+  * (n/a) when keel or norm is. pitch is keel plus momentum, null (n/a) when keel is. tackle is keel
+  * minus momentum, null (n/a) when keel is. yaw is keel plus scaled, null (n/a) when keel is. heave
+- * is keel minus scaled, null (n/a) when keel is. camber is keel plus 100, null (n/a) when keel is.
++ * is keel minus scaled, null (n/a) when keel is. camber is keel plus 200, null (n/a) when keel is.
+  * sheer is keel minus 100, null (n/a) when keel is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+@@ -169,7 +169,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+ 
+     private static Long camber(Person p, Long averageScaled) {
+         Long keel = keel(p, averageScaled);
+-        return keel == null ? null : keel + 100L;
++        return keel == null ? null : keel + 200L;
+     }
+ 
+     private static Long sheer(Person p, Long averageScaled) {
