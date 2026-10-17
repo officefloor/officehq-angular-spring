@@ -18,7 +18,7 @@ import java.util.Set;
  * null (n/a) when scaled is. keel is scaled plus twice momentum plus twice norm plus
  * thrust, null (n/a) when momentum or norm is.
  * fathom is keel plus momentum plus 68 and draft is keel plus thrust; both null (n/a) when keel is.
- * cascade is fathom plus scaled, null (n/a) when fathom is. trim is keel minus thrust, null (n/a)
+ * cascade is fathom plus scaled plus 72, null (n/a) when fathom is. trim is keel minus thrust, null (n/a)
  * when keel is. ripple is cascade plus keel, null (n/a) when cascade is. heading is keel plus norm,
  * null (n/a) when keel or norm is. ballast is ripple plus thrust, null (n/a) when ripple is.
  * keystone is ballast plus norm, null (n/a) when ballast or norm is. bearing is keel minus norm, null
@@ -157,7 +157,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long cascade(Person p, Long averageScaled) {
         Long fathom = fathom(p, averageScaled);
-        return fathom == null ? null : fathom + scaled(p);
+        return fathom == null ? null : fathom + scaled(p) + 72L;
     }
 
     private static Long trim(Person p, Long averageScaled) {
