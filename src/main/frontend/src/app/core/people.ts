@@ -19,9 +19,13 @@ export interface PersonFields {
   grade: Grade;
 }
 
-/** What an import did: how many it added, or the lines (numbered from 1) that stopped it. */
+/**
+ * What an import did: how many it added and how many existing people it updated, or the lines
+ * (numbered from 1) that stopped it.
+ */
 export interface ImportResult {
   added: number;
+  updated: number;
   errors: { line: number; message: string }[];
 }
 
@@ -39,7 +43,9 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<Person>(this.url(), fields, { headers: this.headers() }));
   }
 
-  /** Add people from pasted lines of name,grade; all of them, or none when any line is bad. */
+  /**
+   * Add or update people from pasted lines of name,grade; all of them, or none when any line is bad.
+   */
   importLines(text: string): Promise<ImportResult> {
     return firstValueFrom(
       this.http.post<ImportResult>(`${this.url()}/import`, { text }, { headers: this.headers() }),

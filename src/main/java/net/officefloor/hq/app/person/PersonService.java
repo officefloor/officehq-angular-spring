@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -55,14 +56,18 @@ public class PersonService {
     public record ImportError(int line, String message) {
     }
 
-    /** How many people an import added, or the lines that stopped it (then nothing is added). */
-    public record ImportResult(int added, List<ImportError> errors) {
+    /**
+     * How many people an import added and how many existing ones it updated, or the lines that
+     * stopped it (then nothing is changed).
+     */
+    public record ImportResult(int added, int updated, List<ImportError> errors) {
     }
 
     /**
      * Import people from lines of name,grade. Every line is checked first with the rules of the form;
      * a name repeated in the paste is compared like uniqueness on the sheet. If any line breaks a
-     * rule nothing is added; otherwise each person is added in order. Blank lines are skipped.
+     * rule nothing is changed; otherwise, in order, a name already on the sheet has its grade
+     * updated and any other name is added. Blank lines are skipped.
      */
     @Transactional
     public ImportResult importPeople(String sheetId, String user, String text) {
@@ -86,8 +91,6 @@ public class PersonService {
                 error = "The name is too long.";
             } else if (!GRADES.contains(grade)) {
                 error = "The grade must be A, B or C.";
-            } else if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
-                error = "That name is already in use on this sheet.";
             } else if (!seen.add(name.toLowerCase(Locale.ROOT))) {
                 error = "That name is repeated in the import.";
             }
@@ -98,16 +101,28 @@ public class PersonService {
             }
         }
         if (!errors.isEmpty()) {
-            return new ImportResult(0, errors);
+            return new ImportResult(0, 0, errors);
         }
         if (!rows.isEmpty()) {
             sheets.load(sheetId, user);
         }
+        int added = 0;
+        int updated = 0;
         for (String[] row : rows) {
-            Person person = people.save(new Person(sheetId, row[0], row[1]));
-            audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+            Optional<Person> existing = people.findFirstBySheetIdAndNameIgnoreCase(sheetId, row[0]);
+            if (existing.isPresent()) {
+                Person person = existing.get();
+                person.setGrade(row[1]);
+                person = people.saveAndFlush(person);
+                audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+                updated++;
+            } else {
+                Person person = people.save(new Person(sheetId, row[0], row[1]));
+                audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+                added++;
+            }
         }
-        return new ImportResult(rows.size(), List.of());
+        return new ImportResult(added, updated, List.of());
     }
 
     @Transactional

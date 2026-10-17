@@ -58,6 +58,7 @@ import { PersonClaims } from '../claims/claims';
         @if (importResult(); as result) {
           <div role="status">
             <p>Added <strong data-testid="import-added">{{ result.added }}</strong></p>
+            <p>Updated <strong data-testid="import-updated">{{ result.updated }}</strong></p>
             @if (result.errors.length > 0) {
               <p>Nothing was imported; fix these lines:</p>
               <ul>
@@ -232,7 +233,7 @@ export class People {
     try {
       const result = await this.api.importLines(this.importText());
       this.importResult.set(result);
-      if (result.added > 0) {
+      if (result.added > 0 || result.updated > 0) {
         this.importText.set('');
         await this.reload();
       }
