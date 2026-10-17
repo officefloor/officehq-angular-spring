@@ -244,6 +244,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="28"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="21">Ballast top</th>
+              <td data-testid="rollup-ballast-top">{{ ballastTop() ?? 'n/a' }}</td>
+              <td colspan="28"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="22">Keystone total</th>
               <td data-testid="rollup-keystone-total">{{ keystoneTotal() }}</td>
               <td colspan="27"></td>
@@ -419,6 +424,15 @@ export class PeopleList {
       .map((p) => p.ballast)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.min(...values);
+  });
+
+  // The highest ballast among the people not on hold (n/a ballasts skipped); null (n/a) when nobody has one.
+  protected readonly ballastTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.ballast)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
   });
 
   // Everyone's keystone added up, trimmed like every sheet total.
