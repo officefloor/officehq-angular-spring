@@ -1,0 +1,306 @@
+{
+  "checkpoint": 29,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp29_reopen-period",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again. Reopening writes PERIOD_REOPENED\nperiod=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again. Reopening writes PERIOD_REOPENED\nperiod=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0c8597bdcdacb063a5f700da5795a4d498bc3a4d",
+  "reset_sha": "",
+  "preagent_sha": "0e52d2baa2eb384533a1e6e3fca0bdee6b7c82f4",
+  "prev_sha": "0e52d2baa2eb384533a1e6e3fca0bdee6b7c82f4",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3696542,
+    "input_tokens": 14,
+    "output_tokens": 3387,
+    "cache_read_tokens": 199211,
+    "cache_creation_tokens": 32752,
+    "num_turns": 7,
+    "duration_ms": 57477,
+    "duration_api_ms": 34177,
+    "model": "claude-opus-5-5",
+    "session_id": "90077113-73b5-4dc1-90f2-93c16d5f008a",
+    "stop_reason": "success",
+    "result_text": "Stewards can now reopen a closed period, and the Playwright test passes on `bin/e2e`.\n\n**What happens on reopen:**\n- **Steward:** the period shows as open again and its due-total is live. Here the rate rose from 10% to 20% while P1 was closed, so its total went from 1.00 to 2.00. The audit file gets `PERIOD_REOPENED sheet=<id> by=<user> period=<name>`.\n- **Anyone else:** refused with an error on the period's row, and nothing is stored or audited.\n- **A period that isn't closed:** also refused with the row error.\n\n**Changes:**\n- **Stored data:** reopening sets `closed` back to false and clears the saved closing total. The existing columns can hold that, so no database migration was needed.\n- **Server:** a new `POST /api/sheets/{sheetId}/periods/{name}/reopen` endpoint. It returns 403 for a non-steward and 409 for a period that isn't closed. The logic is in `PeriodService.reopen`.\n- **Front end:** a `period-reopen` button on every period row, open or closed, and a `reopen()` call in the periods store.\n\n**Decision for you:** the Reopen button shows on open periods too. The test clicks Reopen on a period that has just been reopened and expects the error, so the button has to be there. Hiding it on open periods would need the test changed.\n\nClaims dated in a reopened period can be edited again, because claim changes are only blocked while the period is closed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3696542,
+        "num_turns": 7,
+        "duration_ms": 57477,
+        "duration_api_ms": 34177,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp29.agent.jsonl",
+  "agent_diff_file": "cp29.agent.diff",
+  "build_log_file": "cp29.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 29,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated": true,
+      "cp12_half-even.spec.ts::half even": true,
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp14_edit-conflict.spec.ts::edit conflict": true,
+      "cp15_import-people.spec.ts::import people": true,
+      "cp16_import-upserts.spec.ts::import upserts": true,
+      "cp17_periods.spec.ts::periods": true,
+      "cp18_close-period.spec.ts::close period": true,
+      "cp19_quick-add.spec.ts::quick add": false,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable": true,
+      "cp21_retire.spec.ts::retire": true,
+      "cp22_hold.spec.ts::hold": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit": true,
+      "cp24_floor.spec.ts::floor": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue": true,
+      "cp26_late-charge.spec.ts::late charge": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing": true,
+      "cp28_grade-dated.spec.ts::grade dated": true,
+      "cp29_reopen-period.spec.ts::reopen period": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 941,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 905,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1356,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1592,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1801,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1371,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2385,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2206,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2270,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1764,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2391,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1428,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1883,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1971,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_import-people.spec.ts::import people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1270,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_import-upserts.spec.ts::import upserts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1401,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1968,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2275,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30002,
+        "failure": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m | Error: locator.getAttribute: Test ended.\nCall log:\n  \u001b[2m- waiting for locator('[data-testid^=\"person-row-\"]').filter({ has: getByTestId('person-name').filter({ hasText: /^\\s*dot\\s*$/ }) }).last().locator('[data-testid^=\"claim-row-\"]').first()\u001b[22m\n\n\n   at ../support/ui.ts:210\n\n  208 |\n  209 | async function newestClaim(r: Locator): Promise<string> {\n> 210 |   return idOf(await claimRows(r).first().getAttribute('data-testid'), 'claim-row-');\n      |                                          ^\n  211 | }\n  212 |\n  213 | /** Add a claim from the person's row. The new claim's id (listed newest first), or null. */\n\n    at newestClaim (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:210:42)\n    at Object.quickAdd (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:298:10)\n    at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/specs/cp19_quick-add.spec.ts:16:29 | \u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1587,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3585,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2003,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2764,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2545,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2187,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2163,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2401,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2082,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1895,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
