@@ -28,7 +28,7 @@ export interface Person {
   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
   // twice scaled plus three times momentum plus twice norm plus twice thrust; null (n/a) when momentum or norm is.
   keel: number | null;
-  // keel plus momentum plus 68; null (n/a) when keel is.
+  // keel plus momentum plus 288; null (n/a) when keel is.
   fathom: number | null;
   // keel plus thrust; null (n/a) when keel is.
   draft: number | null;
