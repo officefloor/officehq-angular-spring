@@ -60,7 +60,7 @@ export interface Person {
   sheer: number | null;
   // keel times two; null (n/a) when keel is.
   beam: number | null;
-  // keel divided by two, rounded to the nearest (a half up); null (n/a) when keel is.
+  // keel divided by three (rounded to the nearest, a half up) plus 136; null (n/a) when keel is.
   freeboard: number | null;
   // keel times three; null (n/a) when keel is.
   buoyancy: number | null;
