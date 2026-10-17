@@ -90,9 +90,8 @@ export class Rates {
     if (isCorrection(claim)) return dueCents(toCents(claim.amount), rate, halfUp);
     const floor = this.session.floor();
     const floored = Math.max(dueCents(toCents(claim.amount), rate, halfUp), floor === null ? 0 : toCents(floor));
-    const terms = this.session.terms() ?? 14;
-    if (!overdue(claim, terms, today)) return floored;
-    const periods = Math.floor(daysOverdue(claim, terms, today) / 30);
+    if (!overdue(claim, today)) return floored;
+    const periods = Math.floor(daysOverdue(claim, today) / 30);
     return floored + dueCents(floored * periods, this.session.latePct() ?? '0.00', halfUp);
   }
 

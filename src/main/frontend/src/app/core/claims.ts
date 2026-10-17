@@ -23,6 +23,8 @@ export interface Claim {
   openedBy: string | null;
   /** The number of the settled claim this correction (a negative amount) corrects; null for any other claim. */
   corrects: string | null;
+  /** yyyy-mm-dd: the date it is due by, fixed when it was created from its person's grade's terms then. */
+  dueBy: string;
 }
 
 /** How many selected claims a bulk open opened, and how many it refused. */
@@ -65,33 +67,19 @@ function epochDay(date: string): number {
   return era * 146097 + doe - 719468;
 }
 
-/** The yyyy-mm-dd date of a count of days since 1970-01-01. */
-function fromEpochDay(days: number): string {
-  const z = days + 719468;
-  const era = Math.floor(z / 146097);
-  const doe = z - era * 146097;
-  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
-  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
-  const mp = Math.floor((5 * doy + 2) / 153);
-  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
-  const m = mp < 10 ? mp + 3 : mp - 9;
-  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
-  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-
-/** A claim's due-by (yyyy-mm-dd): its date plus the sheet's terms in days. */
-export function dueBy(claim: Claim, terms: number): string {
-  return fromEpochDay(epochDay(claim.date) + terms);
+/** A claim's due-by (yyyy-mm-dd), fixed when it was created. */
+export function dueBy(claim: Claim): string {
+  return claim.dueBy;
 }
 
 /** Whether the claim is overdue: open (OPEN or PENDING), with its due-by before the sheet's today. */
-export function overdue(claim: Claim, terms: number, today: string): boolean {
-  return isOpen(claim) && dueBy(claim, terms) < today;
+export function overdue(claim: Claim, today: string): boolean {
+  return isOpen(claim) && dueBy(claim) < today;
 }
 
 /** How many days the claim's due-by is before the sheet's today; 0 when it is not. */
-export function daysOverdue(claim: Claim, terms: number, today: string): number {
-  return Math.max(0, epochDay(today) - epochDay(claim.date) - terms);
+export function daysOverdue(claim: Claim, today: string): number {
+  return Math.max(0, epochDay(today) - epochDay(dueBy(claim)));
 }
 
 export interface ClaimFields {

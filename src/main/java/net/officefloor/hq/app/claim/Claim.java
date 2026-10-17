@@ -61,11 +61,17 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The date the claim is due by, fixed when it was created from its person's grade's terms then. */
+    @Column(name = "due_by", nullable = false)
+    private LocalDate dueBy;
+
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects,
+            LocalDate dueBy) {
         this.sheetId = sheetId;
+        this.dueBy = dueBy;
         this.corrects = corrects;
         this.personId = personId;
         this.amount = amount;
@@ -103,6 +109,10 @@ public class Claim {
 
     public void setDate(LocalDate date) {
         this.date = date;
+    }
+
+    public LocalDate getDueBy() {
+        return dueBy;
     }
 
     public String getNote() {

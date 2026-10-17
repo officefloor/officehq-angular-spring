@@ -1,10 +1,11 @@
 import { Component, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
 import { AMOUNT } from '../../core/claims';
+import { GRADES } from '../../core/people';
 import { RATE } from '../../core/rates';
 import { ROLES, RoleName, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the floor, the terms, the late percent, the policy date and the period numbering from) and the roles given to user names.
+// The sheet's settings (the clerk limit, the floor, the terms, each grade's own terms, the late percent, the policy date and the period numbering from) and the roles given to user names.
 @Component({
   selector: 'app-settings',
   template: `
@@ -39,6 +40,17 @@ import { Session } from '../../core/session';
           [value]="terms()"
           (input)="terms.set($any($event.target).value); settingsError.set(null)"
         />
+        @for (g of grades; track g) {
+          <p>Terms for grade {{ g }} (days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.gradeTerms()[g] ?? '' }}</strong></p>
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days; blank to use the sheet's terms)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            inputmode="numeric"
+            [attr.data-testid]="'setting-terms-' + g"
+            [value]="gradeTerms()[g] ?? ''"
+            (input)="setGradeTerms(g, $any($event.target).value)"
+          />
+        }
         <p>Late percent <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' }}</strong></p>
         <label for="setting-late-pct">Late percent (added per full 30 days a claim is overdue)</label>
         <input
@@ -124,6 +136,11 @@ export class SettingsPanel {
   protected readonly clerkLimit = linkedSignal(() => this.session.clerkLimit() ?? '');
   protected readonly floor = linkedSignal(() => this.session.floor() ?? '');
   protected readonly terms = linkedSignal(() => String(this.session.terms() ?? ''));
+  protected readonly grades = GRADES;
+  protected readonly gradeTerms = linkedSignal<Record<string, string>>(() => {
+    const own = this.session.gradeTerms();
+    return Object.fromEntries(GRADES.map((g) => [g, own[g] == null ? '' : String(own[g])]));
+  });
   protected readonly latePct = linkedSignal(() => this.session.latePct() ?? '');
   protected readonly policyDate = linkedSignal(() => this.session.policyDate() ?? '');
   protected readonly periodNumberingFrom = linkedSignal(() => this.session.periodNumberingFrom() ?? '');
@@ -152,6 +169,11 @@ export class SettingsPanel {
     });
   }
 
+  protected setGradeTerms(grade: string, value: string): void {
+    this.gradeTerms.update((all) => ({ ...all, [grade]: value }));
+    this.settingsError.set(null);
+  }
+
   protected async saveSettings(event: Event): Promise<void> {
     event.preventDefault();
     if (this.savingSettings) return;
@@ -171,6 +193,15 @@ export class SettingsPanel {
       this.settingsError.set('Enter terms as a whole number of days, from 0 to 9999.');
       return;
     }
+    const gradeTerms: Record<string, string> = {};
+    for (const g of GRADES) {
+      const days = (this.gradeTerms()[g] ?? '').trim();
+      if (days && !/^\d{1,4}$/.test(days)) {
+        this.settingsError.set(`Enter terms for grade ${g} as a whole number of days, from 0 to 9999, or leave them blank for the sheet's terms.`);
+        return;
+      }
+      gradeTerms[g] = days;
+    }
     const latePct = this.latePct().trim();
     if (!RATE.test(latePct)) {
       this.settingsError.set('Enter a late percent of 0.00 or more, below 1000, with at most two decimals.');
@@ -188,7 +219,7 @@ export class SettingsPanel {
     }
     this.savingSettings = true;
     try {
-      await this.session.setSettings(limit || null, floor, terms, latePct, policyDate, periodNumberingFrom);
+      await this.session.setSettings(limit || null, floor, terms, latePct, policyDate, periodNumberingFrom, gradeTerms);
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {

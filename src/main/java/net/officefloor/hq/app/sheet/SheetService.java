@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
@@ -49,14 +50,17 @@ public class SheetService {
      * Change the sheet's clerk limit (two decimals; null for no limit), floor (two decimals; null
      * leaves it as it is) terms (days; null leaves them as they are) and late percent (two
      * decimals; null leaves it as it is) and policy date (empty for none, the sheet's today; null
-     * leaves it as it is) and period numbering from (empty for off; null leaves it as it is). Each change is recorded as
-     * SETTING_CHANGED key=&lt;key&gt; value=&lt;value&gt;, clerk-limit first, then floor, then terms, then late-pct,
-     * then policy-date, then period-numbering-from, the clerk limit's value empty for no limit and the policy date's and the period numbering from's empty for none;
-     * setting a value it already has records nothing.
+     * leaves it as it is) and period numbering from (empty for off; null leaves it as it is) and each
+     * grade's own terms given (empty for none, the grade uses the sheet's terms). Each change is recorded as
+     * SETTING_CHANGED key=&lt;key&gt; value=&lt;value&gt;, clerk-limit first, then floor, then terms, then
+     * terms-&lt;grade&gt; by grade, then late-pct,
+     * then policy-date, then period-numbering-from, the clerk limit's value empty for no limit and the policy date's and the period numbering from's
+     * and a grade's terms' empty for none; setting a value it already has records nothing.
      */
     @Transactional
     public Sheet setSettings(String id, String user, BigDecimal limit, BigDecimal floor, Integer terms,
-            BigDecimal latePct, Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom) {
+            BigDecimal latePct, Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom,
+            Map<String, Optional<Integer>> gradeTerms) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
         BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY);
@@ -76,6 +80,13 @@ public class SheetService {
             sheet.setTerms(terms);
             audit.change("SETTING_CHANGED", id, user, "key=terms", "value=" + terms);
         }
+        gradeTerms.forEach((grade, days) -> {
+            if (!Objects.equals(sheet.getGradeTerms(grade), days.orElse(null))) {
+                sheet.setGradeTerms(grade, days.orElse(null));
+                audit.change("SETTING_CHANGED", id, user, "key=terms-" + grade,
+                        "value=" + days.map(String::valueOf).orElse(""));
+            }
+        });
         if (latePct != null) {
             BigDecimal scaledPct = latePct.setScale(2, RoundingMode.UNNECESSARY);
             if (scaledPct.compareTo(sheet.getLatePct()) != 0) {

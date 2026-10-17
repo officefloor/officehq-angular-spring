@@ -173,14 +173,14 @@ export class PersonClaims {
     return cents === undefined ? 'n/a' : formatCents(cents);
   }
 
-  /** The claim's due-by: its date plus the sheet's terms. */
+  /** The claim's due-by, fixed when it was created. */
   protected dueBy(claim: Claim): string {
-    return dueBy(claim, this.session.terms() ?? 14);
+    return dueBy(claim);
   }
 
   /** Whether the claim is open (OPEN or PENDING) with its due-by before the sheet's today. */
   protected overdue(claim: Claim): boolean {
-    return overdue(claim, this.session.terms() ?? 14, this.session.today() ?? '');
+    return overdue(claim, this.session.today() ?? '');
   }
 
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {

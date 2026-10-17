@@ -18,6 +18,8 @@ interface SheetView {
   policyDate: string | null;
   /** From this date (by the sheet's today) a claim opened is numbered within its period; null for off. */
   periodNumberingFrom: string | null;
+  /** Each grade's own terms in days; null for a grade that uses the sheet's terms. */
+  gradeTerms: Record<string, number | null>;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the app
@@ -42,6 +44,8 @@ export class Session {
   readonly policyDate = signal<string | null>(null);
   /** The active sheet's period numbering from (yyyy-mm-dd); null when off (claims take the sheet-wide number). */
   readonly periodNumberingFrom = signal<string | null>(null);
+  /** The active sheet's own terms per grade in days; a grade with null (or none) uses the sheet's terms. */
+  readonly gradeTerms = signal<Record<string, number | null>>({});
   /** Counts sheet loads, so per-sheet data re-reads the store on every (re-)load. */
   readonly loads = signal(0);
   /** True while a sheet is being (re-)loaded, so nothing read from the store before is shown. */
@@ -98,15 +102,16 @@ export class Session {
 
   /**
    * Change the active sheet's clerk limit (null for no limit), floor, terms (days), late percent and
-   * policy date (blank for none) and period numbering from (blank for off).
+   * policy date (blank for none) and period numbering from (blank for off), and each grade's own
+   * terms (blank for none, so the grade uses the sheet's terms).
    */
   async setSettings(clerkLimit: string | null, floor: string, terms: string, latePct: string, policyDate: string,
-      periodNumberingFrom: string): Promise<void> {
+      periodNumberingFrom: string, gradeTerms: Record<string, string>): Promise<void> {
     const user = this.user();
     const id = this.sheetId();
     if (!user || !id) throw new Error('no sheet loaded');
     const sheet = await firstValueFrom(
-      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom }, {
+      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, gradeTerms }, {
         headers: { 'X-User': user },
       }),
     );
@@ -122,5 +127,6 @@ export class Session {
     this.latePct.set(sheet.latePct);
     this.policyDate.set(sheet.policyDate);
     this.periodNumberingFrom.set(sheet.periodNumberingFrom);
+    this.gradeTerms.set(sheet.gradeTerms ?? {});
   }
 }

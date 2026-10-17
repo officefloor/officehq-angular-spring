@@ -1,13 +1,20 @@
 package net.officefloor.hq.app.sheet;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
 
 /** A sheet, identified by the id a user types to load it. */
 @Entity
@@ -39,6 +46,13 @@ public class Sheet {
     /** The sheet's terms: a claim is due by its date plus this many days. */
     @Column(name = "terms", nullable = false)
     private int terms = 14;
+
+    /** Each grade's own terms, by grade; a grade with none uses the sheet's terms. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_grade_terms", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "grade")
+    @Column(name = "terms", nullable = false)
+    private Map<String, Integer> gradeTerms = new HashMap<>();
 
     /** The sheet's late percent: an overdue claim's live due gains it, of its floored due, per full 30 days overdue. */
     @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
@@ -101,6 +115,26 @@ public class Sheet {
         this.terms = terms;
     }
 
+    /** The grade's own terms; null when it has none (it uses the sheet's terms). */
+    public Integer getGradeTerms(String grade) {
+        return gradeTerms.get(grade);
+    }
+
+    /** Set the grade's own terms; null removes them, so it uses the sheet's terms. */
+    public void setGradeTerms(String grade, Integer days) {
+        if (days == null) {
+            gradeTerms.remove(grade);
+        } else {
+            gradeTerms.put(grade, days);
+        }
+    }
+
+    /** The due-by of a claim of this date for a person of this grade now: its date plus the grade's terms, or the sheet's. */
+    public LocalDate dueBy(String grade, LocalDate claimDate) {
+        Integer own = gradeTerms.get(grade);
+        return claimDate.plusDays(own != null ? own : terms);
+    }
+
     public BigDecimal getLatePct() {
         return latePct;
     }
@@ -146,14 +180,14 @@ public class Sheet {
 
     /**
      * An open claim's live due (already floored; null stays null) with its late charge added: the late
-     * percent of the floored due for every full 30 days its due-by (its date plus the terms) is before
+     * percent of the floored due for every full 30 days its due-by (fixed when it was created) is before
      * today, rounded to cents as the claim's date decides.
      */
-    public BigDecimal withLateCharge(BigDecimal floored, LocalDate claimDate) {
+    public BigDecimal withLateCharge(BigDecimal floored, LocalDate claimDate, LocalDate dueBy) {
         if (floored == null) {
             return null;
         }
-        long days = ChronoUnit.DAYS.between(claimDate.plusDays(terms), today);
+        long days = ChronoUnit.DAYS.between(dueBy, today);
         long periods = days > 0 ? days / 30 : 0;
         BigDecimal late = floored.multiply(latePct).multiply(BigDecimal.valueOf(periods))
                 .divide(BigDecimal.valueOf(100), 2, roundingFor(claimDate));
@@ -164,8 +198,8 @@ public class Sheet {
      * A claim's due at its rate (null for none) as it counts: a correction's as it is, with no floor
      * and no late charge; any other claim's floored, with its late charge added.
      */
-    public BigDecimal liveDue(BigDecimal due, LocalDate claimDate, boolean correction) {
-        return correction ? due : withLateCharge(floored(due), claimDate);
+    public BigDecimal liveDue(BigDecimal due, LocalDate claimDate, LocalDate dueBy, boolean correction) {
+        return correction ? due : withLateCharge(floored(due), claimDate, dueBy);
     }
 
     /** A live due raised to the sheet's floor; null (no rate) stays null. */

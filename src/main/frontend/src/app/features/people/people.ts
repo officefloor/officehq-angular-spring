@@ -318,11 +318,10 @@ export class People {
    * in cents, skipping those that are n/a.
    */
   private readonly overdueByPerson = computed(() => {
-    const terms = this.session.terms() ?? 14;
     const today = this.session.today() ?? '';
     const out = new Map<number, { count: number; cents: number }>();
     for (const p of this.people()) {
-      const late = this.claims.all().filter((c) => c.personId === p.id && counts(c, p) && overdue(c, terms, today));
+      const late = this.claims.all().filter((c) => c.personId === p.id && counts(c, p) && overdue(c, today));
       out.set(p.id, {
         count: late.length,
         cents: late.map((c) => this.rates.dueOf(c, gradeOn(p.grades, c.date)) ?? 0).reduce((sum, c) => sum + c, 0),

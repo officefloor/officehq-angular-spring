@@ -29,7 +29,9 @@ import org.springframework.web.server.ResponseStatusException;
  * The claims kept on a sheet, newest first. A claim without a date takes the sheet's today; a
  * missing note is stored empty. Only a DRAFT claim can be edited (409); an open claim is changed by
  * voiding it and adding a new one. No claim dated in a closed period can be added, edited or change
- * status (423). No claim dated after its person's retirement date can be added or edited (422).
+ * status (423). A claim's due-by is fixed when it is added: its date plus the terms of its person's
+ * grade in force on that date (the sheet's terms for a grade without its own); later changes to the
+ * terms or the claim's date leave it as fixed. No claim dated after its person's retirement date can be added or edited (422).
  * A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
  * same person, or it is refused (422); a claim that is not a correction names none.
  */
@@ -67,14 +69,15 @@ public class ClaimService {
             String corrects) {
         sheets.load(sheetId, user);
         // Lock the sheet, so a period closed at the same moment is seen.
-        sheets.lock(sheetId);
+        Sheet sheet = sheets.lock(sheetId).orElseThrow();
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseIfClosed(sheetId, on);
         refuseIfRetired(person, on);
         String corrected = correctedNumber(sheetId, personId, amount, corrects);
-        Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount), on, note != null ? note : "", corrected));
+        Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount), on, note != null ? note : "", corrected,
+                sheet.dueBy(person.gradeOn(on), on)));
         record("CLAIM_ADDED", user, person, claim);
         return claim;
     }
@@ -257,7 +260,7 @@ public class ClaimService {
     private BigDecimal dueNow(Sheet sheet, Person person, Claim claim) {
         return sheet.liveDue(rates.inForce(sheet.getId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(rate -> sheet.dueAt(claim.getAmount(), rate.getRate(), claim.getDate()))
-                .orElse(null), claim.getDate(), claim.isCorrection());
+                .orElse(null), claim.getDate(), claim.getDueBy(), claim.isCorrection());
     }
 
     /** How many of the selected claims a bulk open opened, and how many it refused. */

@@ -103,7 +103,7 @@ public class PeriodService {
                 case SETTLED -> claim.getSettledDue();
                 default -> sheet.liveDue(rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                         .map(rate -> sheet.dueAt(claim.getAmount(), rate.getRate(), claim.getDate()))
-                        .orElse(null), claim.getDate(), claim.isCorrection());
+                        .orElse(null), claim.getDate(), claim.getDueBy(), claim.isCorrection());
             };
             if (due != null) {
                 total = total.add(due);
