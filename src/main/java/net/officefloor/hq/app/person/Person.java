@@ -21,7 +21,7 @@ import java.util.Set;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
 /** A person on a sheet, with a name and dated grades (A, B or C), who may be retired from a date
- * and may be put on hold. */
+ * and may be put on hold over dates. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -45,9 +45,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: while held, their open claims count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** The holds on the person: their open claims dated within one count in no live total. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PersonHold> holds = new ArrayList<>();
 
     /** The ids of the other people on the sheet this person names as their patrons. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -120,17 +121,31 @@ public class Person {
         return retiredFrom != null && date.isAfter(retiredFrom);
     }
 
+    /** The holds recorded, by from-date. */
+    public List<PersonHold> getHolds() {
+        return holds.stream().sorted(Comparator.comparing(PersonHold::getFrom)).toList();
+    }
+
+    /** Whether the person has any hold. */
     public boolean isHeld() {
-        return held;
+        return !holds.isEmpty();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    public void addHold(LocalDate from, LocalDate to) {
+        holds.add(new PersonHold(from, to));
     }
 
-    /** Whether a claim of this person in this status counts toward the totals: an open one not while held. */
-    public boolean counts(ClaimStatus status) {
-        return status.counts() && !(held && status.isOpen());
+    /** Whether a date is within one of the person's holds. */
+    public boolean heldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    /**
+     * Whether a claim of this person in this status, dated on this date, counts toward the totals: an
+     * open one not when dated within a hold.
+     */
+    public boolean counts(ClaimStatus status, LocalDate date) {
+        return status.counts() && !(status.isOpen() && heldOn(date));
     }
 
     public Set<Long> getPatronIds() {

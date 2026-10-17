@@ -181,22 +181,22 @@ public class PersonService {
     }
 
     /**
-     * Put a person on hold, or release them from it. Holding one already held, or releasing one not
-     * held, is refused (409).
+     * Put a person on hold from a date (the sheet's today when none is given) to an optional to-date,
+     * both included; a person may have several holds. A to-date before the from-date is refused (422).
      */
     @Transactional
-    public Person hold(String sheetId, String user, Long personId, boolean held) {
+    public Person hold(String sheetId, String user, Long personId, LocalDate from, LocalDate to) {
         // Lock the sheet, so a period closed at the same moment sees the hold.
         sheets.lock(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        if (person.isHeld() == held) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    held ? "Person already on hold" : "Person not on hold");
+        LocalDate start = from != null ? from : sheets.today(sheetId);
+        if (to != null && to.isBefore(start)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The hold ends before it starts");
         }
-        person.setHeld(held);
+        person.addHold(start, to);
         person = people.saveAndFlush(person);
-        audit.change(held ? "PERSON_HELD" : "PERSON_RELEASED", sheetId, user, "name=" + person.getName());
+        audit.change("PERSON_HELD", sheetId, user, "name=" + person.getName(), "from=" + start);
         return person;
     }
 

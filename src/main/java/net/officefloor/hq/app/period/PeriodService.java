@@ -76,8 +76,8 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing its due-total: the dues of the counted claims dated in it (an open claim of a
-     * person on hold is not counted), each a settled
+     * Close a period, fixing its due-total: the dues of the counted claims dated in it (an open claim dated
+     * within a hold of its person is not counted), each a settled
      * claim's fixed due or else its amount at its person's grade's rate in force on its date, rounded
      * half to even to cents and raised to the sheet's floor, an overdue one's late charge added; a claim with no such rate adds nothing. A closed period cannot be closed again (409).
      */
@@ -96,7 +96,7 @@ public class PeriodService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !person.counts(claim.getStatus()) || !period.contains(claim.getDate())) {
+            if (person == null || !person.counts(claim.getStatus(), claim.getDate()) || !period.contains(claim.getDate())) {
                 continue;
             }
             BigDecimal due = switch (claim.getStatus()) {

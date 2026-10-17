@@ -17,8 +17,10 @@ export interface Person {
   version: number;
   /** yyyy-mm-dd the person is retired from; null while they are not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: while held, their open claims count in no live total. */
+  /** Whether the person has any hold. */
   held: boolean;
+  /** The holds recorded, by from-date: their open claims dated within one count in no live total. */
+  holds: Hold[];
   /** The ids of the other people on the sheet this person names as their patrons. */
   patronIds: number[];
 }
@@ -42,6 +44,17 @@ export function gradeOn(grades: readonly GradeFrom[], date: string): Grade {
 /** Whether a claim dated on this date (yyyy-mm-dd) is refused: it is after the person's retirement. */
 export function retiredOn(person: { retiredFrom: string | null }, date: string): boolean {
   return person.retiredFrom !== null && date > person.retiredFrom;
+}
+
+/** A hold from its from-date to its to-date (yyyy-mm-dd, both included), or on when to is null. */
+export interface Hold {
+  from: string;
+  to: string | null;
+}
+
+/** Whether a date (yyyy-mm-dd) is within one of the person's holds. */
+export function heldOn(person: { holds: readonly Hold[] }, date: string): boolean {
+  return person.holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
 }
 
 export interface PersonFields {
@@ -107,10 +120,13 @@ export class PeopleApi {
     );
   }
 
-  /** Put the person on hold, or release them; refused with 409 when they already are (or are not). */
-  setHeld(id: number, held: boolean): Promise<Person> {
+  /**
+   * Put the person on hold from a date (the sheet's today when empty) to an optional to-date; refused
+   * with 422 when the to-date is before the from-date.
+   */
+  hold(id: number, from: string, to: string): Promise<Person> {
     return firstValueFrom(
-      this.http.post<Person>(`${this.url()}/${id}/${held ? 'hold' : 'release'}`, null, { headers: this.headers() }),
+      this.http.post<Person>(`${this.url()}/${id}/hold`, { from: from || null, to: to || null }, { headers: this.headers() }),
     );
   }
 

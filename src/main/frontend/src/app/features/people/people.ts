@@ -149,8 +149,31 @@ const LEAVE_DELAY_MS = 1000;
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
-                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)">
-                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
+                @if (p.holds.length > 0) {
+                  <ul [attr.aria-label]="'Holds on ' + p.name">
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">Held from {{ h.from }}{{ h.to === null ? '' : ' to ' + h.to }}</li>
+                    }
+                  </ul>
+                }
+                <label [for]="'person-hold-from-' + p.id">Hold from</label>
+                <input
+                  [id]="'person-hold-from-' + p.id"
+                  type="date"
+                  data-testid="person-hold-from"
+                  [value]="holdFrom(p.id)"
+                  (input)="setHoldDate(p.id, 'from', $any($event.target).value)"
+                />
+                <label [for]="'person-hold-to-' + p.id">Hold to</label>
+                <input
+                  [id]="'person-hold-to-' + p.id"
+                  type="date"
+                  data-testid="person-hold-to"
+                  [value]="holdTo(p.id)"
+                  (input)="setHoldDate(p.id, 'to', $any($event.target).value)"
+                />
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)">
+                  Hold<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 <label [for]="'person-patron-select-' + p.id">Patron</label>
                 <select
@@ -250,6 +273,8 @@ export class People {
   private quickAdding = false;
   /** The retire date typed on each person's row, by person id; the sheet's today when not typed. */
   private readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The hold dates typed on each person's row, by person id; from is the sheet's today and to empty when not typed. */
+  private readonly holdDates = signal<ReadonlyMap<number, { from?: string; to?: string }>>(new Map());
   /** The patron chosen on each person's row, by person id, as the chosen person's id. */
   private readonly patronChoices = signal<ReadonlyMap<number, string>>(new Map());
   /** The error of the last patron added on a person's row, if it was refused. */
@@ -510,19 +535,48 @@ export class People {
     }
   }
 
-  /** Put the person on hold, or release them when they are held. */
-  protected async toggleHold(person: Person): Promise<void> {
+  protected holdFrom(personId: number): string {
+    return this.holdDates().get(personId)?.from ?? this.session.today() ?? '';
+  }
+
+  protected holdTo(personId: number): string {
+    return this.holdDates().get(personId)?.to ?? '';
+  }
+
+  protected setHoldDate(personId: number, end: 'from' | 'to', date: string): void {
+    this.holdDates.update((dates) => new Map(dates).set(personId, { ...dates.get(personId), [end]: date }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Put the person on hold from the from-date on their row (the sheet's today when left as it is) to its optional to-date. */
+  protected async hold(person: Person): Promise<void> {
     this.rowError.set(null);
     this.patronError.set(null);
+    const from = this.holdFrom(person.id).trim();
+    const to = this.holdTo(person.id).trim();
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    if (!date.test(from) || (to !== '' && !date.test(to))) {
+      this.rowError.set({ id: person.id, message: 'Enter a date as yyyy-mm-dd.' });
+      return;
+    }
+    if (to !== '' && to < from) {
+      this.rowError.set({ id: person.id, message: 'The hold cannot end before it starts.' });
+      return;
+    }
     try {
-      const saved = await this.api.setHeld(person.id, !person.held);
+      const saved = await this.api.hold(person.id, from, to);
       this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.holdDates.update((dates) => {
+        const next = new Map(dates);
+        next.delete(person.id);
+        return next;
+      });
     } catch (e) {
       this.rowError.set({
         id: person.id,
-        message: e instanceof HttpErrorResponse && e.status === 409
-          ? (person.held ? 'This person is not on hold.' : 'This person is already on hold.')
-          : (person.held ? 'The person could not be released.' : 'The person could not be put on hold.'),
+        message: e instanceof HttpErrorResponse && e.status === 422
+          ? 'The hold cannot end before it starts.'
+          : 'The person could not be put on hold.',
       });
     }
   }

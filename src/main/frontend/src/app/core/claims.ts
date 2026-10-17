@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Hold, heldOn } from './people';
 import { Session } from './session';
 
 export interface Claim {
@@ -62,10 +63,10 @@ export function isOpen(claim: { status: ClaimStatus }): boolean {
 
 /**
  * Whether the claim counts toward claimed, due-total and every total: an OPEN (or PENDING) or SETTLED
- * one, but not an open one while its person is on hold.
+ * one, but not an open one dated within a hold of its person.
  */
-export function counts(claim: Claim, person: { held: boolean }): boolean {
-  return claim.status === 'SETTLED' || (isOpen(claim) && !person.held);
+export function counts(claim: Claim, person: { holds: readonly Hold[] }): boolean {
+  return claim.status === 'SETTLED' || (isOpen(claim) && !heldOn(person, claim.date));
 }
 
 /** Days since 1970-01-01 of a yyyy-mm-dd date (proleptic Gregorian), without reading any clock. */

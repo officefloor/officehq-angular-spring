@@ -28,16 +28,22 @@ public class PersonController {
     public record GradeView(LocalDate from, String grade) {
     }
 
+    /** A hold on a person, from its from-date to its to-date (both included), or on when to is null. */
+    public record HoldView(LocalDate from, LocalDate to) {
+    }
+
     /**
+     * Held is whether the person has any hold; holds are all those recorded, by from-date.
      * The version is the one an edit sends back, so a save made from an out-of-date copy is refused.
      * The grade is the one in force on the sheet's today; grades are all those recorded, oldest first.
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
-            LocalDate retiredFrom, boolean held, List<Long> patronIds) {
+            LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds) {
         static PersonView of(Person person, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getFrom(), g.getGrade())).toList(),
                     person.getVersion(), person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(),
                     person.getPatronIds().stream().sorted().toList());
         }
     }
@@ -59,6 +65,10 @@ public class PersonController {
 
     /** Retire a person from a date; a missing date is the sheet's today. */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** Put a person on hold from a date (the sheet's today when missing) to an optional to-date. */
+    public record HoldRequest(LocalDate from, LocalDate to) {
     }
 
     /** Name another person on the sheet as a patron. */
@@ -109,15 +119,9 @@ public class PersonController {
     @PostMapping("/{personId}/hold")
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long personId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId, true));
-    }
-
-    @PostMapping("/{personId}/release")
-    public PersonView release(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable Long personId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId, false));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody HoldRequest request) {
+        return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId, request.from(), request.to()));
     }
 
     @PostMapping("/{personId}/patrons")
