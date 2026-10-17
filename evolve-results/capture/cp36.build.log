@@ -1,0 +1,75 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610172303/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 36 tests using 1 worker
+
+[1A[2K[1/36] [chromium] › cp01_signin-and-sheet.spec.ts:5:7 › signin and sheet › signin and sheet
+[1A[2K[2/36] [chromium] › cp02_sheet-today.spec.ts:5:7 › sheet today › sheet today
+[1A[2K[3/36] [chromium] › cp03_people.spec.ts:5:7 › people › people
+[1A[2K[4/36] [chromium] › cp04_name-uniqueness.spec.ts:5:7 › name uniqueness › name uniqueness
+[1A[2K[5/36] [chromium] › cp05_claims.spec.ts:5:7 › claims › claims
+[1A[2K[6/36] [chromium] › cp06_audit.spec.ts:5:7 › audit › audit
+[1A[2K[7/36] [chromium] › cp07_rates-and-due.spec.ts:5:7 › rates and due › rates and due
+[1A[2K[8/36] [chromium] › cp08_workflow.spec.ts:5:7 › workflow › workflow
+[1A[2K[9/36] [chromium] › cp09_numbering.spec.ts:5:7 › numbering › numbering
+[1A[2K[10/36] [chromium] › cp10_settle-freezes-due.spec.ts:5:7 › settle freezes due › settle freezes due
+[1A[2K[11/36] [chromium] › cp11_rates-effective-dated.spec.ts:5:7 › rates effective dated › rates effective dated
+[1A[2K[12/36] [chromium] › cp12_half-even.spec.ts:5:7 › half even › half even
+[1A[2K[13/36] [chromium] › cp13_four-eyes.spec.ts:5:7 › four eyes › four eyes
+[1A[2K[14/36] [chromium] › cp14_edit-conflict.spec.ts:5:7 › edit conflict › edit conflict
+[1A[2K[15/36] [chromium] › cp15_import-people.spec.ts:5:7 › import people › import people
+[1A[2K[16/36] [chromium] › cp16_import-upserts.spec.ts:5:7 › import upserts › import upserts
+[1A[2K[17/36] [chromium] › cp17_periods.spec.ts:5:7 › periods › periods
+[1A[2K[18/36] [chromium] › cp18_close-period.spec.ts:5:7 › close period › close period
+[1A[2K[19/36] [chromium] › cp19_quick-add.spec.ts:5:7 › quick add › quick add
+[1A[2K  1) [chromium] › cp19_quick-add.spec.ts:5:7 › quick add › quick add ───────────────────────────────
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.getAttribute: Test ended.
+    Call log:
+      [2m- waiting for locator('[data-testid^="person-row-"]').filter({ has: getByTestId('person-name').filter({ hasText: /^\s*dot\s*$/ }) }).last().locator('[data-testid^="claim-row-"]').first()[22m
+
+
+       at ../support/ui.ts:210
+
+      208 |
+      209 | async function newestClaim(r: Locator): Promise<string> {
+    > 210 |   return idOf(await claimRows(r).first().getAttribute('data-testid'), 'claim-row-');
+          |                                          ^
+      211 | }
+      212 |
+      213 | /** Add a claim from the person's row. The new claim's id (listed newest first), or null. */
+
+        at newestClaim (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:210:42)
+        at Object.quickAdd (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:298:10)
+        at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/specs/cp19_quick-add.spec.ts:16:29
+
+
+[1A[2K[20/36] [chromium] › cp20_open-claims-immutable.spec.ts:5:7 › open claims immutable › open claims immutable
+[1A[2K[21/36] [chromium] › cp21_retire.spec.ts:5:7 › retire › retire
+[1A[2K[22/36] [chromium] › cp22_hold.spec.ts:5:7 › hold › hold
+[1A[2K[23/36] [chromium] › cp23_roles-and-clerk-limit.spec.ts:5:7 › roles and clerk limit › roles and clerk limit
+[1A[2K[24/36] [chromium] › cp24_floor.spec.ts:5:7 › floor › floor
+[1A[2K[25/36] [chromium] › cp25_due-by-and-overdue.spec.ts:5:7 › due by and overdue › due by and overdue
+[1A[2K[26/36] [chromium] › cp26_late-charge.spec.ts:5:7 › late charge › late charge
+[1A[2K[27/36] [chromium] › cp27_patrons-and-backing.spec.ts:5:7 › patrons and backing › patrons and backing
+[1A[2K[28/36] [chromium] › cp28_grade-dated.spec.ts:5:7 › grade dated › grade dated
+[1A[2K[29/36] [chromium] › cp29_reopen-period.spec.ts:5:7 › reopen period › reopen period
+[1A[2K[30/36] [chromium] › cp30_corrections.spec.ts:5:7 › corrections › corrections
+[1A[2K[31/36] [chromium] › cp31_summary.spec.ts:5:7 › summary › summary
+[1A[2K[32/36] [chromium] › cp32_rounding-policy-date.spec.ts:5:7 › rounding policy date › rounding policy date
+[1A[2K[33/36] [chromium] › cp33_export-people.spec.ts:5:7 › export people › export people
+[1A[2K[34/36] [chromium] › cp34_bulk-open.spec.ts:5:7 › bulk open › bulk open
+[1A[2K[35/36] [chromium] › cp35_numbering-per-period.spec.ts:5:7 › numbering per period › numbering per period
+[1A[2K[36/36] [chromium] › cp36_approvals.spec.ts:5:7 › approvals › approvals
+[1A[2K  Slow test file: [chromium] › cp19_quick-add.spec.ts (30.0s)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp19_quick-add.spec.ts:5:7 › quick add › quick add ────────────────────────────────
+  35 passed (1.9m)
