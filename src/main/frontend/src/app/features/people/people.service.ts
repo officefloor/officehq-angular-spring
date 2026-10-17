@@ -66,7 +66,7 @@ export interface Person {
   buoyancy: number | null;
   // keel divided by three, rounded to the nearest (a half up); null (n/a) when keel is.
   knot: number | null;
-  // keel plus gamma, a blank gamma counting as zero; null (n/a) when keel is.
+  // keel plus gamma, a blank gamma counting as zero, plus 152; null (n/a) when keel is.
   cable: number | null;
   // keel minus gamma, a blank gamma counting as zero; null (n/a) when keel is.
   hull: number | null;
