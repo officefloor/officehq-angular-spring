@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 728a1547..3b4cdcee 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -90,7 +90,7 @@ export interface Person {
+   wharf: number | null;
+   // keel divided by ten, rounded to the nearest (a half up); null (n/a) when keel is.
+   jetty: number | null;
+-  // keel plus 500; null (n/a) when keel is.
++  // keel plus 500 plus 204; null (n/a) when keel is.
+   pier: number | null;
+   // keel minus 500; null (n/a) when keel is.
+   ebb: number | null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 83f4aba9..fee6af6c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -36,7 +36,7 @@ import java.util.Set;
+  * four (rounded like every divide) plus 180, null (n/a) when keel is. moor is keel plus keystone plus 184, null (n/a)
+  * when keel or keystone is. berth is keel minus keystone plus 188, null (n/a) when keel or keystone is. wharf is
+  * keel times five plus 192, null (n/a) when keel is. jetty is keel divided by ten (rounded like every divide) plus 196,
+- * null (n/a) when keel is. pier is keel plus 500, null (n/a) when keel is. ebb is keel minus 500, null
++ * null (n/a) when keel is. pier is keel plus 500 plus 204, null (n/a) when keel is. ebb is keel minus 500, null
+  * (n/a) when keel is. flood is keel plus ballast, null (n/a) when keel or ballast is. swell is keel
+  * minus ballast, null (n/a) when keel or ballast is.
+  */
+@@ -309,7 +309,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+ 
+     private static Long pier(Person p, Long averageScaled) {
+         Long keel = keel(p, averageScaled);
+-        return keel == null ? null : keel + 500L;
++        return keel == null ? null : keel + 500L + 204L;
+     }
+ 
+     private static Long ebb(Person p, Long averageScaled) {
