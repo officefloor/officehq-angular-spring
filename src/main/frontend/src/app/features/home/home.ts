@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, linkedSignal, signal } from '@angular/core';
 import { Session } from '../../core/session';
 
 // The one screen: sign in by name, then choose a sheet by id.
@@ -24,6 +24,22 @@ import { Session } from '../../core/session';
 
       @if (session.sheetId(); as id) {
         <p>Sheet <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+        <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+
+        <form (submit)="saveToday($event)">
+          <label for="sheet-today">Change today</label>
+          <input
+            id="sheet-today"
+            type="date"
+            data-testid="sheet-today-input"
+            [value]="todayInput()"
+            (input)="todayInput.set($any($event.target).value); todayError.set(null)"
+          />
+          <button type="submit" data-testid="sheet-today-save">Save</button>
+          @if (todayError(); as err) {
+            <p role="alert" data-testid="sheet-today-error">{{ err }}</p>
+          }
+        </form>
       }
     } @else {
       <form (submit)="signIn($event)">
@@ -48,6 +64,8 @@ export class Home {
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
+  protected readonly todayInput = linkedSignal(() => this.session.today() ?? '');
+  protected readonly todayError = signal<string | null>(null);
 
   protected signIn(event: Event): void {
     event.preventDefault();
@@ -72,6 +90,21 @@ export class Home {
       await this.session.loadSheet(id);
     } catch {
       this.sheetError.set('The sheet could not be loaded.');
+    }
+  }
+
+  protected async saveToday(event: Event): Promise<void> {
+    event.preventDefault();
+    this.todayError.set(null);
+    const today = this.todayInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+      this.todayError.set('Enter a date as yyyy-mm-dd.');
+      return;
+    }
+    try {
+      await this.session.setToday(today);
+    } catch {
+      this.todayError.set('That date could not be saved.');
     }
   }
 }
