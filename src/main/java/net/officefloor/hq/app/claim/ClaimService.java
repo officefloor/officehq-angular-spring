@@ -8,7 +8,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -25,11 +25,11 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit) {
         this.claims = claims;
         this.people = people;
@@ -70,7 +70,7 @@ public class ClaimService {
     /**
      * Move a claim to the next status; a change its status does not allow is refused (409). Opening
      * gives the claim the sheet's next number; voiding clears it (the number is not given again).
-     * Settling fixes the claim's due at its person's grade's rate at that moment.
+     * Settling fixes the claim's due at its person's grade's rate in force on the claim's date.
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long claimId, ClaimStatus next) {
@@ -91,7 +91,7 @@ public class ClaimService {
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
         List<String> extra = new ArrayList<>();
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal due = rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+            BigDecimal due = rates.inForce(sheetId, person.getGrade(), claim.getDate())
                     .map(rate -> claim.getAmount().multiply(rate.getRate())
                             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
                     .orElse(null);

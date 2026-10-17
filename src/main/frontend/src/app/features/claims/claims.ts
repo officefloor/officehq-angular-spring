@@ -94,11 +94,11 @@ export class PersonClaims {
 
   /**
    * A settled claim's due as fixed when it was settled; any other claim's due at its person's grade's
-   * current rate. n/a when there was or is no rate.
+   * rate in force on the claim's date. n/a when there was or is no such rate.
    */
   protected due(claim: Claim): string {
     if (claim.status === 'SETTLED') return claim.settledDue ?? 'n/a';
-    const rate = this.rates.byGrade().get(this.grade());
+    const rate = this.rates.on(this.grade(), claim.date);
     return rate === undefined ? 'n/a' : formatCents(dueCents(toCents(claim.amount), rate));
   }
 

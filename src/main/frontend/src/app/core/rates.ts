@@ -7,6 +7,8 @@ import { Session } from './session';
 
 export interface Rate {
   grade: Grade;
+  /** yyyy-mm-dd the rate is in force from; null for a rate in force from the beginning of time. */
+  from: string | null;
   /** A percent, always with two decimals, e.g. "12.50". */
   rate: string;
 }
@@ -22,7 +24,20 @@ export function dueCents(cents: number, rate: string): number {
   return Number((BigInt(cents) * BigInt(toCents(rate)) + 5000n) / 10000n);
 }
 
-// The rate for each grade on the active sheet, read from and written to the store.
+/**
+ * The rate among these in force on a date (yyyy-mm-dd): the one with the latest from-date on or
+ * before it, a rate with no from-date applying from the beginning of time. Undefined when none applies.
+ */
+export function rateOn(rates: Rate[], date: string): string | undefined {
+  let best: Rate | undefined;
+  for (const r of rates) {
+    if (r.from !== null && r.from > date) continue;
+    if (best === undefined || (best.from ?? '') < (r.from ?? '')) best = r;
+  }
+  return best?.rate;
+}
+
+// The rates for each grade on the active sheet, per from-date, read from and written to the store.
 @Injectable({ providedIn: 'root' })
 export class Rates {
   private readonly http = inject(HttpClient);
@@ -30,8 +45,28 @@ export class Rates {
 
   readonly all = signal<Rate[]>([]);
 
-  /** Each grade's rate; a grade with no rate is absent. */
-  readonly byGrade = computed(() => new Map(this.all().map((r) => [r.grade, r.rate])));
+  /** Each grade's rates, by grade. */
+  readonly ofGrade = computed(() => {
+    const out = new Map<Grade, Rate[]>();
+    for (const r of this.all()) out.set(r.grade, [...(out.get(r.grade) ?? []), r]);
+    return out;
+  });
+
+  /** Each grade's rate in force on the sheet's today; a grade with none is absent. */
+  readonly byGrade = computed(() => {
+    const today = this.session.today() ?? '';
+    const out = new Map<Grade, string>();
+    for (const [grade, rates] of this.ofGrade()) {
+      const rate = rateOn(rates, today);
+      if (rate !== undefined) out.set(grade, rate);
+    }
+    return out;
+  });
+
+  /** The grade's rate in force on a date; undefined when none applies. */
+  on(grade: Grade, date: string): string | undefined {
+    return rateOn(this.ofGrade().get(grade) ?? [], date);
+  }
 
   async reload(): Promise<void> {
     try {
@@ -41,11 +76,15 @@ export class Rates {
     }
   }
 
-  async set(grade: Grade, rate: string): Promise<void> {
+  /** Set a grade's rate from a date (or from the beginning of time), replacing any it had then. */
+  async set(grade: Grade, rate: string, from: string | null): Promise<void> {
     const saved = await firstValueFrom(
-      this.http.put<Rate>(`${this.url()}/${grade}`, { rate: rate.trim() }, { headers: this.headers() }),
+      this.http.put<Rate>(`${this.url()}/${grade}`, { rate: rate.trim(), from }, { headers: this.headers() }),
     );
-    this.all.update((list) => [...list.filter((r) => r.grade !== saved.grade), saved]);
+    this.all.update((list) => [
+      ...list.filter((r) => r.grade !== saved.grade || r.from !== saved.from),
+      saved,
+    ]);
   }
 
   private url(): string {
