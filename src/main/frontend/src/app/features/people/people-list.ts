@@ -653,6 +653,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-cable-total">{{ cableTotal() }}</td>
               <td colspan="15"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="34">Cable top</th>
+              <td data-testid="rollup-cable-top">{{ cableTop() ?? 'n/a' }}</td>
+              <td colspan="15"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1195,6 +1200,15 @@ export class PeopleList {
   protected readonly cableTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.cable, hold: p.hold }))),
   );
+
+  // The highest cable among the people not on hold (n/a cables skipped); null (n/a) when nobody has one.
+  protected readonly cableTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.cable)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // The highest knot among the people not on hold (n/a knots skipped); null (n/a) when nobody has one.
   protected readonly knotTop = computed(() => {
