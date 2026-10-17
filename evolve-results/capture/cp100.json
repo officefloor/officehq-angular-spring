@@ -1,0 +1,1056 @@
+{
+  "checkpoint": 100,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "469ff91103de89741d7fcc15fc67f3c61f01ccb4"
+  },
+  "checkpoint_id": "cp100_keel",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    35,
+    36,
+    37,
+    38,
+    39,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    86,
+    87,
+    88,
+    89,
+    90,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    99
+  ],
+  "replaced_tests": [
+    "cp09_keel_keel-total.spec.ts::keel keel-total",
+    "cp10_draft_fathom.spec.ts::draft fathom",
+    "cp11_cascade_trim.spec.ts::cascade trim",
+    "cp12_hold.spec.ts::hold",
+    "cp13_heading_ripple.spec.ts::heading ripple",
+    "cp14_ballast_keel-count.spec.ts::ballast keel-count",
+    "cp15_bearing_keystone.spec.ts::bearing keystone",
+    "cp16_keel.spec.ts::keel",
+    "cp17_pitch.spec.ts::pitch",
+    "cp18_tackle.spec.ts::tackle",
+    "cp19_yaw.spec.ts::yaw",
+    "cp20_missing_zero.spec.ts::missing zero",
+    "cp21_heave.spec.ts::heave",
+    "cp22_camber.spec.ts::camber",
+    "cp23_sheer.spec.ts::sheer",
+    "cp24_camber.spec.ts::camber",
+    "cp25_beam.spec.ts::beam",
+    "cp26_freeboard.spec.ts::freeboard",
+    "cp27_buoyancy.spec.ts::buoyancy",
+    "cp28_beam.spec.ts::beam",
+    "cp29_knot.spec.ts::knot",
+    "cp30_cable.spec.ts::cable",
+    "cp31_hull.spec.ts::hull",
+    "cp32_keel.spec.ts::keel",
+    "cp33_bow.spec.ts::bow",
+    "cp35_helm.spec.ts::helm",
+    "cp36_freeboard.spec.ts::freeboard",
+    "cp37_rudder.spec.ts::rudder",
+    "cp38_mast.spec.ts::mast",
+    "cp39_rigging.spec.ts::rigging",
+    "cp41_moor.spec.ts::moor",
+    "cp42_berth.spec.ts::berth",
+    "cp43_wharf.spec.ts::wharf",
+    "cp44_wharf.spec.ts::wharf",
+    "cp45_jetty.spec.ts::jetty",
+    "cp46_pier.spec.ts::pier",
+    "cp47_ebb.spec.ts::ebb",
+    "cp48_jetty.spec.ts::jetty",
+    "cp49_flood.spec.ts::flood",
+    "cp50_swell.spec.ts::swell",
+    "cp51_fathom-total.spec.ts::fathom-total",
+    "cp52_keel.spec.ts::keel",
+    "cp53_draft-total.spec.ts::draft-total",
+    "cp54_cascade-total.spec.ts::cascade-total",
+    "cp55_ripple-total.spec.ts::ripple-total",
+    "cp56_mast.spec.ts::mast",
+    "cp57_ballast-total.spec.ts::ballast-total",
+    "cp58_keystone-total.spec.ts::keystone-total",
+    "cp59_bearing-total.spec.ts::bearing-total",
+    "cp60_keel.spec.ts::keel",
+    "cp61_fathom-low.spec.ts::fathom-low",
+    "cp62_fathom-top.spec.ts::fathom-top",
+    "cp63_fathom-spread.spec.ts::fathom-spread",
+    "cp64_keel.spec.ts::keel",
+    "cp65_fathom-even.spec.ts::fathom-even",
+    "cp66_fathom-mean.spec.ts::fathom-mean",
+    "cp67_cascade-low.spec.ts::cascade-low",
+    "cp68_fathom.spec.ts::fathom",
+    "cp69_cascade-top.spec.ts::cascade-top",
+    "cp70_cascade-spread.spec.ts::cascade-spread",
+    "cp71_cascade-even.spec.ts::cascade-even",
+    "cp72_cascade.spec.ts::cascade",
+    "cp73_cascade-mean.spec.ts::cascade-mean",
+    "cp74_ripple-low.spec.ts::ripple-low",
+    "cp75_ripple-top.spec.ts::ripple-top",
+    "cp76_ripple.spec.ts::ripple",
+    "cp77_ripple-spread.spec.ts::ripple-spread",
+    "cp79_ripple-mean.spec.ts::ripple-mean",
+    "cp80_ballast.spec.ts::ballast",
+    "cp81_ballast-low.spec.ts::ballast-low",
+    "cp82_ballast-top.spec.ts::ballast-top",
+    "cp83_ballast-spread.spec.ts::ballast-spread",
+    "cp84_keystone.spec.ts::keystone",
+    "cp86_ballast-mean.spec.ts::ballast-mean",
+    "cp87_keystone-low.spec.ts::keystone-low",
+    "cp88_draft.spec.ts::draft",
+    "cp89_keystone-top.spec.ts::keystone-top",
+    "cp90_keystone-spread.spec.ts::keystone-spread",
+    "cp92_trim.spec.ts::trim",
+    "cp93_keystone-mean.spec.ts::keystone-mean",
+    "cp94_draft-low.spec.ts::draft-low",
+    "cp95_draft-top.spec.ts::draft-top",
+    "cp96_heading.spec.ts::heading",
+    "cp97_draft-spread.spec.ts::draft-spread",
+    "cp99_draft-mean.spec.ts::draft-mean"
+  ],
+  "request": {
+    "spec": "Change keel to scaled plus twice momentum plus twice norm plus twice thrust. Everything worked\nout from keel changes with it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nChange keel to scaled plus twice momentum plus twice norm plus twice thrust. Everything worked\nout from keel changes with it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "174c092f5573eb73958b537eac2f437818c90496",
+  "reset_sha": "",
+  "preagent_sha": "acbd9453fb9409740a858c486d1286628465c096",
+  "prev_sha": "acbd9453fb9409740a858c486d1286628465c096",
+  "base_sha": "469ff91103de89741d7fcc15fc67f3c61f01ccb4",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.21696580000000001,
+    "input_tokens": 10,
+    "output_tokens": 1244,
+    "cache_read_tokens": 109669,
+    "cache_creation_tokens": 21264,
+    "num_turns": 5,
+    "duration_ms": 41922,
+    "duration_api_ms": 20105,
+    "model": "claude-opus-5-5",
+    "session_id": "a1ea5660-90c6-4cdf-bc26-cd0db82b15b6",
+    "stop_reason": "success",
+    "result_text": "Keel is now scaled + 2\u00d7momentum + 2\u00d7norm + 2\u00d7thrust (thrust used to be added once). `bin/e2e` passes.\n\n- **Server:** I changed the formula in `keel()` in `src/main/java/net/officefloor/hq/app/people/PersonView.java:145` and updated the class Javadoc.\n- **Everything built from keel follows automatically:** fathom, draft, trim, ripple, the keel total and so on all call `keel()` on the server. The front end only displays the values it gets back (the keel total and count are worked out from them), so none of them needed separate edits.\n- **Front end:** the only change is the comment on `keel` in `people.service.ts`.\n\nNo stored data, schema or test-data handling changed, because keel is calculated rather than stored.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.21696580000000001,
+        "num_turns": 5,
+        "duration_ms": 41922,
+        "duration_api_ms": 20105,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp100.agent.jsonl",
+  "agent_diff_file": "cp100.agent.diff",
+  "build_log_file": "cp100.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 100,
+    "results": {
+      "cp01_people.spec.ts::people": true,
+      "cp02_thrust_thrust-total.spec.ts::thrust thrust-total": true,
+      "cp03_momentum.spec.ts::momentum": true,
+      "cp04_trim_total.spec.ts::trim total": true,
+      "cp05_scaled_third.spec.ts::scaled third": true,
+      "cp06_backing_norm.spec.ts::backing norm": true,
+      "cp07_quarter_tier.spec.ts::quarter tier": true,
+      "cp08_round_divides.spec.ts::round divides": true,
+      "cp09_keel_keel-total.spec.ts::keel keel-total": true,
+      "cp10_draft_fathom.spec.ts::draft fathom": true,
+      "cp100_keel.spec.ts::keel": true,
+      "cp11_cascade_trim.spec.ts::cascade trim": true,
+      "cp12_hold.spec.ts::hold": true,
+      "cp13_heading_ripple.spec.ts::heading ripple": true,
+      "cp14_ballast_keel-count.spec.ts::ballast keel-count": true,
+      "cp15_bearing_keystone.spec.ts::bearing keystone": true,
+      "cp16_keel.spec.ts::keel": true,
+      "cp17_pitch.spec.ts::pitch": true,
+      "cp18_tackle.spec.ts::tackle": true,
+      "cp19_yaw.spec.ts::yaw": true,
+      "cp20_missing_zero.spec.ts::missing zero": true,
+      "cp21_heave.spec.ts::heave": true,
+      "cp22_camber.spec.ts::camber": true,
+      "cp23_sheer.spec.ts::sheer": true,
+      "cp24_camber.spec.ts::camber": true,
+      "cp25_beam.spec.ts::beam": true,
+      "cp26_freeboard.spec.ts::freeboard": true,
+      "cp27_buoyancy.spec.ts::buoyancy": true,
+      "cp28_beam.spec.ts::beam": true,
+      "cp29_knot.spec.ts::knot": true,
+      "cp30_cable.spec.ts::cable": true,
+      "cp31_hull.spec.ts::hull": true,
+      "cp32_keel.spec.ts::keel": true,
+      "cp33_bow.spec.ts::bow": true,
+      "cp34_stern.spec.ts::stern": true,
+      "cp35_helm.spec.ts::helm": true,
+      "cp36_freeboard.spec.ts::freeboard": true,
+      "cp37_rudder.spec.ts::rudder": true,
+      "cp38_mast.spec.ts::mast": true,
+      "cp39_rigging.spec.ts::rigging": true,
+      "cp40_patrons_mutual.spec.ts::patrons mutual": true,
+      "cp41_moor.spec.ts::moor": true,
+      "cp42_berth.spec.ts::berth": true,
+      "cp43_wharf.spec.ts::wharf": true,
+      "cp44_wharf.spec.ts::wharf": true,
+      "cp45_jetty.spec.ts::jetty": true,
+      "cp46_pier.spec.ts::pier": true,
+      "cp47_ebb.spec.ts::ebb": true,
+      "cp48_jetty.spec.ts::jetty": true,
+      "cp49_flood.spec.ts::flood": true,
+      "cp50_swell.spec.ts::swell": true,
+      "cp51_fathom-total.spec.ts::fathom-total": true,
+      "cp52_keel.spec.ts::keel": true,
+      "cp53_draft-total.spec.ts::draft-total": true,
+      "cp54_cascade-total.spec.ts::cascade-total": true,
+      "cp55_ripple-total.spec.ts::ripple-total": true,
+      "cp56_mast.spec.ts::mast": true,
+      "cp57_ballast-total.spec.ts::ballast-total": true,
+      "cp58_keystone-total.spec.ts::keystone-total": true,
+      "cp59_bearing-total.spec.ts::bearing-total": true,
+      "cp60_keel.spec.ts::keel": true,
+      "cp61_fathom-low.spec.ts::fathom-low": true,
+      "cp62_fathom-top.spec.ts::fathom-top": true,
+      "cp63_fathom-spread.spec.ts::fathom-spread": true,
+      "cp64_keel.spec.ts::keel": true,
+      "cp65_fathom-even.spec.ts::fathom-even": true,
+      "cp66_fathom-mean.spec.ts::fathom-mean": true,
+      "cp67_cascade-low.spec.ts::cascade-low": true,
+      "cp68_fathom.spec.ts::fathom": true,
+      "cp69_cascade-top.spec.ts::cascade-top": true,
+      "cp70_cascade-spread.spec.ts::cascade-spread": true,
+      "cp71_cascade-even.spec.ts::cascade-even": true,
+      "cp72_cascade.spec.ts::cascade": true,
+      "cp73_cascade-mean.spec.ts::cascade-mean": true,
+      "cp74_ripple-low.spec.ts::ripple-low": true,
+      "cp75_ripple-top.spec.ts::ripple-top": true,
+      "cp76_ripple.spec.ts::ripple": true,
+      "cp77_ripple-spread.spec.ts::ripple-spread": true,
+      "cp78_ripple-even.spec.ts::ripple-even": true,
+      "cp79_ripple-mean.spec.ts::ripple-mean": true,
+      "cp80_ballast.spec.ts::ballast": true,
+      "cp81_ballast-low.spec.ts::ballast-low": true,
+      "cp82_ballast-top.spec.ts::ballast-top": true,
+      "cp83_ballast-spread.spec.ts::ballast-spread": true,
+      "cp84_keystone.spec.ts::keystone": true,
+      "cp85_ballast-even.spec.ts::ballast-even": true,
+      "cp86_ballast-mean.spec.ts::ballast-mean": true,
+      "cp87_keystone-low.spec.ts::keystone-low": true,
+      "cp88_draft.spec.ts::draft": true,
+      "cp89_keystone-top.spec.ts::keystone-top": true,
+      "cp90_keystone-spread.spec.ts::keystone-spread": true,
+      "cp91_keystone-even.spec.ts::keystone-even": true,
+      "cp92_trim.spec.ts::trim": true,
+      "cp93_keystone-mean.spec.ts::keystone-mean": true,
+      "cp94_draft-low.spec.ts::draft-low": true,
+      "cp95_draft-top.spec.ts::draft-top": true,
+      "cp96_heading.spec.ts::heading": true,
+      "cp97_draft-spread.spec.ts::draft-spread": true,
+      "cp98_draft-even.spec.ts::draft-even": true,
+      "cp99_draft-mean.spec.ts::draft-mean": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 906,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 158,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_trim_total.spec.ts::trim total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_scaled_third.spec.ts::scaled third",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 168,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_backing_norm.spec.ts::backing norm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 163,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_quarter_tier.spec.ts::quarter tier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 165,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_round_divides.spec.ts::round divides",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 183,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_keel_keel-total.spec.ts::keel keel-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_draft_fathom.spec.ts::draft fathom",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 161,
+        "failure": ""
+      },
+      {
+        "test_id": "cp100_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_cascade_trim.spec.ts::cascade trim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 158,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 147,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_heading_ripple.spec.ts::heading ripple",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 157,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_ballast_keel-count.spec.ts::ballast keel-count",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 143,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_bearing_keystone.spec.ts::bearing keystone",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 157,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_pitch.spec.ts::pitch",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 150,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_tackle.spec.ts::tackle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 161,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_yaw.spec.ts::yaw",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_missing_zero.spec.ts::missing zero",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 173,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_heave.spec.ts::heave",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_camber.spec.ts::camber",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_sheer.spec.ts::sheer",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_camber.spec.ts::camber",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_beam.spec.ts::beam",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_freeboard.spec.ts::freeboard",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_buoyancy.spec.ts::buoyancy",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 142,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_beam.spec.ts::beam",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_knot.spec.ts::knot",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_cable.spec.ts::cable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_hull.spec.ts::hull",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_bow.spec.ts::bow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_stern.spec.ts::stern",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_helm.spec.ts::helm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 142,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_freeboard.spec.ts::freeboard",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_rudder.spec.ts::rudder",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_mast.spec.ts::mast",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_rigging.spec.ts::rigging",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 142,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_patrons_mutual.spec.ts::patrons mutual",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_moor.spec.ts::moor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_berth.spec.ts::berth",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_wharf.spec.ts::wharf",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_wharf.spec.ts::wharf",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 143,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_jetty.spec.ts::jetty",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_pier.spec.ts::pier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_ebb.spec.ts::ebb",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_jetty.spec.ts::jetty",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_flood.spec.ts::flood",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_swell.spec.ts::swell",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_fathom-total.spec.ts::fathom-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 108,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_draft-total.spec.ts::draft-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_cascade-total.spec.ts::cascade-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 111,
+        "failure": ""
+      },
+      {
+        "test_id": "cp55_ripple-total.spec.ts::ripple-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 111,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_mast.spec.ts::mast",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp57_ballast-total.spec.ts::ballast-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp58_keystone-total.spec.ts::keystone-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_bearing-total.spec.ts::bearing-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_fathom-low.spec.ts::fathom-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 120,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_fathom-top.spec.ts::fathom-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 114,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_fathom-spread.spec.ts::fathom-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 115,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_fathom-even.spec.ts::fathom-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 105,
+        "failure": ""
+      },
+      {
+        "test_id": "cp66_fathom-mean.spec.ts::fathom-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_cascade-low.spec.ts::cascade-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 114,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_fathom.spec.ts::fathom",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 132,
+        "failure": ""
+      },
+      {
+        "test_id": "cp69_cascade-top.spec.ts::cascade-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_cascade-spread.spec.ts::cascade-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cascade-even.spec.ts::cascade-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 103,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_cascade.spec.ts::cascade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp73_cascade-mean.spec.ts::cascade-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp74_ripple-low.spec.ts::ripple-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 123,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_ripple-top.spec.ts::ripple-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp76_ripple.spec.ts::ripple",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_ripple-spread.spec.ts::ripple-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 116,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_ripple-even.spec.ts::ripple-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 108,
+        "failure": ""
+      },
+      {
+        "test_id": "cp79_ripple-mean.spec.ts::ripple-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 121,
+        "failure": ""
+      },
+      {
+        "test_id": "cp80_ballast.spec.ts::ballast",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_ballast-low.spec.ts::ballast-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 116,
+        "failure": ""
+      },
+      {
+        "test_id": "cp82_ballast-top.spec.ts::ballast-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 116,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_ballast-spread.spec.ts::ballast-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 110,
+        "failure": ""
+      },
+      {
+        "test_id": "cp84_keystone.spec.ts::keystone",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp85_ballast-even.spec.ts::ballast-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_ballast-mean.spec.ts::ballast-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 118,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_keystone-low.spec.ts::keystone-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 106,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_draft.spec.ts::draft",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 132,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_keystone-top.spec.ts::keystone-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 108,
+        "failure": ""
+      },
+      {
+        "test_id": "cp90_keystone-spread.spec.ts::keystone-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_keystone-even.spec.ts::keystone-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 116,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_trim.spec.ts::trim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 133,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_keystone-mean.spec.ts::keystone-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 105,
+        "failure": ""
+      },
+      {
+        "test_id": "cp94_draft-low.spec.ts::draft-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 118,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_draft-top.spec.ts::draft-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 106,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_heading.spec.ts::heading",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 133,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_draft-spread.spec.ts::draft-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_draft-even.spec.ts::draft-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 116,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_draft-mean.spec.ts::draft-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 118,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 14,
+      "failures": []
+    }
+  },
+  "probe": {
+    "probe_cost_usd": 0.32452139999999996,
+    "probe_input_tokens": 14,
+    "probe_cache_read_tokens": 169647,
+    "probe_recall": 0.5357142857142857,
+    "probe_text": "## 1. Concepts and rules, in dependency order\n\nPer-person values are computed on the server in `PersonView.java`. Sheet-wide totals and counts are computed in the browser in `people-list.ts`.\n\n**Raw numbers (`Person.java`)**\n1. `alpha`, `beta`, `gamma`: optional whole numbers. A blank one counts as zero in every calculation (`orZero`).\n2. `hold`: the \"on hold\" flag.\n3. `patrons`: the people this person names as patrons.\n\n**Before `keel`**\n4. `thrust` = alpha \u00d7 beta\n5. `momentum` = thrust + 3 \u00d7 (gamma \u2212 alpha)\n6. `scaled` = momentum \u00d7 2\n7. `third` = scaled \u00f7 3\n8. `quarter` = scaled \u00f7 4\n9. `tier` = `SINK` if scaled < 0, `STEADY` from 0 to 199, `SURGE` at 200 or more\n10. `averageScaled` (sheet-wide) = the average of scaled over people **not on hold** whose scaled is not n/a. It is null if nobody qualifies.\n11. `norm` = scaled \u2212 averageScaled\n\n**Patron aggregate**\n12. `mutualPatrons`: patronage is mutual. A person's patrons are the people they name plus the people who name them, each counted once. Naming yourself is ignored.\n13. `backing` = the sum of the patrons' momentum (n/a patrons add nothing). It is n/a when the person's own momentum is n/a.\n\n**Central value**\n14. `keel` = scaled + 2\u00b7momentum + 2\u00b7norm + 2\u00b7thrust. It is n/a when momentum or norm is n/a.\n\n**Computed from keel** (each is n/a when keel, or any other input it uses, is n/a)\n15. `fathom` = keel + momentum + 68\n16. `draft` = keel + thrust + 88\n17. `cascade` = fathom + scaled + 72\n18. `trim` = keel \u2212 thrust + 92\n19. `ripple` = cascade + keel + 76\n20. `heading` = keel + norm + 96\n21. `ballast` = ripple + thrust + 80\n22. `keystone` = ballast + norm + 84\n23. `bearing` = keel \u2212 norm\n24. `pitch` = keel + momentum; `tackle` = keel \u2212 momentum\n25. `yaw` = keel + scaled; `heave` = keel \u2212 scaled\n26. `camber` = keel + 200; `sheer` = keel \u2212 100\n27. `beam` = keel \u00d7 3; `freeboard` = keel \u00f7 3\n28. `buoyancy` = keel \u00d7 3; `knot` = keel \u00f7 3 (these duplicate beam and freeboard)\n29. `cable` = keel + gamma; `hull` = keel \u2212 gamma\n30. `bow` = keel + fathom; `stern` = keel \u2212 fathom\n31. `helm` = keel + ripple; `rudder` = keel \u2212 ripple\n32. `mast` = keel + 2000; `rigging` = keel \u00f7 4\n33. `moor` = keel + keystone; `berth` = keel \u2212 keystone\n34. `wharf` = keel \u00d7 5; `jetty` = keel \u00f7 10\n35. `pier` = keel + 500; `ebb` = keel \u2212 500\n36. `flood` = keel + ballast; `swell` = keel \u2212 ballast\n\n**Sheet-wide rules**\n- **Rounding (`SheetMath.divide`, copied as `divide` in the front end):** every division rounds to the nearest whole number, and a half rounds up toward the larger number (5/2 \u2192 3, \u22125/2 \u2192 \u22122).\n- **Holds:**\n  - People on hold are left out of `averageScaled`.\n  - In totals, they count for half their value (rounded with `divide`).\n  - They are left out of counts and of low/top/spread/mean.\n- **Trimming (`trimmedTotal`):** every \"\u2026 total\" adds up the non-n/a contributions. When at least two people contribute, it drops one highest and one lowest value. The halved on-hold values take part in that trimming.\n- **Which people count (`countable`):** every count (\"Keel count\", \"\u2026 even\") includes only people who are not on hold and whose keel is not below zero.\n- **Other footer values (low/top/spread/mean)** use only people not on hold and skip n/a values. The mean uses `divide`.\n\n## 2. How hard it was to follow\n\nThe logic is scattered and hard to follow:\n- **Split across tiers:** per-person values live on the server, in a 340-line `PersonView` record made of ~50 almost identical methods that recompute `keel` and its inputs again and again. Holds, trimming and counting live only in the Angular component, mixed in with copy-pasted footer code, and the rounding rule is implemented twice.\n- **Docs out of sync with the code:** the TS comments in `people.service.ts` say `draft` and `heading` have no constant, `beam` is \u00d72 and `freeboard` is \u00f72. The Java code (what actually runs) uses +88, +96, \u00d73 and \u00f73. A new developer couldn't trust the comments and would have to read both tiers."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
