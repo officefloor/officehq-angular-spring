@@ -26,6 +26,7 @@ import java.util.List;
  * keel times three, null (n/a) when keel is. knot is keel divided by three (rounded like every
  * divide), null (n/a) when keel is. cable is keel plus gamma (a blank gamma counting as zero), null
  * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero), null (n/a) when keel is.
+ * bow is keel plus fathom, null (n/a) when keel is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
@@ -33,7 +34,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
         Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
-        Long hull) {
+        Long hull, Long bow) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
@@ -46,7 +47,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
                 tackle(p, averageScaled), yaw(p, averageScaled), heave(p, averageScaled),
                 camber(p, averageScaled), sheer(p, averageScaled), beam(p, averageScaled),
                 freeboard(p, averageScaled), buoyancy(p, averageScaled), knot(p, averageScaled), cable(p, averageScaled),
-                hull(p, averageScaled));
+                hull(p, averageScaled), bow(p, averageScaled));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -213,6 +214,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long hull(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
         return keel == null ? null : keel - orZero(p.getGamma());
+    }
+
+    private static Long bow(Person p, Long averageScaled) {
+        Long keel = keel(p, averageScaled);
+        return keel == null ? null : keel + fathom(p, averageScaled);
     }
 
     private static String tier(Person p) {
