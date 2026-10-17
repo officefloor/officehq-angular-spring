@@ -87,6 +87,18 @@ export class Claims {
     this.all.update((list) => [added, ...list]);
   }
 
+  /**
+   * The quick-add bar: a DRAFT claim of the amount, dated the sheet's today, for the person of the
+   * name; the store adds the person first (grade A) when the name is not on the sheet.
+   */
+  async quickAdd(name: string, amount: string): Promise<Claim> {
+    const added = await firstValueFrom(
+      this.http.post<Claim>(`${this.sheetUrl()}/quick-add`, { name, amount: amount.trim() }, { headers: this.headers() }),
+    );
+    this.all.update((list) => [added, ...list]);
+    return added;
+  }
+
   async update(id: number, fields: ClaimFields): Promise<void> {
     const saved = await firstValueFrom(
       this.http.put<Claim>(`${this.sheetUrl()}/claims/${id}`, this.body(fields), { headers: this.headers() }),

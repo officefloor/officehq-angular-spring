@@ -1,7 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { Claims, counts, formatCents } from '../../core/claims';
+import { AMOUNT, Claims, counts, formatCents } from '../../core/claims';
 import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
+import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
@@ -75,6 +76,28 @@ import { PeriodsPanel } from '../periods/periods';
         }
       </form>
 
+      <form (submit)="quickAdd($event)" aria-label="Quick add a claim">
+        <label for="quick-name">Name</label>
+        <input
+          id="quick-name"
+          data-testid="quick-name"
+          [value]="quickName()"
+          (input)="quickName.set($any($event.target).value); quickError.set(null)"
+        />
+        <label for="quick-amount">Amount</label>
+        <input
+          id="quick-amount"
+          data-testid="quick-amount"
+          inputmode="decimal"
+          [value]="quickAmount()"
+          (input)="quickAmount.set($any($event.target).value); quickError.set(null)"
+        />
+        <button type="submit" data-testid="quick-submit">Quick add claim</button>
+        @if (quickError(); as err) {
+          <p role="alert" data-testid="quick-error">{{ err }}</p>
+        }
+      </form>
+
       <table>
         <thead>
           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -109,6 +132,7 @@ export class People {
   private readonly session = inject(Session);
   private readonly claims = inject(Claims);
   private readonly rates = inject(Rates);
+  private readonly periods = inject(Periods);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -125,6 +149,11 @@ export class People {
   protected readonly importError = signal<string | null>(null);
   /** Set while an import awaits the store, so a second submit does not import twice. */
   private importing = false;
+  protected readonly quickName = signal('');
+  protected readonly quickAmount = signal('');
+  protected readonly quickError = signal<string | null>(null);
+  /** Set while a quick add awaits the store, so a second submit does not store a second claim. */
+  private quickAdding = false;
   protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
 
   /**
@@ -161,6 +190,9 @@ export class People {
         this.importText.set('');
         this.importResult.set(null);
         this.importError.set(null);
+        this.quickName.set('');
+        this.quickAmount.set('');
+        this.quickError.set(null);
         void this.reload();
         void this.claims.reload();
       });
@@ -244,6 +276,47 @@ export class People {
       this.importError.set('The people could not be imported.');
     } finally {
       this.importing = false;
+    }
+  }
+
+  /**
+   * Add a DRAFT claim dated the sheet's today for the named person, adding the person (grade A)
+   * first when the name is not on the sheet; the rules of the person and claim forms apply.
+   */
+  protected async quickAdd(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.quickAdding) return;
+    this.quickError.set(null);
+    const name = this.quickName().trim();
+    const amount = this.quickAmount().trim();
+    if (!name) {
+      this.quickError.set('Enter a name.');
+      return;
+    }
+    if (name.length > 100) {
+      this.quickError.set('The name is too long.');
+      return;
+    }
+    if (!AMOUNT.test(amount)) {
+      this.quickError.set('Enter an amount of 0.00 or more, with at most two decimals.');
+      return;
+    }
+    if (this.periods.closedOn(this.session.today() ?? '')) {
+      this.quickError.set('Today is in a closed period, so no claim can be added.');
+      return;
+    }
+    this.quickAdding = true;
+    try {
+      const added = await this.claims.quickAdd(name, amount);
+      if (!this.people().some((p) => p.id === added.personId)) await this.reload();
+      this.quickName.set('');
+      this.quickAmount.set('');
+    } catch (e) {
+      this.quickError.set(e instanceof HttpErrorResponse && e.status === 423
+        ? 'Today is in a closed period, so no claim can be added.'
+        : 'The claim could not be added.');
+    } finally {
+      this.quickAdding = false;
     }
   }
 

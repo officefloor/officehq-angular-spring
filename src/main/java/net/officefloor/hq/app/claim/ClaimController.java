@@ -46,10 +46,18 @@ public class ClaimController {
             @Size(max = 500) String note) {
     }
 
-    private final ClaimService service;
+    /** The quick-add bar: a name (stored trimmed) and an amount, with the rules of the person and claim forms. */
+    public record QuickAddRequest(
+            @NotBlank @Size(max = 100) String name,
+            @NotNull @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String amount) {
+    }
 
-    public ClaimController(ClaimService service) {
+    private final ClaimService service;
+    private final QuickAddService quickAdd;
+
+    public ClaimController(ClaimService service, QuickAddService quickAdd) {
         this.service = service;
+        this.quickAdd = quickAdd;
     }
 
     @GetMapping("/claims")
@@ -65,6 +73,14 @@ public class ClaimController {
             @RequestBody @Validated ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId,
                 new BigDecimal(request.amount()), request.date(), request.note()));
+    }
+
+    @PostMapping("/quick-add")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ClaimView quickAdd(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Validated QuickAddRequest request) {
+        return ClaimView.of(quickAdd.add(sheetId.trim(), user.trim(), request.name(), new BigDecimal(request.amount())));
     }
 
     @PutMapping("/claims/{claimId}")
