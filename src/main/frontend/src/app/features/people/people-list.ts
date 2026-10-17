@@ -224,6 +224,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="30"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="19">Ripple even</th>
+              <td data-testid="rollup-ripple-even">{{ rippleEven() }}</td>
+              <td colspan="30"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="21">Ballast total</th>
               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
               <td colspan="28"></td>
@@ -409,6 +414,12 @@ export class PeopleList {
   protected readonly cascadeEven = computed(
     () =>
       countable(this.people() ?? []).filter((p) => p.cascade !== null && p.cascade % 2 === 0).length,
+  );
+
+  // How many counted people have an even ripple (n/a ripples are not counted).
+  protected readonly rippleEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.ripple !== null && p.ripple % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {
