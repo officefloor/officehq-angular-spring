@@ -1,0 +1,140 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 90eaebdd..e022c378 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -19,9 +19,13 @@ export interface PersonFields {
+   grade: Grade;
+ }
+ 
+-/** What an import did: how many it added, or the lines (numbered from 1) that stopped it. */
++/**
++ * What an import did: how many it added and how many existing people it updated, or the lines
++ * (numbered from 1) that stopped it.
++ */
+ export interface ImportResult {
+   added: number;
++  updated: number;
+   errors: { line: number; message: string }[];
+ }
+ 
+@@ -39,7 +43,9 @@ export class PeopleApi {
+     return firstValueFrom(this.http.post<Person>(this.url(), fields, { headers: this.headers() }));
+   }
+ 
+-  /** Add people from pasted lines of name,grade; all of them, or none when any line is bad. */
++  /**
++   * Add or update people from pasted lines of name,grade; all of them, or none when any line is bad.
++   */
+   importLines(text: string): Promise<ImportResult> {
+     return firstValueFrom(
+       this.http.post<ImportResult>(`${this.url()}/import`, { text }, { headers: this.headers() }),
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b56e16b1..0fb5ea11 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -58,6 +58,7 @@ import { PersonClaims } from '../claims/claims';
+         @if (importResult(); as result) {
+           <div role="status">
+             <p>Added <strong data-testid="import-added">{{ result.added }}</strong></p>
++            <p>Updated <strong data-testid="import-updated">{{ result.updated }}</strong></p>
+             @if (result.errors.length > 0) {
+               <p>Nothing was imported; fix these lines:</p>
+               <ul>
+@@ -232,7 +233,7 @@ export class People {
+     try {
+       const result = await this.api.importLines(this.importText());
+       this.importResult.set(result);
+-      if (result.added > 0) {
++      if (result.added > 0 || result.updated > 0) {
+         this.importText.set('');
+         await this.reload();
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 18691ac3..f3b9fb89 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -10,6 +10,8 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
+ 
++    Optional<Person> findFirstBySheetIdAndNameIgnoreCase(String sheetId, String name);
++
+     boolean existsBySheetIdAndNameIgnoreCase(String sheetId, String name);
+ 
+     boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 4d2913b6..45fd227b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -4,6 +4,7 @@ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Optional;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -55,14 +56,18 @@ public class PersonService {
+     public record ImportError(int line, String message) {
+     }
+ 
+-    /** How many people an import added, or the lines that stopped it (then nothing is added). */
+-    public record ImportResult(int added, List<ImportError> errors) {
++    /**
++     * How many people an import added and how many existing ones it updated, or the lines that
++     * stopped it (then nothing is changed).
++     */
++    public record ImportResult(int added, int updated, List<ImportError> errors) {
+     }
+ 
+     /**
+      * Import people from lines of name,grade. Every line is checked first with the rules of the form;
+      * a name repeated in the paste is compared like uniqueness on the sheet. If any line breaks a
+-     * rule nothing is added; otherwise each person is added in order. Blank lines are skipped.
++     * rule nothing is changed; otherwise, in order, a name already on the sheet has its grade
++     * updated and any other name is added. Blank lines are skipped.
+      */
+     @Transactional
+     public ImportResult importPeople(String sheetId, String user, String text) {
+@@ -86,8 +91,6 @@ public class PersonService {
+                 error = "The name is too long.";
+             } else if (!GRADES.contains(grade)) {
+                 error = "The grade must be A, B or C.";
+-            } else if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
+-                error = "That name is already in use on this sheet.";
+             } else if (!seen.add(name.toLowerCase(Locale.ROOT))) {
+                 error = "That name is repeated in the import.";
+             }
+@@ -98,16 +101,28 @@ public class PersonService {
+             }
+         }
+         if (!errors.isEmpty()) {
+-            return new ImportResult(0, errors);
++            return new ImportResult(0, 0, errors);
+         }
+         if (!rows.isEmpty()) {
+             sheets.load(sheetId, user);
+         }
++        int added = 0;
++        int updated = 0;
+         for (String[] row : rows) {
+-            Person person = people.save(new Person(sheetId, row[0], row[1]));
+-            audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
++            Optional<Person> existing = people.findFirstBySheetIdAndNameIgnoreCase(sheetId, row[0]);
++            if (existing.isPresent()) {
++                Person person = existing.get();
++                person.setGrade(row[1]);
++                person = people.saveAndFlush(person);
++                audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
++                updated++;
++            } else {
++                Person person = people.save(new Person(sheetId, row[0], row[1]));
++                audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
++                added++;
++            }
+         }
+-        return new ImportResult(rows.size(), List.of());
++        return new ImportResult(added, updated, List.of());
+     }
+ 
+     @Transactional
