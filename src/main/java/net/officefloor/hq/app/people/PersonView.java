@@ -9,16 +9,19 @@ import java.util.List;
  * down, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
  * sheet's average scaled (over the people whose scaled is not n/a, rounded like every divide), null
  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
- * (n/a) when the person's own momentum is.
+ * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
+ * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
+ * null (n/a) when scaled is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
-        Long backing) {
+        Long backing, Long quarter, String tier) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
-                scaled(p), third(p), norm(p, averageScaled), backing(p));
+                scaled(p), third(p), norm(p, averageScaled), backing(p),
+                quarter(p), tier(p));
     }
 
     /** The average scaled across the people, skipping n/a; null when nobody has one. */
@@ -67,5 +70,21 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long third(Person p) {
         Long scaled = scaled(p);
         return scaled == null ? null : SheetMath.divide(scaled, 3L);
+    }
+
+    private static Long quarter(Person p) {
+        Long scaled = scaled(p);
+        return scaled == null ? null : SheetMath.divide(scaled, 4L);
+    }
+
+    private static String tier(Person p) {
+        Long scaled = scaled(p);
+        if (scaled == null) {
+            return null;
+        }
+        if (scaled < 0) {
+            return "SINK";
+        }
+        return scaled < 200 ? "STEADY" : "SURGE";
     }
 }

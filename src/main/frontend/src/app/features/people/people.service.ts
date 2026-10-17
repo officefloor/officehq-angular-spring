@@ -22,6 +22,10 @@ export interface Person {
   norm: number | null;
   // the patrons' momentum added up (n/a ones add nothing); null (n/a) when momentum is.
   backing: number | null;
+  // scaled divided by four, rounded down (also below zero); null (n/a) when scaled is.
+  quarter: number | null;
+  // SINK below zero, STEADY from 0 up to 199, SURGE at 200 or more; null (n/a) when scaled is.
+  tier: 'SINK' | 'STEADY' | 'SURGE' | null;
 }
 
 @Injectable({ providedIn: 'root' })
