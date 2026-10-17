@@ -1,9 +1,11 @@
 import { Component, inject, linkedSignal, signal } from '@angular/core';
 import { Session } from '../../core/session';
+import { People } from '../people/people';
 
 // The one screen: sign in by name, then choose a sheet by id.
 @Component({
   selector: 'app-home',
+  imports: [People],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -40,6 +42,8 @@ import { Session } from '../../core/session';
             <p role="alert" data-testid="sheet-today-error">{{ err }}</p>
           }
         </form>
+
+        <app-people />
       }
     } @else {
       <form (submit)="signIn($event)">

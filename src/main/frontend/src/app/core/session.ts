@@ -18,6 +18,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's "today" — use this, never the real clock, for dates in the sheet. */
   readonly today = signal<string | null>(null);
+  /** Counts sheet loads, so per-sheet data re-reads the store on every (re-)load. */
+  readonly loads = signal(0);
 
   signIn(name: string): void {
     this.user.set(name.trim());
@@ -33,6 +35,7 @@ export class Session {
       }),
     );
     this.show(sheet);
+    this.loads.update((n) => n + 1);
   }
 
   /** Change the active sheet's "today". */
