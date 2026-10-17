@@ -1,0 +1,198 @@
+{
+  "checkpoint": 15,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "469ff91103de89741d7fcc15fc67f3c61f01ccb4"
+  },
+  "checkpoint_id": "cp15_bearing_keystone",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For each person show keystone: ballast plus norm. For each person show bearing: keel minus norm.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor each person show keystone: ballast plus norm. For each person show bearing: keel minus norm.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5af036645524f2211631ae749e6d3d720ac58d01",
+  "reset_sha": "",
+  "preagent_sha": "228cb24b40e74f61b880188d83adebd72b13ef6e",
+  "prev_sha": "228cb24b40e74f61b880188d83adebd72b13ef6e",
+  "base_sha": "469ff91103de89741d7fcc15fc67f3c61f01ccb4",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2270086,
+    "input_tokens": 10,
+    "output_tokens": 1988,
+    "cache_read_tokens": 100923,
+    "cache_creation_tokens": 20878,
+    "num_turns": 5,
+    "duration_ms": 43390,
+    "duration_api_ms": 21508,
+    "model": "claude-opus-5-5",
+    "session_id": "a9ccf831-37ab-4acc-8df9-da361a5a2440",
+    "stop_reason": "success",
+    "result_text": "Each person on the sheet now has two new values, and the Playwright test passes on `bin/e2e`.\n\n- **Keystone** is ballast plus norm.\n- **Bearing** is keel minus norm.\n- Either one shows `n/a` when a value it depends on is `n/a`.\n\nThe server works them out in `PersonView.java`, next to the other per-person values. On the front end I added the two fields to the `Person` type in `people.service.ts` and two columns to the people table in `people-list.ts`, tagged `concept-keystone` and `concept-bearing`. I also widened the blank cells in the table footer by two so the footer rows still line up with the new columns.\n\nNothing about the stored data, the database or the test endpoints changed, because both values are calculated from fields that are already stored.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.2270086,
+        "num_turns": 5,
+        "duration_ms": 43390,
+        "duration_api_ms": 21508,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp15.agent.jsonl",
+  "agent_diff_file": "cp15.agent.diff",
+  "build_log_file": "cp15.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 15,
+    "results": {
+      "cp01_people.spec.ts::people": true,
+      "cp02_thrust_thrust-total.spec.ts::thrust thrust-total": true,
+      "cp03_momentum.spec.ts::momentum": true,
+      "cp04_trim_total.spec.ts::trim total": true,
+      "cp05_scaled_third.spec.ts::scaled third": true,
+      "cp06_backing_norm.spec.ts::backing norm": true,
+      "cp07_quarter_tier.spec.ts::quarter tier": true,
+      "cp08_round_divides.spec.ts::round divides": true,
+      "cp09_keel_keel-total.spec.ts::keel keel-total": true,
+      "cp10_draft_fathom.spec.ts::draft fathom": true,
+      "cp11_cascade_trim.spec.ts::cascade trim": true,
+      "cp12_hold.spec.ts::hold": true,
+      "cp13_heading_ripple.spec.ts::heading ripple": true,
+      "cp14_ballast_keel-count.spec.ts::ballast keel-count": true,
+      "cp15_bearing_keystone.spec.ts::bearing keystone": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 896,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_trim_total.spec.ts::trim total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 108,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_scaled_third.spec.ts::scaled third",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 150,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_backing_norm.spec.ts::backing norm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_quarter_tier.spec.ts::quarter tier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_round_divides.spec.ts::round divides",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 167,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_keel_keel-total.spec.ts::keel keel-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_draft_fathom.spec.ts::draft fathom",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_cascade_trim.spec.ts::cascade trim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 151,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_heading_ripple.spec.ts::heading ripple",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_ballast_keel-count.spec.ts::ballast keel-count",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 129,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_bearing_keystone.spec.ts::bearing keystone",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 144,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 14,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
