@@ -613,6 +613,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-buoyancy-spread">{{ buoyancySpread() ?? 'n/a' }}</td>
               <td colspan="17"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="32">Buoyancy even</th>
+              <td data-testid="rollup-buoyancy-even">{{ buoyancyEven() }}</td>
+              <td colspan="17"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1373,6 +1378,13 @@ export class PeopleList {
   protected readonly freeboardEven = computed(
     () =>
       countable(this.people() ?? []).filter((p) => p.freeboard !== null && p.freeboard % 2 === 0)
+        .length,
+  );
+
+  // How many counted people have an even buoyancy (n/a buoyancies are not counted).
+  protected readonly buoyancyEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.buoyancy !== null && p.buoyancy % 2 === 0)
         .length,
   );
 
