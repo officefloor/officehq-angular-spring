@@ -35,6 +35,7 @@ import { PeopleService } from './people.service';
               <th scope="col">Trim</th>
               <th scope="col">Ripple</th>
               <th scope="col">Heading</th>
+              <th scope="col">Ballast</th>
             </tr>
           </thead>
           <tbody>
@@ -61,6 +62,7 @@ import { PeopleService } from './people.service';
                 <td data-testid="concept-trim">{{ p.trim ?? 'n/a' }}</td>
                 <td data-testid="concept-ripple">{{ p.ripple ?? 'n/a' }}</td>
                 <td data-testid="concept-heading">{{ p.heading ?? 'n/a' }}</td>
+                <td data-testid="concept-ballast">{{ p.ballast ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
@@ -68,13 +70,17 @@ import { PeopleService } from './people.service';
             <tr>
               <th scope="row" colspan="6">Thrust total</th>
               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
-              <td colspan="7"></td>
-              <td colspan="7"></td>
+              <td colspan="21"></td>
             </tr>
             <tr>
               <th scope="row" colspan="14">Keel total</th>
               <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
-              <td colspan="6"></td>
+              <td colspan="13"></td>
+            </tr>
+            <tr>
+              <th scope="row" colspan="14">Keel count</th>
+              <td data-testid="rollup-keel-count">{{ keelCount() }}</td>
+              <td colspan="13"></td>
             </tr>
           </tfoot>
         </table>
@@ -97,6 +103,11 @@ export class PeopleList {
   // Everyone's keel added up, trimmed like every sheet total.
   protected readonly keelTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keel, hold: p.hold }))),
+  );
+
+  // How many people not on hold have an even keel (n/a keels are not counted).
+  protected readonly keelCount = computed(
+    () => (this.people() ?? []).filter((p) => !p.hold && p.keel !== null && p.keel % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {

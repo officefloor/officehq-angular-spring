@@ -15,19 +15,19 @@ import java.util.List;
  * fathom is keel plus momentum and draft is keel plus thrust; both null (n/a) when keel is.
  * cascade is fathom plus scaled, null (n/a) when fathom is. trim is keel minus thrust, null (n/a)
  * when keel is. ripple is cascade plus keel, null (n/a) when cascade is. heading is keel plus norm,
- * null (n/a) when keel or norm is.
+ * null (n/a) when keel or norm is. ballast is ripple plus thrust, null (n/a) when ripple is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
         Long backing, Long quarter, String tier, Long keel,
-        Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading) {
+        Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
                 scaled(p), third(p), norm(p, averageScaled), backing(p),
                 quarter(p), tier(p), keel(p), fathom(p), draft(p), cascade(p), trim(p),
-                ripple(p), heading(p, averageScaled));
+                ripple(p), heading(p, averageScaled), ballast(p));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -112,6 +112,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long ripple(Person p) {
         Long cascade = cascade(p);
         return cascade == null ? null : cascade + keel(p);
+    }
+
+    private static Long ballast(Person p) {
+        Long ripple = ripple(p);
+        return ripple == null ? null : ripple + thrust(p);
     }
 
     private static Long heading(Person p, Long averageScaled) {

@@ -40,6 +40,8 @@ export interface Person {
   ripple: number | null;
   // keel plus norm; null (n/a) when keel or norm is.
   heading: number | null;
+  // ripple plus thrust; null (n/a) when ripple is.
+  ballast: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
