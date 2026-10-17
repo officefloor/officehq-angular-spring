@@ -13,17 +13,19 @@ import java.util.List;
  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
  * null (n/a) when scaled is. keel is scaled plus momentum, null (n/a) when momentum is.
  * fathom is keel plus momentum and draft is keel plus thrust; both null (n/a) when keel is.
+ * cascade is fathom plus scaled, null (n/a) when fathom is. trim is keel minus thrust, null (n/a)
+ * when keel is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
         Long backing, Long quarter, String tier, Long keel,
-        Long fathom, Long draft) {
+        Long fathom, Long draft, Long cascade, Long trim) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
                 scaled(p), third(p), norm(p, averageScaled), backing(p),
-                quarter(p), tier(p), keel(p), fathom(p), draft(p));
+                quarter(p), tier(p), keel(p), fathom(p), draft(p), cascade(p), trim(p));
     }
 
     /** The average scaled across the people, skipping n/a; null when nobody has one. */
@@ -92,6 +94,16 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long draft(Person p) {
         Long keel = keel(p);
         return keel == null ? null : keel + thrust(p);
+    }
+
+    private static Long cascade(Person p) {
+        Long fathom = fathom(p);
+        return fathom == null ? null : fathom + scaled(p);
+    }
+
+    private static Long trim(Person p) {
+        Long keel = keel(p);
+        return keel == null ? null : keel - thrust(p);
     }
 
     private static String tier(Person p) {

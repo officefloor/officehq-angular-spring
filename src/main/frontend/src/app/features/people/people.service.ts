@@ -32,6 +32,10 @@ export interface Person {
   fathom: number | null;
   // keel plus thrust; null (n/a) when keel is.
   draft: number | null;
+  // fathom plus scaled; null (n/a) when fathom is.
+  cascade: number | null;
+  // keel minus thrust; null (n/a) when keel is.
+  trim: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
