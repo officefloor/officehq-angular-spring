@@ -82,6 +82,8 @@ export interface Person {
   mast: number | null;
   // keel divided by four, rounded to the nearest (a half up); null (n/a) when keel is.
   rigging: number | null;
+  // keel plus keystone; null (n/a) when keel or keystone is.
+  moor: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
