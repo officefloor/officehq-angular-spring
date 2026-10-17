@@ -1,0 +1,233 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 49909bbf..12b7ca43 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -87,6 +87,18 @@ export class Claims {
+     this.all.update((list) => [added, ...list]);
+   }
+ 
++  /**
++   * The quick-add bar: a DRAFT claim of the amount, dated the sheet's today, for the person of the
++   * name; the store adds the person first (grade A) when the name is not on the sheet.
++   */
++  async quickAdd(name: string, amount: string): Promise<Claim> {
++    const added = await firstValueFrom(
++      this.http.post<Claim>(`${this.sheetUrl()}/quick-add`, { name, amount: amount.trim() }, { headers: this.headers() }),
++    );
++    this.all.update((list) => [added, ...list]);
++    return added;
++  }
++
+   async update(id: number, fields: ClaimFields): Promise<void> {
+     const saved = await firstValueFrom(
+       this.http.put<Claim>(`${this.sheetUrl()}/claims/${id}`, this.body(fields), { headers: this.headers() }),
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b3ce11d0..a36c9e14 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,7 +1,8 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+-import { Claims, counts, formatCents } from '../../core/claims';
++import { AMOUNT, Claims, counts, formatCents } from '../../core/claims';
+ import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
++import { Periods } from '../../core/periods';
+ import { Rates } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { PersonClaims } from '../claims/claims';
+@@ -75,6 +76,28 @@ import { PeriodsPanel } from '../periods/periods';
+         }
+       </form>
+ 
++      <form (submit)="quickAdd($event)" aria-label="Quick add a claim">
++        <label for="quick-name">Name</label>
++        <input
++          id="quick-name"
++          data-testid="quick-name"
++          [value]="quickName()"
++          (input)="quickName.set($any($event.target).value); quickError.set(null)"
++        />
++        <label for="quick-amount">Amount</label>
++        <input
++          id="quick-amount"
++          data-testid="quick-amount"
++          inputmode="decimal"
++          [value]="quickAmount()"
++          (input)="quickAmount.set($any($event.target).value); quickError.set(null)"
++        />
++        <button type="submit" data-testid="quick-submit">Quick add claim</button>
++        @if (quickError(); as err) {
++          <p role="alert" data-testid="quick-error">{{ err }}</p>
++        }
++      </form>
++
+       <table>
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -109,6 +132,7 @@ export class People {
+   private readonly session = inject(Session);
+   private readonly claims = inject(Claims);
+   private readonly rates = inject(Rates);
++  private readonly periods = inject(Periods);
+ 
+   protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
+@@ -125,6 +149,11 @@ export class People {
+   protected readonly importError = signal<string | null>(null);
+   /** Set while an import awaits the store, so a second submit does not import twice. */
+   private importing = false;
++  protected readonly quickName = signal('');
++  protected readonly quickAmount = signal('');
++  protected readonly quickError = signal<string | null>(null);
++  /** Set while a quick add awaits the store, so a second submit does not store a second claim. */
++  private quickAdding = false;
+   protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
+ 
+   /**
+@@ -161,6 +190,9 @@ export class People {
+         this.importText.set('');
+         this.importResult.set(null);
+         this.importError.set(null);
++        this.quickName.set('');
++        this.quickAmount.set('');
++        this.quickError.set(null);
+         void this.reload();
+         void this.claims.reload();
+       });
+@@ -247,6 +279,47 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Add a DRAFT claim dated the sheet's today for the named person, adding the person (grade A)
++   * first when the name is not on the sheet; the rules of the person and claim forms apply.
++   */
++  protected async quickAdd(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.quickAdding) return;
++    this.quickError.set(null);
++    const name = this.quickName().trim();
++    const amount = this.quickAmount().trim();
++    if (!name) {
++      this.quickError.set('Enter a name.');
++      return;
++    }
++    if (name.length > 100) {
++      this.quickError.set('The name is too long.');
++      return;
++    }
++    if (!AMOUNT.test(amount)) {
++      this.quickError.set('Enter an amount of 0.00 or more, with at most two decimals.');
++      return;
++    }
++    if (this.periods.closedOn(this.session.today() ?? '')) {
++      this.quickError.set('Today is in a closed period, so no claim can be added.');
++      return;
++    }
++    this.quickAdding = true;
++    try {
++      const added = await this.claims.quickAdd(name, amount);
++      if (!this.people().some((p) => p.id === added.personId)) await this.reload();
++      this.quickName.set('');
++      this.quickAmount.set('');
++    } catch (e) {
++      this.quickError.set(e instanceof HttpErrorResponse && e.status === 423
++        ? 'Today is in a closed period, so no claim can be added.'
++        : 'The claim could not be added.');
++    } finally {
++      this.quickAdding = false;
++    }
++  }
++
+   /** Re-read the store and show the person's current values in the form and in their row. */
+   private async showCurrent(id: number): Promise<void> {
+     await this.reload();
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 62147c5c..804df01f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -46,10 +46,18 @@ public class ClaimController {
+             @Size(max = 500) String note) {
+     }
+ 
++    /** The quick-add bar: a name (stored trimmed) and an amount, with the rules of the person and claim forms. */
++    public record QuickAddRequest(
++            @NotBlank @Size(max = 100) String name,
++            @NotNull @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String amount) {
++    }
++
+     private final ClaimService service;
++    private final QuickAddService quickAdd;
+ 
+-    public ClaimController(ClaimService service) {
++    public ClaimController(ClaimService service, QuickAddService quickAdd) {
+         this.service = service;
++        this.quickAdd = quickAdd;
+     }
+ 
+     @GetMapping("/claims")
+@@ -67,6 +75,14 @@ public class ClaimController {
+                 new BigDecimal(request.amount()), request.date(), request.note()));
+     }
+ 
++    @PostMapping("/quick-add")
++    @ResponseStatus(HttpStatus.CREATED)
++    public ClaimView quickAdd(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Validated QuickAddRequest request) {
++        return ClaimView.of(quickAdd.add(sheetId.trim(), user.trim(), request.name(), new BigDecimal(request.amount())));
++    }
++
+     @PutMapping("/claims/{claimId}")
+     public ClaimView update(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long claimId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+new file mode 100644
+index 00000000..db2537d5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonService;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The quick-add bar: a DRAFT claim of an amount, dated the sheet's today with an empty note, for the
++ * person of a name (compared like uniqueness on the sheet). A name not on the sheet adds the person
++ * first, with grade A. Both are one change: if the claim is refused, the person is not added either.
++ */
++@Service
++public class QuickAddService {
++
++    private static final String NEW_GRADE = "A";
++
++    private final PersonRepository people;
++    private final PersonService personService;
++    private final ClaimService claimService;
++    private final SheetService sheets;
++
++    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService,
++            SheetService sheets) {
++        this.people = people;
++        this.personService = personService;
++        this.claimService = claimService;
++        this.sheets = sheets;
++    }
++
++    @Transactional
++    public Claim add(String sheetId, String user, String name, BigDecimal amount) {
++        sheets.load(sheetId, user);
++        // Lock the sheet, so the same new name quick-added at the same moment adds one person.
++        sheets.lock(sheetId);
++        String trimmed = name.trim();
++        Person person = people.findFirstBySheetIdAndNameIgnoreCase(sheetId, trimmed)
++                .orElseGet(() -> personService.add(sheetId, user, trimmed, NEW_GRADE));
++        return claimService.add(sheetId, user, person.getId(), amount, null, "");
++    }
++}
