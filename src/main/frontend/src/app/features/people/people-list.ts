@@ -468,6 +468,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-yaw-even">{{ yawEven() }}</td>
               <td colspan="23"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="26">Yaw mean</th>
+              <td data-testid="rollup-yaw-mean">{{ yawMean() ?? 'n/a' }}</td>
+              <td colspan="23"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -957,6 +962,18 @@ export class PeopleList {
       .map((p) => p.yaw)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
+  });
+
+  // The average yaw among the people not on hold (n/a yaws skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly yawMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.yaw)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // How many counted people have an even keel (n/a keels are not counted).
