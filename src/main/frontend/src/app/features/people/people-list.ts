@@ -858,6 +858,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-moor-top">{{ moorTop() ?? 'n/a' }}</td>
               <td colspan="7"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="42">Moor spread</th>
+              <td data-testid="rollup-moor-spread">{{ moorSpread() ?? 'n/a' }}</td>
+              <td colspan="7"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1438,6 +1443,15 @@ export class PeopleList {
       .map((p) => p.moor)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest moor minus the lowest among the people not on hold (n/a moors skipped); null (n/a) when nobody has one.
+  protected readonly moorSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.moor)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // The highest rigging among the people not on hold, skipping n/a; n/a when there is none.
