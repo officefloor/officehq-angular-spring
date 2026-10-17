@@ -1,0 +1,344 @@
+{
+  "checkpoint": 32,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp32_rounding-policy-date",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    7,
+    12,
+    26
+  ],
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp12_half-even.spec.ts::half even",
+    "cp26_late-charge.spec.ts::late charge"
+  ],
+  "request": {
+    "spec": "The sheet has a policy date (settings, SETTING_CHANGED key=policy-date value=<date>); when it is\nblank the policy date is the sheet's today. A claim dated before the policy date rounds half up;\na claim dated on or after it rounds half to even. This decides every rounding of that claim's live\nfigures (the rate step and the late charge). Settled figures stay frozen.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a policy date (settings, SETTING_CHANGED key=policy-date value=<date>); when it is\nblank the policy date is the sheet's today. A claim dated before the policy date rounds half up;\na claim dated on or after it rounds half to even. This decides every rounding of that claim's live\nfigures (the rate step and the late charge). Settled figures stay frozen.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "88fb11f3279b937d8f1789b498b9dd62a39bd88a",
+  "reset_sha": "",
+  "preagent_sha": "bc4c59ca4babe089ff47c7277f848635daa2a998",
+  "prev_sha": "bc4c59ca4babe089ff47c7277f848635daa2a998",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7216734,
+    "input_tokens": 30,
+    "output_tokens": 8722,
+    "cache_read_tokens": 651927,
+    "cache_creation_tokens": 52091,
+    "num_turns": 15,
+    "duration_ms": 116699,
+    "duration_api_ms": 92151,
+    "model": "claude-opus-5-5",
+    "session_id": "31379d27-d10d-4d08-a90c-b5d16fed44ea",
+    "stop_reason": "success",
+    "result_text": "The policy date is in, and `bin/e2e` passes: 1 test, 1 passed.\n\n**How it works now**\n- A sheet can have a policy date. If it's blank, the sheet's today is used instead.\n- A claim dated before the policy date rounds half up. A claim dated on or after it rounds half to even.\n- That choice covers every rounding of the claim's live figures: the rate step, the late charge, and a correction's due.\n- When a claim is settled, its due is fixed with the rounding in force at that moment. Changing the policy date later doesn't touch it.\n\n**What changed**\n- **Stored data:** a new migration, `V25__sheet_policy_date.sql`, adds an optional `policy_date` column to the sheet.\n- **Server:**\n  - `Sheet` now decides the rounding for each claim from its date. Settling a claim (`ClaimService`) and closing a period (`PeriodService`) both use it.\n  - The settings endpoint accepts `policyDate`: a date sets it, blank clears it, and leaving it out keeps the current value. A date that doesn't exist is refused with a 400.\n  - Each change writes `SETTING_CHANGED ... key=policy-date value=<date>` to the audit file, after the existing setting keys. Clearing it writes an empty value.\n- **Front end:**\n  - The Settings panel has a policy date field (`setting-policy-date`) and shows the current value (`setting-policy-date-current`).\n  - The on-screen due calculation in `core/rates.ts` uses the same rule as the server, so live figures on screen match what gets settled.\n\nOne design choice to flag: on the server, the policy date is passed into `SheetService.setSettings` as a nullable `Optional` (null keeps it, empty clears it, a value sets it). It works, but it's a slightly unusual Java idiom. I can change it to a plain string if you'd rather.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7216734,
+        "num_turns": 15,
+        "duration_ms": 116699,
+        "duration_api_ms": 92151,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp32.agent.jsonl",
+  "agent_diff_file": "cp32.agent.diff",
+  "build_log_file": "cp32.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 32,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated": true,
+      "cp12_half-even.spec.ts::half even": true,
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp14_edit-conflict.spec.ts::edit conflict": true,
+      "cp15_import-people.spec.ts::import people": true,
+      "cp16_import-upserts.spec.ts::import upserts": true,
+      "cp17_periods.spec.ts::periods": true,
+      "cp18_close-period.spec.ts::close period": true,
+      "cp19_quick-add.spec.ts::quick add": false,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable": true,
+      "cp21_retire.spec.ts::retire": true,
+      "cp22_hold.spec.ts::hold": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit": true,
+      "cp24_floor.spec.ts::floor": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue": true,
+      "cp26_late-charge.spec.ts::late charge": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing": true,
+      "cp28_grade-dated.spec.ts::grade dated": true,
+      "cp29_reopen-period.spec.ts::reopen period": true,
+      "cp30_corrections.spec.ts::corrections": true,
+      "cp31_summary.spec.ts::summary": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1503,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1029,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1572,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1663,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2070,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1479,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2630,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2357,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2797,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2033,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2708,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1637,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2345,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2524,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_import-people.spec.ts::import people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1376,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_import-upserts.spec.ts::import upserts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1579,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2010,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2614,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30003,
+        "failure": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m | Error: locator.getAttribute: Test ended.\nCall log:\n  \u001b[2m- waiting for locator('[data-testid^=\"person-row-\"]').filter({ has: getByTestId('person-name').filter({ hasText: /^\\s*dot\\s*$/ }) }).last().locator('[data-testid^=\"claim-row-\"]').first()\u001b[22m\n\n\n   at ../support/ui.ts:210\n\n  208 |\n  209 | async function newestClaim(r: Locator): Promise<string> {\n> 210 |   return idOf(await claimRows(r).first().getAttribute('data-testid'), 'claim-row-');\n      |                                          ^\n  211 | }\n  212 |\n  213 | /** Add a claim from the person's row. The new claim's id (listed newest first), or null. */\n\n    at newestClaim (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:210:42)\n    at Object.quickAdd (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:298:10)\n    at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/specs/cp19_quick-add.spec.ts:16:29 | \u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1690,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3884,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2573,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3336,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2988,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2594,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2854,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2733,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2181,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2383,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3099,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3118,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2959,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": {
+    "probe_cost_usd": 0.9110588000000001,
+    "probe_input_tokens": 16,
+    "probe_cache_read_tokens": 353554,
+    "probe_recall": 0.6756756756756757,
+    "probe_text": "# What the sheet shows, and the rules behind each figure\n\nI only read the code; nothing was changed. Names below are the code's own: Java in `src/main/java/.../app`, TypeScript in `src/main/frontend/src/app`.\n\n## 1. Figures and rules\n\n### Per claim (`claim-row-<id>`, in `features/claims/claims.ts`)\n\n| testid | Figure | Rule |\n|---|---|---|\n| `claim-number` | `number` | Given from `Sheet.takeClaimNumber()` (`++lastClaimNumber`) when the claim is **opened**, under the sheet lock. A draft has none. A voided claim keeps its number, and a number is never given out again. |\n| `claim-amount` | `amount` | Stored with exactly 2 decimals (`setScale(2, UNNECESSARY)`). A negative amount is a **correction**. |\n| `claim-due` | `Rates.dueOf()` | See \"How due is worked out\" below. Shows `n/a` when no rate applies. |\n| `claim-date` | `date` | Defaults to the sheet's `today`. |\n| `claim-due-by` | `dueBy()` | `date + terms` (default terms is 14). |\n| `claim-overdue` | `overdue()` | Only an `OPEN` claim can be overdue: `dueBy < today`. |\n| `claim-period` | `periods.on(date)?.name` | The period whose dates contain the claim date. Both ends count. |\n| `claim-corrects` | `corrects` | The number of the claim this correction corrects. |\n| `claim-status` | `ClaimStatus` | `DRAFT \u2192 OPEN \u2192 SETTLED`. `DRAFT` or `OPEN` can go to `VOID`. `SETTLED` and `VOID` are final (`canBecome`). |\n| `claim-opened-by` | `openedBy` | Recorded when the claim is opened. |\n\n### Per person (`person-row-<id>`, in `features/people/people.ts`)\n\n| testid | Figure | Rule |\n|---|---|---|\n| `person-grade` | `gradeToday()` \u2192 `gradeOn(grades, today)` | Grades are dated (`PersonGrade`). The grade in force is the one with the latest from-date on or before the date. The first grade has no from-date and applies from the beginning of time. |\n| `person-retired` / `-retired-from` | `retiredFrom` | |\n| `person-hold` | `held` | |\n| `person-claimed` | `claimedCents` | Sum of the amounts of claims that count (`counts`). Corrections subtract. |\n| `person-due-total` | `dueCents` | Sum of the due figures of claims that count, each already rounded. `n/a` figures are skipped. The `'n/a'` branch can never show, because the map always has an entry, so the total is 0.00 instead. |\n| `person-overdue-count` / `-total` | `overdueByPerson` | Claims that count and are overdue. The total treats `n/a` as 0. |\n| `person-patrons` | `patronNames()` | Patron names, sorted and joined with \", \". |\n| `person-backing` | `backing()` | Sum of the patrons' `dueCents`. 0.00 when there are no patrons. |\n\n### Sheet totals\n- **Rollups:**\n  - `rollup-claimed-total`, `rollup-due-total`, `rollup-overdue-count` and `rollup-overdue-total` add up all people, **including people hidden from the list**.\n- **Periods:**\n  - `period-due-total` comes from `periodDueTotal()`. A closed period shows its frozen `closedTotal`. An open one shows the live sum from `periodDueCents()`: the due figures of claims that count and are dated in it.\n  - `period-closed` shows whether the period is closed.\n- **Summary:**\n  - `summary-grade-X-count` and `-due-total` cover people with `retiredFrom === null` (anyone with a retirement date is left out, even a future one), grouped by their grade on today. The due total adds up those people's `dueCents`.\n  - `summary-period-*-due-total` uses the same logic as `period-due-total`.\n  - `summary-status-*-count` counts claims by status. It also lists a `PENDING` status that does not exist, so that count is always 0.\n- **Other figures:**\n  - `rate-current-X` is the grade's rate in force on today (`rateOn`), or `n/a`.\n  - The `setting-*-current` values are shown as stored.\n  - The import result shows `import-added` and `import-updated`, or `import-error-<line>` for each bad line.\n\n### Which claims count\n- `ClaimStatus.counts()` (in Java) and `counts()` (in TS): only `OPEN` and `SETTLED` claims count.\n- `Person.counts()`: while a person is **held**, their `OPEN` claims count in no total (claimed, due, overdue, period live or closing total, backing). Their `SETTLED` claims still count.\n\n### How due is worked out and rounded\nThe logic is in `Sheet.dueAt`, `floored`, `withLateCharge`, `liveDue` and `roundingFor` in Java, and copied in `Rates.dueOf` and `dueCents` in TS.\n\n1. **Rate:** `RateService.inForce` (TS: `rateOn`) picks the rate for the person's grade *on the claim's date* that is in force *on the claim's date*. If there is none, the due is `n/a` (null).\n2. **Base due:** `amount \u00d7 rate / 100`, rounded to cents.\n3. **Floor:** raised to at least the sheet's `floor` (default 1.00).\n4. **Late charge:** for every full 30 days past due-by, add `latePct` (default 0) of the floored due, rounded once.\n5. **Rounding:** `roundingFor(claimDate)` rounds HALF_UP when the claim date is before `policyDate`, and HALF_EVEN otherwise. If no policy date is set, the sheet's **today** is used instead, so live rounding can change when today moves.\n6. **Correction:** the due is just `amount \u00d7 rate`, rounded the same way, with no floor and no late charge.\n7. **Settled claim:** shows the frozen `settledDue`.\n\n### What is frozen, and when\n- **`settledDue`, at settle time** (`ClaimService.changeStatus`): rate, grade, floor, late charge and rounding are all fixed then. Later changes to rates, floor, late percent or policy date do not change it.\n- **`closedTotal`, at period close** (`PeriodService.close`): the sum of settled claims' `settledDue` plus open claims' live due, for claims that count. It stays fixed until a reopen clears it. The Javadoc says \"rounded half to even\", but the code uses `roundingFor`, so the comment is out of date.\n- **Claim number and `openedBy`, at open.**\n\n### Who may do what\n- `Role` is `CLERK` or `STEWARD`. A user with no role assigned is a clerk (`RoleService.of`).\n- **Settling:**\n  - The user who opened a claim can never settle it, steward or not (403).\n  - A clerk can settle only if the due is at or below `clerkLimit`, when a limit is set. A claim with an `n/a` due is refused (`refuseIfOverClerkLimit`).\n  - A steward can settle any claim.\n- **Periods:** only a steward can reopen a period. Anyone can close one.\n- **No role check at all** on setting roles, settings, rates, today, or anything for people. Any user can make themselves a steward.\n- **Editing:** only a `DRAFT` claim can be edited (409).\n- **Person edits** use an optimistic `version` check (412). Names are unique, ignoring case (409).\n- **Patrons:** a person cannot be their own patron (422) and cannot be named twice (409). Cycles are not checked.\n\n### What a date decides\nThe sheet's `today` is the only clock used. The real clock is read only once, when a sheet is first created. Today decides:\n- default dates for claims, grade-from and retirement\n- whether a claim is overdue, and how many late periods it has\n- the grade and current rate shown\n- the default rounding boundary\n\nThe **claim's date** decides its grade, its rate, its rounding and its period. It is also checked against retirement and closed periods.\n\n### Closed period, hold, retire, import, quick-add\n- **Closed period** (`refuseIfClosed`, 423):\n  - It blocks adding, editing (checked on both the old and the new date) and every status change for claims dated in it.\n  - It does not block grade, rate or hold changes. Those can still change the live due shown on claims in a closed period, while the period's frozen total stays the same.\n- **Hold / release:** see \"Which claims count\". Holding someone already held, or releasing someone not held, is refused (409).\n- **Retire:**\n  - A claim dated after `retiredFrom` is refused (422). Claims dated on or before it are allowed.\n  - Retiring twice is refused (409).\n  - Retired people are hidden unless \"show retired\" is on, or they still have a draft. They stay listed 1 second (`LEAVE_DELAY_MS`) after their last draft is gone.\n- **Import** (`importPeople`):\n  - It is all-or-nothing: every line is checked first.\n  - The line is split at the last comma. Blank lines are skipped.\n  - A name repeated in the paste is an error (case-insensitive).\n  - An existing name has its grade recorded **from today**, which overwrites any grade with today's from-date. A new name gets a grade from the beginning of time.\n  - There is no version check.\n- **Quick add:**\n  - It adds a DRAFT claim dated today with an empty note. The amount must not be negative.\n  - An unknown name first adds the person with grade A, in the same transaction.\n- **Corrections** (`correctedNumber`): a correction must name, by number, a `SETTLED` claim of the same person. Nothing stops the same claim being corrected again and again.\n\n## 2. How hard it was to follow\n\nIt was hard. There is no single place that holds the rules: they are spread across entity helpers (`Sheet`, `Person`, `ClaimStatus`), several services (`ClaimService`, `PeriodService`), a parallel TypeScript copy (`Rates.dueOf`, `counts`, `gradeOn`, `rateOn`, `retiredOn`, `closedOn`), and components (`people.ts`, which also does all the totalling). Much of it is written twice and only kept in step by hand. Doc comments have already drifted (the period-close rounding note, the impossible `n/a` due total, the phantom `PENDING` status), so a new developer would have to trace both the server and the client to be sure what any figure means."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
