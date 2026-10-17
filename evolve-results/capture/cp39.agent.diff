@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 8c65540e..07bcd4dc 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -55,6 +55,7 @@ import { Person, PeopleService } from './people.service';
+               <th scope="col">Helm</th>
+               <th scope="col">Rudder</th>
+               <th scope="col">Mast</th>
++              <th scope="col">Rigging</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -101,6 +102,7 @@ import { Person, PeopleService } from './people.service';
+                 <td data-testid="concept-helm">{{ p.helm ?? 'n/a' }}</td>
+                 <td data-testid="concept-rudder">{{ p.rudder ?? 'n/a' }}</td>
+                 <td data-testid="concept-mast">{{ p.mast ?? 'n/a' }}</td>
++                <td data-testid="concept-rigging">{{ p.rigging ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 53d17bb6..65ffd616 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -80,6 +80,8 @@ export interface Person {
+   rudder: number | null;
+   // keel plus 1000; null (n/a) when keel is.
+   mast: number | null;
++  // keel divided by four, rounded to the nearest (a half up); null (n/a) when keel is.
++  rigging: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 991d991a..7cf83366 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -28,7 +28,8 @@ import java.util.List;
+  * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero), null (n/a) when keel is.
+  * bow is keel plus fathom, null (n/a) when keel is. stern is keel minus fathom, null (n/a) when keel is.
+  * helm is keel plus ripple, null (n/a) when keel or ripple is. rudder is keel minus ripple, null (n/a)
+- * when keel or ripple is. mast is keel plus 1000, null (n/a) when keel is.
++ * when keel or ripple is. mast is keel plus 1000, null (n/a) when keel is. rigging is keel divided by
++ * four (rounded like every divide), null (n/a) when keel is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
+@@ -36,7 +37,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
+         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
+         Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
+-        Long hull, Long bow, Long stern, Long helm, Long rudder, Long mast) {
++        Long hull, Long bow, Long stern, Long helm, Long rudder, Long mast, Long rigging) {
+ 
+     static PersonView of(Person p, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+@@ -50,7 +51,8 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+                 camber(p, averageScaled), sheer(p, averageScaled), beam(p, averageScaled),
+                 freeboard(p, averageScaled), buoyancy(p, averageScaled), knot(p, averageScaled), cable(p, averageScaled),
+                 hull(p, averageScaled), bow(p, averageScaled), stern(p, averageScaled),
+-                helm(p, averageScaled), rudder(p, averageScaled), mast(p, averageScaled));
++                helm(p, averageScaled), rudder(p, averageScaled), mast(p, averageScaled),
++                rigging(p, averageScaled));
+     }
+ 
+     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
+@@ -246,6 +248,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return keel == null ? null : keel + 1000L;
+     }
+ 
++    private static Long rigging(Person p, Long averageScaled) {
++        Long keel = keel(p, averageScaled);
++        return keel == null ? null : SheetMath.divide(keel, 4L);
++    }
++
+     private static String tier(Person p) {
+         Long scaled = scaled(p);
+         if (scaled == null) {
