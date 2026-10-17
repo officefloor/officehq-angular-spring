@@ -1,0 +1,97 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index e3122d83..f70a4b65 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -47,6 +47,7 @@ import { Person, PeopleService } from './people.service';
+               <th scope="col">Beam</th>
+               <th scope="col">Freeboard</th>
+               <th scope="col">Buoyancy</th>
++              <th scope="col">Knot</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -85,6 +86,7 @@ import { Person, PeopleService } from './people.service';
+                 <td data-testid="concept-beam">{{ p.beam ?? 'n/a' }}</td>
+                 <td data-testid="concept-freeboard">{{ p.freeboard ?? 'n/a' }}</td>
+                 <td data-testid="concept-buoyancy">{{ p.buoyancy ?? 'n/a' }}</td>
++                <td data-testid="concept-knot">{{ p.knot ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -92,17 +94,17 @@ import { Person, PeopleService } from './people.service';
+             <tr>
+               <th scope="row" colspan="6">Thrust total</th>
+               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+-              <td colspan="26"></td>
++              <td colspan="27"></td>
+             </tr>
+             <tr>
+               <th scope="row" colspan="14">Keel total</th>
+               <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
+-              <td colspan="18"></td>
++              <td colspan="19"></td>
+             </tr>
+             <tr>
+               <th scope="row" colspan="14">Keel count</th>
+               <td data-testid="rollup-keel-count">{{ keelCount() }}</td>
+-              <td colspan="18"></td>
++              <td colspan="19"></td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 2177ec5c..264e0ff5 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -64,6 +64,8 @@ export interface Person {
+   freeboard: number | null;
+   // keel times three; null (n/a) when keel is.
+   buoyancy: number | null;
++  // keel divided by three, rounded to the nearest (a half up); null (n/a) when keel is.
++  knot: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 87099052..d096176f 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -22,14 +22,15 @@ import java.util.List;
+  * is keel minus scaled, null (n/a) when keel is. camber is keel plus 200, null (n/a) when keel is.
+  * sheer is keel minus 100, null (n/a) when keel is. beam is keel times three, null (n/a) when keel is.
+  * freeboard is keel divided by two (rounded like every divide), null (n/a) when keel is. buoyancy is
+- * keel times three, null (n/a) when keel is.
++ * keel times three, null (n/a) when keel is. knot is keel divided by three (rounded like every
++ * divide), null (n/a) when keel is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
+         Long backing, Long quarter, String tier, Long keel,
+         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
+         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
+-        Long sheer, Long beam, Long freeboard, Long buoyancy) {
++        Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot) {
+ 
+     static PersonView of(Person p, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+@@ -41,7 +42,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+                 keystone(p, averageScaled), bearing(p, averageScaled), pitch(p, averageScaled),
+                 tackle(p, averageScaled), yaw(p, averageScaled), heave(p, averageScaled),
+                 camber(p, averageScaled), sheer(p, averageScaled), beam(p, averageScaled),
+-                freeboard(p, averageScaled), buoyancy(p, averageScaled));
++                freeboard(p, averageScaled), buoyancy(p, averageScaled), knot(p, averageScaled));
+     }
+ 
+     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
+@@ -195,6 +196,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return keel == null ? null : keel * 3L;
+     }
+ 
++    private static Long knot(Person p, Long averageScaled) {
++        Long keel = keel(p, averageScaled);
++        return keel == null ? null : SheetMath.divide(keel, 3L);
++    }
++
+     private static String tier(Person p) {
+         Long scaled = scaled(p);
+         if (scaled == null) {

@@ -1,0 +1,40 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610171149/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 29 tests using 1 worker
+
+[1A[2K[1/29] [chromium] › cp01_people.spec.ts:5:7 › people › people
+[1A[2K[2/29] [chromium] › cp02_thrust_thrust-total.spec.ts:5:7 › thrust thrust-total › thrust thrust-total
+[1A[2K[3/29] [chromium] › cp03_momentum.spec.ts:5:7 › momentum › momentum
+[1A[2K[4/29] [chromium] › cp04_trim_total.spec.ts:5:7 › trim total › trim total
+[1A[2K[5/29] [chromium] › cp05_scaled_third.spec.ts:5:7 › scaled third › scaled third
+[1A[2K[6/29] [chromium] › cp06_backing_norm.spec.ts:5:7 › backing norm › backing norm
+[1A[2K[7/29] [chromium] › cp07_quarter_tier.spec.ts:5:7 › quarter tier › quarter tier
+[1A[2K[8/29] [chromium] › cp08_round_divides.spec.ts:5:7 › round divides › round divides
+[1A[2K[9/29] [chromium] › cp09_keel_keel-total.spec.ts:5:7 › keel keel-total › keel keel-total
+[1A[2K[10/29] [chromium] › cp10_draft_fathom.spec.ts:5:7 › draft fathom › draft fathom
+[1A[2K[11/29] [chromium] › cp11_cascade_trim.spec.ts:5:7 › cascade trim › cascade trim
+[1A[2K[12/29] [chromium] › cp12_hold.spec.ts:5:7 › hold › hold
+[1A[2K[13/29] [chromium] › cp13_heading_ripple.spec.ts:5:7 › heading ripple › heading ripple
+[1A[2K[14/29] [chromium] › cp14_ballast_keel-count.spec.ts:5:7 › ballast keel-count › ballast keel-count
+[1A[2K[15/29] [chromium] › cp15_bearing_keystone.spec.ts:5:7 › bearing keystone › bearing keystone
+[1A[2K[16/29] [chromium] › cp16_keel.spec.ts:5:7 › keel › keel
+[1A[2K[17/29] [chromium] › cp17_pitch.spec.ts:5:7 › pitch › pitch
+[1A[2K[18/29] [chromium] › cp18_tackle.spec.ts:5:7 › tackle › tackle
+[1A[2K[19/29] [chromium] › cp19_yaw.spec.ts:5:7 › yaw › yaw
+[1A[2K[20/29] [chromium] › cp20_missing_zero.spec.ts:5:7 › missing zero › missing zero
+[1A[2K[21/29] [chromium] › cp21_heave.spec.ts:5:7 › heave › heave
+[1A[2K[22/29] [chromium] › cp22_camber.spec.ts:5:7 › camber › camber
+[1A[2K[23/29] [chromium] › cp23_sheer.spec.ts:5:7 › sheer › sheer
+[1A[2K[24/29] [chromium] › cp24_camber.spec.ts:5:7 › camber › camber
+[1A[2K[25/29] [chromium] › cp25_beam.spec.ts:5:7 › beam › beam
+[1A[2K[26/29] [chromium] › cp26_freeboard.spec.ts:5:7 › freeboard › freeboard
+[1A[2K[27/29] [chromium] › cp27_buoyancy.spec.ts:5:7 › buoyancy › buoyancy
+[1A[2K[28/29] [chromium] › cp28_beam.spec.ts:5:7 › beam › beam
+[1A[2K[29/29] [chromium] › cp29_knot.spec.ts:5:7 › knot › knot
+[1A[2K  29 passed (6.0s)
