@@ -289,6 +289,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="27"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="22">Keystone mean</th>
+              <td data-testid="rollup-keystone-mean">{{ keystoneMean() ?? 'n/a' }}</td>
+              <td colspan="27"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="23">Bearing total</th>
               <td data-testid="rollup-bearing-total">{{ bearingTotal() }}</td>
               <td colspan="26"></td>
@@ -517,6 +522,18 @@ export class PeopleList {
     const top = this.keystoneTop();
     const low = this.keystoneLow();
     return top === null || low === null ? null : top - low;
+  });
+
+  // The average keystone among the people not on hold (n/a keystones skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly keystoneMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.keystone)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // Everyone's bearing added up, trimmed like every sheet total.
