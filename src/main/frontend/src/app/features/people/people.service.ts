@@ -76,6 +76,8 @@ export interface Person {
   stern: number | null;
   // keel plus ripple; null (n/a) when keel or ripple is.
   helm: number | null;
+  // keel minus ripple; null (n/a) when keel or ripple is.
+  rudder: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
