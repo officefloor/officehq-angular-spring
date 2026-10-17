@@ -229,6 +229,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="32"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="18">Trim total</th>
+              <td data-testid="rollup-trim-total">{{ trimTotal() }}</td>
+              <td colspan="31"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="19">Ripple total</th>
               <td data-testid="rollup-ripple-total">{{ rippleTotal() }}</td>
               <td colspan="30"></td>
@@ -471,6 +476,11 @@ export class PeopleList {
       ? null
       : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
+
+  // Everyone's trim added up, trimmed like every sheet total.
+  protected readonly trimTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.trim, hold: p.hold }))),
+  );
 
   // Everyone's ripple added up, trimmed like every sheet total.
   protected readonly rippleTotal = computed(() =>
