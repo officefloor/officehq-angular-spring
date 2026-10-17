@@ -148,6 +148,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-draft-total">{{ draftTotal() }}</td>
               <td colspan="33"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="17">Cascade total</th>
+              <td data-testid="rollup-cascade-total">{{ cascadeTotal() }}</td>
+              <td colspan="32"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -179,6 +184,11 @@ export class PeopleList {
   // Everyone's draft added up, trimmed like every sheet total.
   protected readonly draftTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.draft, hold: p.hold }))),
+  );
+
+  // Everyone's cascade added up, trimmed like every sheet total.
+  protected readonly cascadeTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.cascade, hold: p.hold }))),
   );
 
   // How many counted people have an even keel (n/a keels are not counted).
