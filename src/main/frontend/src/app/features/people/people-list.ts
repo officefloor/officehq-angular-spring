@@ -458,6 +458,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-yaw-top">{{ yawTop() ?? 'n/a' }}</td>
               <td colspan="23"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="26">Yaw spread</th>
+              <td data-testid="rollup-yaw-spread">{{ yawSpread() ?? 'n/a' }}</td>
+              <td colspan="23"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -937,6 +942,16 @@ export class PeopleList {
       .map((p) => p.yaw)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest yaw minus the lowest among the people not on hold (n/a yaws skipped); null
+  // (n/a) when nobody has one.
+  protected readonly yawSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.yaw)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // How many counted people have an even keel (n/a keels are not counted).
