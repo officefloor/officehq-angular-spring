@@ -548,6 +548,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-sheer-mean">{{ sheerMean() ?? 'n/a' }}</td>
               <td colspan="20"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="30">Beam total</th>
+              <td data-testid="rollup-beam-total">{{ beamTotal() }}</td>
+              <td colspan="19"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1064,6 +1069,11 @@ export class PeopleList {
   // Everyone's sheer added up, trimmed like every sheet total.
   protected readonly sheerTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.sheer, hold: p.hold }))),
+  );
+
+  // Everyone's beam added up, trimmed like every sheet total.
+  protected readonly beamTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.beam, hold: p.hold }))),
   );
 
   // The highest sheer among the people not on hold (n/a sheers skipped); null (n/a) when nobody has one.
