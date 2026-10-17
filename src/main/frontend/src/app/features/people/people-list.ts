@@ -154,6 +154,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="34"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="15">Fathom spread</th>
+              <td data-testid="rollup-fathom-spread">{{ fathomSpread() ?? 'n/a' }}</td>
+              <td colspan="34"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="16">Draft total</th>
               <td data-testid="rollup-draft-total">{{ draftTotal() }}</td>
               <td colspan="33"></td>
@@ -227,6 +232,13 @@ export class PeopleList {
       .map((p) => p.fathom)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest fathom minus the lowest among the people not on hold; null (n/a) when nobody has one.
+  protected readonly fathomSpread = computed(() => {
+    const top = this.fathomTop();
+    const low = this.fathomLow();
+    return top === null || low === null ? null : top - low;
   });
 
   // Everyone's draft added up, trimmed like every sheet total.
