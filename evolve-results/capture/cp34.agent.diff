@@ -1,0 +1,76 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index fb0f0ff9..e2c6c820 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -51,6 +51,7 @@ import { Person, PeopleService } from './people.service';
+               <th scope="col">Cable</th>
+               <th scope="col">Hull</th>
+               <th scope="col">Bow</th>
++              <th scope="col">Stern</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -93,6 +94,7 @@ import { Person, PeopleService } from './people.service';
+                 <td data-testid="concept-cable">{{ p.cable ?? 'n/a' }}</td>
+                 <td data-testid="concept-hull">{{ p.hull ?? 'n/a' }}</td>
+                 <td data-testid="concept-bow">{{ p.bow ?? 'n/a' }}</td>
++                <td data-testid="concept-stern">{{ p.stern ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 62d42b6f..41872b27 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -72,6 +72,8 @@ export interface Person {
+   hull: number | null;
+   // keel plus fathom; null (n/a) when keel is.
+   bow: number | null;
++  // keel minus fathom; null (n/a) when keel is.
++  stern: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 88495f3f..782c0fb4 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -26,7 +26,7 @@ import java.util.List;
+  * keel times three, null (n/a) when keel is. knot is keel divided by three (rounded like every
+  * divide), null (n/a) when keel is. cable is keel plus gamma (a blank gamma counting as zero), null
+  * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero), null (n/a) when keel is.
+- * bow is keel plus fathom, null (n/a) when keel is.
++ * bow is keel plus fathom, null (n/a) when keel is. stern is keel minus fathom, null (n/a) when keel is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
+@@ -34,7 +34,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
+         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
+         Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
+-        Long hull, Long bow) {
++        Long hull, Long bow, Long stern) {
+ 
+     static PersonView of(Person p, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+@@ -47,7 +47,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+                 tackle(p, averageScaled), yaw(p, averageScaled), heave(p, averageScaled),
+                 camber(p, averageScaled), sheer(p, averageScaled), beam(p, averageScaled),
+                 freeboard(p, averageScaled), buoyancy(p, averageScaled), knot(p, averageScaled), cable(p, averageScaled),
+-                hull(p, averageScaled), bow(p, averageScaled));
++                hull(p, averageScaled), bow(p, averageScaled), stern(p, averageScaled));
+     }
+ 
+     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
+@@ -221,6 +221,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return keel == null ? null : keel + fathom(p, averageScaled);
+     }
+ 
++    private static Long stern(Person p, Long averageScaled) {
++        Long keel = keel(p, averageScaled);
++        return keel == null ? null : keel - fathom(p, averageScaled);
++    }
++
+     private static String tier(Person p) {
+         Long scaled = scaled(p);
+         if (scaled == null) {
