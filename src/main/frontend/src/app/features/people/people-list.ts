@@ -573,6 +573,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-beam-mean">{{ beamMean() ?? 'n/a' }}</td>
               <td colspan="19"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="31">Freeboard total</th>
+              <td data-testid="rollup-freeboard-total">{{ freeboardTotal() }}</td>
+              <td colspan="18"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1094,6 +1099,11 @@ export class PeopleList {
   // Everyone's beam added up, trimmed like every sheet total.
   protected readonly beamTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.beam, hold: p.hold }))),
+  );
+
+  // Everyone's freeboard added up, trimmed like every sheet total.
+  protected readonly freeboardTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.freeboard, hold: p.hold }))),
   );
 
   // The highest beam among the people not on hold (n/a beams skipped); null (n/a) when nobody has one.
