@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Claims, formatCents } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, Person } from '../../core/people';
+import { dueCents, Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
 
@@ -46,7 +47,7 @@ import { PersonClaims } from '../claims/claims';
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
@@ -54,7 +55,8 @@ import { PersonClaims } from '../claims/claims';
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
-              <td><app-person-claims [personId]="p.id" [personName]="p.name" /></td>
+              <td data-testid="person-due-total">{{ dueTotal(p) }}</td>
+              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -66,6 +68,7 @@ import { PersonClaims } from '../claims/claims';
       </table>
 
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotalAll() }}</strong></p>
     </section>
   `,
 })
@@ -73,6 +76,7 @@ export class People {
   private readonly api = inject(PeopleApi);
   private readonly session = inject(Session);
   private readonly claims = inject(Claims);
+  private readonly rates = inject(Rates);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -81,6 +85,21 @@ export class People {
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
+
+  /** Each person's due-total in cents, by person id; absent when their grade has no rate. */
+  private readonly dueCents = computed(() => {
+    const out = new Map<number, number>();
+    for (const p of this.people()) {
+      const rate = this.rates.byGrade().get(p.grade);
+      if (rate !== undefined) out.set(p.id, dueCents(this.claims.claimedCents().get(p.id) ?? 0, rate));
+    }
+    return out;
+  });
+
+  /** Everyone's due-total added up, skipping those that are n/a. */
+  protected readonly dueTotalAll = computed(() =>
+    formatCents([...this.dueCents().values()].reduce((sum, c) => sum + c, 0)),
+  );
 
   constructor() {
     // Re-read the store each time the sheet is (re-)loaded.
@@ -96,6 +115,11 @@ export class People {
 
   protected claimed(personId: number): string {
     return formatCents(this.claims.claimedCents().get(personId) ?? 0);
+  }
+
+  protected dueTotal(person: Person): string {
+    const cents = this.dueCents().get(person.id);
+    return cents === undefined ? 'n/a' : formatCents(cents);
   }
 
   protected edit(person: Person): void {

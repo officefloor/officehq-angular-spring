@@ -1,5 +1,7 @@
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
-import { AMOUNT, Claim, Claims } from '../../core/claims';
+import { AMOUNT, Claim, Claims, formatCents, toCents } from '../../core/claims';
+import { Grade } from '../../core/people';
+import { dueCents, Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // One person's claims, newest first, and the one form that adds a claim or edits an existing one.
@@ -45,6 +47,7 @@ import { Session } from '../../core/session';
       @for (c of mine(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
           <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-due">{{ due(c) }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <button type="button" data-testid="claim-edit" (click)="edit(c)">
@@ -58,9 +61,11 @@ import { Session } from '../../core/session';
 export class PersonClaims {
   private readonly claims = inject(Claims);
   private readonly session = inject(Session);
+  private readonly rates = inject(Rates);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
+  readonly grade = input.required<Grade>();
 
   protected readonly mine = computed(() => this.claims.all().filter((c) => c.personId === this.personId()));
   protected readonly amount = signal('');
@@ -68,6 +73,12 @@ export class PersonClaims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+
+  /** The claim's due at its person's grade's rate, or n/a when that grade has no rate. */
+  protected due(claim: Claim): string {
+    const rate = this.rates.byGrade().get(this.grade());
+    return rate === undefined ? 'n/a' : formatCents(dueCents(toCents(claim.amount), rate));
+  }
 
   protected edit(claim: Claim): void {
     this.editingId.set(claim.id);
