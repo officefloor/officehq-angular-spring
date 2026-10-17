@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 84736393..fd821c32 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -188,6 +188,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-draft-spread">{{ draftSpread() ?? 'n/a' }}</td>
+               <td colspan="33"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="16">Draft even</th>
++              <td data-testid="rollup-draft-even">{{ draftEven() }}</td>
++              <td colspan="33"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="17">Cascade total</th>
+               <td data-testid="rollup-cascade-total">{{ cascadeTotal() }}</td>
+@@ -591,6 +596,11 @@ export class PeopleList {
+     () => countable(this.people() ?? []).filter((p) => p.fathom !== null && p.fathom % 2 === 0).length,
+   );
+ 
++  // How many counted people have an even draft (n/a drafts are not counted).
++  protected readonly draftEven = computed(
++    () => countable(this.people() ?? []).filter((p) => p.draft !== null && p.draft % 2 === 0).length,
++  );
++
+   // How many counted people have an even cascade (n/a cascades are not counted).
+   protected readonly cascadeEven = computed(
+     () =>
