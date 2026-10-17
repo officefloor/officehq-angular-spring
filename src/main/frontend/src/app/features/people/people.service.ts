@@ -94,6 +94,8 @@ export interface Person {
   pier: number | null;
   // keel minus 500; null (n/a) when keel is.
   ebb: number | null;
+  // keel plus ballast; null (n/a) when keel or ballast is.
+  flood: number | null;
 }
 
 @Injectable({ providedIn: 'root' })

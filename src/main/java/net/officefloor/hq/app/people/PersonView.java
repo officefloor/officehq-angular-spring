@@ -37,7 +37,7 @@ import java.util.Set;
  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
  * keel times five, null (n/a) when keel is. jetty is keel divided by ten (rounded like every divide),
  * null (n/a) when keel is. pier is keel plus 500, null (n/a) when keel is. ebb is keel minus 500, null
- * (n/a) when keel is.
+ * (n/a) when keel is. flood is keel plus ballast, null (n/a) when keel or ballast is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
@@ -46,7 +46,8 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
         Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
         Long hull, Long bow, Long stern, Long helm, Long rudder, Long mast, Long rigging, Long moor,
-        Long berth, Long wharf, Long jetty, Long pier, Long ebb) {
+        Long berth, Long wharf, Long jetty, Long pier, Long ebb,
+        Long flood) {
 
     static PersonView of(Person p, Set<Person> patrons, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
@@ -63,7 +64,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
                 helm(p, averageScaled), rudder(p, averageScaled), mast(p, averageScaled),
                 rigging(p, averageScaled), moor(p, averageScaled), berth(p, averageScaled),
                 wharf(p, averageScaled), jetty(p, averageScaled), pier(p, averageScaled),
-                ebb(p, averageScaled));
+                ebb(p, averageScaled), flood(p, averageScaled));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -313,6 +314,12 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long ebb(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
         return keel == null ? null : keel - 500L;
+    }
+
+    private static Long flood(Person p, Long averageScaled) {
+        Long keel = keel(p, averageScaled);
+        Long ballast = ballast(p, averageScaled);
+        return keel == null || ballast == null ? null : keel + ballast;
     }
 
     private static String tier(Person p) {
