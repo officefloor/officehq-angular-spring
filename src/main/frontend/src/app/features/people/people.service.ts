@@ -36,7 +36,7 @@ export interface Person {
   cascade: number | null;
   // keel minus thrust plus 92; null (n/a) when keel is.
   trim: number | null;
-  // cascade plus keel plus 76; null (n/a) when cascade is.
+  // cascade plus keel plus 304; null (n/a) when cascade is.
   ripple: number | null;
   // keel plus norm; null (n/a) when keel or norm is.
   heading: number | null;
