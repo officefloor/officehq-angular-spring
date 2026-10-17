@@ -628,6 +628,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-knot-total">{{ knotTotal() }}</td>
               <td colspan="16"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="33">Knot top</th>
+              <td data-testid="rollup-knot-top">{{ knotTop() ?? 'n/a' }}</td>
+              <td colspan="16"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1165,6 +1170,15 @@ export class PeopleList {
   protected readonly knotTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.knot, hold: p.hold }))),
   );
+
+  // The highest knot among the people not on hold (n/a knots skipped); null (n/a) when nobody has one.
+  protected readonly knotTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.knot)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // The highest buoyancy among the people not on hold (n/a buoyancies skipped); null (n/a) when
   // nobody has one.
