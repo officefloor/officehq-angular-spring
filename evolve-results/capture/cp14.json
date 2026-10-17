@@ -1,0 +1,186 @@
+{
+  "checkpoint": 14,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp14_edit-conflict",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "When a person is edited, the form remembers which version of the person it loaded. If someone\nelse has saved that person in the meantime, saving is refused with an error on the form, nothing\nis stored, and the form shows the current values; opening the editor again and saving works.\nSubmitting any form twice before the first submit has answered stores one record, not two.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a person is edited, the form remembers which version of the person it loaded. If someone\nelse has saved that person in the meantime, saving is refused with an error on the form, nothing\nis stored, and the form shows the current values; opening the editor again and saving works.\nSubmitting any form twice before the first submit has answered stores one record, not two.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b8f59b534bf4e2e538db683cb10ffb1eb3f7ef65",
+  "reset_sha": "",
+  "preagent_sha": "ac6ac321ebec963fb2e314e832be891a4609e535",
+  "prev_sha": "ac6ac321ebec963fb2e314e832be891a4609e535",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5412230000000001,
+    "input_tokens": 16,
+    "output_tokens": 6967,
+    "cache_read_tokens": 281255,
+    "cache_creation_tokens": 43196,
+    "num_turns": 9,
+    "duration_ms": 93642,
+    "duration_api_ms": 67853,
+    "model": "claude-opus-5-5",
+    "session_id": "7946f8a2-0d99-4422-8ca0-7268dd8a6e3b",
+    "stop_reason": "success",
+    "result_text": "The change is in, and `bin/e2e` passes: the edit-conflict test, the single stored claim on a double-click and the expected audit lines all check out.\n\n**Saving a person someone else has changed**\n- **Stored data:** a new migration, `V12__person_version.sql`, adds a `version` column to `person`. The version goes up each time the person is saved, and it's now sent to the screen with each person.\n- **Server:** an edit now has to send back the version it loaded. If the stored person has a newer version, the save is refused with HTTP 412, so nothing is stored and no audit line is written. If two saves arrive at exactly the same moment, the database catches the second one and refuses it the same way.\n- **Front end:** opening the editor remembers the person's version and sends it on save. When the save is refused, the form shows `person-form-error`, the list is re-read from the store, and the form and the person's row show the current values. Opening the editor again picks up the new version, so the next save goes through.\n\n**Submitting a form twice**\nThe four forms that save something \u2014 person, claim, rate and \"change today\" \u2014 now ignore a second submit while the first is still waiting for an answer. This guard is only in the browser; the server doesn't detect a repeated request. The claim row buttons (Open, Settle, Void) aren't forms, so I didn't add the guard to them.\n\nThe server change is in `PersonService.java`, `PersonController.java` and `Person.java`. On the front end I changed `core/people.ts` and the people, claims, rates and home screens.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5412230000000001,
+        "num_turns": 9,
+        "duration_ms": 93642,
+        "duration_api_ms": 67853,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp14.agent.jsonl",
+  "agent_diff_file": "cp14.agent.diff",
+  "build_log_file": "cp14.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 14,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp07_rates-and-due.spec.ts::rates and due": false,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated": true,
+      "cp12_half-even.spec.ts::half even": true,
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp14_edit-conflict.spec.ts::edit conflict": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 845,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 620,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1572,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1526,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1956,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1406,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 6976,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-11').getByTestId('person-due-total')\nExpected string: \u001b[32m\"0.00\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-11').getByTestId('person-due-total')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  25 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n  26 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_ben_0).getByTestId(\"claim-due\")).toHaveText(\"0.50\");\n> 27 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n     |                                                                                             ^\n  28 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_cam_0).ge"
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2256,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2160,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1806,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2316,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1461,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1863,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1938,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
