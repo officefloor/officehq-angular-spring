@@ -1,0 +1,18 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610172303/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 7 tests using 1 worker
+
+[1A[2K[1/7] [chromium] › cp01_signin-and-sheet.spec.ts:5:7 › signin and sheet › signin and sheet
+[1A[2K[2/7] [chromium] › cp02_sheet-today.spec.ts:5:7 › sheet today › sheet today
+[1A[2K[3/7] [chromium] › cp03_people.spec.ts:5:7 › people › people
+[1A[2K[4/7] [chromium] › cp04_name-uniqueness.spec.ts:5:7 › name uniqueness › name uniqueness
+[1A[2K[5/7] [chromium] › cp05_claims.spec.ts:5:7 › claims › claims
+[1A[2K[6/7] [chromium] › cp06_audit.spec.ts:5:7 › audit › audit
+[1A[2K[7/7] [chromium] › cp07_rates-and-due.spec.ts:5:7 › rates and due › rates and due
+[1A[2K  7 passed (10.2s)
