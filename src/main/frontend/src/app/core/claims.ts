@@ -185,6 +185,14 @@ export class Claims {
     this.all.update((list) => list.map((c) => (c.id === saved.id ? saved : c)));
   }
 
+  /** A steward moves a DRAFT, OPEN or PENDING claim to another person; it keeps its number and date. */
+  async reassign(id: number, personId: number): Promise<void> {
+    const saved = await firstValueFrom(
+      this.http.post<Claim>(`${this.sheetUrl()}/claims/${id}/reassign`, { personId }, { headers: this.headers() }),
+    );
+    this.all.update((list) => list.map((c) => (c.id === saved.id ? saved : c)));
+  }
+
   select(id: number, on: boolean): void {
     this.selected.update((ids) => {
       const next = new Set(ids);

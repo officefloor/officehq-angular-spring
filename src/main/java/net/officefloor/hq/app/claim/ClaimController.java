@@ -140,6 +140,18 @@ public class ClaimController {
         return ClaimView.of(service.reject(sheetId.trim(), user.trim(), claimId, request.reason().trim()));
     }
 
+    /** The person on the sheet a steward moves a claim to, by id. */
+    public record ReassignRequest(@NotNull Long personId) {
+    }
+
+    @PostMapping("/claims/{claimId}/reassign")
+    public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Validated ReassignRequest request) {
+        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, request.personId()));
+    }
+
     /** A corrected number as sent, trimmed; none when blank. */
     private static String blankAsNull(String text) {
         return text == null || text.isBlank() ? null : text.trim();

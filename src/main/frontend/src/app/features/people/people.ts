@@ -144,7 +144,7 @@ const LEAVE_DELAY_MS = 1000;
               <td data-testid="person-overdue-total">{{ formatCents(overdueOf(p.id).cents) }}</td>
               <td data-testid="person-patrons">{{ patronNames(p) }}</td>
               <td data-testid="person-backing">{{ backing(p) }}</td>
-              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grades]="p.grades" [retiredFrom]="p.retiredFrom" /></td>
+              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grades]="p.grades" [retiredFrom]="p.retiredFrom" [people]="people()" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>

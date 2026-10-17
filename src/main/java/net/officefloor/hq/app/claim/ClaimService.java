@@ -202,6 +202,43 @@ public class ClaimService {
         return claim;
     }
 
+    /**
+     * A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its number
+     * and date, and its due follows its new person's grade (CLAIM_REASSIGNED, naming the new person, with
+     * from=&lt;old name&gt; to=&lt;new name&gt;). Only a steward can move a claim (403); a SETTLED or VOID claim
+     * cannot move, nor can a claim move to the person it is already on (409); a correction cannot move, as
+     * it corrects a claim of its own person, nor can a claim move to a person retired before its date (422).
+     */
+    @Transactional
+    public Claim reassign(String sheetId, String user, Long claimId, Long toPersonId) {
+        sheets.lock(sheetId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (roles.of(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reassign a claim");
+        }
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot be reassigned");
+        }
+        Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Person to = people.findByIdAndSheetId(toPersonId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (to.getId().equals(from.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already on " + to.getName());
+        }
+        if (claim.isCorrection()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A correction corrects a claim of its own person, so it cannot be reassigned");
+        }
+        refuseIfRetired(to, claim.getDate());
+        claim.setPersonId(to.getId());
+        record("CLAIM_REASSIGNED", user, to, claim, claim.getNumber(),
+                List.of("from=" + from.getName(), "to=" + to.getName()));
+        return claim;
+    }
+
     /** The PENDING claim a steward approves or rejects; refused otherwise (409, 403, 423). */
     private Claim pending(String sheetId, String user, Long claimId) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)

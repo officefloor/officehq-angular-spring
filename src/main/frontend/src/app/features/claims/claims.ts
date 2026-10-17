@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { CLAIM_AMOUNT, CLAIM_NUMBER, Claim, ClaimAction, Claims, dueBy, formatCents, isCorrection, overdue } from '../../core/claims';
-import { GradeFrom, gradeOn, retiredOn } from '../../core/people';
+import { GradeFrom, Person, gradeOn, retiredOn } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -94,6 +94,20 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
             [value]="reasons()[c.id] ?? ''"
             (input)="setReason(c.id, $any($event.target).value)"
           />
+          <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+          <select
+            [id]="'claim-reassign-to-' + c.id"
+            data-testid="claim-reassign-to"
+            (change)="setReassignTo(c.id, $any($event.target).value)"
+          >
+            <option value="" [selected]="!reassignTo()[c.id]">Choose a person</option>
+            @for (o of others(); track o.id) {
+              <option [value]="o.id" [selected]="reassignTo()[c.id] === o.id">{{ o.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" (click)="reassign(c)">
+            Move<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+          </button>
           @if (rowError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ rowError()?.message }}</p>
           }
@@ -114,6 +128,12 @@ export class PersonClaims {
   readonly grades = input.required<GradeFrom[]>();
   /** yyyy-mm-dd the person is retired from, or null; a claim dated after it is refused. */
   readonly retiredFrom = input<string | null>(null);
+  /** Everyone on the sheet; a claim can be moved to any of the others. */
+  readonly people = input<Person[]>([]);
+
+  protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
+  /** The person chosen to move each claim to, by claim id. */
+  protected readonly reassignTo = signal<Readonly<Record<number, number>>>({});
 
   protected readonly mine = computed(() => this.claims.all().filter((c) => c.personId === this.personId()));
   protected readonly amount = signal('');
@@ -189,6 +209,50 @@ export class PersonClaims {
           ? 'The user who opened a claim cannot settle it.'
           : `A clerk cannot settle a claim with no due while there is a clerk limit of ${this.session.clerkLimit()}.`
         : `A ${claim.status} claim cannot be changed that way.`;
+      this.rowError.set({ id: claim.id, message });
+    }
+  }
+
+  protected setReassignTo(id: number, value: string): void {
+    this.reassignTo.update((all) => {
+      const next = { ...all };
+      if (value) next[id] = Number(value);
+      else delete next[id];
+      return next;
+    });
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected async reassign(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const to = this.others().find((p) => p.id === this.reassignTo()[claim.id]);
+    if (!to) {
+      this.rowError.set({ id: claim.id, message: 'Choose the person to move the claim to.' });
+      return;
+    }
+    if (this.periods.closedOn(claim.date)) {
+      this.rowError.set({ id: claim.id, message: CLOSED });
+      return;
+    }
+    if (claim.status === 'SETTLED' || claim.status === 'VOID') {
+      this.rowError.set({ id: claim.id, message: `A ${claim.status} claim cannot be moved.` });
+      return;
+    }
+    if (retiredOn(to, claim.date)) {
+      this.rowError.set({ id: claim.id, message: `${to.name} is retired before the claim's date.` });
+      return;
+    }
+    try {
+      await this.claims.reassign(claim.id, to.id);
+      this.setReassignTo(claim.id, '');
+    } catch (e) {
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? 'Only a steward can move a claim.'
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? isCorrection(claim) ? 'A correction cannot be moved to another person.' : `${to.name} is retired before the claim's date.`
+        : `A ${claim.status} claim cannot be moved.`;
       this.rowError.set({ id: claim.id, message });
     }
   }
