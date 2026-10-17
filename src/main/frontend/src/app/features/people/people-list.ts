@@ -229,6 +229,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="30"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="19">Ripple mean</th>
+              <td data-testid="rollup-ripple-mean">{{ rippleMean() ?? 'n/a' }}</td>
+              <td colspan="30"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="21">Ballast total</th>
               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
               <td colspan="28"></td>
@@ -383,6 +388,18 @@ export class PeopleList {
     const top = this.rippleTop();
     const low = this.rippleLow();
     return top === null || low === null ? null : top - low;
+  });
+
+  // The average ripple among the people not on hold (n/a ripples skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly rippleMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.ripple)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // Everyone's ballast added up, trimmed like every sheet total.
