@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index bfe1de12..2d0b4b47 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -233,6 +233,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-trim-total">{{ trimTotal() }}</td>
+               <td colspan="31"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="18">Trim top</th>
++              <td data-testid="rollup-trim-top">{{ trimTop() ?? 'n/a' }}</td>
++              <td colspan="31"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="19">Ripple total</th>
+               <td data-testid="rollup-ripple-total">{{ rippleTotal() }}</td>
+@@ -482,6 +487,15 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.trim, hold: p.hold }))),
+   );
+ 
++  // The highest trim among the people not on hold (n/a trims skipped); null (n/a) when nobody has one.
++  protected readonly trimTop = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.trim)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.max(...values);
++  });
++
+   // Everyone's ripple added up, trimmed like every sheet total.
+   protected readonly rippleTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ripple, hold: p.hold }))),
