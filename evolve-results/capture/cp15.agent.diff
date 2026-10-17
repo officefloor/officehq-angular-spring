@@ -1,0 +1,246 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 5f60d5c9..90eaebdd 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -19,6 +19,12 @@ export interface PersonFields {
+   grade: Grade;
+ }
+ 
++/** What an import did: how many it added, or the lines (numbered from 1) that stopped it. */
++export interface ImportResult {
++  added: number;
++  errors: { line: number; message: string }[];
++}
++
+ // The people kept on the active sheet, read from and written to the store.
+ @Injectable({ providedIn: 'root' })
+ export class PeopleApi {
+@@ -33,6 +39,13 @@ export class PeopleApi {
+     return firstValueFrom(this.http.post<Person>(this.url(), fields, { headers: this.headers() }));
+   }
+ 
++  /** Add people from pasted lines of name,grade; all of them, or none when any line is bad. */
++  importLines(text: string): Promise<ImportResult> {
++    return firstValueFrom(
++      this.http.post<ImportResult>(`${this.url()}/import`, { text }, { headers: this.headers() }),
++    );
++  }
++
+   /** Refused with 412 when someone else has saved the person since this version was read. */
+   update(id: number, version: number, fields: PersonFields): Promise<Person> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c1542d67..b56e16b1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,7 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { Claims, counts, formatCents } from '../../core/claims';
+-import { GRADES, Grade, PeopleApi, Person } from '../../core/people';
++import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
+ import { Rates } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { PersonClaims } from '../claims/claims';
+@@ -45,6 +45,34 @@ import { PersonClaims } from '../claims/claims';
+         }
+       </form>
+ 
++      <form (submit)="importPeople($event)">
++        <label for="import-text">Import people (one name,grade per line)</label>
++        <textarea
++          id="import-text"
++          data-testid="import-text"
++          rows="4"
++          [value]="importText()"
++          (input)="importText.set($any($event.target).value); importResult.set(null); importError.set(null)"
++        ></textarea>
++        <button type="submit" data-testid="import-submit">Import</button>
++        @if (importResult(); as result) {
++          <div role="status">
++            <p>Added <strong data-testid="import-added">{{ result.added }}</strong></p>
++            @if (result.errors.length > 0) {
++              <p>Nothing was imported; fix these lines:</p>
++              <ul>
++                @for (e of result.errors; track e.line) {
++                  <li [attr.data-testid]="'import-error-' + e.line">Line {{ e.line }}: {{ e.message }}</li>
++                }
++              </ul>
++            }
++          </div>
++        }
++        @if (importError(); as err) {
++          <p role="alert" data-testid="import-error">{{ err }}</p>
++        }
++      </form>
++
+       <table>
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -88,6 +116,11 @@ export class People {
+   /** Set while a submit awaits the store, so a second submit does not store a second record. */
+   private saving = false;
+   protected readonly error = signal<string | null>(null);
++  protected readonly importText = signal('');
++  protected readonly importResult = signal<ImportResult | null>(null);
++  protected readonly importError = signal<string | null>(null);
++  /** Set while an import awaits the store, so a second submit does not import twice. */
++  private importing = false;
+   protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
+ 
+   /**
+@@ -121,6 +154,9 @@ export class People {
+       this.session.loads();
+       untracked(() => {
+         this.reset();
++        this.importText.set('');
++        this.importResult.set(null);
++        this.importError.set(null);
+         void this.reload();
+         void this.claims.reload();
+       });
+@@ -187,6 +223,26 @@ export class People {
+     }
+   }
+ 
++  protected async importPeople(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.importing) return;
++    this.importResult.set(null);
++    this.importError.set(null);
++    this.importing = true;
++    try {
++      const result = await this.api.importLines(this.importText());
++      this.importResult.set(result);
++      if (result.added > 0) {
++        this.importText.set('');
++        await this.reload();
++      }
++    } catch {
++      this.importError.set('The people could not be imported.');
++    } finally {
++      this.importing = false;
++    }
++  }
++
+   /** Re-read the store and show the person's current values in the form and in their row. */
+   private async showCurrent(id: number): Promise<void> {
+     await this.reload();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 9408b8e5..5d518e4b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -43,6 +43,10 @@ public class PersonController {
+             @NotNull Long version) {
+     }
+ 
++    /** Lines of name,grade pasted into the import box. */
++    public record ImportRequest(@NotNull @Size(max = 100_000) String text) {
++    }
++
+     private final PersonService service;
+ 
+     public PersonController(PersonService service) {
+@@ -70,4 +74,11 @@ public class PersonController {
+         return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.version(),
+                 request.name(), request.grade()));
+     }
++
++    @PostMapping("/import")
++    public PersonService.ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Validated ImportRequest request) {
++        return service.importPeople(sheetId.trim(), user.trim(), request.text());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index daab5dd1..4d2913b6 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,6 +1,10 @@
+ package net.officefloor.hq.app.person;
+ 
++import java.util.ArrayList;
++import java.util.HashSet;
+ import java.util.List;
++import java.util.Locale;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.OptimisticLockingFailureException;
+@@ -17,6 +21,9 @@ import org.springframework.web.server.ResponseStatusException;
+ @Service
+ public class PersonService {
+ 
++    private static final int MAX_NAME = 100;
++    private static final Set<String> GRADES = Set.of("A", "B", "C");
++
+     private final PersonRepository people;
+     private final SheetService sheets;
+     private final Audit audit;
+@@ -44,6 +51,65 @@ public class PersonService {
+         return person;
+     }
+ 
++    /** A line of an import that breaks a rule: its number (from 1) and why. */
++    public record ImportError(int line, String message) {
++    }
++
++    /** How many people an import added, or the lines that stopped it (then nothing is added). */
++    public record ImportResult(int added, List<ImportError> errors) {
++    }
++
++    /**
++     * Import people from lines of name,grade. Every line is checked first with the rules of the form;
++     * a name repeated in the paste is compared like uniqueness on the sheet. If any line breaks a
++     * rule nothing is added; otherwise each person is added in order. Blank lines are skipped.
++     */
++    @Transactional
++    public ImportResult importPeople(String sheetId, String user, String text) {
++        String[] lines = text.split("\\r?\\n", -1);
++        List<ImportError> errors = new ArrayList<>();
++        List<String[]> rows = new ArrayList<>();
++        Set<String> seen = new HashSet<>();
++        for (int i = 0; i < lines.length; i++) {
++            String line = lines[i];
++            if (line.isBlank()) {
++                continue;
++            }
++            int number = i + 1;
++            int comma = line.lastIndexOf(',');
++            String name = (comma < 0 ? line : line.substring(0, comma)).trim();
++            String grade = comma < 0 ? "" : line.substring(comma + 1).trim();
++            String error = null;
++            if (name.isEmpty()) {
++                error = "Enter a name.";
++            } else if (name.length() > MAX_NAME) {
++                error = "The name is too long.";
++            } else if (!GRADES.contains(grade)) {
++                error = "The grade must be A, B or C.";
++            } else if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
++                error = "That name is already in use on this sheet.";
++            } else if (!seen.add(name.toLowerCase(Locale.ROOT))) {
++                error = "That name is repeated in the import.";
++            }
++            if (error != null) {
++                errors.add(new ImportError(number, error));
++            } else {
++                rows.add(new String[] {name, grade});
++            }
++        }
++        if (!errors.isEmpty()) {
++            return new ImportResult(0, errors);
++        }
++        if (!rows.isEmpty()) {
++            sheets.load(sheetId, user);
++        }
++        for (String[] row : rows) {
++            Person person = people.save(new Person(sheetId, row[0], row[1]));
++            audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
++        }
++        return new ImportResult(rows.size(), List.of());
++    }
++
+     @Transactional
+     public Person update(String sheetId, String user, Long personId, long version, String name, String grade) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
