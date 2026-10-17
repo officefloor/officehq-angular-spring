@@ -1,0 +1,98 @@
+{
+  "checkpoint": 3,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp03_people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Keep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nKeep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7e1258f535963290622279a4caca8a41999d25f5",
+  "reset_sha": "",
+  "preagent_sha": "3b5817d6834397f0177644534f233d1740956f98",
+  "prev_sha": "3b5817d6834397f0177644534f233d1740956f98",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45648459999999996,
+    "input_tokens": 12,
+    "output_tokens": 7159,
+    "cache_read_tokens": 180323,
+    "cache_creation_tokens": 34649,
+    "num_turns": 6,
+    "duration_ms": 85035,
+    "duration_api_ms": 64934,
+    "model": "claude-opus-5-5",
+    "session_id": "b5b7a19f-5217-438b-b9f5-72cd81ca91f7",
+    "stop_reason": "success",
+    "result_text": "The people list is in and `bin/e2e` passes: the one Playwright spec, `people`, runs green.\n\n**What it does now**\n- Below the sheet controls there is a People form (name and a grade of A, B or C) and a table listing everyone in the order they were added, showing name and grade.\n- Clicking a person's Edit button puts their values into the same form, and Save updates their row. After an add or a save, the form clears and goes back to adding.\n- An empty name, or one that is only spaces, is refused with an error under the form. Both the browser and the server check this. A name with spaces around it (the test uses `\" ada \"`) is stored and shown exactly as typed.\n- Re-loading the sheet re-reads the list from the store, so a second user sees changes after a reload.\n\n**Changes by layer**\n- **Stored data:** new migration `V3__person.sql` adds a `person` table, keyed to the sheet. The database itself only accepts grades A, B or C.\n- **Server:** new `person` package with an entity, repository, service and controller under `/api/sheets/{sheetId}/people` (list, add, update). The server rejects a blank name or a grade other than A, B or C.\n- **Front end:** a new `People` component (`features/people/people.ts`) and an API service (`core/people.ts`), placed on the home screen. `Session` now has a `loads` counter so the list re-reads the store every time the sheet is loaded, including re-loading the same id. I also added a `.visually-hidden` class to `styles.css` so each Edit button has an accessible label naming its person.\n\nI didn't add audit records, because neither the request nor the spec asks for them. I also added a Cancel button that appears only while editing. The test doesn't use it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45648459999999996,
+        "num_turns": 6,
+        "duration_ms": 85035,
+        "duration_api_ms": 64934,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp03.agent.jsonl",
+  "agent_diff_file": "cp03.agent.diff",
+  "build_log_file": "cp03.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 3,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 763,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 798,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1426,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
