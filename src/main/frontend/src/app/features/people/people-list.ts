@@ -398,6 +398,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-bearing-mean">{{ bearingMean() ?? 'n/a' }}</td>
               <td colspan="26"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="24">Pitch total</th>
+              <td data-testid="rollup-pitch-total">{{ pitchTotal() }}</td>
+              <td colspan="25"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -792,6 +797,11 @@ export class PeopleList {
       ? null
       : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
+
+  // Everyone's pitch added up, trimmed like every sheet total.
+  protected readonly pitchTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.pitch, hold: p.hold }))),
+  );
 
   // How many counted people have an even keel (n/a keels are not counted).
   protected readonly keelCount = computed(
