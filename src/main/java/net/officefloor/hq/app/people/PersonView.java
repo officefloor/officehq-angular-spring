@@ -6,7 +6,7 @@ import java.util.List;
  * A person as the API returns it; patrons are referenced by id. thrust is alpha times beta, or null
  * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
  * when thrust or gamma is. scaled is momentum times two, and third is scaled divided by three (rounded
- * down, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
+ * to the nearest, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
  * sheet's average scaled (over the people whose scaled is not n/a, rounded like every divide), null
  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)

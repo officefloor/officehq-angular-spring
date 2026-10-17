@@ -16,13 +16,13 @@ export interface Person {
   momentum: number | null;
   // momentum times two; null (n/a) when momentum is.
   scaled: number | null;
-  // scaled divided by three, rounded down (also below zero); null (n/a) when scaled is.
+  // scaled divided by three, rounded to the nearest (a half up); null (n/a) when scaled is.
   third: number | null;
-  // scaled minus the sheet's average scaled (n/a ones skipped, rounded down); null (n/a) when scaled is.
+  // scaled minus the sheet's average scaled (n/a ones skipped, rounded to the nearest); null (n/a) when scaled is.
   norm: number | null;
   // the patrons' momentum added up (n/a ones add nothing); null (n/a) when momentum is.
   backing: number | null;
-  // scaled divided by four, rounded down (also below zero); null (n/a) when scaled is.
+  // scaled divided by four, rounded to the nearest (a half up); null (n/a) when scaled is.
   quarter: number | null;
   // SINK below zero, STEADY from 0 up to 199, SURGE at 200 or more; null (n/a) when scaled is.
   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
