@@ -588,6 +588,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-freeboard-spread">{{ freeboardSpread() ?? 'n/a' }}</td>
               <td colspan="18"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="31">Freeboard even</th>
+              <td data-testid="rollup-freeboard-even">{{ freeboardEven() }}</td>
+              <td colspan="18"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1317,6 +1322,13 @@ export class PeopleList {
   // How many counted people have an even beam (n/a beams are not counted).
   protected readonly beamEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.beam !== null && p.beam % 2 === 0).length,
+  );
+
+  // How many counted people have an even freeboard (n/a freeboards are not counted).
+  protected readonly freeboardEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.freeboard !== null && p.freeboard % 2 === 0)
+        .length,
   );
 
   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
