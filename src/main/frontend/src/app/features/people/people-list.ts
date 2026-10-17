@@ -793,6 +793,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-rudder-even">{{ rudderEven() }}</td>
               <td colspan="10"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="39">Rudder mean</th>
+              <td data-testid="rollup-rudder-mean">{{ rudderMean() ?? 'n/a' }}</td>
+              <td colspan="10"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1763,6 +1768,18 @@ export class PeopleList {
     () =>
       countable(this.people() ?? []).filter((p) => p.rudder !== null && p.rudder % 2 === 0).length,
   );
+
+  // The average rudder among the people not on hold (n/a rudders skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly rudderMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.rudder)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
 
   // The average helm among the people not on hold (n/a helms skipped), rounded like every
   // divide; null (n/a) when nobody has one.
