@@ -36,6 +36,10 @@ export interface Person {
   cascade: number | null;
   // keel minus thrust; null (n/a) when keel is.
   trim: number | null;
+  // cascade plus keel; null (n/a) when cascade is.
+  ripple: number | null;
+  // keel plus norm; null (n/a) when keel or norm is.
+  heading: number | null;
 }
 
 @Injectable({ providedIn: 'root' })

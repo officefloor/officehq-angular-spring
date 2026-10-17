@@ -14,18 +14,20 @@ import java.util.List;
  * null (n/a) when scaled is. keel is scaled plus momentum, null (n/a) when momentum is.
  * fathom is keel plus momentum and draft is keel plus thrust; both null (n/a) when keel is.
  * cascade is fathom plus scaled, null (n/a) when fathom is. trim is keel minus thrust, null (n/a)
- * when keel is.
+ * when keel is. ripple is cascade plus keel, null (n/a) when cascade is. heading is keel plus norm,
+ * null (n/a) when keel or norm is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
         Long backing, Long quarter, String tier, Long keel,
-        Long fathom, Long draft, Long cascade, Long trim) {
+        Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
                 scaled(p), third(p), norm(p, averageScaled), backing(p),
-                quarter(p), tier(p), keel(p), fathom(p), draft(p), cascade(p), trim(p));
+                quarter(p), tier(p), keel(p), fathom(p), draft(p), cascade(p), trim(p),
+                ripple(p), heading(p, averageScaled));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -105,6 +107,17 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long trim(Person p) {
         Long keel = keel(p);
         return keel == null ? null : keel - thrust(p);
+    }
+
+    private static Long ripple(Person p) {
+        Long cascade = cascade(p);
+        return cascade == null ? null : cascade + keel(p);
+    }
+
+    private static Long heading(Person p, Long averageScaled) {
+        Long keel = keel(p);
+        Long norm = norm(p, averageScaled);
+        return keel == null || norm == null ? null : keel + norm;
     }
 
     private static String tier(Person p) {

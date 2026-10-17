@@ -33,6 +33,8 @@ import { PeopleService } from './people.service';
               <th scope="col">Draft</th>
               <th scope="col">Cascade</th>
               <th scope="col">Trim</th>
+              <th scope="col">Ripple</th>
+              <th scope="col">Heading</th>
             </tr>
           </thead>
           <tbody>
@@ -57,6 +59,8 @@ import { PeopleService } from './people.service';
                 <td data-testid="concept-draft">{{ p.draft ?? 'n/a' }}</td>
                 <td data-testid="concept-cascade">{{ p.cascade ?? 'n/a' }}</td>
                 <td data-testid="concept-trim">{{ p.trim ?? 'n/a' }}</td>
+                <td data-testid="concept-ripple">{{ p.ripple ?? 'n/a' }}</td>
+                <td data-testid="concept-heading">{{ p.heading ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
@@ -65,12 +69,12 @@ import { PeopleService } from './people.service';
               <th scope="row" colspan="6">Thrust total</th>
               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
               <td colspan="7"></td>
-              <td colspan="5"></td>
+              <td colspan="7"></td>
             </tr>
             <tr>
               <th scope="row" colspan="14">Keel total</th>
               <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
-              <td colspan="4"></td>
+              <td colspan="6"></td>
             </tr>
           </tfoot>
         </table>
