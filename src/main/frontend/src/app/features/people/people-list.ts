@@ -618,6 +618,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-buoyancy-even">{{ buoyancyEven() }}</td>
               <td colspan="17"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="32">Buoyancy mean</th>
+              <td data-testid="rollup-buoyancy-mean">{{ buoyancyMean() ?? 'n/a' }}</td>
+              <td colspan="17"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1430,6 +1435,18 @@ export class PeopleList {
     const values = (this.people() ?? [])
       .filter((p) => !p.hold)
       .map((p) => p.freeboard)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
+
+  // The average buoyancy among the people not on hold (n/a buoyancies skipped), rounded like
+  // every divide; null (n/a) when nobody has one.
+  protected readonly buoyancyMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.buoyancy)
       .filter((v): v is number => v !== null);
     return values.length === 0
       ? null
