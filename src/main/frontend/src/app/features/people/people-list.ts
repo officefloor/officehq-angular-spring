@@ -668,6 +668,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-cable-even">{{ cableEven() }}</td>
               <td colspan="15"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="34">Cable mean</th>
+              <td data-testid="rollup-cable-mean">{{ cableMean() ?? 'n/a' }}</td>
+              <td colspan="15"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1562,6 +1567,18 @@ export class PeopleList {
     const values = (this.people() ?? [])
       .filter((p) => !p.hold)
       .map((p) => p.knot)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
+
+  // The average cable among the people not on hold (n/a cables skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly cableMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.cable)
       .filter((v): v is number => v !== null);
     return values.length === 0
       ? null
