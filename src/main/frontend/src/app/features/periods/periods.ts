@@ -60,6 +60,9 @@ import { Session } from '../../core/session';
                     Close<span class="visually-hidden"> period {{ p.name }}</span>
                   </button>
                 }
+                <button type="button" data-testid="period-reopen" (click)="reopen(p)">
+                  Reopen<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
                 @if (rowError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ rowError()?.message }}</p>
                 }
@@ -130,6 +133,15 @@ export class PeriodsPanel {
       await this.periods.close(period.name);
     } catch {
       this.rowError.set({ id: period.id, message: `The period ${period.name} could not be closed.` });
+    }
+  }
+
+  protected async reopen(period: Period): Promise<void> {
+    this.rowError.set(null);
+    try {
+      await this.periods.reopen(period.name);
+    } catch {
+      this.rowError.set({ id: period.id, message: `The period ${period.name} could not be reopened: only a steward can reopen a closed period.` });
     }
   }
 

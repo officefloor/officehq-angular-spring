@@ -11,7 +11,8 @@ import java.time.LocalDate;
 
 /**
  * A period on a sheet: a name unique on the sheet and an inclusive from and to date. Once closed, its
- * due-total is fixed as it was when it was closed.
+ * due-total is fixed as it was when it was closed,
+ * until it is reopened.
  */
 @Entity
 @Table(name = "period")
@@ -81,6 +82,12 @@ public class Period {
     public void close(BigDecimal total) {
         this.closed = true;
         this.closedTotal = total;
+    }
+
+    /** Reopen a closed period, so its due-total is live again. */
+    public void reopen() {
+        this.closed = false;
+        this.closedTotal = null;
     }
 
     /** Whether a date falls in this period, inclusive. */

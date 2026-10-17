@@ -66,6 +66,14 @@ export class Periods {
     this.all.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
   }
 
+  /** Reopen a closed period, making its due-total live again; the store refuses anyone but a steward. */
+  async reopen(name: string): Promise<void> {
+    const saved = await firstValueFrom(
+      this.http.post<Period>(`${this.url()}/${encodeURIComponent(name)}/reopen`, null, { headers: this.headers() }),
+    );
+    this.all.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+  }
+
   private url(): string {
     const id = this.session.sheetId();
     if (!id) throw new Error('no sheet loaded');
