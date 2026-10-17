@@ -873,6 +873,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-moor-mean">{{ moorMean() ?? 'n/a' }}</td>
               <td colspan="7"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="43">Berth total</th>
+              <td data-testid="rollup-berth-total">{{ berthTotal() }}</td>
+              <td colspan="6"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1439,6 +1444,11 @@ export class PeopleList {
   // Everyone's rigging added up, trimmed like every sheet total.
   protected readonly riggingTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.rigging, hold: p.hold }))),
+  );
+
+  // Everyone's berth added up, trimmed like every sheet total.
+  protected readonly berthTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.berth, hold: p.hold }))),
   );
 
   // Everyone's moor added up, trimmed like every sheet total.
