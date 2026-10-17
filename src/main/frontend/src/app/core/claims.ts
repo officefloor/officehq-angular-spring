@@ -11,6 +11,18 @@ export interface Claim {
   /** yyyy-mm-dd */
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+/** DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID instead. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** The status changes a claim can be asked for, as named in the store's API. */
+export type ClaimAction = 'open' | 'settle' | 'void';
+
+/** Whether the claim counts toward claimed, due-total and every total. */
+export function counts(claim: Claim): boolean {
+  return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
 export interface ClaimFields {
@@ -40,14 +52,17 @@ export class Claims {
 
   readonly all = signal<Claim[]>([]);
 
+  /** The claims that count toward the totals: OPEN and SETTLED ones. */
+  private readonly counted = computed(() => this.all().filter(counts));
+
   /** Each person's claimed, in cents, by person id. */
   readonly claimedCents = computed(() => {
     const out = new Map<number, number>();
-    for (const c of this.all()) out.set(c.personId, (out.get(c.personId) ?? 0) + toCents(c.amount));
+    for (const c of this.counted()) out.set(c.personId, (out.get(c.personId) ?? 0) + toCents(c.amount));
     return out;
   });
 
-  readonly totalCents = computed(() => this.all().reduce((sum, c) => sum + toCents(c.amount), 0));
+  readonly totalCents = computed(() => this.counted().reduce((sum, c) => sum + toCents(c.amount), 0));
 
   async reload(): Promise<void> {
     try {
@@ -67,6 +82,14 @@ export class Claims {
   async update(id: number, fields: ClaimFields): Promise<void> {
     const saved = await firstValueFrom(
       this.http.put<Claim>(`${this.sheetUrl()}/claims/${id}`, this.body(fields), { headers: this.headers() }),
+    );
+    this.all.update((list) => list.map((c) => (c.id === saved.id ? saved : c)));
+  }
+
+  /** Move a claim to its next status; the store refuses a change its status does not allow. */
+  async act(id: number, action: ClaimAction): Promise<void> {
+    const saved = await firstValueFrom(
+      this.http.post<Claim>(`${this.sheetUrl()}/claims/${id}/${action}`, null, { headers: this.headers() }),
     );
     this.all.update((list) => list.map((c) => (c.id === saved.id ? saved : c)));
   }

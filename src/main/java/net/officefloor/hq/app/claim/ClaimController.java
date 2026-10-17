@@ -26,10 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** The amount is sent as text with exactly two decimals, so it is never rounded as a float. */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
+            ClaimStatus status) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote());
+                    claim.getDate(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -68,5 +69,26 @@ public class ClaimController {
             @RequestBody @Validated ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId,
                 new BigDecimal(request.amount()), request.date(), request.note()));
+    }
+
+    @PostMapping("/claims/{claimId}/open")
+    public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.OPEN));
+    }
+
+    @PostMapping("/claims/{claimId}/settle")
+    public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/{claimId}/void")
+    public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
     }
 }

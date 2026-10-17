@@ -61,6 +61,27 @@ public class ClaimService {
         return claim;
     }
 
+    /** Move a claim to the next status; a change its status does not allow is refused (409). */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, Long claimId, ClaimStatus next) {
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (!claim.getStatus().canBecome(next)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot become " + next);
+        }
+        claim.setStatus(next);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        record(switch (next) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException();
+        }, user, person, claim);
+        return claim;
+    }
+
     /** Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. */
     private void record(String event, String user, Person person, Claim claim) {
         audit.change(event, claim.getSheetId(), user, "person=" + person.getName(),

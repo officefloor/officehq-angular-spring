@@ -1,5 +1,5 @@
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
-import { AMOUNT, Claim, Claims, formatCents, toCents } from '../../core/claims';
+import { AMOUNT, Claim, ClaimAction, Claims, formatCents, toCents } from '../../core/claims';
 import { Grade } from '../../core/people';
 import { dueCents, Rates } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -50,9 +50,18 @@ import { Session } from '../../core/session';
           <span data-testid="claim-due">{{ due(c) }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span data-testid="claim-status">{{ c.status }}</span>
           <button type="button" data-testid="claim-edit" (click)="edit(c)">
             Edit<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
           </button>
+          @for (a of actions; track a.action) {
+            <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="act(c, a.action)">
+              {{ a.label }}<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
+            </button>
+          }
+          @if (rowError()?.id === c.id) {
+            <p role="alert" data-testid="claim-error">{{ rowError()?.message }}</p>
+          }
         </li>
       }
     </ul>
@@ -73,6 +82,14 @@ export class PersonClaims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** The error of the last action taken on a claim's row, if it was refused. */
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+
+  protected readonly actions: { action: ClaimAction; label: string }[] = [
+    { action: 'open', label: 'Open' },
+    { action: 'settle', label: 'Settle' },
+    { action: 'void', label: 'Void' },
+  ];
 
   /** The claim's due at its person's grade's rate, or n/a when that grade has no rate. */
   protected due(claim: Claim): string {
@@ -80,7 +97,17 @@ export class PersonClaims {
     return rate === undefined ? 'n/a' : formatCents(dueCents(toCents(claim.amount), rate));
   }
 
+  protected async act(claim: Claim, action: ClaimAction): Promise<void> {
+    this.rowError.set(null);
+    try {
+      await this.claims.act(claim.id, action);
+    } catch {
+      this.rowError.set({ id: claim.id, message: `A ${claim.status} claim cannot be changed that way.` });
+    }
+  }
+
   protected edit(claim: Claim): void {
+    this.rowError.set(null);
     this.editingId.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
