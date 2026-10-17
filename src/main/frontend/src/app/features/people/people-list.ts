@@ -533,6 +533,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-sheer-top">{{ sheerTop() ?? 'n/a' }}</td>
               <td colspan="20"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="29">Sheer spread</th>
+              <td data-testid="rollup-sheer-spread">{{ sheerSpread() ?? 'n/a' }}</td>
+              <td colspan="20"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1058,6 +1063,16 @@ export class PeopleList {
       .map((p) => p.sheer)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest sheer minus the lowest among the people not on hold (n/a sheers skipped); null (n/a)
+  // when nobody has one.
+  protected readonly sheerSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.sheer)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // The highest camber among the people not on hold (n/a cambers skipped); null (n/a) when nobody has one.
