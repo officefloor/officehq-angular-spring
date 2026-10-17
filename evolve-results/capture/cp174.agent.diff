@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 67549996..cc623efa 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -598,6 +598,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-freeboard-mean">{{ freeboardMean() ?? 'n/a' }}</td>
+               <td colspan="18"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="32">Buoyancy total</th>
++              <td data-testid="rollup-buoyancy-total">{{ buoyancyTotal() }}</td>
++              <td colspan="17"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1126,6 +1131,11 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.freeboard, hold: p.hold }))),
+   );
+ 
++  // Everyone's buoyancy added up, trimmed like every sheet total.
++  protected readonly buoyancyTotal = computed(() =>
++    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.buoyancy, hold: p.hold }))),
++  );
++
+   // The highest freeboard among the people not on hold (n/a freeboards skipped); null (n/a) when
+   // nobody has one.
+   protected readonly freeboardTop = computed(() => {
