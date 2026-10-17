@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index ae840a7d..44ec1aed 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -783,6 +783,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-rudder-top">{{ rudderTop() ?? 'n/a' }}</td>
+               <td colspan="10"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="39">Rudder spread</th>
++              <td data-testid="rollup-rudder-spread">{{ rudderSpread() ?? 'n/a' }}</td>
++              <td colspan="10"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1355,6 +1360,16 @@ export class PeopleList {
+     return values.length === 0 ? null : Math.max(...values);
+   });
+ 
++  // The highest rudder minus the lowest rudder among the people not on hold (n/a rudders skipped); null
++  // (n/a) when nobody has one.
++  protected readonly rudderSpread = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.rudder)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
++  });
++
+   // Everyone's helm added up, trimmed like every sheet total.
+   protected readonly helmTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.helm, hold: p.hold }))),
