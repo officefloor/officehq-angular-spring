@@ -1,0 +1,29 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index aa5e1a80..f07bba34 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -513,6 +513,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-camber-spread">{{ camberSpread() ?? 'n/a' }}</td>
+               <td colspan="21"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="28">Camber even</th>
++              <td data-testid="rollup-camber-even">{{ camberEven() }}</td>
++              <td colspan="21"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1154,6 +1159,12 @@ export class PeopleList {
+       countable(this.people() ?? []).filter((p) => p.heave !== null && p.heave % 2 === 0).length,
+   );
+ 
++  // How many counted people have an even camber (n/a cambers are not counted).
++  protected readonly camberEven = computed(
++    () =>
++      countable(this.people() ?? []).filter((p) => p.camber !== null && p.camber % 2 === 0).length,
++  );
++
+   protected patronNames(ids: number[]): string {
+     const names = this.names();
+     return ids.map((id) => names.get(id) ?? String(id)).join(', ');
