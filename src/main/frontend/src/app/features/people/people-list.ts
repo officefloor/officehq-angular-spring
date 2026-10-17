@@ -59,11 +59,22 @@ export class PeopleList {
 
   // Everyone's thrust added up, skipping the people for whom it is n/a.
   protected readonly thrustTotal = computed(() =>
-    (this.people() ?? []).reduce((sum, p) => sum + (p.thrust ?? 0), 0),
+    trimmedTotal((this.people() ?? []).map((p) => p.thrust)),
   );
 
   protected patronNames(ids: number[]): string {
     const names = this.names();
     return ids.map((id) => names.get(id) ?? String(id)).join(', ');
   }
+}
+
+// A sheet-wide total: the contributions (n/a ones skipped) added up, leaving out one highest and
+// one lowest whenever at least two people contribute. Every sheet total goes through this.
+export function trimmedTotal(values: (number | null)[]): number {
+  const contributions = values.filter((v): v is number => v !== null);
+  const sum = contributions.reduce((total, v) => total + v, 0);
+  if (contributions.length < 2) {
+    return sum;
+  }
+  return sum - Math.max(...contributions) - Math.min(...contributions);
 }
