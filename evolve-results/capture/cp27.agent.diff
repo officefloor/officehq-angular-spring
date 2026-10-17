@@ -1,0 +1,331 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 0f736347..7be36f42 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -16,6 +16,8 @@ export interface Person {
+   retiredFrom: string | null;
+   /** Whether the person is on hold: while held, their open claims count in no live total. */
+   held: boolean;
++  /** The ids of the other people on the sheet this person names as their patrons. */
++  patronIds: number[];
+ }
+ 
+ /** Whether a claim dated on this date (yyyy-mm-dd) is refused: it is after the person's retirement. */
+@@ -85,6 +87,13 @@ export class PeopleApi {
+     );
+   }
+ 
++  /** Name another person as a patron; refused with 422 for themselves and 409 when already named. */
++  addPatron(id: number, patronId: number): Promise<Person> {
++    return firstValueFrom(
++      this.http.post<Person>(`${this.url()}/${id}/patrons`, { patronId }, { headers: this.headers() }),
++    );
++  }
++
+   private url(): string {
+     const id = this.session.sheetId();
+     if (!id) throw new Error('no sheet loaded');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c7cd04e7..33d7fc63 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -113,7 +113,7 @@ const LEAVE_DELAY_MS = 1000;
+ 
+       <table>
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of listed(); track p.id) {
+@@ -127,6 +127,8 @@ const LEAVE_DELAY_MS = 1000;
+               <td data-testid="person-due-total">{{ dueTotal(p) }}</td>
+               <td data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</td>
+               <td data-testid="person-overdue-total">{{ formatCents(overdueOf(p.id).cents) }}</td>
++              <td data-testid="person-patrons">{{ patronNames(p) }}</td>
++              <td data-testid="person-backing">{{ backing(p) }}</td>
+               <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" [retiredFrom]="p.retiredFrom" /></td>
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+@@ -135,6 +137,23 @@ const LEAVE_DELAY_MS = 1000;
+                 <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)">
+                   {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
++                <label [for]="'person-patron-select-' + p.id">Patron</label>
++                <select
++                  [id]="'person-patron-select-' + p.id"
++                  data-testid="person-patron-select"
++                  (change)="setPatronChoice(p.id, $any($event.target).value)"
++                >
++                  <option value="" [selected]="patronChoice(p.id) === ''">Choose a person</option>
++                  @for (o of people(); track o.id) {
++                    <option [value]="o.id" [selected]="patronChoice(p.id) === '' + o.id">{{ o.name }}</option>
++                  }
++                </select>
++                <button type="button" data-testid="person-patron-add" (click)="addPatron(p)">
++                  Add patron<span class="visually-hidden"> for {{ p.name }}</span>
++                </button>
++                @if (patronError()?.id === p.id) {
++                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
++                }
+                 @if (p.retiredFrom === null) {
+                   <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                   <input
+@@ -196,6 +215,10 @@ export class People {
+   private quickAdding = false;
+   /** The retire date typed on each person's row, by person id; the sheet's today when not typed. */
+   private readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
++  /** The patron chosen on each person's row, by person id, as the chosen person's id. */
++  private readonly patronChoices = signal<ReadonlyMap<number, string>>(new Map());
++  /** The error of the last patron added on a person's row, if it was refused. */
++  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
+   /** The error of the last action taken on a person's row, if it was refused. */
+   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+ 
+@@ -235,8 +258,7 @@ export class People {
+ 
+   /**
+    * Each person's due-total in cents, by person id: the sum of their counted claims' due figures as
+-   * shown (each already rounded), skipping those that are n/a. Absent when none has a figure and
+-   * their grade has no rate today.
++   * shown (each already rounded), skipping those that are n/a; 0 when none has a figure.
+    */
+   private readonly dueCents = computed(() => {
+     const out = new Map<number, number>();
+@@ -246,9 +268,7 @@ export class People {
+         .filter((c) => c.personId === p.id && counts(c, p))
+         .map((c) => this.rates.dueOf(c, p.grade))
+         .filter((c) => c !== undefined);
+-      if (figures.length > 0 || this.rates.byGrade().has(p.grade)) {
+-        out.set(p.id, figures.reduce((sum, c) => sum + c, 0));
+-      }
++      out.set(p.id, figures.reduce((sum, c) => sum + c, 0));
+     }
+     return out;
+   });
+@@ -304,6 +324,8 @@ export class People {
+         this.quickError.set(null);
+         this.retireDates.set(new Map());
+         this.rowError.set(null);
++        this.patronChoices.set(new Map());
++        this.patronError.set(null);
+         void this.reload();
+         void this.claims.reload();
+       });
+@@ -319,6 +341,64 @@ export class People {
+     return cents === undefined ? 'n/a' : formatCents(cents);
+   }
+ 
++  /** The names of the person's patrons, sorted, comma and space separated. */
++  protected patronNames(person: Person): string {
++    const byId = new Map(this.people().map((p) => [p.id, p.name]));
++    return person.patronIds
++      .map((id) => byId.get(id))
++      .filter((n) => n !== undefined)
++      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
++      .join(', ');
++  }
++
++  /** The person's patrons' due-totals added up, skipping those that are n/a; 0.00 with no patrons. */
++  protected backing(person: Person): string {
++    const due = this.dueCents();
++    return formatCents(person.patronIds.reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
++  }
++
++  protected patronChoice(personId: number): string {
++    return this.patronChoices().get(personId) ?? '';
++  }
++
++  protected setPatronChoice(personId: number, value: string): void {
++    this.patronChoices.update((choices) => new Map(choices).set(personId, value));
++    if (this.patronError()?.id === personId) this.patronError.set(null);
++  }
++
++  /** Name the person chosen on the row as one of this person's patrons. */
++  protected async addPatron(person: Person): Promise<void> {
++    this.patronError.set(null);
++    this.rowError.set(null);
++    const patronId = Number(this.patronChoice(person.id));
++    if (!patronId) {
++      this.patronError.set({ id: person.id, message: 'Choose a person to name as a patron.' });
++      return;
++    }
++    if (patronId === person.id) {
++      this.patronError.set({ id: person.id, message: 'A person cannot be their own patron.' });
++      return;
++    }
++    if (person.patronIds.includes(patronId)) {
++      this.patronError.set({ id: person.id, message: 'That person is already a patron.' });
++      return;
++    }
++    try {
++      const saved = await this.api.addPatron(person.id, patronId);
++      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++      this.patronChoices.update((choices) => new Map(choices).set(person.id, ''));
++    } catch (e) {
++      this.patronError.set({
++        id: person.id,
++        message: e instanceof HttpErrorResponse && e.status === 409
++          ? 'That person is already a patron.'
++          : e instanceof HttpErrorResponse && e.status === 422
++          ? 'A person cannot be their own patron.'
++          : 'The patron could not be added.',
++      });
++    }
++  }
++
+   protected overdueOf(personId: number): { count: number; cents: number } {
+     return this.overdueByPerson().get(personId) ?? { count: 0, cents: 0 };
+   }
+@@ -335,6 +415,7 @@ export class People {
+   /** Retire the person from the date on their row (the sheet's today when left as it is). */
+   protected async retire(person: Person): Promise<void> {
+     this.rowError.set(null);
++    this.patronError.set(null);
+     const from = this.retireDate(person.id).trim();
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+       this.rowError.set({ id: person.id, message: 'Enter a date as yyyy-mm-dd.' });
+@@ -356,6 +437,7 @@ export class People {
+   /** Put the person on hold, or release them when they are held. */
+   protected async toggleHold(person: Person): Promise<void> {
+     this.rowError.set(null);
++    this.patronError.set(null);
+     try {
+       const saved = await this.api.setHeld(person.id, !person.held);
+       this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 3df823ec..5b8bf0e3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -1,6 +1,10 @@
+ package net.officefloor.hq.app.person;
+ 
++import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
++import jakarta.persistence.ElementCollection;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+@@ -8,6 +12,8 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
+ import java.time.LocalDate;
++import java.util.HashSet;
++import java.util.Set;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ 
+ /** A person on a sheet, with a name and a grade (A, B or C), who may be retired from a date
+@@ -37,6 +43,12 @@ public class Person {
+     @Column(name = "held", nullable = false)
+     private boolean held;
+ 
++    /** The ids of the other people on the sheet this person names as their patrons. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_patron", joinColumns = @JoinColumn(name = "person_id"))
++    @Column(name = "patron_id", nullable = false)
++    private Set<Long> patronIds = new HashSet<>();
++
+     /** Raised each time the person is saved. */
+     @Version
+     @Column(name = "version", nullable = false)
+@@ -101,6 +113,10 @@ public class Person {
+         return status.counts() && !(held && status == ClaimStatus.OPEN);
+     }
+ 
++    public Set<Long> getPatronIds() {
++        return patronIds;
++    }
++
+     public long getVersion() {
+         return version;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index d5660473..85a9675d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -26,10 +26,10 @@ public class PersonController {
+ 
+     /** The version is the one an edit sends back, so a save made from an out-of-date copy is refused. */
+     public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom,
+-            boolean held) {
++            boolean held, List<Long> patronIds) {
+         static PersonView of(Person person) {
+             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+-                    person.getRetiredFrom(), person.isHeld());
++                    person.getRetiredFrom(), person.isHeld(), person.getPatronIds().stream().sorted().toList());
+         }
+     }
+ 
+@@ -50,6 +50,10 @@ public class PersonController {
+     public record RetireRequest(LocalDate from) {
+     }
+ 
++    /** Name another person on the sheet as a patron. */
++    public record PatronRequest(@NotNull Long patronId) {
++    }
++
+     /** Lines of name,grade pasted into the import box. */
+     public record ImportRequest(@NotNull @Size(max = 100_000) String text) {
+     }
+@@ -104,6 +108,14 @@ public class PersonController {
+         return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, false));
+     }
+ 
++    @PostMapping("/{personId}/patrons")
++    public PersonView addPatron(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Validated PatronRequest request) {
++        return PersonView.of(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()));
++    }
++
+     @PostMapping("/import")
+     public PersonService.ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 968b2bae..648a2e0e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -187,6 +187,28 @@ public class PersonService {
+         return person;
+     }
+ 
++    /**
++     * Name another person on the same sheet as one of this person's patrons. Naming themselves is
++     * refused (422), and so is naming someone already a patron (409).
++     */
++    @Transactional
++    public Person addPatron(String sheetId, String user, Long personId, Long patronId) {
++        sheets.lock(sheetId);
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        Person patron = people.findByIdAndSheetId(patronId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such patron"));
++        if (patron.getId().equals(person.getId())) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "A person cannot be their own patron");
++        }
++        if (!person.getPatronIds().add(patron.getId())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Already a patron");
++        }
++        person = people.saveAndFlush(person);
++        audit.change("PATRON_ADDED", sheetId, user, "name=" + person.getName(), "patron=" + patron.getName());
++        return person;
++    }
++
+     private static ResponseStatusException changedMeanwhile() {
+         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Person changed since it was loaded");
+     }
+diff --git a/src/main/resources/db/migration/V22__person_patron.sql b/src/main/resources/db/migration/V22__person_patron.sql
+new file mode 100644
+index 00000000..9ddd83d6
+--- /dev/null
++++ b/src/main/resources/db/migration/V22__person_patron.sql
+@@ -0,0 +1,6 @@
++-- The people a person names as their patrons: others on the same sheet, each at most once.
++CREATE TABLE person_patron (
++    person_id BIGINT NOT NULL REFERENCES person (id),
++    patron_id BIGINT NOT NULL REFERENCES person (id),
++    PRIMARY KEY (person_id, patron_id)
++);
