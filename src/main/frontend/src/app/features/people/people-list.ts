@@ -168,6 +168,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-keystone-total">{{ keystoneTotal() }}</td>
               <td colspan="27"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="23">Bearing total</th>
+              <td data-testid="rollup-bearing-total">{{ bearingTotal() }}</td>
+              <td colspan="26"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -219,6 +224,11 @@ export class PeopleList {
   // Everyone's keystone added up, trimmed like every sheet total.
   protected readonly keystoneTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keystone, hold: p.hold }))),
+  );
+
+  // Everyone's bearing added up, trimmed like every sheet total.
+  protected readonly bearingTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.bearing, hold: p.hold }))),
   );
 
   // How many counted people have an even keel (n/a keels are not counted).
