@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 1445e4a0..5be86f2f 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -878,6 +878,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-berth-total">{{ berthTotal() }}</td>
+               <td colspan="6"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="43">Berth top</th>
++              <td data-testid="rollup-berth-top">{{ berthTop() ?? 'n/a' }}</td>
++              <td colspan="6"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1451,6 +1456,15 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.berth, hold: p.hold }))),
+   );
+ 
++  // The highest berth among the people not on hold, skipping n/a; n/a when there is none.
++  protected readonly berthTop = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.berth)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.max(...values);
++  });
++
+   // Everyone's moor added up, trimmed like every sheet total.
+   protected readonly moorTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.moor, hold: p.hold }))),
