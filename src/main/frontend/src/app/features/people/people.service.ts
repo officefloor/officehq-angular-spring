@@ -62,6 +62,8 @@ export interface Person {
   beam: number | null;
   // keel divided by two, rounded to the nearest (a half up); null (n/a) when keel is.
   freeboard: number | null;
+  // keel times three; null (n/a) when keel is.
+  buoyancy: number | null;
 }
 
 @Injectable({ providedIn: 'root' })

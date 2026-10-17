@@ -21,14 +21,15 @@ import java.util.List;
  * minus momentum, null (n/a) when keel is. yaw is keel plus scaled, null (n/a) when keel is. heave
  * is keel minus scaled, null (n/a) when keel is. camber is keel plus 200, null (n/a) when keel is.
  * sheer is keel minus 100, null (n/a) when keel is. beam is keel times two, null (n/a) when keel is.
- * freeboard is keel divided by two (rounded like every divide), null (n/a) when keel is.
+ * freeboard is keel divided by two (rounded like every divide), null (n/a) when keel is. buoyancy is
+ * keel times three, null (n/a) when keel is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
         Long backing, Long quarter, String tier, Long keel,
         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
-        Long sheer, Long beam, Long freeboard) {
+        Long sheer, Long beam, Long freeboard, Long buoyancy) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
@@ -40,7 +41,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
                 keystone(p, averageScaled), bearing(p, averageScaled), pitch(p, averageScaled),
                 tackle(p, averageScaled), yaw(p, averageScaled), heave(p, averageScaled),
                 camber(p, averageScaled), sheer(p, averageScaled), beam(p, averageScaled),
-                freeboard(p, averageScaled));
+                freeboard(p, averageScaled), buoyancy(p, averageScaled));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -187,6 +188,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long freeboard(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
         return keel == null ? null : SheetMath.divide(keel, 2L);
+    }
+
+    private static Long buoyancy(Person p, Long averageScaled) {
+        Long keel = keel(p, averageScaled);
+        return keel == null ? null : keel * 3L;
     }
 
     private static String tier(Person p) {
