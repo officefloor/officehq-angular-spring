@@ -1,0 +1,186 @@
+{
+  "checkpoint": 12,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "469ff91103de89741d7fcc15fc67f3c61f01ccb4"
+  },
+  "checkpoint_id": "cp12_hold",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    2,
+    4,
+    6,
+    8,
+    9
+  ],
+  "replaced_tests": [
+    "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+    "cp04_trim_total.spec.ts::trim total",
+    "cp06_backing_norm.spec.ts::backing norm",
+    "cp08_round_divides.spec.ts::round divides",
+    "cp09_keel_keel-total.spec.ts::keel keel-total"
+  ],
+  "request": {
+    "spec": "Putting a person on hold now counts: a held person is left out of every figure across the sheet\n(every average, so norm too, every count, highest, lowest and spread), except totals, where a\nheld person's value counts half (rounded like every divide), and that half is what takes part in\nleaving out the highest and lowest. A held person's own values in their row are worked out as\nusual.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPutting a person on hold now counts: a held person is left out of every figure across the sheet\n(every average, so norm too, every count, highest, lowest and spread), except totals, where a\nheld person's value counts half (rounded like every divide), and that half is what takes part in\nleaving out the highest and lowest. A held person's own values in their row are worked out as\nusual.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1fa3eea5b77a8cd5f7495bdff823bc050d60c854",
+  "reset_sha": "",
+  "preagent_sha": "a1c0e803532c39418a9427553d04ab60f1469984",
+  "prev_sha": "a1c0e803532c39418a9427553d04ab60f1469984",
+  "base_sha": "469ff91103de89741d7fcc15fc67f3c61f01ccb4",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2693706,
+    "input_tokens": 12,
+    "output_tokens": 2873,
+    "cache_read_tokens": 134153,
+    "cache_creation_tokens": 23129,
+    "num_turns": 7,
+    "duration_ms": 64297,
+    "duration_api_ms": 26752,
+    "model": "claude-opus-5-5",
+    "session_id": "b24a735d-706f-4d9d-aac8-4f4b1ddb74e8",
+    "stop_reason": "success",
+    "result_text": "Putting a person on hold now changes the sheet's figures, and `bin/e2e` passes, including the test-data check.\n\nThe app already stored the hold flag, so the seed, read-back and schema needed no changes. Only the figures needed changing:\n\n- **Average and norm** (`PersonView.averageScaled`): people on hold are left out of the average scaled, so norm is now worked out against an average of only the people not on hold.\n- **Totals** (`trimmedTotal` in `people-list.ts`): a held person's thrust or keel counts as half, rounded the same way as the server's divide. That half then takes part in leaving out the highest and lowest. I added a front-end `divide` that rounds the same way as the server's `SheetMath.divide`.\n- **A held person's own row** is worked out as before. For example, Hz's norm is their own scaled minus the average of the people not on hold.\n\nI checked the test's numbers by hand and they match: thrust total 57, Hz's norm \u22121.\n\nThe sheet currently shows only these figures: two totals and the average behind norm. There are no counts, highest, lowest or spread figures yet. So the \"left out of every count, highest, lowest and spread\" part of the request has nothing to apply to. Any such figure added later will need to leave held people out too.\n\nI also updated the comments describing norm on the server and front end.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.2693706,
+        "num_turns": 7,
+        "duration_ms": 64297,
+        "duration_api_ms": 26752,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp12.agent.jsonl",
+  "agent_diff_file": "cp12.agent.diff",
+  "build_log_file": "cp12.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 12,
+    "results": {
+      "cp01_people.spec.ts::people": true,
+      "cp02_thrust_thrust-total.spec.ts::thrust thrust-total": true,
+      "cp03_momentum.spec.ts::momentum": true,
+      "cp04_trim_total.spec.ts::trim total": true,
+      "cp05_scaled_third.spec.ts::scaled third": true,
+      "cp06_backing_norm.spec.ts::backing norm": true,
+      "cp07_quarter_tier.spec.ts::quarter tier": true,
+      "cp08_round_divides.spec.ts::round divides": true,
+      "cp09_keel_keel-total.spec.ts::keel keel-total": true,
+      "cp10_draft_fathom.spec.ts::draft fathom": true,
+      "cp11_cascade_trim.spec.ts::cascade trim": true,
+      "cp12_hold.spec.ts::hold": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 763,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 142,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 133,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_trim_total.spec.ts::trim total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 112,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_scaled_third.spec.ts::scaled third",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_backing_norm.spec.ts::backing norm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_quarter_tier.spec.ts::quarter tier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 147,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_round_divides.spec.ts::round divides",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 172,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_keel_keel-total.spec.ts::keel keel-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_draft_fathom.spec.ts::draft fathom",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 145,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_cascade_trim.spec.ts::cascade trim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 133,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 6,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

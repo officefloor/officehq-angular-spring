@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index a1ff370b..c03f5fea 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -87,12 +87,12 @@ export class PeopleList {
+ 
+   // Everyone's thrust added up, skipping the people for whom it is n/a.
+   protected readonly thrustTotal = computed(() =>
+-    trimmedTotal((this.people() ?? []).map((p) => p.thrust)),
++    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.thrust, hold: p.hold }))),
+   );
+ 
+   // Everyone's keel added up, trimmed like every sheet total.
+   protected readonly keelTotal = computed(() =>
+-    trimmedTotal((this.people() ?? []).map((p) => p.keel)),
++    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keel, hold: p.hold }))),
+   );
+ 
+   protected patronNames(ids: number[]): string {
+@@ -102,12 +102,26 @@ export class PeopleList {
+ }
+ 
+ // A sheet-wide total: the contributions (n/a ones skipped) added up, leaving out one highest and
+-// one lowest whenever at least two people contribute. Every sheet total goes through this.
+-export function trimmedTotal(values: (number | null)[]): number {
+-  const contributions = values.filter((v): v is number => v !== null);
++// one lowest whenever at least two people contribute. A person on hold contributes half their
++// value (rounded like every divide), and that half takes part in leaving out the highest and
++// lowest. Every sheet total goes through this.
++export function trimmedTotal(values: { value: number | null; hold: boolean }[]): number {
++  const contributions = values
++    .filter((v): v is { value: number; hold: boolean } => v.value !== null)
++    .map((v) => (v.hold ? divide(v.value, 2) : v.value));
+   const sum = contributions.reduce((total, v) => total + v, 0);
+   if (contributions.length < 2) {
+     return sum;
+   }
+   return sum - Math.max(...contributions) - Math.min(...contributions);
+ }
++
++// Every divide on the sheet: rounded to the nearest whole number, a half rounding up to the larger
++// number (5 / 2 is 3, -5 / 2 is -2), as the server's SheetMath.divide.
++export function divide(dividend: number, divisor: number): number {
++  if (divisor < 0) {
++    dividend = -dividend;
++    divisor = -divisor;
++  }
++  return Math.floor((2 * dividend + divisor) / (2 * divisor));
++}
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 20070d07..a4745b45 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -18,7 +18,7 @@ export interface Person {
+   scaled: number | null;
+   // scaled divided by three, rounded to the nearest (a half up); null (n/a) when scaled is.
+   third: number | null;
+-  // scaled minus the sheet's average scaled (n/a ones skipped, rounded to the nearest); null (n/a) when scaled is.
++  // scaled minus the sheet's average scaled (n/a ones and people on hold skipped, rounded to the nearest); null (n/a) when scaled is.
+   norm: number | null;
+   // the patrons' momentum added up (n/a ones add nothing); null (n/a) when momentum is.
+   backing: number | null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index b0882ed2..55d45c17 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -7,7 +7,7 @@ import java.util.List;
+  * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
+  * when thrust or gamma is. scaled is momentum times two, and third is scaled divided by three (rounded
+  * to the nearest, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
+- * sheet's average scaled (over the people whose scaled is not n/a, rounded like every divide), null
++ * sheet's average scaled (over the people not on hold whose scaled is not n/a, rounded like every divide), null
+  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
+  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
+  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
+@@ -28,9 +28,10 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+                 quarter(p), tier(p), keel(p), fathom(p), draft(p), cascade(p), trim(p));
+     }
+ 
+-    /** The average scaled across the people, skipping n/a; null when nobody has one. */
++    /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
+     static Long averageScaled(List<Person> people) {
+-        List<Long> values = people.stream().map(PersonView::scaled).filter(v -> v != null).toList();
++        List<Long> values = people.stream().filter(p -> !p.isHold()).map(PersonView::scaled)
++                .filter(v -> v != null).toList();
+         if (values.isEmpty()) {
+             return null;
+         }
