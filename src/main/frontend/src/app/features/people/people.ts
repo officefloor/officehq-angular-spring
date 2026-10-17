@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { AMOUNT, Claims, counts, formatCents } from '../../core/claims';
+import { AMOUNT, Claims, counts, formatCents, toCents } from '../../core/claims';
 import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
@@ -113,7 +113,7 @@ const LEAVE_DELAY_MS = 1000;
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -122,12 +122,16 @@ const LEAVE_DELAY_MS = 1000;
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotal(p) }}</td>
               <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" [retiredFrom]="p.retiredFrom" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)">
+                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 @if (p.retiredFrom === null) {
                   <label [for]="'person-retire-date-' + p.id">Retire from</label>
@@ -209,7 +213,20 @@ export class People {
     return this.people().filter((p) => p.retiredFrom === null || this.api.showRetired() || kept.has(p.id));
   });
 
-  protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
+  /** Each person's claimed in cents, by person id: the amounts of their counted claims. */
+  private readonly claimedCents = computed(() => {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const out = new Map<number, number>();
+    for (const c of this.claims.all()) {
+      const person = byId.get(c.personId);
+      if (person !== undefined && counts(c, person)) out.set(c.personId, (out.get(c.personId) ?? 0) + toCents(c.amount));
+    }
+    return out;
+  });
+
+  protected readonly claimedTotal = computed(() =>
+    formatCents([...this.claimedCents().values()].reduce((sum, c) => sum + c, 0)),
+  );
 
   /**
    * Each person's due-total in cents, by person id: the sum of their counted claims' due figures as
@@ -221,7 +238,7 @@ export class People {
     for (const p of this.people()) {
       const figures = this.claims
         .all()
-        .filter((c) => c.personId === p.id && counts(c))
+        .filter((c) => c.personId === p.id && counts(c, p))
         .map((c) => this.rates.dueOf(c, p.grade))
         .filter((c) => c !== undefined);
       if (figures.length > 0 || this.rates.byGrade().has(p.grade)) {
@@ -263,7 +280,7 @@ export class People {
   }
 
   protected claimed(personId: number): string {
-    return formatCents(this.claims.claimedCents().get(personId) ?? 0);
+    return formatCents(this.claimedCents().get(personId) ?? 0);
   }
 
   protected dueTotal(person: Person): string {
@@ -297,6 +314,22 @@ export class People {
         message: e instanceof HttpErrorResponse && e.status === 409
           ? 'This person is already retired.'
           : 'The person could not be retired.',
+      });
+    }
+  }
+
+  /** Put the person on hold, or release them when they are held. */
+  protected async toggleHold(person: Person): Promise<void> {
+    this.rowError.set(null);
+    try {
+      const saved = await this.api.setHeld(person.id, !person.held);
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch (e) {
+      this.rowError.set({
+        id: person.id,
+        message: e instanceof HttpErrorResponse && e.status === 409
+          ? (person.held ? 'This person is not on hold.' : 'This person is already on hold.')
+          : (person.held ? 'The person could not be released.' : 'The person could not be put on hold.'),
       });
     }
   }

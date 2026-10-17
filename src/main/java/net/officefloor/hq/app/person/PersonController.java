@@ -25,10 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** The version is the one an edit sends back, so a save made from an out-of-date copy is refused. */
-    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom) {
+    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom,
+            boolean held) {
         static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    person.getRetiredFrom());
+                    person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -87,6 +88,20 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireRequest request) {
         return PersonView.of(service.retire(sheetId.trim(), user.trim(), personId, request.from()));
+    }
+
+    @PostMapping("/{personId}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, true));
+    }
+
+    @PostMapping("/{personId}/release")
+    public PersonView release(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, false));
     }
 
     @PostMapping("/import")

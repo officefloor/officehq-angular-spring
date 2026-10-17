@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
 
@@ -26,9 +26,12 @@ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 /** The status changes a claim can be asked for, as named in the store's API. */
 export type ClaimAction = 'open' | 'settle' | 'void';
 
-/** Whether the claim counts toward claimed, due-total and every total. */
-export function counts(claim: Claim): boolean {
-  return claim.status === 'OPEN' || claim.status === 'SETTLED';
+/**
+ * Whether the claim counts toward claimed, due-total and every total: an OPEN or SETTLED one, but
+ * not an OPEN one while its person is on hold.
+ */
+export function counts(claim: Claim, person: { held: boolean }): boolean {
+  return claim.status === 'SETTLED' || (claim.status === 'OPEN' && !person.held);
 }
 
 export interface ClaimFields {
@@ -57,18 +60,6 @@ export class Claims {
   private readonly session = inject(Session);
 
   readonly all = signal<Claim[]>([]);
-
-  /** The claims that count toward the totals: OPEN and SETTLED ones. */
-  private readonly counted = computed(() => this.all().filter(counts));
-
-  /** Each person's claimed, in cents, by person id. */
-  readonly claimedCents = computed(() => {
-    const out = new Map<number, number>();
-    for (const c of this.counted()) out.set(c.personId, (out.get(c.personId) ?? 0) + toCents(c.amount));
-    return out;
-  });
-
-  readonly totalCents = computed(() => this.counted().reduce((sum, c) => sum + toCents(c.amount), 0));
 
   /** Re-read the store; until it answers no claims are shown, so none is shown out of date. */
   async reload(): Promise<void> {

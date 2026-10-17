@@ -167,6 +167,26 @@ public class PersonService {
         return person;
     }
 
+    /**
+     * Put a person on hold, or release them from it. Holding one already held, or releasing one not
+     * held, is refused (409).
+     */
+    @Transactional
+    public Person hold(String sheetId, String user, Long personId, boolean held) {
+        // Lock the sheet, so a period closed at the same moment sees the hold.
+        sheets.lock(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (person.isHeld() == held) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    held ? "Person already on hold" : "Person not on hold");
+        }
+        person.setHeld(held);
+        person = people.saveAndFlush(person);
+        audit.change(held ? "PERSON_HELD" : "PERSON_RELEASED", sheetId, user, "name=" + person.getName());
+        return person;
+    }
+
     private static ResponseStatusException changedMeanwhile() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Person changed since it was loaded");
     }

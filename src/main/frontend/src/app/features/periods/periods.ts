@@ -94,13 +94,13 @@ export class PeriodsPanel {
    * of the counted claims dated in it, skipping those that are n/a.
    */
   private readonly dueCents = computed(() => {
-    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
     const out = new Map<number, number>();
     for (const c of this.claims.all()) {
-      const grade = grades.get(c.personId);
+      const person = byId.get(c.personId);
       const period = this.periods.on(c.date);
-      if (!counts(c) || grade === undefined || period === undefined) continue;
-      const due = this.rates.dueOf(c, grade);
+      if (person === undefined || period === undefined || !counts(c, person)) continue;
+      const due = this.rates.dueOf(c, person.grade);
       if (due !== undefined) out.set(period.id, (out.get(period.id) ?? 0) + due);
     }
     return out;

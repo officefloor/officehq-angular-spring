@@ -14,6 +14,8 @@ export interface Person {
   version: number;
   /** yyyy-mm-dd the person is retired from; null while they are not retired. */
   retiredFrom: string | null;
+  /** Whether the person is on hold: while held, their open claims count in no live total. */
+  held: boolean;
 }
 
 /** Whether a claim dated on this date (yyyy-mm-dd) is refused: it is after the person's retirement. */
@@ -73,6 +75,13 @@ export class PeopleApi {
   retire(id: number, from: string): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url()}/${id}/retire`, { from: from || null }, { headers: this.headers() }),
+    );
+  }
+
+  /** Put the person on hold, or release them; refused with 409 when they already are (or are not). */
+  setHeld(id: number, held: boolean): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url()}/${id}/${held ? 'hold' : 'release'}`, null, { headers: this.headers() }),
     );
   }
 
