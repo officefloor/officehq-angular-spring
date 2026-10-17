@@ -1,0 +1,94 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 75ddfc0e..e46b0376 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -26,6 +26,8 @@ import { PeopleService } from './people.service';
+               <th scope="col">Third</th>
+               <th scope="col">Norm</th>
+               <th scope="col">Backing</th>
++              <th scope="col">Quarter</th>
++              <th scope="col">Tier</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -43,6 +45,8 @@ import { PeopleService } from './people.service';
+                 <td data-testid="concept-third">{{ p.third ?? 'n/a' }}</td>
+                 <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+                 <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
++                <td data-testid="concept-quarter">{{ p.quarter ?? 'n/a' }}</td>
++                <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -50,7 +54,7 @@ import { PeopleService } from './people.service';
+             <tr>
+               <th scope="row" colspan="6">Thrust total</th>
+               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+-              <td colspan="5"></td>
++              <td colspan="7"></td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 13e38004..51aa33e3 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -22,6 +22,10 @@ export interface Person {
+   norm: number | null;
+   // the patrons' momentum added up (n/a ones add nothing); null (n/a) when momentum is.
+   backing: number | null;
++  // scaled divided by four, rounded down (also below zero); null (n/a) when scaled is.
++  quarter: number | null;
++  // SINK below zero, STEADY from 0 up to 199, SURGE at 200 or more; null (n/a) when scaled is.
++  tier: 'SINK' | 'STEADY' | 'SURGE' | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index e11e4c2a..2f25634f 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -9,16 +9,19 @@ import java.util.List;
+  * down, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
+  * sheet's average scaled (over the people whose scaled is not n/a, rounded like every divide), null
+  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
+- * (n/a) when the person's own momentum is.
++ * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
++ * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
++ * null (n/a) when scaled is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
+-        Long backing) {
++        Long backing, Long quarter, String tier) {
+ 
+     static PersonView of(Person p, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
+-                scaled(p), third(p), norm(p, averageScaled), backing(p));
++                scaled(p), third(p), norm(p, averageScaled), backing(p),
++                quarter(p), tier(p));
+     }
+ 
+     /** The average scaled across the people, skipping n/a; null when nobody has one. */
+@@ -68,4 +71,20 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         Long scaled = scaled(p);
+         return scaled == null ? null : SheetMath.divide(scaled, 3L);
+     }
++
++    private static Long quarter(Person p) {
++        Long scaled = scaled(p);
++        return scaled == null ? null : SheetMath.divide(scaled, 4L);
++    }
++
++    private static String tier(Person p) {
++        Long scaled = scaled(p);
++        if (scaled == null) {
++            return null;
++        }
++        if (scaled < 0) {
++            return "SINK";
++        }
++        return scaled < 200 ? "STEADY" : "SURGE";
++    }
+ }

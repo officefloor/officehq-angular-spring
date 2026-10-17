@@ -1,0 +1,134 @@
+{
+  "checkpoint": 7,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "469ff91103de89741d7fcc15fc67f3c61f01ccb4"
+  },
+  "checkpoint_id": "cp07_quarter_tier",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For each person show quarter: scaled divided by four (rounded down like every divide). For each\nperson show tier: SINK when scaled is below zero, STEADY from 0 up to 199, and SURGE at 200 or\nmore (n/a when scaled is n/a).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor each person show quarter: scaled divided by four (rounded down like every divide). For each\nperson show tier: SINK when scaled is below zero, STEADY from 0 up to 199, and SURGE at 200 or\nmore (n/a when scaled is n/a).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "94cbe5920fe11a857fced222b2a3841491d576d8",
+  "reset_sha": "",
+  "preagent_sha": "e51281bd0847eb0f58960eb90f8c4c3b6d4522e4",
+  "prev_sha": "e51281bd0847eb0f58960eb90f8c4c3b6d4522e4",
+  "base_sha": "469ff91103de89741d7fcc15fc67f3c61f01ccb4",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.1951928,
+    "input_tokens": 10,
+    "output_tokens": 1855,
+    "cache_read_tokens": 97944,
+    "cache_creation_tokens": 17308,
+    "num_turns": 5,
+    "duration_ms": 40330,
+    "duration_api_ms": 20979,
+    "model": "claude-opus-5-5",
+    "session_id": "4a3f3f3d-3582-4cda-9a17-e5de2367708e",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows **Quarter** and **Tier**, and `bin/e2e` passes.\n\n- **Server** (`PersonView.java`): `quarter` is scaled divided by four, using the app's shared divide that rounds down, so it rounds down below zero too (Sid's \u22127 gives \u22122). `tier` is `SINK` below 0, `STEADY` from 0 to 199 and `SURGE` at 200 or more. Both are empty when scaled is n/a.\n- **Front end** (`people.service.ts`, `people-list.ts`): two new columns with `data-testid` `concept-quarter` and `concept-tier`, showing `n/a` when there's no value. I widened the empty cell in the \"Thrust total\" footer row so it still spans the whole table.\n\nNo stored data or seed changes were needed, since both values are worked out from scaled. The test data doesn't reach 200, so the `SURGE` case isn't covered by the test.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.1951928,
+        "num_turns": 5,
+        "duration_ms": 40330,
+        "duration_api_ms": 20979,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp07.agent.jsonl",
+  "agent_diff_file": "cp07.agent.diff",
+  "build_log_file": "cp07.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 7,
+    "results": {
+      "cp01_people.spec.ts::people": true,
+      "cp02_thrust_thrust-total.spec.ts::thrust thrust-total": true,
+      "cp03_momentum.spec.ts::momentum": true,
+      "cp04_trim_total.spec.ts::trim total": true,
+      "cp05_scaled_third.spec.ts::scaled third": true,
+      "cp06_backing_norm.spec.ts::backing norm": true,
+      "cp07_quarter_tier.spec.ts::quarter tier": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 777,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 131,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_trim_total.spec.ts::trim total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 114,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_scaled_third.spec.ts::scaled third",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 150,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_backing_norm.spec.ts::backing norm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 144,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_quarter_tier.spec.ts::quarter tier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 147,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 6,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
