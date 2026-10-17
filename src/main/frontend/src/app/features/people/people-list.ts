@@ -833,6 +833,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-rigging-top">{{ riggingTop() ?? 'n/a' }}</td>
               <td colspan="8"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="41">Rigging spread</th>
+              <td data-testid="rollup-rigging-spread">{{ riggingSpread() ?? 'n/a' }}</td>
+              <td colspan="8"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1408,6 +1413,16 @@ export class PeopleList {
       .map((p) => p.rigging)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest rigging minus the lowest among the people not on hold (n/a riggings skipped); null
+  // (n/a) when nobody has one.
+  protected readonly riggingSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.rigging)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // The highest mast among the people not on hold, skipping n/a; n/a when there is none.
