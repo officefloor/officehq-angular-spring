@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 1a22a373..e5447ca6 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -588,6 +588,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-freeboard-spread">{{ freeboardSpread() ?? 'n/a' }}</td>
+               <td colspan="18"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="31">Freeboard even</th>
++              <td data-testid="rollup-freeboard-even">{{ freeboardEven() }}</td>
++              <td colspan="18"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1319,6 +1324,13 @@ export class PeopleList {
+     () => countable(this.people() ?? []).filter((p) => p.beam !== null && p.beam % 2 === 0).length,
+   );
+ 
++  // How many counted people have an even freeboard (n/a freeboards are not counted).
++  protected readonly freeboardEven = computed(
++    () =>
++      countable(this.people() ?? []).filter((p) => p.freeboard !== null && p.freeboard % 2 === 0)
++        .length,
++  );
++
+   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
+   // divide; null (n/a) when nobody has one.
+   protected readonly camberMean = computed(() => {
