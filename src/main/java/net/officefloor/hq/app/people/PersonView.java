@@ -22,7 +22,7 @@ import java.util.Set;
  * when keel is. ripple is cascade plus keel plus 76, null (n/a) when cascade is. heading is keel plus norm plus 96,
  * null (n/a) when keel or norm is. ballast is ripple plus thrust plus 80, null (n/a) when ripple is.
  * keystone is ballast plus norm plus 84, null (n/a) when ballast or norm is. bearing is keel minus norm plus 104, null
- * (n/a) when keel or norm is. pitch is keel plus momentum, null (n/a) when keel is. tackle is keel
+ * (n/a) when keel or norm is. pitch is keel plus momentum plus 108, null (n/a) when keel is. tackle is keel
  * minus momentum, null (n/a) when keel is. yaw is keel plus scaled, null (n/a) when keel is. heave
  * is keel minus scaled, null (n/a) when keel is. camber is keel plus 200, null (n/a) when keel is.
  * sheer is keel minus 100, null (n/a) when keel is. beam is keel times three, null (n/a) when keel is.
@@ -195,7 +195,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long pitch(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
-        return keel == null ? null : keel + momentum(p);
+        return keel == null ? null : keel + momentum(p) + 108L;
     }
 
     private static Long tackle(Person p, Long averageScaled) {

@@ -46,7 +46,7 @@ export interface Person {
   keystone: number | null;
   // keel minus norm; null (n/a) when keel or norm is.
   bearing: number | null;
-  // keel plus momentum; null (n/a) when keel is.
+  // keel plus momentum plus 108; null (n/a) when keel is.
   pitch: number | null;
   // keel minus momentum; null (n/a) when keel is.
   tackle: number | null;
