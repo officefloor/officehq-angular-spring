@@ -1,0 +1,94 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index e46b0376..5a2e1282 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -28,6 +28,7 @@ import { PeopleService } from './people.service';
+               <th scope="col">Backing</th>
+               <th scope="col">Quarter</th>
+               <th scope="col">Tier</th>
++              <th scope="col">Keel</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -47,6 +48,7 @@ import { PeopleService } from './people.service';
+                 <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+                 <td data-testid="concept-quarter">{{ p.quarter ?? 'n/a' }}</td>
+                 <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
++                <td data-testid="concept-keel">{{ p.keel ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -55,6 +57,11 @@ import { PeopleService } from './people.service';
+               <th scope="row" colspan="6">Thrust total</th>
+               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+               <td colspan="7"></td>
++              <td></td>
++            </tr>
++            <tr>
++              <th scope="row" colspan="14">Keel total</th>
++              <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
+             </tr>
+           </tfoot>
+         </table>
+@@ -74,6 +81,11 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => p.thrust)),
+   );
+ 
++  // Everyone's keel added up, trimmed like every sheet total.
++  protected readonly keelTotal = computed(() =>
++    trimmedTotal((this.people() ?? []).map((p) => p.keel)),
++  );
++
+   protected patronNames(ids: number[]): string {
+     const names = this.names();
+     return ids.map((id) => names.get(id) ?? String(id)).join(', ');
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index e5dad9d9..7930f9ce 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -26,6 +26,8 @@ export interface Person {
+   quarter: number | null;
+   // SINK below zero, STEADY from 0 up to 199, SURGE at 200 or more; null (n/a) when scaled is.
+   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
++  // scaled plus momentum; null (n/a) when momentum is.
++  keel: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 74acfc3c..873c8ca8 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -11,17 +11,17 @@ import java.util.List;
+  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
+  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
+  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
+- * null (n/a) when scaled is.
++ * null (n/a) when scaled is. keel is scaled plus momentum, null (n/a) when momentum is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
+-        Long backing, Long quarter, String tier) {
++        Long backing, Long quarter, String tier, Long keel) {
+ 
+     static PersonView of(Person p, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
+                 scaled(p), third(p), norm(p, averageScaled), backing(p),
+-                quarter(p), tier(p));
++                quarter(p), tier(p), keel(p));
+     }
+ 
+     /** The average scaled across the people, skipping n/a; null when nobody has one. */
+@@ -77,6 +77,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return scaled == null ? null : SheetMath.divide(scaled, 4L);
+     }
+ 
++    private static Long keel(Person p) {
++        Long momentum = momentum(p);
++        return momentum == null ? null : scaled(p) + momentum;
++    }
++
+     private static String tier(Person p) {
+         Long scaled = scaled(p);
+         if (scaled == null) {

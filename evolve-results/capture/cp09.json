@@ -1,0 +1,150 @@
+{
+  "checkpoint": 9,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "469ff91103de89741d7fcc15fc67f3c61f01ccb4"
+  },
+  "checkpoint_id": "cp09_keel_keel-total",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For each person show keel: scaled plus momentum. Show keel-total: the total of keel across the\nsheet, following the rules for every sheet total (one highest and one lowest contribution are\nleft out).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor each person show keel: scaled plus momentum. Show keel-total: the total of keel across the\nsheet, following the rules for every sheet total (one highest and one lowest contribution are\nleft out).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "61cbfb983f18b2ef78b0914b83506528e0c34fd8",
+  "reset_sha": "",
+  "preagent_sha": "ffc1a78af3361115238910ecf698a2306d7b45fb",
+  "prev_sha": "ffc1a78af3361115238910ecf698a2306d7b45fb",
+  "base_sha": "469ff91103de89741d7fcc15fc67f3c61f01ccb4",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2233986,
+    "input_tokens": 10,
+    "output_tokens": 1813,
+    "cache_read_tokens": 100093,
+    "cache_creation_tokens": 20885,
+    "num_turns": 5,
+    "duration_ms": 37946,
+    "duration_api_ms": 18571,
+    "model": "claude-opus-5-5",
+    "session_id": "f25f683c-94d0-47ac-8783-17576b3f9be4",
+    "stop_reason": "success",
+    "result_text": "The sheet now shows each person's keel (scaled plus momentum) and a keel total at the bottom. `bin/e2e` passes.\n\n- **Server:** `PersonView.java` now returns `keel` with each person. It is n/a when momentum is n/a. For example, Ada has scaled 36 and momentum 18, so her keel is 54.\n- **Front end:** the people table has a new Keel column (`concept-keel`) and a \"Keel total\" row in the footer (`rollup-keel-total`). The total uses the same `trimmedTotal` helper as the thrust total. It skips n/a values and leaves out one highest and one lowest. In the test data that is 240 \u2212 96 \u2212 (\u221212) = 156, and the person on hold is counted.\n\nNo stored data, schema or test endpoints needed changing, because keel is worked out from fields the app already stores.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.2233986,
+        "num_turns": 5,
+        "duration_ms": 37946,
+        "duration_api_ms": 18571,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp09.agent.jsonl",
+  "agent_diff_file": "cp09.agent.diff",
+  "build_log_file": "cp09.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 9,
+    "results": {
+      "cp01_people.spec.ts::people": true,
+      "cp02_thrust_thrust-total.spec.ts::thrust thrust-total": true,
+      "cp03_momentum.spec.ts::momentum": true,
+      "cp04_trim_total.spec.ts::trim total": true,
+      "cp05_scaled_third.spec.ts::scaled third": true,
+      "cp06_backing_norm.spec.ts::backing norm": true,
+      "cp07_quarter_tier.spec.ts::quarter tier": true,
+      "cp08_round_divides.spec.ts::round divides": true,
+      "cp09_keel_keel-total.spec.ts::keel keel-total": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 786,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 132,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_trim_total.spec.ts::trim total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_scaled_third.spec.ts::scaled third",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_backing_norm.spec.ts::backing norm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 170,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_quarter_tier.spec.ts::quarter tier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_round_divides.spec.ts::round divides",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 164,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_keel_keel-total.spec.ts::keel keel-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 130,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 8,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
