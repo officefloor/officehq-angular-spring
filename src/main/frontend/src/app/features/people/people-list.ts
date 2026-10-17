@@ -843,6 +843,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-rigging-even">{{ riggingEven() }}</td>
               <td colspan="8"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="41">Rigging mean</th>
+              <td data-testid="rollup-rigging-mean">{{ riggingMean() ?? 'n/a' }}</td>
+              <td colspan="8"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1872,6 +1877,18 @@ export class PeopleList {
     () =>
       countable(this.people() ?? []).filter((p) => p.rigging !== null && p.rigging % 2 === 0).length,
   );
+
+  // The average rigging among the people not on hold (n/a riggings skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly riggingMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.rigging)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
 
   // The average mast among the people not on hold (n/a masts skipped), rounded like every
   // divide; null (n/a) when nobody has one.
