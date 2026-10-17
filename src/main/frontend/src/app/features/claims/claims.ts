@@ -1,12 +1,13 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { AMOUNT, Claim, ClaimAction, Claims, formatCents } from '../../core/claims';
-import { Grade } from '../../core/people';
+import { Grade, retiredOn } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 
 const CLOSED = 'The claim is dated in a closed period, so it cannot be changed.';
+const RETIRED = 'The person is retired before that date, so no claim can be dated then.';
 const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, void it and add a new one.';
 
 // One person's claims, newest first, and the one form that adds a claim or edits an existing one.
@@ -84,6 +85,8 @@ export class PersonClaims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly grade = input.required<Grade>();
+  /** yyyy-mm-dd the person is retired from, or null; a claim dated after it is refused. */
+  readonly retiredFrom = input<string | null>(null);
 
   protected readonly mine = computed(() => this.claims.all().filter((c) => c.personId === this.personId()));
   protected readonly amount = signal('');
@@ -169,6 +172,10 @@ export class PersonClaims {
       this.error.set(CLOSED);
       return;
     }
+    if (retiredOn({ retiredFrom: this.retiredFrom() }, fields.date || (this.session.today() ?? ''))) {
+      this.error.set(RETIRED);
+      return;
+    }
     const id = this.editingId();
     this.saving = true;
     try {
@@ -183,6 +190,8 @@ export class PersonClaims {
         ? CLOSED
         : e instanceof HttpErrorResponse && e.status === 409
         ? NOT_DRAFT
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? RETIRED
         : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
     } finally {
       this.saving = false;

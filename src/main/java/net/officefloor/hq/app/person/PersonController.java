@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -24,9 +25,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** The version is the one an edit sends back, so a save made from an out-of-date copy is refused. */
-    public record PersonView(Long id, String name, String grade, long version) {
+    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom) {
         static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    person.getRetiredFrom());
         }
     }
 
@@ -41,6 +43,10 @@ public class PersonController {
             @NotBlank @Size(max = 100) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @NotNull Long version) {
+    }
+
+    /** Retire a person from a date; a missing date is the sheet's today. */
+    public record RetireRequest(LocalDate from) {
     }
 
     /** Lines of name,grade pasted into the import box. */
@@ -73,6 +79,14 @@ public class PersonController {
             @RequestBody @Validated PersonUpdateRequest request) {
         return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.version(),
                 request.name(), request.grade()));
+    }
+
+    @PostMapping("/{personId}/retire")
+    public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody RetireRequest request) {
+        return PersonView.of(service.retire(sheetId.trim(), user.trim(), personId, request.from()));
     }
 
     @PostMapping("/import")

@@ -8,6 +8,9 @@ import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
 import { PeriodsPanel } from '../periods/periods';
 
+/** How long a retired person stays listed after their last draft claim is opened or voided. */
+const LEAVE_DELAY_MS = 1000;
+
 // The sheet's people, in the order they were added, and the one form that adds a person or edits
 // an existing one.
 @Component({
@@ -98,22 +101,50 @@ import { PeriodsPanel } from '../periods/periods';
         }
       </form>
 
+      <label>
+        <input
+          type="checkbox"
+          data-testid="show-retired"
+          [checked]="api.showRetired()"
+          (change)="api.showRetired.set($any($event.target).checked)"
+        />
+        Show retired
+      </label>
+
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</td>
+              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotal(p) }}</td>
-              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" /></td>
+              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" [retiredFrom]="p.retiredFrom" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                @if (p.retiredFrom === null) {
+                  <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                  <input
+                    [id]="'person-retire-date-' + p.id"
+                    type="date"
+                    data-testid="person-retire-date"
+                    [value]="retireDate(p.id)"
+                    (input)="setRetireDate(p.id, $any($event.target).value)"
+                  />
+                  <button type="button" data-testid="person-retire" (click)="retire(p)">
+                    Retire<span class="visually-hidden"> {{ p.name }}</span>
+                  </button>
+                }
+                @if (rowError()?.id === p.id) {
+                  <p role="alert" data-testid="person-error">{{ rowError()?.message }}</p>
+                }
               </td>
             </tr>
           }
@@ -128,7 +159,7 @@ import { PeriodsPanel } from '../periods/periods';
   `,
 })
 export class People {
-  private readonly api = inject(PeopleApi);
+  protected readonly api = inject(PeopleApi);
   private readonly session = inject(Session);
   private readonly claims = inject(Claims);
   private readonly rates = inject(Rates);
@@ -154,6 +185,30 @@ export class People {
   protected readonly quickError = signal<string | null>(null);
   /** Set while a quick add awaits the store, so a second submit does not store a second claim. */
   private quickAdding = false;
+  /** The retire date typed on each person's row, by person id; the sheet's today when not typed. */
+  private readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The error of the last action taken on a person's row, if it was refused. */
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+
+  /** The ids of the people with a draft claim. */
+  private readonly withDrafts = computed(
+    () => new Set(this.claims.all().filter((c) => c.status === 'DRAFT').map((c) => c.personId)),
+  );
+  /**
+   * The people with a draft claim, kept a moment after their last draft is opened or voided, so the
+   * result of that action is seen before a retired person leaves the list.
+   */
+  private readonly keptListed = signal<ReadonlySet<number>>(new Set());
+
+  /**
+   * The people listed: retired people are left out unless "show retired" is on, except while they
+   * still have a draft claim, so it can be opened or voided.
+   */
+  protected readonly listed = computed(() => {
+    const kept = this.keptListed();
+    return this.people().filter((p) => p.retiredFrom === null || this.api.showRetired() || kept.has(p.id));
+  });
+
   protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
 
   /**
@@ -182,6 +237,12 @@ export class People {
   );
 
   constructor() {
+    effect((onCleanup) => {
+      const drafts = this.withDrafts();
+      this.keptListed.update((kept) => new Set([...kept, ...drafts]));
+      const timer = setTimeout(() => this.keptListed.set(this.withDrafts()), LEAVE_DELAY_MS);
+      onCleanup(() => clearTimeout(timer));
+    });
     // Re-read the store each time the sheet is (re-)loaded.
     effect(() => {
       this.session.loads();
@@ -193,6 +254,8 @@ export class People {
         this.quickName.set('');
         this.quickAmount.set('');
         this.quickError.set(null);
+        this.retireDates.set(new Map());
+        this.rowError.set(null);
         void this.reload();
         void this.claims.reload();
       });
@@ -206,6 +269,36 @@ export class People {
   protected dueTotal(person: Person): string {
     const cents = this.dueCents().get(person.id);
     return cents === undefined ? 'n/a' : formatCents(cents);
+  }
+
+  protected retireDate(personId: number): string {
+    return this.retireDates().get(personId) ?? this.session.today() ?? '';
+  }
+
+  protected setRetireDate(personId: number, date: string): void {
+    this.retireDates.update((dates) => new Map(dates).set(personId, date));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Retire the person from the date on their row (the sheet's today when left as it is). */
+  protected async retire(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const from = this.retireDate(person.id).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.rowError.set({ id: person.id, message: 'Enter a date as yyyy-mm-dd.' });
+      return;
+    }
+    try {
+      const saved = await this.api.retire(person.id, from);
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch (e) {
+      this.rowError.set({
+        id: person.id,
+        message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'This person is already retired.'
+          : 'The person could not be retired.',
+      });
+    }
   }
 
   protected edit(person: Person): void {
@@ -314,6 +407,8 @@ export class People {
     } catch (e) {
       this.quickError.set(e instanceof HttpErrorResponse && e.status === 423
         ? 'Today is in a closed period, so no claim can be added.'
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? 'That person is retired before today, so no claim can be added.'
         : 'The claim could not be added.');
     } finally {
       this.quickAdding = false;

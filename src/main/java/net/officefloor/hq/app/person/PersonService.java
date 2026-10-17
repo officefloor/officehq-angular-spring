@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -144,6 +145,25 @@ public class PersonService {
             throw changedMeanwhile();
         }
         audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        return person;
+    }
+
+    /**
+     * Retire a person from a date (the sheet's today when none is given). A person already retired is
+     * refused (409); claims dated on or before the date stay allowed.
+     */
+    @Transactional
+    public Person retire(String sheetId, String user, Long personId, LocalDate from) {
+        // Lock the sheet, so a claim added at the same moment sees the retirement.
+        sheets.lock(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (person.getRetiredFrom() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Person already retired");
+        }
+        person.setRetiredFrom(from != null ? from : sheets.today(sheetId));
+        person = people.saveAndFlush(person);
+        audit.change("PERSON_RETIRED", sheetId, user, "name=" + person.getName(), "from=" + person.getRetiredFrom());
         return person;
     }
 

@@ -21,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
  * The claims kept on a sheet, newest first. A claim without a date takes the sheet's today; a
  * missing note is stored empty. Only a DRAFT claim can be edited (409); an open claim is changed by
  * voiding it and adding a new one. No claim dated in a closed period can be added, edited or change
- * status (423).
+ * status (423). No claim dated after its person's retirement date can be added or edited (422).
  */
 @Service
 public class ClaimService {
@@ -57,6 +57,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseIfClosed(sheetId, on);
+        refuseIfRetired(person, on);
         Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount), on, note != null ? note : ""));
         record("CLAIM_ADDED", user, person, claim);
         return claim;
@@ -73,11 +74,12 @@ public class ClaimService {
         }
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, on);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        refuseIfRetired(person, on);
         claim.setAmount(scaled(amount));
         claim.setDate(on);
         claim.setNote(note != null ? note : "");
-        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         record("CLAIM_EDITED", user, person, claim);
         return claim;
     }
@@ -138,6 +140,14 @@ public class ClaimService {
                 .ifPresent(period -> {
                     throw new ResponseStatusException(HttpStatus.LOCKED, "The period " + period.getName() + " is closed");
                 });
+    }
+
+    /** Refuse (422) a claim dated after its person's retirement date. */
+    private static void refuseIfRetired(Person person, LocalDate date) {
+        if (person.retiredOn(date)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    person.getName() + " is retired from " + person.getRetiredFrom());
+        }
     }
 
     private void record(String event, String user, Person person, Claim claim) {

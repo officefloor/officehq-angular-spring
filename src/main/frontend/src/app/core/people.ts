@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
 
@@ -12,6 +12,13 @@ export interface Person {
   grade: Grade;
   /** Raised each time the person is saved; an edit sends back the version it was made from. */
   version: number;
+  /** yyyy-mm-dd the person is retired from; null while they are not retired. */
+  retiredFrom: string | null;
+}
+
+/** Whether a claim dated on this date (yyyy-mm-dd) is refused: it is after the person's retirement. */
+export function retiredOn(person: { retiredFrom: string | null }, date: string): boolean {
+  return person.retiredFrom !== null && date > person.retiredFrom;
 }
 
 export interface PersonFields {
@@ -35,6 +42,9 @@ export class PeopleApi {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
+  /** Whether retired people are listed; kept across sheet (re-)loads. */
+  readonly showRetired = signal(false);
+
   list(): Promise<Person[]> {
     return firstValueFrom(this.http.get<Person[]>(this.url(), { headers: this.headers() }));
   }
@@ -56,6 +66,13 @@ export class PeopleApi {
   update(id: number, version: number, fields: PersonFields): Promise<Person> {
     return firstValueFrom(
       this.http.put<Person>(`${this.url()}/${id}`, { ...fields, version }, { headers: this.headers() }),
+    );
+  }
+
+  /** Retire the person from a date; refused with 409 when they are already retired. */
+  retire(id: number, from: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url()}/${id}/retire`, { from: from || null }, { headers: this.headers() }),
     );
   }
 
