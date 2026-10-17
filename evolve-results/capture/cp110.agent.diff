@@ -1,0 +1,39 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index cb9088e9..8504bbc6 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -293,6 +293,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-heading-top">{{ headingTop() ?? 'n/a' }}</td>
+               <td colspan="29"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="20">Heading spread</th>
++              <td data-testid="rollup-heading-spread">{{ headingSpread() ?? 'n/a' }}</td>
++              <td colspan="29"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="21">Ballast total</th>
+               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
+@@ -599,6 +604,22 @@ export class PeopleList {
+     return values.length === 0 ? null : Math.max(...values);
+   });
+ 
++  // The lowest heading among the people not on hold (n/a headings skipped); null (n/a) when nobody has one.
++  protected readonly headingLow = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.heading)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.min(...values);
++  });
++
++  // The highest heading minus the lowest among the people not on hold; null (n/a) when nobody has one.
++  protected readonly headingSpread = computed(() => {
++    const top = this.headingTop();
++    const low = this.headingLow();
++    return top === null || low === null ? null : top - low;
++  });
++
+   // Everyone's ballast added up, trimmed like every sheet total.
+   protected readonly ballastTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ballast, hold: p.hold }))),
