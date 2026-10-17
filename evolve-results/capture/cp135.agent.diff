@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 8a594570..f064aa8d 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -453,6 +453,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-yaw-total">{{ yawTotal() }}</td>
+               <td colspan="23"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="26">Yaw top</th>
++              <td data-testid="rollup-yaw-top">{{ yawTop() ?? 'n/a' }}</td>
++              <td colspan="23"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -925,6 +930,15 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.yaw, hold: p.hold }))),
+   );
+ 
++  // The highest yaw among the people not on hold (n/a yaws skipped); null (n/a) when nobody has one.
++  protected readonly yawTop = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.yaw)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.max(...values);
++  });
++
+   // How many counted people have an even keel (n/a keels are not counted).
+   protected readonly keelCount = computed(
+     () => countable(this.people() ?? []).filter((p) => p.keel !== null && p.keel % 2 === 0).length,
