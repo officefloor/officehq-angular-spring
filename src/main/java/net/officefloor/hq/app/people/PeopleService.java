@@ -15,6 +15,8 @@ public class PeopleService {
 
     @Transactional(readOnly = true)
     public List<PersonView> list() {
-        return people.findAllByOrderByIdAsc().stream().map(PersonView::of).toList();
+        List<Person> all = people.findAllByOrderByIdAsc();
+        Long averageScaled = PersonView.averageScaled(all);
+        return all.stream().map(p -> PersonView.of(p, averageScaled)).toList();
     }
 }

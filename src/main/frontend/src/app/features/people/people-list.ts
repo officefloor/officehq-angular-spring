@@ -24,6 +24,8 @@ import { PeopleService } from './people.service';
               <th scope="col">Momentum</th>
               <th scope="col">Scaled</th>
               <th scope="col">Third</th>
+              <th scope="col">Norm</th>
+              <th scope="col">Backing</th>
             </tr>
           </thead>
           <tbody>
@@ -39,6 +41,8 @@ import { PeopleService } from './people.service';
                 <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
                 <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
                 <td data-testid="concept-third">{{ p.third ?? 'n/a' }}</td>
+                <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
+                <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
@@ -46,7 +50,7 @@ import { PeopleService } from './people.service';
             <tr>
               <th scope="row" colspan="6">Thrust total</th>
               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
-              <td colspan="3"></td>
+              <td colspan="5"></td>
             </tr>
           </tfoot>
         </table>
