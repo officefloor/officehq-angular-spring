@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 7f57e044..f5e0c67b 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -683,6 +683,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-hull-top">{{ hullTop() ?? 'n/a' }}</td>
+               <td colspan="14"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="35">Hull spread</th>
++              <td data-testid="rollup-hull-spread">{{ hullSpread() ?? 'n/a' }}</td>
++              <td colspan="14"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1240,6 +1245,15 @@ export class PeopleList {
+     return values.length === 0 ? null : Math.max(...values);
+   });
+ 
++  // The highest hull minus the lowest among the people not on hold (n/a hulls skipped); null (n/a) when nobody has one.
++  protected readonly hullSpread = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.hull)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
++  });
++
+   // The highest cable among the people not on hold (n/a cables skipped); null (n/a) when nobody has one.
+   protected readonly cableTop = computed(() => {
+     const values = (this.people() ?? [])
