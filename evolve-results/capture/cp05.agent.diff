@@ -1,0 +1,106 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 4be498e9..6a0f6e6c 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -22,6 +22,8 @@ import { PeopleService } from './people.service';
+               <th scope="col">Patrons</th>
+               <th scope="col">Thrust</th>
+               <th scope="col">Momentum</th>
++              <th scope="col">Scaled</th>
++              <th scope="col">Third</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -35,6 +37,8 @@ import { PeopleService } from './people.service';
+                 <td [attr.data-testid]="'person-patrons-' + p.id">{{ patronNames(p.patronIds) }}</td>
+                 <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+                 <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
++                <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
++                <td data-testid="concept-third">{{ p.third ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -42,7 +46,7 @@ import { PeopleService } from './people.service';
+             <tr>
+               <th scope="row" colspan="6">Thrust total</th>
+               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+-              <td></td>
++              <td colspan="3"></td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index aee824ca..26e1376b 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -14,6 +14,10 @@ export interface Person {
+   thrust: number | null;
+   // thrust plus three times (gamma minus alpha); null (n/a) when thrust or gamma is.
+   momentum: number | null;
++  // momentum times two; null (n/a) when momentum is.
++  scaled: number | null;
++  // scaled divided by three, rounded down (also below zero); null (n/a) when scaled is.
++  third: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 4e8cb7a0..168b2f64 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -5,14 +5,16 @@ import java.util.List;
+ /**
+  * A person as the API returns it; patrons are referenced by id. thrust is alpha times beta, or null
+  * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
+- * when thrust or gamma is.
++ * when thrust or gamma is. scaled is momentum times two, and third is scaled divided by three (rounded
++ * down, see {@link SheetMath#divide}); both null (n/a) when momentum is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+-        List<Long> patronIds, Long thrust, Long momentum) {
++        List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third) {
+ 
+     static PersonView of(Person p) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+-                p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p));
++                p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
++                scaled(p), third(p));
+     }
+ 
+     private static Long thrust(Person p) {
+@@ -29,4 +31,14 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         }
+         return thrust + 3L * ((long) p.getGamma() - p.getAlpha());
+     }
++
++    private static Long scaled(Person p) {
++        Long momentum = momentum(p);
++        return momentum == null ? null : momentum * 2L;
++    }
++
++    private static Long third(Person p) {
++        Long scaled = scaled(p);
++        return scaled == null ? null : SheetMath.divide(scaled, 3L);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/SheetMath.java b/src/main/java/net/officefloor/hq/app/people/SheetMath.java
+new file mode 100644
+index 00000000..143938c4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/SheetMath.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.people;
++
++/**
++ * Arithmetic shared by every value on the sheet. Every divide on the sheet goes through
++ * {@link #divide}, which rounds down to the whole number below, also below zero (-8 / 3 is -3).
++ */
++final class SheetMath {
++
++    private SheetMath() {
++    }
++
++    static long divide(long dividend, long divisor) {
++        return Math.floorDiv(dividend, divisor);
++    }
++}
