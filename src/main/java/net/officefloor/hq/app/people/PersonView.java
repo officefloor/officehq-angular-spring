@@ -15,7 +15,7 @@ import java.util.Set;
  * (n/a) when scaled is. backing is the momentum of each patron added up (patronage is mutual, see {@link #mutualPatrons}) (n/a patrons add nothing), null
  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
- * null (n/a) when scaled is. keel is scaled plus twice momentum plus norm plus
+ * null (n/a) when scaled is. keel is scaled plus momentum plus norm plus
  * thrust, null (n/a) when momentum or norm is.
  * fathom is keel plus momentum and draft is keel plus thrust; both null (n/a) when keel is.
  * cascade is fathom plus scaled, null (n/a) when fathom is. trim is keel minus thrust, null (n/a)
@@ -142,7 +142,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long keel(Person p, Long averageScaled) {
         Long momentum = momentum(p);
         Long norm = norm(p, averageScaled);
-        return momentum == null || norm == null ? null : scaled(p) + 2 * momentum + norm + thrust(p);
+        return momentum == null || norm == null ? null : scaled(p) + momentum + norm + thrust(p);
     }
 
     private static Long fathom(Person p, Long averageScaled) {

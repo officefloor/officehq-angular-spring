@@ -26,7 +26,7 @@ export interface Person {
   quarter: number | null;
   // SINK below zero, STEADY from 0 up to 199, SURGE at 200 or more; null (n/a) when scaled is.
   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
-  // scaled plus twice momentum plus norm plus thrust; null (n/a) when momentum or norm is.
+  // scaled plus momentum plus norm plus thrust; null (n/a) when momentum or norm is.
   keel: number | null;
   // keel plus momentum; null (n/a) when keel is.
   fathom: number | null;
