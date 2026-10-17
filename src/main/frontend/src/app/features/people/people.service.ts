@@ -34,7 +34,7 @@ export interface Person {
   draft: number | null;
   // fathom plus scaled plus 72; null (n/a) when fathom is.
   cascade: number | null;
-  // keel minus thrust; null (n/a) when keel is.
+  // keel minus thrust plus 92; null (n/a) when keel is.
   trim: number | null;
   // cascade plus keel plus 76; null (n/a) when cascade is.
   ripple: number | null;
