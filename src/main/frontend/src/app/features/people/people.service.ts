@@ -64,6 +64,8 @@ export interface Person {
   freeboard: number | null;
   // keel times three; null (n/a) when keel is.
   buoyancy: number | null;
+  // keel divided by three, rounded to the nearest (a half up); null (n/a) when keel is.
+  knot: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
