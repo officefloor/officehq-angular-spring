@@ -848,6 +848,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-rigging-mean">{{ riggingMean() ?? 'n/a' }}</td>
               <td colspan="8"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="42">Moor total</th>
+              <td data-testid="rollup-moor-total">{{ moorTotal() }}</td>
+              <td colspan="7"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1414,6 +1419,11 @@ export class PeopleList {
   // Everyone's rigging added up, trimmed like every sheet total.
   protected readonly riggingTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.rigging, hold: p.hold }))),
+  );
+
+  // Everyone's moor added up, trimmed like every sheet total.
+  protected readonly moorTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.moor, hold: p.hold }))),
   );
 
   // The highest rigging among the people not on hold, skipping n/a; n/a when there is none.
