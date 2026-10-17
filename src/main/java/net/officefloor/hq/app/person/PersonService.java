@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,7 +11,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The people kept on a sheet, in the order they were added. A name is stored without surrounding
- * spaces and is unique on its sheet regardless of case.
+ * spaces and is unique on its sheet regardless of case. An edit is made from a version of the
+ * person; once someone else has saved the person since, it is refused.
  */
 @Service
 public class PersonService {
@@ -43,17 +45,29 @@ public class PersonService {
     }
 
     @Transactional
-    public Person update(String sheetId, String user, Long personId, String name, String grade) {
+    public Person update(String sheetId, String user, Long personId, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (person.getVersion() != version) {
+            throw changedMeanwhile();
+        }
         String trimmed = name.trim();
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)) {
             throw nameInUse();
         }
         person.setName(trimmed);
         person.setGrade(grade);
+        try {
+            person = people.saveAndFlush(person);
+        } catch (OptimisticLockingFailureException e) {
+            throw changedMeanwhile();
+        }
         audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
         return person;
+    }
+
+    private static ResponseStatusException changedMeanwhile() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Person changed since it was loaded");
     }
 
     private static ResponseStatusException nameInUse() {

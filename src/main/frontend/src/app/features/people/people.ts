@@ -83,6 +83,10 @@ export class People {
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   protected readonly editingId = signal<number | null>(null);
+  /** The version of the person the editor loaded. */
+  private editingVersion = 0;
+  /** Set while a submit awaits the store, so a second submit does not store a second record. */
+  private saving = false;
   protected readonly error = signal<string | null>(null);
   protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
 
@@ -134,6 +138,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.editingId.set(person.id);
+    this.editingVersion = person.version;
     this.name.set(person.name);
     this.grade.set(person.grade);
     this.error.set(null);
@@ -148,6 +153,7 @@ export class People {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.saving) return;
     this.error.set(null);
     const fields = { name: this.name(), grade: this.grade() };
     if (!fields.name.trim()) {
@@ -155,21 +161,39 @@ export class People {
       return;
     }
     const id = this.editingId();
+    this.saving = true;
     try {
       if (id === null) {
         const added = await this.api.add(fields);
         this.people.update((list) => [...list, added]);
       } else {
-        const saved = await this.api.update(id, fields);
+        const saved = await this.api.update(id, this.editingVersion, fields);
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
     } catch (e) {
+      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
+        await this.showCurrent(id);
+        this.error.set('Someone else saved this person since you opened it. Their values are shown; open it again to edit.');
+        return;
+      }
       if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set('That name is already in use on this sheet.');
         return;
       }
       this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  /** Re-read the store and show the person's current values in the form and in their row. */
+  private async showCurrent(id: number): Promise<void> {
+    await this.reload();
+    const current = this.people().find((p) => p.id === id);
+    if (current) {
+      this.name.set(current.name);
+      this.grade.set(current.grade);
     }
   }
 

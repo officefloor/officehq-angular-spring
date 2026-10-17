@@ -74,6 +74,8 @@ export class Home {
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayInput = linkedSignal(() => this.session.today() ?? '');
   protected readonly todayError = signal<string | null>(null);
+  /** Set while a change of today awaits the store, so a second submit does not store it twice. */
+  private savingToday = false;
 
   protected signIn(event: Event): void {
     event.preventDefault();
@@ -103,16 +105,20 @@ export class Home {
 
   protected async saveToday(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.savingToday) return;
     this.todayError.set(null);
     const today = this.todayInput().trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
       this.todayError.set('Enter a date as yyyy-mm-dd.');
       return;
     }
+    this.savingToday = true;
     try {
       await this.session.setToday(today);
     } catch {
       this.todayError.set('That date could not be saved.');
+    } finally {
+      this.savingToday = false;
     }
   }
 }

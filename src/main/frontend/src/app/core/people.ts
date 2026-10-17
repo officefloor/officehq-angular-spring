@@ -10,6 +10,8 @@ export interface Person {
   id: number;
   name: string;
   grade: Grade;
+  /** Raised each time the person is saved; an edit sends back the version it was made from. */
+  version: number;
 }
 
 export interface PersonFields {
@@ -31,8 +33,11 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<Person>(this.url(), fields, { headers: this.headers() }));
   }
 
-  update(id: number, fields: PersonFields): Promise<Person> {
-    return firstValueFrom(this.http.put<Person>(`${this.url()}/${id}`, fields, { headers: this.headers() }));
+  /** Refused with 412 when someone else has saved the person since this version was read. */
+  update(id: number, version: number, fields: PersonFields): Promise<Person> {
+    return firstValueFrom(
+      this.http.put<Person>(`${this.url()}/${id}`, { ...fields, version }, { headers: this.headers() }),
+    );
   }
 
   private url(): string {

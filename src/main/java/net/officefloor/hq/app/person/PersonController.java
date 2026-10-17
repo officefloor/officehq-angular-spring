@@ -23,9 +23,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(Long id, String name, String grade) {
+    /** The version is the one an edit sends back, so a save made from an out-of-date copy is refused. */
+    public record PersonView(Long id, String name, String grade, long version) {
         static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }
 
@@ -33,6 +34,13 @@ public class PersonController {
     public record PersonRequest(
             @NotBlank @Size(max = 100) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
+    }
+
+    /** An edit carries the version of the person it was made from. */
+    public record PersonUpdateRequest(
+            @NotBlank @Size(max = 100) String name,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull Long version) {
     }
 
     private final PersonService service;
@@ -58,7 +66,8 @@ public class PersonController {
     public PersonView update(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
-            @RequestBody @Validated PersonRequest request) {
-        return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.name(), request.grade()));
+            @RequestBody @Validated PersonUpdateRequest request) {
+        return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.version(),
+                request.name(), request.grade()));
     }
 }

@@ -92,6 +92,8 @@ export class RatesPanel {
     ),
   );
   protected readonly error = signal<string | null>(null);
+  /** Set while a submit awaits the store, so a second submit does not set the rate twice. */
+  private saving = false;
 
   constructor() {
     // Re-read the store each time the sheet is (re-)loaded.
@@ -106,6 +108,7 @@ export class RatesPanel {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.saving) return;
     this.error.set(null);
     const pct = this.pct().trim();
     if (!RATE.test(pct)) {
@@ -117,12 +120,15 @@ export class RatesPanel {
       this.error.set('Enter a from-date as yyyy-mm-dd, or leave it empty.');
       return;
     }
+    this.saving = true;
     try {
       await this.rates.set(this.grade(), pct, from || null);
       this.pct.set('');
       this.from.set('');
     } catch {
       this.error.set('The rate could not be set.');
+    } finally {
+      this.saving = false;
     }
   }
 }

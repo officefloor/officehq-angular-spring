@@ -84,6 +84,8 @@ export class PersonClaims {
   protected readonly date = linkedSignal(() => this.session.today() ?? '');
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
+  /** Set while a submit awaits the store, so a second submit does not store a second claim. */
+  private saving = false;
   protected readonly error = signal<string | null>(null);
   /** The error of the last action taken on a claim's row, if it was refused. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
@@ -134,6 +136,7 @@ export class PersonClaims {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.saving) return;
     this.error.set(null);
     const fields = { amount: this.amount().trim(), date: this.date(), note: this.note() };
     if (!AMOUNT.test(fields.amount)) {
@@ -141,6 +144,7 @@ export class PersonClaims {
       return;
     }
     const id = this.editingId();
+    this.saving = true;
     try {
       if (id === null) {
         await this.claims.add(this.personId(), fields);
@@ -150,6 +154,8 @@ export class PersonClaims {
       this.reset();
     } catch {
       this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } finally {
+      this.saving = false;
     }
   }
 }
