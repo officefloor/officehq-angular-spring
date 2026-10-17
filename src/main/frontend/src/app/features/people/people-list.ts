@@ -158,6 +158,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-ripple-total">{{ rippleTotal() }}</td>
               <td colspan="30"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="21">Ballast total</th>
+              <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
+              <td colspan="28"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -199,6 +204,11 @@ export class PeopleList {
   // Everyone's ripple added up, trimmed like every sheet total.
   protected readonly rippleTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ripple, hold: p.hold }))),
+  );
+
+  // Everyone's ballast added up, trimmed like every sheet total.
+  protected readonly ballastTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ballast, hold: p.hold }))),
   );
 
   // How many counted people have an even keel (n/a keels are not counted).
