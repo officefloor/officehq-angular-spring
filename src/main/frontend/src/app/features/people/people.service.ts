@@ -96,7 +96,7 @@ export interface Person {
   ebb: number | null;
   // keel plus ballast; null (n/a) when keel or ballast is.
   flood: number | null;
-  // keel minus ballast; null (n/a) when keel or ballast is.
+  // keel minus ballast plus 216; null (n/a) when keel or ballast is.
   swell: number | null;
 }
 

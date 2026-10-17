@@ -38,7 +38,7 @@ import java.util.Set;
  * keel times five plus 192, null (n/a) when keel is. jetty is keel divided by ten (rounded like every divide) plus 196,
  * null (n/a) when keel is. pier is keel plus 500 plus 204, null (n/a) when keel is. ebb is keel minus 500 plus 208, null
  * (n/a) when keel is. flood is keel plus ballast plus 212, null (n/a) when keel or ballast is. swell is keel
- * minus ballast, null (n/a) when keel or ballast is.
+ * minus ballast plus 216, null (n/a) when keel or ballast is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
@@ -326,7 +326,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long swell(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
         Long ballast = ballast(p, averageScaled);
-        return keel == null || ballast == null ? null : keel - ballast;
+        return keel == null || ballast == null ? null : keel - ballast + 216L;
     }
 
     private static String tier(Person p) {
