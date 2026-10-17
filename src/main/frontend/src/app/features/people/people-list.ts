@@ -1,6 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { PeopleService } from './people.service';
+import { Person, PeopleService } from './people.service';
 
 // Every person on the sheet, one row each.
 @Component({
@@ -109,15 +109,21 @@ export class PeopleList {
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keel, hold: p.hold }))),
   );
 
-  // How many people not on hold have an even keel (n/a keels are not counted).
+  // How many counted people have an even keel (n/a keels are not counted).
   protected readonly keelCount = computed(
-    () => (this.people() ?? []).filter((p) => !p.hold && p.keel !== null && p.keel % 2 === 0).length,
+    () => countable(this.people() ?? []).filter((p) => p.keel !== null && p.keel % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {
     const names = this.names();
     return ids.map((id) => names.get(id) ?? String(id)).join(', ');
   }
+}
+
+// The people every sheet count is taken over: everyone except the people on hold and anyone whose
+// keel is below zero. Every sheet count goes through this.
+export function countable(people: Person[]): Person[] {
+  return people.filter((p) => !p.hold && !(p.keel !== null && p.keel < 0));
 }
 
 // A sheet-wide total: the contributions (n/a ones skipped) added up, leaving out one highest and
