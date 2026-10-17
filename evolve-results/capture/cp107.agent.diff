@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index ed6783ec..d3c3e8fc 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -283,6 +283,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-ripple-mean">{{ rippleMean() ?? 'n/a' }}</td>
+               <td colspan="30"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="20">Heading total</th>
++              <td data-testid="rollup-heading-total">{{ headingTotal() }}</td>
++              <td colspan="29"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="21">Ballast total</th>
+               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
+@@ -575,6 +580,11 @@ export class PeopleList {
+       : divide(values.reduce((total, v) => total + v, 0), values.length);
+   });
+ 
++  // Everyone's heading added up, trimmed like every sheet total.
++  protected readonly headingTotal = computed(() =>
++    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.heading, hold: p.hold }))),
++  );
++
+   // Everyone's ballast added up, trimmed like every sheet total.
+   protected readonly ballastTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ballast, hold: p.hold }))),
