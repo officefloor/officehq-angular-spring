@@ -30,11 +30,12 @@ public class ClaimController {
      * the due fixed when the claim was settled (null if it is not settled or had no rate then).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Long number, String settledDue) {
+            ClaimStatus status, Long number, String settledDue, String openedBy) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
-                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
+                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
+                    claim.getOpenedBy());
         }
     }
 

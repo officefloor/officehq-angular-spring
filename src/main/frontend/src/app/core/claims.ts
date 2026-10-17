@@ -16,6 +16,8 @@ export interface Claim {
   number: number | null;
   /** The due fixed when the claim was settled, two decimals; null if not settled or it had no rate then. */
   settledDue: string | null;
+  /** The user who opened the claim; null while it has not been opened. That user cannot settle it. */
+  openedBy: string | null;
 }
 
 /** DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID instead. */

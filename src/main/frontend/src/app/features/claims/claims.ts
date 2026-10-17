@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { AMOUNT, Claim, ClaimAction, Claims, formatCents } from '../../core/claims';
 import { Grade } from '../../core/people';
@@ -52,6 +53,7 @@ import { Session } from '../../core/session';
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          <span data-testid="claim-opened-by">{{ c.openedBy }}</span>
           <button type="button" data-testid="claim-edit" (click)="edit(c)">
             Edit<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
           </button>
@@ -105,8 +107,11 @@ export class PersonClaims {
     this.rowError.set(null);
     try {
       await this.claims.act(claim.id, action);
-    } catch {
-      this.rowError.set({ id: claim.id, message: `A ${claim.status} claim cannot be changed that way.` });
+    } catch (e) {
+      const message = e instanceof HttpErrorResponse && e.status === 403
+        ? 'The user who opened a claim cannot settle it.'
+        : `A ${claim.status} claim cannot be changed that way.`;
+      this.rowError.set({ id: claim.id, message });
     }
   }
 

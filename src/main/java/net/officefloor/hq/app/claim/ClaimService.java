@@ -70,6 +70,7 @@ public class ClaimService {
     /**
      * Move a claim to the next status; a change its status does not allow is refused (409). Opening
      * gives the claim the sheet's next number; voiding clears it (the number is not given again).
+     * Opening records who opened it; that user cannot settle it (403).
      * Settling fixes the claim's due at its person's grade's rate in force on the claim's date.
      */
     @Transactional
@@ -84,11 +85,17 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
+        }
         Long number = next == ClaimStatus.OPEN ? Long.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         claim.setStatus(next);
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        if (next == ClaimStatus.OPEN) {
+            claim.setOpenedBy(user);
+        }
         List<String> extra = new ArrayList<>();
         if (next == ClaimStatus.SETTLED) {
             BigDecimal due = rates.inForce(sheetId, person.getGrade(), claim.getDate())
