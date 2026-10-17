@@ -388,6 +388,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-bearing-spread">{{ bearingSpread() ?? 'n/a' }}</td>
               <td colspan="26"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="23">Bearing even</th>
+              <td data-testid="rollup-bearing-even">{{ bearingEven() }}</td>
+              <td colspan="26"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -819,6 +824,12 @@ export class PeopleList {
   protected readonly keystoneEven = computed(
     () =>
       countable(this.people() ?? []).filter((p) => p.keystone !== null && p.keystone % 2 === 0).length,
+  );
+
+  // How many counted people have an even bearing (n/a bearings are not counted).
+  protected readonly bearingEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.bearing !== null && p.bearing % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {
