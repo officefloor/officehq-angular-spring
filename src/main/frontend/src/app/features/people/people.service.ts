@@ -20,7 +20,7 @@ export interface Person {
   third: number | null;
   // scaled minus the sheet's average scaled (n/a ones and people on hold skipped, rounded to the nearest); null (n/a) when scaled is.
   norm: number | null;
-  // the patrons' momentum added up (n/a ones add nothing); null (n/a) when momentum is.
+  // the patrons' momentum added up (patronage is mutual, each pair counted once) (n/a ones add nothing); null (n/a) when momentum is.
   backing: number | null;
   // scaled divided by four, rounded to the nearest (a half up); null (n/a) when scaled is.
   quarter: number | null;

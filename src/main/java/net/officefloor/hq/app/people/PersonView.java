@@ -1,6 +1,10 @@
 package net.officefloor.hq.app.people;
 
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * A person as the API returns it; patrons are referenced by id. A blank alpha, beta or gamma counts as
@@ -8,7 +12,7 @@ import java.util.List;
  * minus alpha). scaled is momentum times two, and third is scaled divided by three (rounded
  * to the nearest, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
  * sheet's average scaled (over the people not on hold whose scaled is not n/a, rounded like every divide), null
- * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
+ * (n/a) when scaled is. backing is the momentum of each patron added up (patronage is mutual, see {@link #mutualPatrons}) (n/a patrons add nothing), null
  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
  * null (n/a) when scaled is. keel is scaled plus momentum plus norm plus
@@ -39,10 +43,10 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
         Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
         Long hull, Long bow, Long stern, Long helm, Long rudder, Long mast, Long rigging) {
 
-    static PersonView of(Person p, Long averageScaled) {
+    static PersonView of(Person p, Set<Person> patrons, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
-                p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
-                scaled(p), third(p), norm(p, averageScaled), backing(p),
+                patrons.stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
+                scaled(p), third(p), norm(p, averageScaled), backing(p, patrons),
                 quarter(p), tier(p), keel(p, averageScaled), fathom(p, averageScaled),
                 draft(p, averageScaled), cascade(p, averageScaled), trim(p, averageScaled),
                 ripple(p, averageScaled), heading(p, averageScaled), ballast(p, averageScaled),
@@ -71,11 +75,30 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
         return scaled == null || averageScaled == null ? null : scaled - averageScaled;
     }
 
-    private static Long backing(Person p) {
+    /**
+     * Patronage is mutual: each person's patrons are the people they name as patrons and the people
+     * who name them, each counted once.
+     */
+    static Map<Long, Set<Person>> mutualPatrons(List<Person> people) {
+        Map<Long, Set<Person>> patrons = new HashMap<>();
+        for (Person p : people) {
+            patrons.computeIfAbsent(p.getId(), id -> new LinkedHashSet<>());
+            for (Person patron : p.getPatrons()) {
+                if (patron.getId().equals(p.getId())) {
+                    continue;
+                }
+                patrons.get(p.getId()).add(patron);
+                patrons.computeIfAbsent(patron.getId(), id -> new LinkedHashSet<>()).add(p);
+            }
+        }
+        return patrons;
+    }
+
+    private static Long backing(Person p, Set<Person> patrons) {
         if (momentum(p) == null) {
             return null;
         }
-        return p.getPatrons().stream().map(PersonView::momentum).filter(m -> m != null)
+        return patrons.stream().map(PersonView::momentum).filter(m -> m != null)
                 .mapToLong(Long::longValue).sum();
     }
 
