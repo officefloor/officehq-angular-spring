@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 5ca4a14e..5e7d95ee 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -173,6 +173,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-draft-total">{{ draftTotal() }}</td>
+               <td colspan="33"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="16">Draft low</th>
++              <td data-testid="rollup-draft-low">{{ draftLow() ?? 'n/a' }}</td>
++              <td colspan="33"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="17">Cascade total</th>
+               <td data-testid="rollup-cascade-total">{{ cascadeTotal() }}</td>
+@@ -368,6 +373,15 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.draft, hold: p.hold }))),
+   );
+ 
++  // The lowest draft among the people not on hold (n/a drafts skipped); null (n/a) when nobody has one.
++  protected readonly draftLow = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.draft)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.min(...values);
++  });
++
+   // Everyone's cascade added up, trimmed like every sheet total.
+   protected readonly cascadeTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.cascade, hold: p.hold }))),
