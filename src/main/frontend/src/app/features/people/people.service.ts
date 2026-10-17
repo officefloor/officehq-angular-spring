@@ -92,7 +92,7 @@ export interface Person {
   jetty: number | null;
   // keel plus 500 plus 204; null (n/a) when keel is.
   pier: number | null;
-  // keel minus 500; null (n/a) when keel is.
+  // keel minus 500 plus 208; null (n/a) when keel is.
   ebb: number | null;
   // keel plus ballast; null (n/a) when keel or ballast is.
   flood: number | null;

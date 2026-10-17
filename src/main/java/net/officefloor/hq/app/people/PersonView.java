@@ -36,7 +36,7 @@ import java.util.Set;
  * four (rounded like every divide) plus 180, null (n/a) when keel is. moor is keel plus keystone plus 184, null (n/a)
  * when keel or keystone is. berth is keel minus keystone plus 188, null (n/a) when keel or keystone is. wharf is
  * keel times five plus 192, null (n/a) when keel is. jetty is keel divided by ten (rounded like every divide) plus 196,
- * null (n/a) when keel is. pier is keel plus 500 plus 204, null (n/a) when keel is. ebb is keel minus 500, null
+ * null (n/a) when keel is. pier is keel plus 500 plus 204, null (n/a) when keel is. ebb is keel minus 500 plus 208, null
  * (n/a) when keel is. flood is keel plus ballast, null (n/a) when keel or ballast is. swell is keel
  * minus ballast, null (n/a) when keel or ballast is.
  */
@@ -314,7 +314,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long ebb(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
-        return keel == null ? null : keel - 500L;
+        return keel == null ? null : keel - 500L + 208L;
     }
 
     private static Long flood(Person p, Long averageScaled) {
