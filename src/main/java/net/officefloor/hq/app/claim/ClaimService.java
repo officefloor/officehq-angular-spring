@@ -40,6 +40,7 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final ClaimSequenceRepository sequences;
+    private final ClaimStatusLogRepository log;
     private final PersonRepository people;
     private final PeriodRepository periods;
     private final RateService rates;
@@ -47,11 +48,12 @@ public class ClaimService {
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, ClaimSequenceRepository sequences, PersonRepository people, PeriodRepository periods, RateService rates,
+    public ClaimService(ClaimRepository claims, ClaimSequenceRepository sequences, ClaimStatusLogRepository log, PersonRepository people, PeriodRepository periods, RateService rates,
             RoleService roles, SheetService sheets, Audit audit) {
         this.roles = roles;
         this.claims = claims;
         this.sequences = sequences;
+        this.log = log;
         this.people = people;
         this.periods = periods;
         this.rates = rates;
@@ -62,6 +64,22 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
+    }
+
+    /** The status logs of the sheet's claims, by claim id, each oldest first. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimStatusLog>> logs(String sheetId) {
+        Map<Long, List<ClaimStatusLog>> byClaim = new HashMap<>();
+        for (ClaimStatusLog line : log.findBySheetIdOrderByIdAsc(sheetId)) {
+            byClaim.computeIfAbsent(line.getClaimId(), id -> new ArrayList<>()).add(line);
+        }
+        return byClaim;
+    }
+
+    /** A claim's status log, oldest first. */
+    @Transactional(readOnly = true)
+    public List<ClaimStatusLog> log(Claim claim) {
+        return log.findByClaimIdOrderByIdAsc(claim.getId());
     }
 
     @Transactional
@@ -78,6 +96,7 @@ public class ClaimService {
         String corrected = correctedNumber(sheetId, personId, amount, corrects);
         Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount), on, note != null ? note : "", corrected,
                 sheet.dueBy(person.gradeOn(on), on)));
+        logStatus(user, claim, dueNow(sheet, person, claim));
         record("CLAIM_ADDED", user, person, claim);
         return claim;
     }
@@ -157,6 +176,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(due);
         }
+        logStatus(user, claim, next == ClaimStatus.SETTLED ? due : dueNow(sheet, person, claim));
         record(switch (next) {
             case OPEN -> "CLAIM_OPENED";
             case PENDING -> "CLAIM_PENDING";
@@ -185,6 +205,7 @@ public class ClaimService {
         BigDecimal due = dueNow(sheet, person, claim);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(due);
+        logStatus(user, claim, due);
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(),
                 List.of("due=" + (due == null ? "n/a" : due.toPlainString())));
         return claim;
@@ -196,11 +217,13 @@ public class ClaimService {
      */
     @Transactional
     public Claim reject(String sheetId, String user, Long claimId, String reason) {
-        sheets.lock(sheetId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        Sheet sheet = sheets.lock(sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         Claim claim = pending(sheetId, user, claimId);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         claim.setStatus(ClaimStatus.OPEN);
+        logStatus(user, claim, dueNow(sheet, person, claim));
         record("CLAIM_REJECTED", user, person, claim, claim.getNumber(), List.of("reason=" + reason));
         return claim;
     }
@@ -370,6 +393,12 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     person.getName() + " is retired from " + person.getRetiredFrom());
         }
+    }
+
+    /** Add a line to the claim's status log for the status it has now, dated the sheet's today. */
+    private void logStatus(String user, Claim claim, BigDecimal due) {
+        log.save(new ClaimStatusLog(claim.getSheetId(), claim.getId(), claim.getStatus(), user,
+                sheets.today(claim.getSheetId()), due));
     }
 
     private void record(String event, String user, Person person, Claim claim) {

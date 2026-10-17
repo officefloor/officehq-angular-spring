@@ -25,6 +25,18 @@ export interface Claim {
   corrects: string | null;
   /** yyyy-mm-dd: the date it is due by, fixed when it was created from its person's grade's terms then. */
   dueBy: string;
+  /** One line per status the claim has had, oldest first. */
+  log: ClaimLogLine[];
+}
+
+/** A line of a claim's status log: the status, who made the change, the sheet's today then and the due then. */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  /** yyyy-mm-dd */
+  on: string;
+  /** The claim's due as computed at that moment, two decimals; null if its grade had no rate then. */
+  due: string | null;
 }
 
 /** How many selected claims a bulk open opened, and how many it refused. */

@@ -79,6 +79,11 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
           <span data-testid="claim-corrects">{{ c.corrects }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy }}</span>
+          <ol aria-label="Status log">
+            @for (line of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due ?? 'n/a' }}</li>
+            }
+          </ol>
           <button type="button" data-testid="claim-edit" (click)="edit(c)">
             Edit<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
           </button>
