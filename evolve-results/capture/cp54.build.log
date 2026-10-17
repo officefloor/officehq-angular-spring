@@ -1,0 +1,65 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610171149/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 54 tests using 1 worker
+
+[1A[2K[1/54] [chromium] › cp01_people.spec.ts:5:7 › people › people
+[1A[2K[2/54] [chromium] › cp02_thrust_thrust-total.spec.ts:5:7 › thrust thrust-total › thrust thrust-total
+[1A[2K[3/54] [chromium] › cp03_momentum.spec.ts:5:7 › momentum › momentum
+[1A[2K[4/54] [chromium] › cp04_trim_total.spec.ts:5:7 › trim total › trim total
+[1A[2K[5/54] [chromium] › cp05_scaled_third.spec.ts:5:7 › scaled third › scaled third
+[1A[2K[6/54] [chromium] › cp06_backing_norm.spec.ts:5:7 › backing norm › backing norm
+[1A[2K[7/54] [chromium] › cp07_quarter_tier.spec.ts:5:7 › quarter tier › quarter tier
+[1A[2K[8/54] [chromium] › cp08_round_divides.spec.ts:5:7 › round divides › round divides
+[1A[2K[9/54] [chromium] › cp09_keel_keel-total.spec.ts:5:7 › keel keel-total › keel keel-total
+[1A[2K[10/54] [chromium] › cp10_draft_fathom.spec.ts:5:7 › draft fathom › draft fathom
+[1A[2K[11/54] [chromium] › cp11_cascade_trim.spec.ts:5:7 › cascade trim › cascade trim
+[1A[2K[12/54] [chromium] › cp12_hold.spec.ts:5:7 › hold › hold
+[1A[2K[13/54] [chromium] › cp13_heading_ripple.spec.ts:5:7 › heading ripple › heading ripple
+[1A[2K[14/54] [chromium] › cp14_ballast_keel-count.spec.ts:5:7 › ballast keel-count › ballast keel-count
+[1A[2K[15/54] [chromium] › cp15_bearing_keystone.spec.ts:5:7 › bearing keystone › bearing keystone
+[1A[2K[16/54] [chromium] › cp16_keel.spec.ts:5:7 › keel › keel
+[1A[2K[17/54] [chromium] › cp17_pitch.spec.ts:5:7 › pitch › pitch
+[1A[2K[18/54] [chromium] › cp18_tackle.spec.ts:5:7 › tackle › tackle
+[1A[2K[19/54] [chromium] › cp19_yaw.spec.ts:5:7 › yaw › yaw
+[1A[2K[20/54] [chromium] › cp20_missing_zero.spec.ts:5:7 › missing zero › missing zero
+[1A[2K[21/54] [chromium] › cp21_heave.spec.ts:5:7 › heave › heave
+[1A[2K[22/54] [chromium] › cp22_camber.spec.ts:5:7 › camber › camber
+[1A[2K[23/54] [chromium] › cp23_sheer.spec.ts:5:7 › sheer › sheer
+[1A[2K[24/54] [chromium] › cp24_camber.spec.ts:5:7 › camber › camber
+[1A[2K[25/54] [chromium] › cp25_beam.spec.ts:5:7 › beam › beam
+[1A[2K[26/54] [chromium] › cp26_freeboard.spec.ts:5:7 › freeboard › freeboard
+[1A[2K[27/54] [chromium] › cp27_buoyancy.spec.ts:5:7 › buoyancy › buoyancy
+[1A[2K[28/54] [chromium] › cp28_beam.spec.ts:5:7 › beam › beam
+[1A[2K[29/54] [chromium] › cp29_knot.spec.ts:5:7 › knot › knot
+[1A[2K[30/54] [chromium] › cp30_cable.spec.ts:5:7 › cable › cable
+[1A[2K[31/54] [chromium] › cp31_hull.spec.ts:5:7 › hull › hull
+[1A[2K[32/54] [chromium] › cp32_keel.spec.ts:5:7 › keel › keel
+[1A[2K[33/54] [chromium] › cp33_bow.spec.ts:5:7 › bow › bow
+[1A[2K[34/54] [chromium] › cp34_stern.spec.ts:5:7 › stern › stern
+[1A[2K[35/54] [chromium] › cp35_helm.spec.ts:5:7 › helm › helm
+[1A[2K[36/54] [chromium] › cp36_freeboard.spec.ts:5:7 › freeboard › freeboard
+[1A[2K[37/54] [chromium] › cp37_rudder.spec.ts:5:7 › rudder › rudder
+[1A[2K[38/54] [chromium] › cp38_mast.spec.ts:5:7 › mast › mast
+[1A[2K[39/54] [chromium] › cp39_rigging.spec.ts:5:7 › rigging › rigging
+[1A[2K[40/54] [chromium] › cp40_patrons_mutual.spec.ts:5:7 › patrons mutual › patrons mutual
+[1A[2K[41/54] [chromium] › cp41_moor.spec.ts:5:7 › moor › moor
+[1A[2K[42/54] [chromium] › cp42_berth.spec.ts:5:7 › berth › berth
+[1A[2K[43/54] [chromium] › cp43_wharf.spec.ts:5:7 › wharf › wharf
+[1A[2K[44/54] [chromium] › cp44_wharf.spec.ts:5:7 › wharf › wharf
+[1A[2K[45/54] [chromium] › cp45_jetty.spec.ts:5:7 › jetty › jetty
+[1A[2K[46/54] [chromium] › cp46_pier.spec.ts:5:7 › pier › pier
+[1A[2K[47/54] [chromium] › cp47_ebb.spec.ts:5:7 › ebb › ebb
+[1A[2K[48/54] [chromium] › cp48_jetty.spec.ts:5:7 › jetty › jetty
+[1A[2K[49/54] [chromium] › cp49_flood.spec.ts:5:7 › flood › flood
+[1A[2K[50/54] [chromium] › cp50_swell.spec.ts:5:7 › swell › swell
+[1A[2K[51/54] [chromium] › cp51_fathom-total.spec.ts:5:7 › fathom-total › fathom-total
+[1A[2K[52/54] [chromium] › cp52_keel.spec.ts:5:7 › keel › keel
+[1A[2K[53/54] [chromium] › cp53_draft-total.spec.ts:5:7 › draft-total › draft-total
+[1A[2K[54/54] [chromium] › cp54_cascade-total.spec.ts:5:7 › cascade-total › cascade-total
+[1A[2K  54 passed (9.8s)
