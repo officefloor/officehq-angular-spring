@@ -86,7 +86,7 @@ export interface Person {
   moor: number | null;
   // keel minus keystone; null (n/a) when keel or keystone is.
   berth: number | null;
-  // keel times four; null (n/a) when keel is.
+  // keel times five; null (n/a) when keel is.
   wharf: number | null;
 }
 

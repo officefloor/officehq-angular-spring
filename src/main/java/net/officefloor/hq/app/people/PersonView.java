@@ -35,7 +35,7 @@ import java.util.Set;
  * when keel or ripple is. mast is keel plus 1000, null (n/a) when keel is. rigging is keel divided by
  * four (rounded like every divide), null (n/a) when keel is. moor is keel plus keystone, null (n/a)
  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
- * keel times four, null (n/a) when keel is.
+ * keel times five, null (n/a) when keel is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
@@ -294,7 +294,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long wharf(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
-        return keel == null ? null : keel * 4L;
+        return keel == null ? null : keel * 5L;
     }
 
     private static String tier(Person p) {
