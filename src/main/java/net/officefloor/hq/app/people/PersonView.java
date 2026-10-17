@@ -17,13 +17,14 @@ import java.util.List;
  * when keel is. ripple is cascade plus keel, null (n/a) when cascade is. heading is keel plus norm,
  * null (n/a) when keel or norm is. ballast is ripple plus thrust, null (n/a) when ripple is.
  * keystone is ballast plus norm, null (n/a) when ballast or norm is. bearing is keel minus norm, null
- * (n/a) when keel or norm is. pitch is keel plus momentum, null (n/a) when keel is.
+ * (n/a) when keel or norm is. pitch is keel plus momentum, null (n/a) when keel is. tackle is keel
+ * minus momentum, null (n/a) when keel is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
         Long backing, Long quarter, String tier, Long keel,
         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
-        Long keystone, Long bearing, Long pitch) {
+        Long keystone, Long bearing, Long pitch, Long tackle) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
@@ -32,7 +33,8 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
                 quarter(p), tier(p), keel(p, averageScaled), fathom(p, averageScaled),
                 draft(p, averageScaled), cascade(p, averageScaled), trim(p, averageScaled),
                 ripple(p, averageScaled), heading(p, averageScaled), ballast(p, averageScaled),
-                keystone(p, averageScaled), bearing(p, averageScaled), pitch(p, averageScaled));
+                keystone(p, averageScaled), bearing(p, averageScaled), pitch(p, averageScaled),
+                tackle(p, averageScaled));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -146,6 +148,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long pitch(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
         return keel == null ? null : keel + momentum(p);
+    }
+
+    private static Long tackle(Person p, Long averageScaled) {
+        Long keel = keel(p, averageScaled);
+        return keel == null ? null : keel - momentum(p);
     }
 
     private static String tier(Person p) {

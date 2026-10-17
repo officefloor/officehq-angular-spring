@@ -48,6 +48,8 @@ export interface Person {
   bearing: number | null;
   // keel plus momentum; null (n/a) when keel is.
   pitch: number | null;
+  // keel minus momentum; null (n/a) when keel is.
+  tackle: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
