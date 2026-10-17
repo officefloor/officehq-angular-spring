@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Claims, counts, formatCents } from '../../core/claims';
-import { GRADES, Grade, PeopleApi, Person } from '../../core/people';
+import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
@@ -42,6 +42,34 @@ import { PersonClaims } from '../claims/claims';
         }
         @if (error(); as err) {
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
+        }
+      </form>
+
+      <form (submit)="importPeople($event)">
+        <label for="import-text">Import people (one name,grade per line)</label>
+        <textarea
+          id="import-text"
+          data-testid="import-text"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set($any($event.target).value); importResult.set(null); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-submit">Import</button>
+        @if (importResult(); as result) {
+          <div role="status">
+            <p>Added <strong data-testid="import-added">{{ result.added }}</strong></p>
+            @if (result.errors.length > 0) {
+              <p>Nothing was imported; fix these lines:</p>
+              <ul>
+                @for (e of result.errors; track e.line) {
+                  <li [attr.data-testid]="'import-error-' + e.line">Line {{ e.line }}: {{ e.message }}</li>
+                }
+              </ul>
+            }
+          </div>
+        }
+        @if (importError(); as err) {
+          <p role="alert" data-testid="import-error">{{ err }}</p>
         }
       </form>
 
@@ -88,6 +116,11 @@ export class People {
   /** Set while a submit awaits the store, so a second submit does not store a second record. */
   private saving = false;
   protected readonly error = signal<string | null>(null);
+  protected readonly importText = signal('');
+  protected readonly importResult = signal<ImportResult | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  /** Set while an import awaits the store, so a second submit does not import twice. */
+  private importing = false;
   protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
 
   /**
@@ -121,6 +154,9 @@ export class People {
       this.session.loads();
       untracked(() => {
         this.reset();
+        this.importText.set('');
+        this.importResult.set(null);
+        this.importError.set(null);
         void this.reload();
         void this.claims.reload();
       });
@@ -184,6 +220,26 @@ export class People {
       this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
     } finally {
       this.saving = false;
+    }
+  }
+
+  protected async importPeople(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importing) return;
+    this.importResult.set(null);
+    this.importError.set(null);
+    this.importing = true;
+    try {
+      const result = await this.api.importLines(this.importText());
+      this.importResult.set(result);
+      if (result.added > 0) {
+        this.importText.set('');
+        await this.reload();
+      }
+    } catch {
+      this.importError.set('The people could not be imported.');
+    } finally {
+      this.importing = false;
     }
   }
 

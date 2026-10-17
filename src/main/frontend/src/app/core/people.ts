@@ -19,6 +19,12 @@ export interface PersonFields {
   grade: Grade;
 }
 
+/** What an import did: how many it added, or the lines (numbered from 1) that stopped it. */
+export interface ImportResult {
+  added: number;
+  errors: { line: number; message: string }[];
+}
+
 // The people kept on the active sheet, read from and written to the store.
 @Injectable({ providedIn: 'root' })
 export class PeopleApi {
@@ -31,6 +37,13 @@ export class PeopleApi {
 
   add(fields: PersonFields): Promise<Person> {
     return firstValueFrom(this.http.post<Person>(this.url(), fields, { headers: this.headers() }));
+  }
+
+  /** Add people from pasted lines of name,grade; all of them, or none when any line is bad. */
+  importLines(text: string): Promise<ImportResult> {
+    return firstValueFrom(
+      this.http.post<ImportResult>(`${this.url()}/import`, { text }, { headers: this.headers() }),
+    );
   }
 
   /** Refused with 412 when someone else has saved the person since this version was read. */

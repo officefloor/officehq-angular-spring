@@ -43,6 +43,10 @@ public class PersonController {
             @NotNull Long version) {
     }
 
+    /** Lines of name,grade pasted into the import box. */
+    public record ImportRequest(@NotNull @Size(max = 100_000) String text) {
+    }
+
     private final PersonService service;
 
     public PersonController(PersonService service) {
@@ -69,5 +73,12 @@ public class PersonController {
             @RequestBody @Validated PersonUpdateRequest request) {
         return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.version(),
                 request.name(), request.grade()));
+    }
+
+    @PostMapping("/import")
+    public PersonService.ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Validated ImportRequest request) {
+        return service.importPeople(sheetId.trim(), user.trim(), request.text());
     }
 }

@@ -1,6 +1,10 @@
 package net.officefloor.hq.app.person;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -16,6 +20,9 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Service
 public class PersonService {
+
+    private static final int MAX_NAME = 100;
+    private static final Set<String> GRADES = Set.of("A", "B", "C");
 
     private final PersonRepository people;
     private final SheetService sheets;
@@ -42,6 +49,65 @@ public class PersonService {
         Person person = people.save(new Person(sheetId, trimmed, grade));
         audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
         return person;
+    }
+
+    /** A line of an import that breaks a rule: its number (from 1) and why. */
+    public record ImportError(int line, String message) {
+    }
+
+    /** How many people an import added, or the lines that stopped it (then nothing is added). */
+    public record ImportResult(int added, List<ImportError> errors) {
+    }
+
+    /**
+     * Import people from lines of name,grade. Every line is checked first with the rules of the form;
+     * a name repeated in the paste is compared like uniqueness on the sheet. If any line breaks a
+     * rule nothing is added; otherwise each person is added in order. Blank lines are skipped.
+     */
+    @Transactional
+    public ImportResult importPeople(String sheetId, String user, String text) {
+        String[] lines = text.split("\\r?\\n", -1);
+        List<ImportError> errors = new ArrayList<>();
+        List<String[]> rows = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.isBlank()) {
+                continue;
+            }
+            int number = i + 1;
+            int comma = line.lastIndexOf(',');
+            String name = (comma < 0 ? line : line.substring(0, comma)).trim();
+            String grade = comma < 0 ? "" : line.substring(comma + 1).trim();
+            String error = null;
+            if (name.isEmpty()) {
+                error = "Enter a name.";
+            } else if (name.length() > MAX_NAME) {
+                error = "The name is too long.";
+            } else if (!GRADES.contains(grade)) {
+                error = "The grade must be A, B or C.";
+            } else if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
+                error = "That name is already in use on this sheet.";
+            } else if (!seen.add(name.toLowerCase(Locale.ROOT))) {
+                error = "That name is repeated in the import.";
+            }
+            if (error != null) {
+                errors.add(new ImportError(number, error));
+            } else {
+                rows.add(new String[] {name, grade});
+            }
+        }
+        if (!errors.isEmpty()) {
+            return new ImportResult(0, errors);
+        }
+        if (!rows.isEmpty()) {
+            sheets.load(sheetId, user);
+        }
+        for (String[] row : rows) {
+            Person person = people.save(new Person(sheetId, row[0], row[1]));
+            audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        }
+        return new ImportResult(rows.size(), List.of());
     }
 
     @Transactional
