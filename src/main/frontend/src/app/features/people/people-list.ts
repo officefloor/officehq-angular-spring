@@ -143,6 +143,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-fathom-total">{{ fathomTotal() }}</td>
               <td colspan="34"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="16">Draft total</th>
+              <td data-testid="rollup-draft-total">{{ draftTotal() }}</td>
+              <td colspan="33"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -169,6 +174,11 @@ export class PeopleList {
   // Everyone's fathom added up, trimmed like every sheet total.
   protected readonly fathomTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.fathom, hold: p.hold }))),
+  );
+
+  // Everyone's draft added up, trimmed like every sheet total.
+  protected readonly draftTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.draft, hold: p.hold }))),
   );
 
   // How many counted people have an even keel (n/a keels are not counted).
