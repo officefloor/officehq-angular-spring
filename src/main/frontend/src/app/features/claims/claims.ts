@@ -46,6 +46,7 @@ import { Session } from '../../core/session';
     <ul>
       @for (c of mine(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <span data-testid="claim-number">{{ c.number }}</span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-due">{{ due(c) }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>

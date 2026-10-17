@@ -20,6 +20,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** Counts sheet loads, so per-sheet data re-reads the store on every (re-)load. */
   readonly loads = signal(0);
+  /** True while a sheet is being (re-)loaded, so nothing read from the store before is shown. */
+  readonly loading = signal(false);
 
   signIn(name: string): void {
     this.user.set(name.trim());
@@ -29,13 +31,18 @@ export class Session {
   async loadSheet(id: string): Promise<void> {
     const user = this.user();
     if (!user) throw new Error('not signed in');
-    const sheet = await firstValueFrom(
-      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id.trim())}/load`, null, {
-        headers: { 'X-User': user },
-      }),
-    );
-    this.show(sheet);
-    this.loads.update((n) => n + 1);
+    this.loading.set(true);
+    try {
+      const sheet = await firstValueFrom(
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id.trim())}/load`, null, {
+          headers: { 'X-User': user },
+        }),
+      );
+      this.show(sheet);
+      this.loads.update((n) => n + 1);
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   /** Change the active sheet's "today". */

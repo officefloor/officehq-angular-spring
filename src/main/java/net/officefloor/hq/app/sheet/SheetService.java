@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,15 @@ public class SheetService {
         Sheet sheet = load(id, user);
         sheet.setToday(today);
         return sheet;
+    }
+
+    /**
+     * The sheet, locked until the caller's transaction ends, so changes that must happen one at a
+     * time on a sheet (such as giving out claim numbers) do; empty if the sheet was never loaded.
+     */
+    @Transactional
+    public Optional<Sheet> lock(String id) {
+        return sheets.findLockedById(id);
     }
 
     private Sheet create(String id, String user) {

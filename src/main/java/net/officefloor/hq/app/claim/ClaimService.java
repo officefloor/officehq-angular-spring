@@ -3,10 +3,12 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -61,16 +63,25 @@ public class ClaimService {
         return claim;
     }
 
-    /** Move a claim to the next status; a change its status does not allow is refused (409). */
+    /**
+     * Move a claim to the next status; a change its status does not allow is refused (409). Opening
+     * gives the claim the sheet's next number; voiding clears it (the number is not given again).
+     */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long claimId, ClaimStatus next) {
+        // Lock the sheet before reading the claim, so claims opened at the same moment get different numbers.
+        Sheet sheet = next == ClaimStatus.OPEN
+                ? sheets.lock(sheetId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"))
+                : null;
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        Long number = next == ClaimStatus.OPEN ? Long.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         claim.setStatus(next);
+        claim.setNumber(next == ClaimStatus.VOID ? null : number);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         record(switch (next) {
@@ -78,14 +89,25 @@ public class ClaimService {
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
-        }, user, person, claim);
+        }, user, person, claim, number);
         return claim;
     }
 
-    /** Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. */
     private void record(String event, String user, Person person, Claim claim) {
-        audit.change(event, claim.getSheetId(), user, "person=" + person.getName(),
-                "amount=" + claim.getAmount().toPlainString(), "date=" + claim.getDate());
+        record(event, user, person, claim, claim.getNumber());
+    }
+
+    /**
+     * Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. A claim with a number
+     * (or, when voided, the number it had) ends the line with number=&lt;number&gt;.
+     */
+    private void record(String event, String user, Person person, Claim claim, Long number) {
+        List<String> fields = new ArrayList<>(List.of("person=" + person.getName(),
+                "amount=" + claim.getAmount().toPlainString(), "date=" + claim.getDate()));
+        if (number != null) {
+            fields.add("number=" + number);
+        }
+        audit.change(event, claim.getSheetId(), user, fields.toArray(String[]::new));
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

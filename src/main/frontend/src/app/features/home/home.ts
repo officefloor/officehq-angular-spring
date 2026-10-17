@@ -25,7 +25,9 @@ import { RatesPanel } from '../rates/rates';
         }
       </form>
 
-      @if (session.sheetId(); as id) {
+      @if (session.loading()) {
+        <p role="status">Loading the sheet…</p>
+      } @else if (session.sheetId(); as id) {
         <p>Sheet <strong data-testid="sheet-current-id">{{ id }}</strong></p>
         <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
 

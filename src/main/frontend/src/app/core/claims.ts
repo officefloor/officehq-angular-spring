@@ -12,6 +12,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** The sheet's number given when the claim was opened; null for a draft or a voided claim. */
+  number: number | null;
 }
 
 /** DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID instead. */
@@ -64,7 +66,9 @@ export class Claims {
 
   readonly totalCents = computed(() => this.counted().reduce((sum, c) => sum + toCents(c.amount), 0));
 
+  /** Re-read the store; until it answers no claims are shown, so none is shown out of date. */
   async reload(): Promise<void> {
+    this.all.set([]);
     try {
       this.all.set(await firstValueFrom(this.http.get<Claim[]>(`${this.sheetUrl()}/claims`, { headers: this.headers() })));
     } catch {
