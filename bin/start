@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start the Spring Boot app on $PORT (main class net.officefloor.hq.app.Application). On boot, Flyway
 # migrates the empty in-memory H2 up to the current schema; Spring serves the SPA (static/) and the
-# app's REST endpoints; the `e2e` profile enables the /__test__ seed endpoint. Returns once
+# app's REST endpoints. Returns once
 # launching; poll /actuator/health for readiness.
 set -euo pipefail
 cd "$(dirname "$0")/.."

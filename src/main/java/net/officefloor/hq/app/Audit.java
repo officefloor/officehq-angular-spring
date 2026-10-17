@@ -41,7 +41,7 @@ public class Audit {
         }
     }
 
-    /** Truncate the audit file (called by /__test__/reset for per-spec isolation). */
+    /** Truncate the audit file. */
     public synchronized void clear() {
         try {
             Files.deleteIfExists(file);
