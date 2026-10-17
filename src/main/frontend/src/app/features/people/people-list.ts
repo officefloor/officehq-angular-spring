@@ -558,6 +558,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-beam-top">{{ beamTop() ?? 'n/a' }}</td>
               <td colspan="19"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="30">Beam spread</th>
+              <td data-testid="rollup-beam-spread">{{ beamSpread() ?? 'n/a' }}</td>
+              <td colspan="19"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1088,6 +1093,16 @@ export class PeopleList {
       .map((p) => p.beam)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest beam minus the lowest beam among the people not on hold (n/a beams skipped); null
+  // (n/a) when nobody has one.
+  protected readonly beamSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.beam)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // The highest sheer among the people not on hold (n/a sheers skipped); null (n/a) when nobody has one.
