@@ -88,7 +88,7 @@ export interface Person {
   berth: number | null;
   // keel times five; null (n/a) when keel is.
   wharf: number | null;
-  // keel divided by five, rounded to the nearest (a half up); null (n/a) when keel is.
+  // keel divided by ten, rounded to the nearest (a half up); null (n/a) when keel is.
   jetty: number | null;
   // keel plus 500; null (n/a) when keel is.
   pier: number | null;
