@@ -4,6 +4,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
@@ -124,9 +129,9 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
         }
-        Long number = next == ClaimStatus.OPEN ? Long.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Long number = next == ClaimStatus.OPEN ? Long.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         claim.setStatus(next);
         claim.setNumber(number);
         if (next == ClaimStatus.OPEN) {
@@ -148,6 +153,43 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         }, user, person, claim, number, extra);
         return claim;
+    }
+
+    /** How many of the selected claims a bulk open opened, and how many it refused. */
+    public record BulkResult(int opened, int refused) {
+    }
+
+    /**
+     * Open the selected claims together, numbering them in list order: the people in the order they
+     * were added, and within a person the newest claim (by date) first, claims of the same date in
+     * the order they were added. A selected claim that cannot be opened (or is not on the sheet) is
+     * refused and left as it is; the others are still opened.
+     */
+    @Transactional
+    public BulkResult bulkOpen(String sheetId, String user, List<Long> claimIds) {
+        sheets.lock(sheetId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet"));
+        Set<Long> selected = new HashSet<>(claimIds);
+        Map<Long, Integer> personOrder = new HashMap<>();
+        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        for (int i = 0; i < listed.size(); i++) {
+            personOrder.put(listed.get(i).getId(), i);
+        }
+        List<Claim> ordered = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(claim -> selected.contains(claim.getId()))
+                .sorted(Comparator.<Claim>comparingInt(claim -> personOrder.getOrDefault(claim.getPersonId(), Integer.MAX_VALUE))
+                        .thenComparing(Claim::getDate, Comparator.reverseOrder())
+                        .thenComparing(Claim::getId))
+                .toList();
+        int opened = 0;
+        for (Claim claim : ordered) {
+            try {
+                changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN);
+                opened++;
+            } catch (ResponseStatusException refused) {
+                // Left as it is.
+            }
+        }
+        return new BulkResult(opened, selected.size() - opened);
     }
 
     /**

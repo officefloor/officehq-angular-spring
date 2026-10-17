@@ -61,6 +61,13 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
     <ul>
       @for (c of mine(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input
+            type="checkbox"
+            data-testid="claim-select"
+            [checked]="claims.selected().has(c.id)"
+            (change)="claims.select(c.id, $any($event.target).checked)"
+            [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date"
+          />
           <span data-testid="claim-number">{{ c.number }}</span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-due">{{ due(c) }}</span>
@@ -89,7 +96,7 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
   `,
 })
 export class PersonClaims {
-  private readonly claims = inject(Claims);
+  protected readonly claims = inject(Claims);
   private readonly session = inject(Session);
   private readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);

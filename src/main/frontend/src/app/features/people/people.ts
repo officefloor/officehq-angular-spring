@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
-import { AMOUNT, Claims, counts, formatCents, overdue, toCents } from '../../core/claims';
+import { AMOUNT, BulkResult, Claims, counts, formatCents, overdue, toCents } from '../../core/claims';
 import { GRADES, Grade, ImportResult, PeopleApi, Person, gradeOn } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
@@ -191,6 +191,17 @@ const LEAVE_DELAY_MS = 1000;
         </tbody>
       </table>
 
+      <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+      @if (bulkResult(); as result) {
+        <p role="status">
+          Opened <strong data-testid="bulk-opened">{{ result.opened }}</strong>,
+          refused <strong data-testid="bulk-refused">{{ result.refused }}</strong>
+        </p>
+      }
+      @if (bulkError(); as err) {
+        <p role="alert" data-testid="bulk-error">{{ err }}</p>
+      }
+
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotalAll() }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueAll().count }}</strong></p>
@@ -230,6 +241,11 @@ export class People {
   protected readonly quickName = signal('');
   protected readonly quickAmount = signal('');
   protected readonly quickError = signal<string | null>(null);
+  /** What the last bulk open of the selected claims reported. */
+  protected readonly bulkResult = signal<BulkResult | null>(null);
+  protected readonly bulkError = signal<string | null>(null);
+  /** Set while a bulk open awaits the store, so a second click does not open twice. */
+  private bulkOpening = false;
   /** Set while a quick add awaits the store, so a second submit does not store a second claim. */
   private quickAdding = false;
   /** The retire date typed on each person's row, by person id; the sheet's today when not typed. */
@@ -341,6 +357,8 @@ export class People {
         this.quickName.set('');
         this.quickAmount.set('');
         this.quickError.set(null);
+        this.bulkResult.set(null);
+        this.bulkError.set(null);
         this.retireDates.set(new Map());
         this.rowError.set(null);
         this.patronChoices.set(new Map());
@@ -349,6 +367,25 @@ export class People {
         void this.session.track(this.claims.reload());
       });
     });
+  }
+
+  /** Open the selected claims together and show how many were opened and how many refused. */
+  protected async bulkOpen(): Promise<void> {
+    if (this.bulkOpening) return;
+    this.bulkResult.set(null);
+    this.bulkError.set(null);
+    if (this.claims.selected().size === 0) {
+      this.bulkError.set('Select the claims to open first.');
+      return;
+    }
+    this.bulkOpening = true;
+    try {
+      this.bulkResult.set(await this.claims.bulkOpen());
+    } catch {
+      this.bulkError.set('The selected claims could not be opened.');
+    } finally {
+      this.bulkOpening = false;
+    }
   }
 
   protected claimed(personId: number): string {

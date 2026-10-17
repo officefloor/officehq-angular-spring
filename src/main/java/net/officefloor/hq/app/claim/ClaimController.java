@@ -56,6 +56,10 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String amount) {
     }
 
+    /** The claims selected to be opened together, by id. */
+    public record BulkOpenRequest(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
+    }
+
     private final ClaimService service;
     private final QuickAddService quickAdd;
 
@@ -115,5 +119,12 @@ public class ClaimController {
             @PathVariable Long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+    }
+
+    @PostMapping("/claims/bulk-open")
+    public ClaimService.BulkResult bulkOpen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Validated BulkOpenRequest request) {
+        return service.bulkOpen(sheetId.trim(), user.trim(), request.claimIds());
     }
 }

@@ -22,6 +22,12 @@ export interface Claim {
   corrects: number | null;
 }
 
+/** How many selected claims a bulk open opened, and how many it refused. */
+export interface BulkResult {
+  opened: number;
+  refused: number;
+}
+
 /** DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID instead. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 
@@ -118,10 +124,13 @@ export class Claims {
   private readonly session = inject(Session);
 
   readonly all = signal<Claim[]>([]);
+  /** The ids of the claims selected to be opened together. */
+  readonly selected = signal<ReadonlySet<number>>(new Set());
 
   /** Re-read the store; until it answers no claims are shown, so none is shown out of date. */
   async reload(): Promise<void> {
     this.all.set([]);
+    this.selected.set(new Set());
     try {
       this.all.set(await firstValueFrom(this.http.get<Claim[]>(`${this.sheetUrl()}/claims`, { headers: this.headers() })));
     } catch {
@@ -161,6 +170,27 @@ export class Claims {
       this.http.post<Claim>(`${this.sheetUrl()}/claims/${id}/${action}`, null, { headers: this.headers() }),
     );
     this.all.update((list) => list.map((c) => (c.id === saved.id ? saved : c)));
+  }
+
+  select(id: number, on: boolean): void {
+    this.selected.update((ids) => {
+      const next = new Set(ids);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /**
+   * Open the selected claims together; the store numbers them in list order and leaves each one it
+   * cannot open as it is. Re-reads the claims and clears the selection.
+   */
+  async bulkOpen(): Promise<BulkResult> {
+    const result = await firstValueFrom(
+      this.http.post<BulkResult>(`${this.sheetUrl()}/claims/bulk-open`, { claimIds: [...this.selected()] }, { headers: this.headers() }),
+    );
+    await this.reload();
+    return result;
   }
 
   private body(fields: ClaimFields) {
