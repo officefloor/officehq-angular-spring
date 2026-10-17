@@ -4,14 +4,15 @@ import java.util.List;
 
 /**
  * A person as the API returns it; patrons are referenced by id. thrust is alpha times beta, or null
- * (n/a) when either is blank.
+ * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
+ * when thrust or gamma is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
-        List<Long> patronIds, Long thrust) {
+        List<Long> patronIds, Long thrust, Long momentum) {
 
     static PersonView of(Person p) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
-                p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p));
+                p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p));
     }
 
     private static Long thrust(Person p) {
@@ -19,5 +20,13 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
             return null;
         }
         return (long) p.getAlpha() * p.getBeta();
+    }
+
+    private static Long momentum(Person p) {
+        Long thrust = thrust(p);
+        if (thrust == null || p.getGamma() == null) {
+            return null;
+        }
+        return thrust + 3L * ((long) p.getGamma() - p.getAlpha());
     }
 }

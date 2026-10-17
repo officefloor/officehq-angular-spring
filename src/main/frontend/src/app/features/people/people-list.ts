@@ -21,6 +21,7 @@ import { PeopleService } from './people.service';
               <th scope="col">On hold</th>
               <th scope="col">Patrons</th>
               <th scope="col">Thrust</th>
+              <th scope="col">Momentum</th>
             </tr>
           </thead>
           <tbody>
@@ -33,6 +34,7 @@ import { PeopleService } from './people.service';
                 <td [attr.data-testid]="'person-hold-' + p.id">{{ p.hold ? 'Yes' : 'No' }}</td>
                 <td [attr.data-testid]="'person-patrons-' + p.id">{{ patronNames(p.patronIds) }}</td>
                 <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+                <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
@@ -40,6 +42,7 @@ import { PeopleService } from './people.service';
             <tr>
               <th scope="row" colspan="6">Thrust total</th>
               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+              <td></td>
             </tr>
           </tfoot>
         </table>

@@ -12,6 +12,8 @@ export interface Person {
   patronIds: number[];
   // alpha times beta; null (n/a) when either is blank.
   thrust: number | null;
+  // thrust plus three times (gamma minus alpha); null (n/a) when thrust or gamma is.
+  momentum: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
