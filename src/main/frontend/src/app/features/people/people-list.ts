@@ -508,6 +508,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-camber-top">{{ camberTop() ?? 'n/a' }}</td>
               <td colspan="21"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="28">Camber spread</th>
+              <td data-testid="rollup-camber-spread">{{ camberSpread() ?? 'n/a' }}</td>
+              <td colspan="21"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1028,6 +1033,16 @@ export class PeopleList {
       .map((p) => p.camber)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest camber minus the lowest among the people not on hold (n/a cambers skipped); null
+  // (n/a) when nobody has one.
+  protected readonly camberSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.camber)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // The highest heave among the people not on hold (n/a heaves skipped); null (n/a) when nobody has one.
