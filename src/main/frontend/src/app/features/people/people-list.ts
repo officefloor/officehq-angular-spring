@@ -748,6 +748,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-stern-mean">{{ sternMean() ?? 'n/a' }}</td>
               <td colspan="12"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="38">Helm total</th>
+              <td data-testid="rollup-helm-total">{{ helmTotal() }}</td>
+              <td colspan="11"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1304,6 +1309,11 @@ export class PeopleList {
   // Everyone's stern added up, trimmed like every sheet total.
   protected readonly sternTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.stern, hold: p.hold }))),
+  );
+
+  // Everyone's helm added up, trimmed like every sheet total.
+  protected readonly helmTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.helm, hold: p.hold }))),
   );
 
   // The highest stern among the people not on hold (n/a sterns skipped); null (n/a) when nobody has one.
