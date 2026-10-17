@@ -179,6 +179,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="33"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="16">Draft top</th>
+              <td data-testid="rollup-draft-top">{{ draftTop() ?? 'n/a' }}</td>
+              <td colspan="33"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="17">Cascade total</th>
               <td data-testid="rollup-cascade-total">{{ cascadeTotal() }}</td>
               <td colspan="32"></td>
@@ -380,6 +385,15 @@ export class PeopleList {
       .map((p) => p.draft)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.min(...values);
+  });
+
+  // The highest draft among the people not on hold (n/a drafts skipped); null (n/a) when nobody has one.
+  protected readonly draftTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.draft)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
   });
 
   // Everyone's cascade added up, trimmed like every sheet total.
