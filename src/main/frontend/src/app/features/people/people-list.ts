@@ -648,6 +648,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-knot-mean">{{ knotMean() ?? 'n/a' }}</td>
               <td colspan="16"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="34">Cable total</th>
+              <td data-testid="rollup-cable-total">{{ cableTotal() }}</td>
+              <td colspan="15"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1184,6 +1189,11 @@ export class PeopleList {
   // Everyone's knot added up, trimmed like every sheet total.
   protected readonly knotTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.knot, hold: p.hold }))),
+  );
+
+  // Everyone's cable added up, trimmed like every sheet total.
+  protected readonly cableTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.cable, hold: p.hold }))),
   );
 
   // The highest knot among the people not on hold (n/a knots skipped); null (n/a) when nobody has one.
