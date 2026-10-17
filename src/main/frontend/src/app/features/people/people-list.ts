@@ -673,6 +673,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-cable-mean">{{ cableMean() ?? 'n/a' }}</td>
               <td colspan="15"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="35">Hull total</th>
+              <td data-testid="rollup-hull-total">{{ hullTotal() }}</td>
+              <td colspan="14"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1214,6 +1219,11 @@ export class PeopleList {
   // Everyone's cable added up, trimmed like every sheet total.
   protected readonly cableTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.cable, hold: p.hold }))),
+  );
+
+  // Everyone's hull added up, trimmed like every sheet total.
+  protected readonly hullTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.hull, hold: p.hold }))),
   );
 
   // The highest cable among the people not on hold (n/a cables skipped); null (n/a) when nobody has one.
