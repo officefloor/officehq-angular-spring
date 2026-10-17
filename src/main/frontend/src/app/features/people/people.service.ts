@@ -52,6 +52,8 @@ export interface Person {
   tackle: number | null;
   // keel plus scaled; null (n/a) when keel is.
   yaw: number | null;
+  // keel minus scaled; null (n/a) when keel is.
+  heave: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
