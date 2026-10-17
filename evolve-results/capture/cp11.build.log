@@ -1,0 +1,22 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610172303/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 11 tests using 1 worker
+
+[1A[2K[1/11] [chromium] › cp01_signin-and-sheet.spec.ts:5:7 › signin and sheet › signin and sheet
+[1A[2K[2/11] [chromium] › cp02_sheet-today.spec.ts:5:7 › sheet today › sheet today
+[1A[2K[3/11] [chromium] › cp03_people.spec.ts:5:7 › people › people
+[1A[2K[4/11] [chromium] › cp04_name-uniqueness.spec.ts:5:7 › name uniqueness › name uniqueness
+[1A[2K[5/11] [chromium] › cp05_claims.spec.ts:5:7 › claims › claims
+[1A[2K[6/11] [chromium] › cp06_audit.spec.ts:5:7 › audit › audit
+[1A[2K[7/11] [chromium] › cp07_rates-and-due.spec.ts:5:7 › rates and due › rates and due
+[1A[2K[8/11] [chromium] › cp08_workflow.spec.ts:5:7 › workflow › workflow
+[1A[2K[9/11] [chromium] › cp09_numbering.spec.ts:5:7 › numbering › numbering
+[1A[2K[10/11] [chromium] › cp10_settle-freezes-due.spec.ts:5:7 › settle freezes due › settle freezes due
+[1A[2K[11/11] [chromium] › cp11_rates-effective-dated.spec.ts:5:7 › rates effective dated › rates effective dated
+[1A[2K  11 passed (21.1s)
