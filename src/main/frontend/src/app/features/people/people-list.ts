@@ -523,6 +523,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-camber-mean">{{ camberMean() ?? 'n/a' }}</td>
               <td colspan="21"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="29">Sheer total</th>
+              <td data-testid="rollup-sheer-total">{{ sheerTotal() }}</td>
+              <td colspan="20"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1034,6 +1039,11 @@ export class PeopleList {
   // Everyone's camber added up, trimmed like every sheet total.
   protected readonly camberTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.camber, hold: p.hold }))),
+  );
+
+  // Everyone's sheer added up, trimmed like every sheet total.
+  protected readonly sheerTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.sheer, hold: p.hold }))),
   );
 
   // The highest camber among the people not on hold (n/a cambers skipped); null (n/a) when nobody has one.
