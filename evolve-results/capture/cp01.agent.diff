@@ -1,0 +1,456 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 5cfa0299..ea6ca407 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,9 +1,11 @@
+ import { Component } from '@angular/core';
++import { PeopleList } from '../people/people-list';
+ 
+-// The base home page (empty). A page is an Angular component like this one, plus one entry in
+-// app.routes.ts.
++// The home page: the people on the sheet. A page is an Angular component like this one, plus one
++// entry in app.routes.ts.
+ @Component({
+   selector: 'app-home',
+-  template: `<p data-testid="home-empty">Nothing here yet.</p>`,
++  imports: [PeopleList],
++  template: `<app-people-list />`,
+ })
+ export class Home {}
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+new file mode 100644
+index 00000000..2655caff
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -0,0 +1,53 @@
++import { Component, computed, inject } from '@angular/core';
++import { toSignal } from '@angular/core/rxjs-interop';
++import { PeopleService } from './people.service';
++
++// Every person on the sheet, one row each.
++@Component({
++  selector: 'app-people-list',
++  template: `
++    @if (people(); as list) {
++      @if (list.length === 0) {
++        <p data-testid="home-empty">Nothing here yet.</p>
++      } @else {
++        <table data-testid="people-table">
++          <caption>People</caption>
++          <thead>
++            <tr>
++              <th scope="col">Name</th>
++              <th scope="col">Alpha</th>
++              <th scope="col">Beta</th>
++              <th scope="col">Gamma</th>
++              <th scope="col">On hold</th>
++              <th scope="col">Patrons</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (p of list; track p.id) {
++              <tr [attr.data-testid]="'person-row-' + p.id">
++                <th scope="row" [attr.data-testid]="'person-name-' + p.id">{{ p.name }}</th>
++                <td [attr.data-testid]="'person-alpha-' + p.id">{{ p.alpha ?? '' }}</td>
++                <td [attr.data-testid]="'person-beta-' + p.id">{{ p.beta ?? '' }}</td>
++                <td [attr.data-testid]="'person-gamma-' + p.id">{{ p.gamma ?? '' }}</td>
++                <td [attr.data-testid]="'person-hold-' + p.id">{{ p.hold ? 'Yes' : 'No' }}</td>
++                <td [attr.data-testid]="'person-patrons-' + p.id">{{ patronNames(p.patronIds) }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
++    }
++  `,
++})
++export class PeopleList {
++  protected readonly people = toSignal(inject(PeopleService).list());
++
++  private readonly names = computed(
++    () => new Map((this.people() ?? []).map((p) => [p.id, p.name] as const)),
++  );
++
++  protected patronNames(ids: number[]): string {
++    const names = this.names();
++    return ids.map((id) => names.get(id) ?? String(id)).join(', ');
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+new file mode 100644
+index 00000000..772d83d8
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -0,0 +1,22 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { Observable } from 'rxjs';
++
++export interface Person {
++  id: number;
++  name: string;
++  alpha: number | null;
++  beta: number | null;
++  gamma: number | null;
++  hold: boolean;
++  patronIds: number[];
++}
++
++@Injectable({ providedIn: 'root' })
++export class PeopleService {
++  private readonly http = inject(HttpClient);
++
++  list(): Observable<Person[]> {
++    return this.http.get<Person[]>('/api/people');
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/TestSupportController.java b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+index 294b8161..0aa036f2 100644
+--- a/src/main/java/net/officefloor/hq/app/TestSupportController.java
++++ b/src/main/java/net/officefloor/hq/app/TestSupportController.java
+@@ -1,12 +1,22 @@
+ package net.officefloor.hq.app;
+ 
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import org.springframework.context.annotation.Profile;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Per-spec data setup for the end-to-end tests. Profile-guarded so it exists ONLY under the test
+@@ -18,17 +28,25 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/__test__")
+ public class TestSupportController {
+ 
++    private static final Set<String> PERSON_FIELDS = Set.of("id", "name", "alpha", "beta", "gamma", "hold");
++    private static final Set<String> PATRON_FIELDS = Set.of("personId", "patronId");
++
+     private final Audit audit;
++    private final JdbcTemplate jdbc;
+ 
+-    public TestSupportController(Audit audit) {
++    public TestSupportController(Audit audit, JdbcTemplate jdbc) {
+         this.audit = audit;
++        this.jdbc = jdbc;
+     }
+ 
+     /** Truncate all domain tables and clear the audit file so each spec starts clean. */
+     @PostMapping("/reset")
++    @Transactional
+     public void reset() {
+         audit.clear();
+-        // TODO: TRUNCATE the domain tables that currently exist (inject a JdbcTemplate/repo).
++        jdbc.update("DELETE FROM person_patron");
++        jdbc.update("DELETE FROM person");
++        jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH 1");
+     }
+ 
+     /**
+@@ -36,8 +54,28 @@ public class TestSupportController {
+      * given, or refuse with HTTP 400 naming it — never ignore one silently (AGENTS.md §4.2).
+      */
+     @PostMapping("/seed")
++    @Transactional
+     public void seed(@RequestBody Map<String, Object> fixture) {
+-        // TODO: insert rows for the fixture.
++        for (String key : fixture.keySet()) {
++            if (!key.equals("people") && !key.equals("patrons")) {
++                throw badRequest("unsupported fixture field: " + key);
++            }
++        }
++        for (Map<String, Object> row : rows(fixture, "people")) {
++            checkFields(row, PERSON_FIELDS, "people");
++            Object name = row.getOrDefault("name", "");
++            jdbc.update("INSERT INTO person (id, name, alpha, beta, gamma, hold) VALUES (?, ?, ?, ?, ?, ?)",
++                    id(row, "id", "people"), name == null ? "" : name.toString(),
++                    integer(row, "alpha"), integer(row, "beta"), integer(row, "gamma"),
++                    Boolean.TRUE.equals(row.get("hold")));
++        }
++        for (Map<String, Object> row : rows(fixture, "patrons")) {
++            checkFields(row, PATRON_FIELDS, "patrons");
++            jdbc.update("INSERT INTO person_patron (person_id, patron_id) VALUES (?, ?)",
++                    id(row, "personId", "patrons"), id(row, "patronId", "patrons"));
++        }
++        Long max = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) FROM person", Long.class);
++        jdbc.execute("ALTER TABLE person ALTER COLUMN id RESTART WITH " + (max + 1));
+     }
+ 
+     /**
+@@ -45,8 +83,75 @@ public class TestSupportController {
+      * so the app's test data sets can be checked (AGENTS.md §4.3, §4.4).
+      */
+     @GetMapping("/fixture")
++    @Transactional(readOnly = true)
+     public Map<String, Object> fixture() {
+-        // TODO: return each collection that exists, e.g. {"clients": [...], "invoices": [...]}.
+-        return Map.of();
++        Map<String, Object> out = new LinkedHashMap<>();
++        out.put("people", jdbc.queryForList(
++                "SELECT id AS \"id\", name AS \"name\", alpha AS \"alpha\", beta AS \"beta\", gamma AS \"gamma\","
++                        + " hold AS \"hold\" FROM person ORDER BY id"));
++        out.put("patrons", jdbc.queryForList(
++                "SELECT person_id AS \"personId\", patron_id AS \"patronId\" FROM person_patron"
++                        + " ORDER BY person_id, patron_id"));
++        return out;
++    }
++
++    @SuppressWarnings("unchecked")
++    private static List<Map<String, Object>> rows(Map<String, Object> fixture, String key) {
++        Object value = fixture.get(key);
++        if (value == null) {
++            return List.of();
++        }
++        if (!(value instanceof List<?> list)) {
++            throw badRequest(key + " must be a list of rows");
++        }
++        List<Map<String, Object>> rows = new ArrayList<>();
++        for (Object row : list) {
++            if (!(row instanceof Map<?, ?>)) {
++                throw badRequest(key + " must be a list of rows");
++            }
++            rows.add((Map<String, Object>) row);
++        }
++        return rows;
++    }
++
++    private static void checkFields(Map<String, Object> row, Set<String> allowed, String collection) {
++        for (String field : row.keySet()) {
++            if (!allowed.contains(field)) {
++                throw badRequest("unsupported field: " + collection + "." + field);
++            }
++        }
++    }
++
++    private static long id(Map<String, Object> row, String field, String collection) {
++        Integer value = integer(row, field);
++        if (value == null) {
++            throw badRequest(collection + "." + field + " is required");
++        }
++        return value;
++    }
++
++    private static Integer integer(Map<String, Object> row, String field) {
++        Object value = row.get(field);
++        if (value == null) {
++            return null;
++        }
++        if (value instanceof Number n && n.doubleValue() == Math.rint(n.doubleValue())) {
++            return n.intValue();
++        }
++        if (value instanceof String s && s.matches("-?\\d+")) {
++            return Integer.valueOf(s);
++        }
++        throw badRequest(field + " must be a whole number, got " + value);
++    }
++
++    /** Answer a refused fixture with its reason, so the caller sees which field was refused. */
++    @ExceptionHandler(ResponseStatusException.class)
++    public ResponseEntity<Map<String, Object>> refused(ResponseStatusException e) {
++        return ResponseEntity.status(e.getStatusCode())
++                .body(Map.of("status", e.getStatusCode().value(), "message", String.valueOf(e.getReason())));
++    }
++
++    private static ResponseStatusException badRequest(String message) {
++        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PeopleController.java b/src/main/java/net/officefloor/hq/app/people/PeopleController.java
+new file mode 100644
+index 00000000..c8a035e8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/PeopleController.java
+@@ -0,0 +1,22 @@
++package net.officefloor.hq.app.people;
++
++import java.util.List;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/people")
++public class PeopleController {
++
++    private final PeopleService service;
++
++    public PeopleController(PeopleService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<PersonView> list() {
++        return service.list();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/PeopleService.java b/src/main/java/net/officefloor/hq/app/people/PeopleService.java
+new file mode 100644
+index 00000000..fab83f4c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/PeopleService.java
+@@ -0,0 +1,20 @@
++package net.officefloor.hq.app.people;
++
++import java.util.List;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++public class PeopleService {
++
++    private final PersonRepository people;
++
++    public PeopleService(PersonRepository people) {
++        this.people = people;
++    }
++
++    @Transactional(readOnly = true)
++    public List<PersonView> list() {
++        return people.findAllByOrderByIdAsc().stream().map(PersonView::of).toList();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/Person.java b/src/main/java/net/officefloor/hq/app/people/Person.java
+new file mode 100644
+index 00000000..f13248b7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/Person.java
+@@ -0,0 +1,69 @@
++package net.officefloor.hq.app.people;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.JoinTable;
++import jakarta.persistence.ManyToMany;
++import jakarta.persistence.Table;
++import java.util.LinkedHashSet;
++import java.util.Set;
++
++/** A person on the sheet: a name, three optional whole numbers, an on-hold flag and patrons. */
++@Entity
++@Table(name = "person")
++public class Person {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name = "";
++
++    private Integer alpha;
++
++    private Integer beta;
++
++    private Integer gamma;
++
++    private boolean hold;
++
++    @ManyToMany
++    @JoinTable(name = "person_patron",
++            joinColumns = @JoinColumn(name = "person_id"),
++            inverseJoinColumns = @JoinColumn(name = "patron_id"))
++    private Set<Person> patrons = new LinkedHashSet<>();
++
++    protected Person() {
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public Integer getAlpha() {
++        return alpha;
++    }
++
++    public Integer getBeta() {
++        return beta;
++    }
++
++    public Integer getGamma() {
++        return gamma;
++    }
++
++    public boolean isHold() {
++        return hold;
++    }
++
++    public Set<Person> getPatrons() {
++        return patrons;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonRepository.java b/src/main/java/net/officefloor/hq/app/people/PersonRepository.java
+new file mode 100644
+index 00000000..ea17654e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/PersonRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.people;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.EntityGraph;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PersonRepository extends JpaRepository<Person, Long> {
++
++    @EntityGraph(attributePaths = "patrons")
++    List<Person> findAllByOrderByIdAsc();
++}
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+new file mode 100644
+index 00000000..0489afd8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.people;
++
++import java.util.List;
++
++/** A person as the API returns it; patrons are referenced by id. */
++public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
++        List<Long> patronIds) {
++
++    static PersonView of(Person p) {
++        return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
++                p.getPatrons().stream().map(Person::getId).sorted().toList());
++    }
++}
+diff --git a/src/main/resources/db/migration/V1__people.sql b/src/main/resources/db/migration/V1__people.sql
+new file mode 100644
+index 00000000..14908f0a
+--- /dev/null
++++ b/src/main/resources/db/migration/V1__people.sql
+@@ -0,0 +1,16 @@
++-- People on the sheet. alpha, beta and gamma are optional whole numbers (NULL = left blank).
++CREATE TABLE person (
++    id    BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    name  VARCHAR(255) NOT NULL DEFAULT '',
++    alpha INTEGER,
++    beta  INTEGER,
++    gamma INTEGER,
++    hold  BOOLEAN NOT NULL DEFAULT FALSE
++);
++
++-- A person's patrons: other people on the sheet.
++CREATE TABLE person_patron (
++    person_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    patron_id BIGINT NOT NULL REFERENCES person (id) ON DELETE CASCADE,
++    PRIMARY KEY (person_id, patron_id)
++);
