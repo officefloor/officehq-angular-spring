@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 4cc44691..440eb145 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -143,6 +143,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-fathom-total">{{ fathomTotal() }}</td>
+               <td colspan="34"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="15">Fathom low</th>
++              <td data-testid="rollup-fathom-low">{{ fathomLow() ?? 'n/a' }}</td>
++              <td colspan="34"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="16">Draft total</th>
+               <td data-testid="rollup-draft-total">{{ draftTotal() }}</td>
+@@ -201,6 +206,15 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.fathom, hold: p.hold }))),
+   );
+ 
++  // The lowest fathom among the people not on hold (n/a fathoms skipped); null (n/a) when nobody has one.
++  protected readonly fathomLow = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.fathom)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.min(...values);
++  });
++
+   // Everyone's draft added up, trimmed like every sheet total.
+   protected readonly draftTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.draft, hold: p.hold }))),
