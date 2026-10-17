@@ -593,6 +593,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-freeboard-even">{{ freeboardEven() }}</td>
               <td colspan="18"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="31">Freeboard mean</th>
+              <td data-testid="rollup-freeboard-mean">{{ freeboardMean() ?? 'n/a' }}</td>
+              <td colspan="18"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1361,6 +1366,18 @@ export class PeopleList {
     const values = (this.people() ?? [])
       .filter((p) => !p.hold)
       .map((p) => p.beam)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
+
+  // The average freeboard among the people not on hold (n/a freeboards skipped), rounded like
+  // every divide; null (n/a) when nobody has one.
+  protected readonly freeboardMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.freeboard)
       .filter((v): v is number => v !== null);
     return values.length === 0
       ? null
