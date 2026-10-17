@@ -1,0 +1,150 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 9a0656e2..64edfe9d 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1,6 +1,6 @@
+ import { Component, computed, inject } from '@angular/core';
+ import { toSignal } from '@angular/core/rxjs-interop';
+-import { PeopleService } from './people.service';
++import { Person, PeopleService } from './people.service';
+ 
+ // Every person on the sheet, one row each.
+ @Component({
+@@ -109,9 +109,9 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keel, hold: p.hold }))),
+   );
+ 
+-  // How many people not on hold have an even keel (n/a keels are not counted).
++  // How many counted people have an even keel (n/a keels are not counted).
+   protected readonly keelCount = computed(
+-    () => (this.people() ?? []).filter((p) => !p.hold && p.keel !== null && p.keel % 2 === 0).length,
++    () => countable(this.people() ?? []).filter((p) => p.keel !== null && p.keel % 2 === 0).length,
+   );
+ 
+   protected patronNames(ids: number[]): string {
+@@ -120,6 +120,12 @@ export class PeopleList {
+   }
+ }
+ 
++// The people every sheet count is taken over: everyone except the people on hold and anyone whose
++// keel is below zero. Every sheet count goes through this.
++export function countable(people: Person[]): Person[] {
++  return people.filter((p) => !p.hold && !(p.keel !== null && p.keel < 0));
++}
++
+ // A sheet-wide total: the contributions (n/a ones skipped) added up, leaving out one highest and
+ // one lowest whenever at least two people contribute. A person on hold contributes half their
+ // value (rounded like every divide), and that half takes part in leaving out the highest and
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 918522dd..a0d66833 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -26,7 +26,7 @@ export interface Person {
+   quarter: number | null;
+   // SINK below zero, STEADY from 0 up to 199, SURGE at 200 or more; null (n/a) when scaled is.
+   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
+-  // scaled plus momentum; null (n/a) when momentum is.
++  // scaled plus momentum plus norm; null (n/a) when momentum or norm is.
+   keel: number | null;
+   // keel plus momentum; null (n/a) when keel is.
+   fathom: number | null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 215e1694..9749bb09 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -11,7 +11,7 @@ import java.util.List;
+  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
+  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
+  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
+- * null (n/a) when scaled is. keel is scaled plus momentum, null (n/a) when momentum is.
++ * null (n/a) when scaled is. keel is scaled plus momentum plus norm, null (n/a) when momentum or norm is.
+  * fathom is keel plus momentum and draft is keel plus thrust; both null (n/a) when keel is.
+  * cascade is fathom plus scaled, null (n/a) when fathom is. trim is keel minus thrust, null (n/a)
+  * when keel is. ripple is cascade plus keel, null (n/a) when cascade is. heading is keel plus norm,
+@@ -29,8 +29,9 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
+                 scaled(p), third(p), norm(p, averageScaled), backing(p),
+-                quarter(p), tier(p), keel(p), fathom(p), draft(p), cascade(p), trim(p),
+-                ripple(p), heading(p, averageScaled), ballast(p),
++                quarter(p), tier(p), keel(p, averageScaled), fathom(p, averageScaled),
++                draft(p, averageScaled), cascade(p, averageScaled), trim(p, averageScaled),
++                ripple(p, averageScaled), heading(p, averageScaled), ballast(p, averageScaled),
+                 keystone(p, averageScaled), bearing(p, averageScaled));
+     }
+ 
+@@ -88,55 +89,56 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return scaled == null ? null : SheetMath.divide(scaled, 4L);
+     }
+ 
+-    private static Long keel(Person p) {
++    private static Long keel(Person p, Long averageScaled) {
+         Long momentum = momentum(p);
+-        return momentum == null ? null : scaled(p) + momentum;
++        Long norm = norm(p, averageScaled);
++        return momentum == null || norm == null ? null : scaled(p) + momentum + norm;
+     }
+ 
+-    private static Long fathom(Person p) {
+-        Long keel = keel(p);
++    private static Long fathom(Person p, Long averageScaled) {
++        Long keel = keel(p, averageScaled);
+         return keel == null ? null : keel + momentum(p);
+     }
+ 
+-    private static Long draft(Person p) {
+-        Long keel = keel(p);
++    private static Long draft(Person p, Long averageScaled) {
++        Long keel = keel(p, averageScaled);
+         return keel == null ? null : keel + thrust(p);
+     }
+ 
+-    private static Long cascade(Person p) {
+-        Long fathom = fathom(p);
++    private static Long cascade(Person p, Long averageScaled) {
++        Long fathom = fathom(p, averageScaled);
+         return fathom == null ? null : fathom + scaled(p);
+     }
+ 
+-    private static Long trim(Person p) {
+-        Long keel = keel(p);
++    private static Long trim(Person p, Long averageScaled) {
++        Long keel = keel(p, averageScaled);
+         return keel == null ? null : keel - thrust(p);
+     }
+ 
+-    private static Long ripple(Person p) {
+-        Long cascade = cascade(p);
+-        return cascade == null ? null : cascade + keel(p);
++    private static Long ripple(Person p, Long averageScaled) {
++        Long cascade = cascade(p, averageScaled);
++        return cascade == null ? null : cascade + keel(p, averageScaled);
+     }
+ 
+-    private static Long ballast(Person p) {
+-        Long ripple = ripple(p);
++    private static Long ballast(Person p, Long averageScaled) {
++        Long ripple = ripple(p, averageScaled);
+         return ripple == null ? null : ripple + thrust(p);
+     }
+ 
+     private static Long heading(Person p, Long averageScaled) {
+-        Long keel = keel(p);
++        Long keel = keel(p, averageScaled);
+         Long norm = norm(p, averageScaled);
+         return keel == null || norm == null ? null : keel + norm;
+     }
+ 
+     private static Long keystone(Person p, Long averageScaled) {
+-        Long ballast = ballast(p);
++        Long ballast = ballast(p, averageScaled);
+         Long norm = norm(p, averageScaled);
+         return ballast == null || norm == null ? null : ballast + norm;
+     }
+ 
+     private static Long bearing(Person p, Long averageScaled) {
+-        Long keel = keel(p);
++        Long keel = keel(p, averageScaled);
+         Long norm = norm(p, averageScaled);
+         return keel == null || norm == null ? null : keel - norm;
+     }

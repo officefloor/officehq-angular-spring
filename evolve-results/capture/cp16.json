@@ -1,0 +1,228 @@
+{
+  "checkpoint": 16,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "469ff91103de89741d7fcc15fc67f3c61f01ccb4"
+  },
+  "checkpoint_id": "cp16_keel",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "replaced_tests": [
+    "cp09_keel_keel-total.spec.ts::keel keel-total",
+    "cp10_draft_fathom.spec.ts::draft fathom",
+    "cp11_cascade_trim.spec.ts::cascade trim",
+    "cp12_hold.spec.ts::hold",
+    "cp13_heading_ripple.spec.ts::heading ripple",
+    "cp14_ballast_keel-count.spec.ts::ballast keel-count",
+    "cp15_bearing_keystone.spec.ts::bearing keystone"
+  ],
+  "request": {
+    "spec": "Change keel to scaled plus momentum plus norm. Everything worked out from keel changes with it.\nAlso, from now on every count of people (keel-count, and every count added later) leaves out a\nperson whose keel is below zero, as well as the people on hold.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nChange keel to scaled plus momentum plus norm. Everything worked out from keel changes with it.\nAlso, from now on every count of people (keel-count, and every count added later) leaves out a\nperson whose keel is below zero, as well as the people on hold.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "fef2895458195c1475d5abbaf8a557945e3bc684",
+  "reset_sha": "",
+  "preagent_sha": "423b8c2a81c3fdfcd2e184dcd14d5a0769769039",
+  "prev_sha": "423b8c2a81c3fdfcd2e184dcd14d5a0769769039",
+  "base_sha": "469ff91103de89741d7fcc15fc67f3c61f01ccb4",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.25899880000000003,
+    "input_tokens": 12,
+    "output_tokens": 2879,
+    "cache_read_tokens": 131014,
+    "cache_creation_tokens": 21896,
+    "num_turns": 6,
+    "duration_ms": 51281,
+    "duration_api_ms": 31493,
+    "model": "claude-opus-5-5",
+    "session_id": "172f0838-a6e9-495f-bcbe-385e923db869",
+    "stop_reason": "success",
+    "result_text": "Keel is now scaled plus momentum plus norm, and keel-count leaves out anyone on hold or with a keel below zero. `bin/e2e` passes, including its check that seeded data reads back unchanged.\n\n**Server** (`PersonView.java`)\n- Keel is now n/a when either momentum or norm is n/a. Norm depends on the sheet-wide average scaled, so that average is now passed into keel and into everything built on it: fathom, draft, cascade, trim, ripple and ballast. Heading, keystone and bearing already used it.\n- I updated the doc comment to match.\n\n**Front end** (`people-list.ts`, `people.service.ts`)\n- I added one shared `countable()` helper that drops people on hold and people with a keel below zero. Keel-count uses it now, and any count added later should go through it too. It works like `trimmedTotal()` does for totals.\n- I updated the keel comment on the `Person` type to match.\n\nNothing changed in the database or the seed and read-back endpoints, since keel is calculated rather than stored.\n\nAs a check, Ada's keel is 36 + 18 + 8 = 62, as the test expects. Sid's keel is \u221228: it's even, but it's no longer counted, so keel-count is 3.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.25899880000000003,
+        "num_turns": 6,
+        "duration_ms": 51281,
+        "duration_api_ms": 31493,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp16.agent.jsonl",
+  "agent_diff_file": "cp16.agent.diff",
+  "build_log_file": "cp16.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 16,
+    "results": {
+      "cp01_people.spec.ts::people": true,
+      "cp02_thrust_thrust-total.spec.ts::thrust thrust-total": true,
+      "cp03_momentum.spec.ts::momentum": true,
+      "cp04_trim_total.spec.ts::trim total": true,
+      "cp05_scaled_third.spec.ts::scaled third": true,
+      "cp06_backing_norm.spec.ts::backing norm": true,
+      "cp07_quarter_tier.spec.ts::quarter tier": true,
+      "cp08_round_divides.spec.ts::round divides": true,
+      "cp09_keel_keel-total.spec.ts::keel keel-total": true,
+      "cp10_draft_fathom.spec.ts::draft fathom": true,
+      "cp11_cascade_trim.spec.ts::cascade trim": true,
+      "cp12_hold.spec.ts::hold": true,
+      "cp13_heading_ripple.spec.ts::heading ripple": true,
+      "cp14_ballast_keel-count.spec.ts::ballast keel-count": true,
+      "cp15_bearing_keystone.spec.ts::bearing keystone": true,
+      "cp16_keel.spec.ts::keel": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 846,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 133,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_trim_total.spec.ts::trim total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_scaled_third.spec.ts::scaled third",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_backing_norm.spec.ts::backing norm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_quarter_tier.spec.ts::quarter tier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 147,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_round_divides.spec.ts::round divides",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 172,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_keel_keel-total.spec.ts::keel keel-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_draft_fathom.spec.ts::draft fathom",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 147,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_cascade_trim.spec.ts::cascade trim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 150,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_heading_ripple.spec.ts::heading ripple",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 150,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_ballast_keel-count.spec.ts::ballast keel-count",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 133,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_bearing_keystone.spec.ts::bearing keystone",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 132,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 8,
+      "failures": []
+    }
+  },
+  "probe": {
+    "probe_cost_usd": 0.20927980000000002,
+    "probe_input_tokens": 8,
+    "probe_cache_read_tokens": 84979,
+    "probe_recall": 0.8571428571428571,
+    "probe_text": "## 1. Concepts and rules, in the order the code applies them\n\n**Raw inputs** (`Person.java`, `V1__people.sql`)\n1. `alpha`, `beta`, `gamma`: optional whole numbers. NULL means blank.\n2. `hold`: a boolean, false by default.\n3. `patrons`: other people on the sheet, stored in the `person_patron` table and returned as `patronIds`.\n\n**Per-person values** (`PersonView.java`). Any blank input makes the result `null`, and that `null` carries down the chain. The UI shows it as `n/a`.\n4. `thrust` = alpha \u00d7 beta\n5. `momentum` = thrust + 3 \u00d7 (gamma \u2212 alpha)\n6. `scaled` = momentum \u00d7 2\n7. `third` = scaled \u00f7 3, using `SheetMath.divide`\n8. `quarter` = scaled \u00f7 4, using `SheetMath.divide`\n9. `tier` = `SINK` if scaled < 0, `STEADY` from 0 to 199, `SURGE` at 200 or more\n10. **`averageScaled`** (a sheet-wide value) = the mean of `scaled`, skipping people on hold and n/a values, divided with `SheetMath.divide`. It is `null` if nobody qualifies.\n11. `norm` = scaled \u2212 averageScaled\n12. `backing` (the patron aggregate) = the sum of each patron's `momentum`, where n/a patrons add nothing. It is n/a when the person's own momentum is n/a.\n13. **`keel`** = scaled + momentum + norm. It is n/a when momentum or norm is.\n14. Values computed from keel:\n    - `fathom` = keel + momentum\n    - `draft` = keel + thrust\n    - `cascade` = fathom + scaled\n    - `trim` = keel \u2212 thrust\n    - `ripple` = cascade + keel\n    - `heading` = keel + norm\n    - `ballast` = ripple + thrust\n    - `keystone` = ballast + norm\n    - `bearing` = keel \u2212 norm\n\n**Sheet-wide rules**\n15. **Rounding** (`SheetMath.divide` in Java, copied as `divide` in `people-list.ts`): every division rounds to the nearest whole number, and a half rounds up to the larger number (\u22125/2 = \u22122).\n16. **Holds**: people on hold are left out of `averageScaled`. In totals they contribute half their value, rounded with `divide`. They are also left out of counts.\n17. **Trimming** (`trimmedTotal`, front end only): add up the non-n/a contributions. When at least two people contribute, leave out one highest and one lowest. Halved hold values take part in this.\n18. **Which people count** (`countable`, front end only): everyone except people on hold and anyone whose keel is below zero.\n19. **Rollups** (in the template footer):\n    - `rollup-thrust-total` = `trimmedTotal` of thrust\n    - `rollup-keel-total` = `trimmedTotal` of keel\n    - `rollup-keel-count` = the number of `countable` people whose keel is even (n/a keels don't count)\n\n## 2. How hard it was to follow\n\nThe per-person logic is easy to find: it's all in `PersonView.java`, with a doc comment that lists every formula. But the sheet-wide rules are split from it. Trimming, the half-value rule for holds, the \"countable\" rule and the rollups exist only in the Angular component (`people-list.ts`), and the rounding rule is duplicated in Java and TypeScript. So a new developer needs to read both the server and the client to see the whole picture. Within `PersonView`, each value recomputes its whole chain of inputs, and you have to follow that to see where n/a comes from."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
