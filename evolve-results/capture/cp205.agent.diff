@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 80ccceb2..acd6294c 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -713,6 +713,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-bow-spread">{{ bowSpread() ?? 'n/a' }}</td>
+               <td colspan="13"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="36">Bow even</th>
++              <td data-testid="rollup-bow-even">{{ bowEven() }}</td>
++              <td colspan="13"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1592,6 +1597,11 @@ export class PeopleList {
+     () => countable(this.people() ?? []).filter((p) => p.hull !== null && p.hull % 2 === 0).length,
+   );
+ 
++  // How many counted people have an even bow (n/a bows are not counted).
++  protected readonly bowEven = computed(
++    () => countable(this.people() ?? []).filter((p) => p.bow !== null && p.bow % 2 === 0).length,
++  );
++
+   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
+   // divide; null (n/a) when nobody has one.
+   protected readonly camberMean = computed(() => {
