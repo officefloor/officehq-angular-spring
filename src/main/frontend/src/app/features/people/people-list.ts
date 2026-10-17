@@ -513,6 +513,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-camber-spread">{{ camberSpread() ?? 'n/a' }}</td>
               <td colspan="21"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="28">Camber even</th>
+              <td data-testid="rollup-camber-even">{{ camberEven() }}</td>
+              <td colspan="21"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1152,6 +1157,12 @@ export class PeopleList {
   protected readonly heaveEven = computed(
     () =>
       countable(this.people() ?? []).filter((p) => p.heave !== null && p.heave % 2 === 0).length,
+  );
+
+  // How many counted people have an even camber (n/a cambers are not counted).
+  protected readonly camberEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.camber !== null && p.camber % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {
