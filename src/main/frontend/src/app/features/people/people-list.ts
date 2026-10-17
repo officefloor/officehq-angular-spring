@@ -838,6 +838,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-rigging-spread">{{ riggingSpread() ?? 'n/a' }}</td>
               <td colspan="8"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="41">Rigging even</th>
+              <td data-testid="rollup-rigging-even">{{ riggingEven() }}</td>
+              <td colspan="8"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1860,6 +1865,12 @@ export class PeopleList {
   // How many counted people have an even mast (n/a masts are not counted).
   protected readonly mastEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.mast !== null && p.mast % 2 === 0).length,
+  );
+
+  // How many counted people have an even rigging (n/a riggings are not counted).
+  protected readonly riggingEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.rigging !== null && p.rigging % 2 === 0).length,
   );
 
   // The average mast among the people not on hold (n/a masts skipped), rounded like every
