@@ -58,6 +58,8 @@ export interface Person {
   camber: number | null;
   // keel minus 100; null (n/a) when keel is.
   sheer: number | null;
+  // keel times two; null (n/a) when keel is.
+  beam: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
