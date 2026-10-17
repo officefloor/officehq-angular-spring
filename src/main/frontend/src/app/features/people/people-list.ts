@@ -808,6 +808,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-mast-top">{{ mastTop() ?? 'n/a' }}</td>
               <td colspan="9"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="40">Mast spread</th>
+              <td data-testid="rollup-mast-spread">{{ mastSpread() ?? 'n/a' }}</td>
+              <td colspan="9"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1378,6 +1383,16 @@ export class PeopleList {
       .map((p) => p.mast)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest mast minus the lowest among the people not on hold (n/a masts skipped); null (n/a)
+  // when nobody has one.
+  protected readonly mastSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.mast)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // Everyone's rudder added up, trimmed like every sheet total.
