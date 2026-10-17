@@ -378,6 +378,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-bearing-low">{{ bearingLow() ?? 'n/a' }}</td>
               <td colspan="26"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="23">Bearing top</th>
+              <td data-testid="rollup-bearing-top">{{ bearingTop() ?? 'n/a' }}</td>
+              <td colspan="26"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -743,6 +748,15 @@ export class PeopleList {
       .map((p) => p.bearing)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.min(...values);
+  });
+
+  // The highest bearing among the people not on hold (n/a bearings skipped); null (n/a) when nobody has one.
+  protected readonly bearingTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.bearing)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
   });
 
   // How many counted people have an even keel (n/a keels are not counted).
