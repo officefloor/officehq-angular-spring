@@ -90,7 +90,7 @@ export interface Person {
   wharf: number | null;
   // keel divided by ten, rounded to the nearest (a half up); null (n/a) when keel is.
   jetty: number | null;
-  // keel plus 500; null (n/a) when keel is.
+  // keel plus 500 plus 204; null (n/a) when keel is.
   pier: number | null;
   // keel minus 500; null (n/a) when keel is.
   ebb: number | null;
