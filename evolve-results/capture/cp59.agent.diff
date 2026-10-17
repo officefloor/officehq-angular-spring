@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 42d7914a..4cc44691 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -168,6 +168,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-keystone-total">{{ keystoneTotal() }}</td>
+               <td colspan="27"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="23">Bearing total</th>
++              <td data-testid="rollup-bearing-total">{{ bearingTotal() }}</td>
++              <td colspan="26"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -221,6 +226,11 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keystone, hold: p.hold }))),
+   );
+ 
++  // Everyone's bearing added up, trimmed like every sheet total.
++  protected readonly bearingTotal = computed(() =>
++    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.bearing, hold: p.hold }))),
++  );
++
+   // How many counted people have an even keel (n/a keels are not counted).
+   protected readonly keelCount = computed(
+     () => countable(this.people() ?? []).filter((p) => p.keel !== null && p.keel % 2 === 0).length,
