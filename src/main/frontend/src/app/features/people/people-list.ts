@@ -693,6 +693,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-hull-even">{{ hullEven() }}</td>
               <td colspan="14"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="35">Hull mean</th>
+              <td data-testid="rollup-hull-mean">{{ hullMean() ?? 'n/a' }}</td>
+              <td colspan="14"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1627,6 +1632,18 @@ export class PeopleList {
     const values = (this.people() ?? [])
       .filter((p) => !p.hold)
       .map((p) => p.cable)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
+
+  // The average hull among the people not on hold (n/a hulls skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly hullMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.hull)
       .filter((v): v is number => v !== null);
     return values.length === 0
       ? null
