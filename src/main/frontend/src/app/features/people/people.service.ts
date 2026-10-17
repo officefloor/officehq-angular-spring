@@ -78,6 +78,8 @@ export interface Person {
   helm: number | null;
   // keel minus ripple; null (n/a) when keel or ripple is.
   rudder: number | null;
+  // keel plus 1000; null (n/a) when keel is.
+  mast: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
