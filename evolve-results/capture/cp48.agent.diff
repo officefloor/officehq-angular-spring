@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 19d8227e..46c81884 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -88,7 +88,7 @@ export interface Person {
+   berth: number | null;
+   // keel times five; null (n/a) when keel is.
+   wharf: number | null;
+-  // keel divided by five, rounded to the nearest (a half up); null (n/a) when keel is.
++  // keel divided by ten, rounded to the nearest (a half up); null (n/a) when keel is.
+   jetty: number | null;
+   // keel plus 500; null (n/a) when keel is.
+   pier: number | null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 63389028..3f77fe5c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -35,7 +35,7 @@ import java.util.Set;
+  * when keel or ripple is. mast is keel plus 1000, null (n/a) when keel is. rigging is keel divided by
+  * four (rounded like every divide), null (n/a) when keel is. moor is keel plus keystone, null (n/a)
+  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
+- * keel times five, null (n/a) when keel is. jetty is keel divided by five (rounded like every divide),
++ * keel times five, null (n/a) when keel is. jetty is keel divided by ten (rounded like every divide),
+  * null (n/a) when keel is. pier is keel plus 500, null (n/a) when keel is. ebb is keel minus 500, null
+  * (n/a) when keel is.
+  */
+@@ -302,7 +302,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+ 
+     private static Long jetty(Person p, Long averageScaled) {
+         Long keel = keel(p, averageScaled);
+-        return keel == null ? null : SheetMath.divide(keel, 5L);
++        return keel == null ? null : SheetMath.divide(keel, 10L);
+     }
+ 
+     private static Long pier(Person p, Long averageScaled) {
