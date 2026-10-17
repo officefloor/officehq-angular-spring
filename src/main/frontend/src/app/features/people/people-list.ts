@@ -853,6 +853,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-moor-total">{{ moorTotal() }}</td>
               <td colspan="7"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="42">Moor top</th>
+              <td data-testid="rollup-moor-top">{{ moorTop() ?? 'n/a' }}</td>
+              <td colspan="7"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1425,6 +1430,15 @@ export class PeopleList {
   protected readonly moorTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.moor, hold: p.hold }))),
   );
+
+  // The highest moor among the people not on hold, skipping n/a; n/a when there is none.
+  protected readonly moorTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.moor)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // The highest rigging among the people not on hold, skipping n/a; n/a when there is none.
   protected readonly riggingTop = computed(() => {
