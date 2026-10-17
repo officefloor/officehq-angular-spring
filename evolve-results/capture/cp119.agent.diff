@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index dde21f32..12977f74 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -393,6 +393,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-bearing-even">{{ bearingEven() }}</td>
+               <td colspan="26"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="23">Bearing mean</th>
++              <td data-testid="rollup-bearing-mean">{{ bearingMean() ?? 'n/a' }}</td>
++              <td colspan="26"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -776,6 +781,18 @@ export class PeopleList {
+     return top === null || low === null ? null : top - low;
+   });
+ 
++  // The average bearing among the people not on hold (n/a bearings skipped), rounded like every
++  // divide; null (n/a) when nobody has one.
++  protected readonly bearingMean = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.bearing)
++      .filter((v): v is number => v !== null);
++    return values.length === 0
++      ? null
++      : divide(values.reduce((total, v) => total + v, 0), values.length);
++  });
++
+   // How many counted people have an even keel (n/a keels are not counted).
+   protected readonly keelCount = computed(
+     () => countable(this.people() ?? []).filter((p) => p.keel !== null && p.keel % 2 === 0).length,

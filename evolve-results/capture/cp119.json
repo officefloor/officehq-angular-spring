@@ -1,0 +1,1030 @@
+{
+  "checkpoint": 119,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "469ff91103de89741d7fcc15fc67f3c61f01ccb4"
+  },
+  "checkpoint_id": "cp119_bearing-mean",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show bearing-mean: the average bearing over the people not on hold, rounded to the nearest whole\nnumber like every divide.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow bearing-mean: the average bearing over the people not on hold, rounded to the nearest whole\nnumber like every divide.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2288812eb477c612ff58deebcb6969a0917a1656",
+  "reset_sha": "",
+  "preagent_sha": "73b9d77c846525a7e787932c7d7095e10c00208d",
+  "prev_sha": "73b9d77c846525a7e787932c7d7095e10c00208d",
+  "base_sha": "469ff91103de89741d7fcc15fc67f3c61f01ccb4",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.19840960000000002,
+    "input_tokens": 12,
+    "output_tokens": 1427,
+    "cache_read_tokens": 127468,
+    "cache_creation_tokens": 18041,
+    "num_turns": 6,
+    "duration_ms": 49322,
+    "duration_api_ms": 27726,
+    "model": "claude-opus-5-5",
+    "session_id": "1ba42613-2254-4cd2-95ba-a2bd74cd2d47",
+    "stop_reason": "success",
+    "result_text": "I added the bearing-mean rollup, and `bin/e2e` passes: it shows the expected `178` for the test data.\n\nThe change is only in `src/main/frontend/src/app/features/people/people-list.ts`:\n- **Display:** a new \"Bearing mean\" row in the table footer, right after \"Bearing even\", with `data-testid=\"rollup-bearing-mean\"`.\n- **Calculation:** a new `bearingMean` value that averages the bearing of the people not on hold. It skips people whose bearing is n/a and rounds with the same `divide` helper the other means use. If nobody has a bearing, it shows `n/a`, like the keystone mean next to it.\n\nThe server and stored data didn't need changing, because each person's bearing already comes from the server.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.19840960000000002,
+        "num_turns": 6,
+        "duration_ms": 49322,
+        "duration_api_ms": 27726,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp119.agent.jsonl",
+  "agent_diff_file": "cp119.agent.diff",
+  "build_log_file": "cp119.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 119,
+    "results": {
+      "cp01_people.spec.ts::people": true,
+      "cp02_thrust_thrust-total.spec.ts::thrust thrust-total": true,
+      "cp03_momentum.spec.ts::momentum": true,
+      "cp04_trim_total.spec.ts::trim total": true,
+      "cp05_scaled_third.spec.ts::scaled third": true,
+      "cp06_backing_norm.spec.ts::backing norm": true,
+      "cp07_quarter_tier.spec.ts::quarter tier": true,
+      "cp08_round_divides.spec.ts::round divides": true,
+      "cp09_keel_keel-total.spec.ts::keel keel-total": true,
+      "cp10_draft_fathom.spec.ts::draft fathom": true,
+      "cp100_keel.spec.ts::keel": true,
+      "cp101_trim-total.spec.ts::trim-total": true,
+      "cp102_trim-top.spec.ts::trim-top": true,
+      "cp103_trim-spread.spec.ts::trim-spread": true,
+      "cp104_bearing.spec.ts::bearing": true,
+      "cp105_trim-even.spec.ts::trim-even": true,
+      "cp106_trim-mean.spec.ts::trim-mean": true,
+      "cp107_heading-total.spec.ts::heading-total": true,
+      "cp108_pitch.spec.ts::pitch": true,
+      "cp109_heading-top.spec.ts::heading-top": true,
+      "cp11_cascade_trim.spec.ts::cascade trim": true,
+      "cp110_heading-spread.spec.ts::heading-spread": true,
+      "cp111_heading-even.spec.ts::heading-even": true,
+      "cp112_tackle.spec.ts::tackle": true,
+      "cp113_heading-mean.spec.ts::heading-mean": true,
+      "cp114_bearing-low.spec.ts::bearing-low": true,
+      "cp115_bearing-top.spec.ts::bearing-top": true,
+      "cp116_yaw.spec.ts::yaw": true,
+      "cp117_bearing-spread.spec.ts::bearing-spread": true,
+      "cp118_bearing-even.spec.ts::bearing-even": true,
+      "cp119_bearing-mean.spec.ts::bearing-mean": true,
+      "cp12_hold.spec.ts::hold": true,
+      "cp13_heading_ripple.spec.ts::heading ripple": true,
+      "cp14_ballast_keel-count.spec.ts::ballast keel-count": true,
+      "cp15_bearing_keystone.spec.ts::bearing keystone": true,
+      "cp16_keel.spec.ts::keel": true,
+      "cp17_pitch.spec.ts::pitch": true,
+      "cp18_tackle.spec.ts::tackle": true,
+      "cp19_yaw.spec.ts::yaw": true,
+      "cp20_missing_zero.spec.ts::missing zero": true,
+      "cp21_heave.spec.ts::heave": true,
+      "cp22_camber.spec.ts::camber": true,
+      "cp23_sheer.spec.ts::sheer": true,
+      "cp24_camber.spec.ts::camber": true,
+      "cp25_beam.spec.ts::beam": true,
+      "cp26_freeboard.spec.ts::freeboard": true,
+      "cp27_buoyancy.spec.ts::buoyancy": true,
+      "cp28_beam.spec.ts::beam": true,
+      "cp29_knot.spec.ts::knot": true,
+      "cp30_cable.spec.ts::cable": true,
+      "cp31_hull.spec.ts::hull": true,
+      "cp32_keel.spec.ts::keel": true,
+      "cp33_bow.spec.ts::bow": true,
+      "cp34_stern.spec.ts::stern": true,
+      "cp35_helm.spec.ts::helm": true,
+      "cp36_freeboard.spec.ts::freeboard": true,
+      "cp37_rudder.spec.ts::rudder": true,
+      "cp38_mast.spec.ts::mast": true,
+      "cp39_rigging.spec.ts::rigging": true,
+      "cp40_patrons_mutual.spec.ts::patrons mutual": true,
+      "cp41_moor.spec.ts::moor": true,
+      "cp42_berth.spec.ts::berth": true,
+      "cp43_wharf.spec.ts::wharf": true,
+      "cp44_wharf.spec.ts::wharf": true,
+      "cp45_jetty.spec.ts::jetty": true,
+      "cp46_pier.spec.ts::pier": true,
+      "cp47_ebb.spec.ts::ebb": true,
+      "cp48_jetty.spec.ts::jetty": true,
+      "cp49_flood.spec.ts::flood": true,
+      "cp50_swell.spec.ts::swell": true,
+      "cp51_fathom-total.spec.ts::fathom-total": true,
+      "cp52_keel.spec.ts::keel": true,
+      "cp53_draft-total.spec.ts::draft-total": true,
+      "cp54_cascade-total.spec.ts::cascade-total": true,
+      "cp55_ripple-total.spec.ts::ripple-total": true,
+      "cp56_mast.spec.ts::mast": true,
+      "cp57_ballast-total.spec.ts::ballast-total": true,
+      "cp58_keystone-total.spec.ts::keystone-total": true,
+      "cp59_bearing-total.spec.ts::bearing-total": true,
+      "cp60_keel.spec.ts::keel": true,
+      "cp61_fathom-low.spec.ts::fathom-low": true,
+      "cp62_fathom-top.spec.ts::fathom-top": true,
+      "cp63_fathom-spread.spec.ts::fathom-spread": true,
+      "cp64_keel.spec.ts::keel": true,
+      "cp65_fathom-even.spec.ts::fathom-even": true,
+      "cp66_fathom-mean.spec.ts::fathom-mean": true,
+      "cp67_cascade-low.spec.ts::cascade-low": true,
+      "cp68_fathom.spec.ts::fathom": true,
+      "cp69_cascade-top.spec.ts::cascade-top": true,
+      "cp70_cascade-spread.spec.ts::cascade-spread": true,
+      "cp71_cascade-even.spec.ts::cascade-even": true,
+      "cp72_cascade.spec.ts::cascade": true,
+      "cp73_cascade-mean.spec.ts::cascade-mean": true,
+      "cp74_ripple-low.spec.ts::ripple-low": true,
+      "cp75_ripple-top.spec.ts::ripple-top": true,
+      "cp76_ripple.spec.ts::ripple": true,
+      "cp77_ripple-spread.spec.ts::ripple-spread": true,
+      "cp78_ripple-even.spec.ts::ripple-even": true,
+      "cp79_ripple-mean.spec.ts::ripple-mean": true,
+      "cp80_ballast.spec.ts::ballast": true,
+      "cp81_ballast-low.spec.ts::ballast-low": true,
+      "cp82_ballast-top.spec.ts::ballast-top": true,
+      "cp83_ballast-spread.spec.ts::ballast-spread": true,
+      "cp84_keystone.spec.ts::keystone": true,
+      "cp85_ballast-even.spec.ts::ballast-even": true,
+      "cp86_ballast-mean.spec.ts::ballast-mean": true,
+      "cp87_keystone-low.spec.ts::keystone-low": true,
+      "cp88_draft.spec.ts::draft": true,
+      "cp89_keystone-top.spec.ts::keystone-top": true,
+      "cp90_keystone-spread.spec.ts::keystone-spread": true,
+      "cp91_keystone-even.spec.ts::keystone-even": true,
+      "cp92_trim.spec.ts::trim": true,
+      "cp93_keystone-mean.spec.ts::keystone-mean": true,
+      "cp94_draft-low.spec.ts::draft-low": true,
+      "cp95_draft-top.spec.ts::draft-top": true,
+      "cp96_heading.spec.ts::heading": true,
+      "cp97_draft-spread.spec.ts::draft-spread": true,
+      "cp98_draft-even.spec.ts::draft-even": true,
+      "cp99_draft-mean.spec.ts::draft-mean": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2408,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 150,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 152,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_trim_total.spec.ts::trim total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 125,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_scaled_third.spec.ts::scaled third",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 164,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_backing_norm.spec.ts::backing norm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 161,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_quarter_tier.spec.ts::quarter tier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 164,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_round_divides.spec.ts::round divides",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 180,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_keel_keel-total.spec.ts::keel keel-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_draft_fathom.spec.ts::draft fathom",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 156,
+        "failure": ""
+      },
+      {
+        "test_id": "cp100_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 142,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_trim-total.spec.ts::trim-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 110,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_trim-top.spec.ts::trim-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 126,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_trim-spread.spec.ts::trim-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 108,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_bearing.spec.ts::bearing",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_trim-even.spec.ts::trim-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 112,
+        "failure": ""
+      },
+      {
+        "test_id": "cp106_trim-mean.spec.ts::trim-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 120,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_heading-total.spec.ts::heading-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp108_pitch.spec.ts::pitch",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 142,
+        "failure": ""
+      },
+      {
+        "test_id": "cp109_heading-top.spec.ts::heading-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 114,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_cascade_trim.spec.ts::cascade trim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 162,
+        "failure": ""
+      },
+      {
+        "test_id": "cp110_heading-spread.spec.ts::heading-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 111,
+        "failure": ""
+      },
+      {
+        "test_id": "cp111_heading-even.spec.ts::heading-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 115,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_tackle.spec.ts::tackle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp113_heading-mean.spec.ts::heading-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp114_bearing-low.spec.ts::bearing-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 114,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_bearing-top.spec.ts::bearing-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 115,
+        "failure": ""
+      },
+      {
+        "test_id": "cp116_yaw.spec.ts::yaw",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_bearing-spread.spec.ts::bearing-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 119,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_bearing-even.spec.ts::bearing-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_bearing-mean.spec.ts::bearing-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 110,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 147,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_heading_ripple.spec.ts::heading ripple",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_ballast_keel-count.spec.ts::ballast keel-count",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_bearing_keystone.spec.ts::bearing keystone",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 159,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 156,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_pitch.spec.ts::pitch",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_tackle.spec.ts::tackle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_yaw.spec.ts::yaw",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 132,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_missing_zero.spec.ts::missing zero",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 155,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_heave.spec.ts::heave",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_camber.spec.ts::camber",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_sheer.spec.ts::sheer",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_camber.spec.ts::camber",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_beam.spec.ts::beam",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_freeboard.spec.ts::freeboard",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_buoyancy.spec.ts::buoyancy",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_beam.spec.ts::beam",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_knot.spec.ts::knot",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_cable.spec.ts::cable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_hull.spec.ts::hull",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 142,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_bow.spec.ts::bow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_stern.spec.ts::stern",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_helm.spec.ts::helm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_freeboard.spec.ts::freeboard",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_rudder.spec.ts::rudder",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_mast.spec.ts::mast",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 133,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_rigging.spec.ts::rigging",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_patrons_mutual.spec.ts::patrons mutual",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_moor.spec.ts::moor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_berth.spec.ts::berth",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_wharf.spec.ts::wharf",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_wharf.spec.ts::wharf",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_jetty.spec.ts::jetty",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_pier.spec.ts::pier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_ebb.spec.ts::ebb",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_jetty.spec.ts::jetty",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_flood.spec.ts::flood",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_swell.spec.ts::swell",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_fathom-total.spec.ts::fathom-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 110,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_draft-total.spec.ts::draft-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 123,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_cascade-total.spec.ts::cascade-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 106,
+        "failure": ""
+      },
+      {
+        "test_id": "cp55_ripple-total.spec.ts::ripple-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 121,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_mast.spec.ts::mast",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp57_ballast-total.spec.ts::ballast-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 119,
+        "failure": ""
+      },
+      {
+        "test_id": "cp58_keystone-total.spec.ts::keystone-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_bearing-total.spec.ts::bearing-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_fathom-low.spec.ts::fathom-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 120,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_fathom-top.spec.ts::fathom-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 106,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_fathom-spread.spec.ts::fathom-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 118,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_fathom-even.spec.ts::fathom-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 116,
+        "failure": ""
+      },
+      {
+        "test_id": "cp66_fathom-mean.spec.ts::fathom-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 118,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_cascade-low.spec.ts::cascade-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 105,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_fathom.spec.ts::fathom",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp69_cascade-top.spec.ts::cascade-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 105,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_cascade-spread.spec.ts::cascade-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 121,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cascade-even.spec.ts::cascade-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 105,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_cascade.spec.ts::cascade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp73_cascade-mean.spec.ts::cascade-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 115,
+        "failure": ""
+      },
+      {
+        "test_id": "cp74_ripple-low.spec.ts::ripple-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 104,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_ripple-top.spec.ts::ripple-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 119,
+        "failure": ""
+      },
+      {
+        "test_id": "cp76_ripple.spec.ts::ripple",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_ripple-spread.spec.ts::ripple-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 124,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_ripple-even.spec.ts::ripple-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 106,
+        "failure": ""
+      },
+      {
+        "test_id": "cp79_ripple-mean.spec.ts::ripple-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp80_ballast.spec.ts::ballast",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_ballast-low.spec.ts::ballast-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 124,
+        "failure": ""
+      },
+      {
+        "test_id": "cp82_ballast-top.spec.ts::ballast-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 110,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_ballast-spread.spec.ts::ballast-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp84_keystone.spec.ts::keystone",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp85_ballast-even.spec.ts::ballast-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 106,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_ballast-mean.spec.ts::ballast-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 118,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_keystone-low.spec.ts::keystone-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 213,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_draft.spec.ts::draft",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_keystone-top.spec.ts::keystone-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 105,
+        "failure": ""
+      },
+      {
+        "test_id": "cp90_keystone-spread.spec.ts::keystone-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_keystone-even.spec.ts::keystone-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 115,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_trim.spec.ts::trim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 132,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_keystone-mean.spec.ts::keystone-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 116,
+        "failure": ""
+      },
+      {
+        "test_id": "cp94_draft-low.spec.ts::draft-low",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_draft-top.spec.ts::draft-top",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 111,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_heading.spec.ts::heading",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_draft-spread.spec.ts::draft-spread",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 103,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_draft-even.spec.ts::draft-even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_draft-mean.spec.ts::draft-mean",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 105,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 118,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
