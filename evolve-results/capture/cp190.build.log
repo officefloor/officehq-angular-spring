@@ -1,0 +1,201 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610171149/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 190 tests using 1 worker
+
+[1A[2K[1/190] [chromium] › cp01_people.spec.ts:5:7 › people › people
+[1A[2K[2/190] [chromium] › cp02_thrust_thrust-total.spec.ts:5:7 › thrust thrust-total › thrust thrust-total
+[1A[2K[3/190] [chromium] › cp03_momentum.spec.ts:5:7 › momentum › momentum
+[1A[2K[4/190] [chromium] › cp04_trim_total.spec.ts:5:7 › trim total › trim total
+[1A[2K[5/190] [chromium] › cp05_scaled_third.spec.ts:5:7 › scaled third › scaled third
+[1A[2K[6/190] [chromium] › cp06_backing_norm.spec.ts:5:7 › backing norm › backing norm
+[1A[2K[7/190] [chromium] › cp07_quarter_tier.spec.ts:5:7 › quarter tier › quarter tier
+[1A[2K[8/190] [chromium] › cp08_round_divides.spec.ts:5:7 › round divides › round divides
+[1A[2K[9/190] [chromium] › cp09_keel_keel-total.spec.ts:5:7 › keel keel-total › keel keel-total
+[1A[2K[10/190] [chromium] › cp10_draft_fathom.spec.ts:5:7 › draft fathom › draft fathom
+[1A[2K[11/190] [chromium] › cp100_keel.spec.ts:5:7 › keel › keel
+[1A[2K[12/190] [chromium] › cp101_trim-total.spec.ts:5:7 › trim-total › trim-total
+[1A[2K[13/190] [chromium] › cp102_trim-top.spec.ts:5:7 › trim-top › trim-top
+[1A[2K[14/190] [chromium] › cp103_trim-spread.spec.ts:5:7 › trim-spread › trim-spread
+[1A[2K[15/190] [chromium] › cp104_bearing.spec.ts:5:7 › bearing › bearing
+[1A[2K[16/190] [chromium] › cp105_trim-even.spec.ts:5:7 › trim-even › trim-even
+[1A[2K[17/190] [chromium] › cp106_trim-mean.spec.ts:5:7 › trim-mean › trim-mean
+[1A[2K[18/190] [chromium] › cp107_heading-total.spec.ts:5:7 › heading-total › heading-total
+[1A[2K[19/190] [chromium] › cp108_pitch.spec.ts:5:7 › pitch › pitch
+[1A[2K[20/190] [chromium] › cp109_heading-top.spec.ts:5:7 › heading-top › heading-top
+[1A[2K[21/190] [chromium] › cp11_cascade_trim.spec.ts:5:7 › cascade trim › cascade trim
+[1A[2K[22/190] [chromium] › cp110_heading-spread.spec.ts:5:7 › heading-spread › heading-spread
+[1A[2K[23/190] [chromium] › cp111_heading-even.spec.ts:5:7 › heading-even › heading-even
+[1A[2K[24/190] [chromium] › cp112_tackle.spec.ts:5:7 › tackle › tackle
+[1A[2K[25/190] [chromium] › cp113_heading-mean.spec.ts:5:7 › heading-mean › heading-mean
+[1A[2K[26/190] [chromium] › cp114_bearing-low.spec.ts:5:7 › bearing-low › bearing-low
+[1A[2K[27/190] [chromium] › cp115_bearing-top.spec.ts:5:7 › bearing-top › bearing-top
+[1A[2K[28/190] [chromium] › cp116_yaw.spec.ts:5:7 › yaw › yaw
+[1A[2K[29/190] [chromium] › cp117_bearing-spread.spec.ts:5:7 › bearing-spread › bearing-spread
+[1A[2K[30/190] [chromium] › cp118_bearing-even.spec.ts:5:7 › bearing-even › bearing-even
+[1A[2K[31/190] [chromium] › cp119_bearing-mean.spec.ts:5:7 › bearing-mean › bearing-mean
+[1A[2K[32/190] [chromium] › cp12_hold.spec.ts:5:7 › hold › hold
+[1A[2K[33/190] [chromium] › cp120_heave.spec.ts:5:7 › heave › heave
+[1A[2K[34/190] [chromium] › cp121_pitch-total.spec.ts:5:7 › pitch-total › pitch-total
+[1A[2K[35/190] [chromium] › cp122_pitch-top.spec.ts:5:7 › pitch-top › pitch-top
+[1A[2K[36/190] [chromium] › cp123_pitch-spread.spec.ts:5:7 › pitch-spread › pitch-spread
+[1A[2K[37/190] [chromium] › cp124_camber.spec.ts:5:7 › camber › camber
+[1A[2K[38/190] [chromium] › cp125_pitch-even.spec.ts:5:7 › pitch-even › pitch-even
+[1A[2K[39/190] [chromium] › cp126_pitch-mean.spec.ts:5:7 › pitch-mean › pitch-mean
+[1A[2K[40/190] [chromium] › cp127_tackle-total.spec.ts:5:7 › tackle-total › tackle-total
+[1A[2K[41/190] [chromium] › cp128_sheer.spec.ts:5:7 › sheer › sheer
+[1A[2K[42/190] [chromium] › cp129_tackle-top.spec.ts:5:7 › tackle-top › tackle-top
+[1A[2K[43/190] [chromium] › cp13_heading_ripple.spec.ts:5:7 › heading ripple › heading ripple
+[1A[2K[44/190] [chromium] › cp130_tackle-spread.spec.ts:5:7 › tackle-spread › tackle-spread
+[1A[2K[45/190] [chromium] › cp131_tackle-even.spec.ts:5:7 › tackle-even › tackle-even
+[1A[2K[46/190] [chromium] › cp132_beam.spec.ts:5:7 › beam › beam
+[1A[2K[47/190] [chromium] › cp133_tackle-mean.spec.ts:5:7 › tackle-mean › tackle-mean
+[1A[2K[48/190] [chromium] › cp134_yaw-total.spec.ts:5:7 › yaw-total › yaw-total
+[1A[2K[49/190] [chromium] › cp135_yaw-top.spec.ts:5:7 › yaw-top › yaw-top
+[1A[2K[50/190] [chromium] › cp136_freeboard.spec.ts:5:7 › freeboard › freeboard
+[1A[2K[51/190] [chromium] › cp137_yaw-spread.spec.ts:5:7 › yaw-spread › yaw-spread
+[1A[2K[52/190] [chromium] › cp138_yaw-even.spec.ts:5:7 › yaw-even › yaw-even
+[1A[2K[53/190] [chromium] › cp139_yaw-mean.spec.ts:5:7 › yaw-mean › yaw-mean
+[1A[2K[54/190] [chromium] › cp14_ballast_keel-count.spec.ts:5:7 › ballast keel-count › ballast keel-count
+[1A[2K[55/190] [chromium] › cp140_buoyancy.spec.ts:5:7 › buoyancy › buoyancy
+[1A[2K[56/190] [chromium] › cp141_heave-total.spec.ts:5:7 › heave-total › heave-total
+[1A[2K[57/190] [chromium] › cp142_heave-top.spec.ts:5:7 › heave-top › heave-top
+[1A[2K[58/190] [chromium] › cp143_heave-spread.spec.ts:5:7 › heave-spread › heave-spread
+[1A[2K[59/190] [chromium] › cp144_knot.spec.ts:5:7 › knot › knot
+[1A[2K[60/190] [chromium] › cp145_heave-even.spec.ts:5:7 › heave-even › heave-even
+[1A[2K[61/190] [chromium] › cp146_heave-mean.spec.ts:5:7 › heave-mean › heave-mean
+[1A[2K[62/190] [chromium] › cp147_camber-total.spec.ts:5:7 › camber-total › camber-total
+[1A[2K[63/190] [chromium] › cp148_keel.spec.ts:5:7 › keel › keel
+[1A[2K[64/190] [chromium] › cp149_camber-top.spec.ts:5:7 › camber-top › camber-top
+[1A[2K[65/190] [chromium] › cp15_bearing_keystone.spec.ts:5:7 › bearing keystone › bearing keystone
+[1A[2K[66/190] [chromium] › cp150_camber-spread.spec.ts:5:7 › camber-spread › camber-spread
+[1A[2K[67/190] [chromium] › cp151_camber-even.spec.ts:5:7 › camber-even › camber-even
+[1A[2K[68/190] [chromium] › cp152_cable.spec.ts:5:7 › cable › cable
+[1A[2K[69/190] [chromium] › cp153_camber-mean.spec.ts:5:7 › camber-mean › camber-mean
+[1A[2K[70/190] [chromium] › cp154_sheer-total.spec.ts:5:7 › sheer-total › sheer-total
+[1A[2K[71/190] [chromium] › cp155_sheer-top.spec.ts:5:7 › sheer-top › sheer-top
+[1A[2K[72/190] [chromium] › cp156_hull.spec.ts:5:7 › hull › hull
+[1A[2K[73/190] [chromium] › cp157_sheer-spread.spec.ts:5:7 › sheer-spread › sheer-spread
+[1A[2K[74/190] [chromium] › cp158_sheer-even.spec.ts:5:7 › sheer-even › sheer-even
+[1A[2K[75/190] [chromium] › cp159_sheer-mean.spec.ts:5:7 › sheer-mean › sheer-mean
+[1A[2K[76/190] [chromium] › cp16_keel.spec.ts:5:7 › keel › keel
+[1A[2K[77/190] [chromium] › cp160_bow.spec.ts:5:7 › bow › bow
+[1A[2K[78/190] [chromium] › cp161_beam-total.spec.ts:5:7 › beam-total › beam-total
+[1A[2K[79/190] [chromium] › cp162_beam-top.spec.ts:5:7 › beam-top › beam-top
+[1A[2K[80/190] [chromium] › cp163_beam-spread.spec.ts:5:7 › beam-spread › beam-spread
+[1A[2K[81/190] [chromium] › cp164_stern.spec.ts:5:7 › stern › stern
+[1A[2K[82/190] [chromium] › cp165_beam-even.spec.ts:5:7 › beam-even › beam-even
+[1A[2K[83/190] [chromium] › cp166_beam-mean.spec.ts:5:7 › beam-mean › beam-mean
+[1A[2K[84/190] [chromium] › cp167_freeboard-total.spec.ts:5:7 › freeboard-total › freeboard-total
+[1A[2K[85/190] [chromium] › cp168_helm.spec.ts:5:7 › helm › helm
+[1A[2K[86/190] [chromium] › cp169_freeboard-top.spec.ts:5:7 › freeboard-top › freeboard-top
+[1A[2K[87/190] [chromium] › cp17_pitch.spec.ts:5:7 › pitch › pitch
+[1A[2K[88/190] [chromium] › cp170_freeboard-spread.spec.ts:5:7 › freeboard-spread › freeboard-spread
+[1A[2K[89/190] [chromium] › cp171_freeboard-even.spec.ts:5:7 › freeboard-even › freeboard-even
+[1A[2K[90/190] [chromium] › cp172_rudder.spec.ts:5:7 › rudder › rudder
+[1A[2K[91/190] [chromium] › cp173_freeboard-mean.spec.ts:5:7 › freeboard-mean › freeboard-mean
+[1A[2K[92/190] [chromium] › cp174_buoyancy-total.spec.ts:5:7 › buoyancy-total › buoyancy-total
+[1A[2K[93/190] [chromium] › cp175_buoyancy-top.spec.ts:5:7 › buoyancy-top › buoyancy-top
+[1A[2K[94/190] [chromium] › cp176_mast.spec.ts:5:7 › mast › mast
+[1A[2K[95/190] [chromium] › cp177_buoyancy-spread.spec.ts:5:7 › buoyancy-spread › buoyancy-spread
+[1A[2K[96/190] [chromium] › cp178_buoyancy-even.spec.ts:5:7 › buoyancy-even › buoyancy-even
+[1A[2K[97/190] [chromium] › cp179_buoyancy-mean.spec.ts:5:7 › buoyancy-mean › buoyancy-mean
+[1A[2K[98/190] [chromium] › cp18_tackle.spec.ts:5:7 › tackle › tackle
+[1A[2K[99/190] [chromium] › cp180_rigging.spec.ts:5:7 › rigging › rigging
+[1A[2K[100/190] [chromium] › cp181_knot-total.spec.ts:5:7 › knot-total › knot-total
+[1A[2K[101/190] [chromium] › cp182_knot-top.spec.ts:5:7 › knot-top › knot-top
+[1A[2K[102/190] [chromium] › cp183_knot-spread.spec.ts:5:7 › knot-spread › knot-spread
+[1A[2K[103/190] [chromium] › cp184_moor.spec.ts:5:7 › moor › moor
+[1A[2K[104/190] [chromium] › cp185_knot-even.spec.ts:5:7 › knot-even › knot-even
+[1A[2K[105/190] [chromium] › cp186_knot-mean.spec.ts:5:7 › knot-mean › knot-mean
+[1A[2K[106/190] [chromium] › cp187_cable-total.spec.ts:5:7 › cable-total › cable-total
+[1A[2K[107/190] [chromium] › cp188_berth.spec.ts:5:7 › berth › berth
+[1A[2K[108/190] [chromium] › cp189_cable-top.spec.ts:5:7 › cable-top › cable-top
+[1A[2K[109/190] [chromium] › cp19_yaw.spec.ts:5:7 › yaw › yaw
+[1A[2K[110/190] [chromium] › cp190_cable-spread.spec.ts:5:7 › cable-spread › cable-spread
+[1A[2K[111/190] [chromium] › cp20_missing_zero.spec.ts:5:7 › missing zero › missing zero
+[1A[2K[112/190] [chromium] › cp21_heave.spec.ts:5:7 › heave › heave
+[1A[2K[113/190] [chromium] › cp22_camber.spec.ts:5:7 › camber › camber
+[1A[2K[114/190] [chromium] › cp23_sheer.spec.ts:5:7 › sheer › sheer
+[1A[2K[115/190] [chromium] › cp24_camber.spec.ts:5:7 › camber › camber
+[1A[2K[116/190] [chromium] › cp25_beam.spec.ts:5:7 › beam › beam
+[1A[2K[117/190] [chromium] › cp26_freeboard.spec.ts:5:7 › freeboard › freeboard
+[1A[2K[118/190] [chromium] › cp27_buoyancy.spec.ts:5:7 › buoyancy › buoyancy
+[1A[2K[119/190] [chromium] › cp28_beam.spec.ts:5:7 › beam › beam
+[1A[2K[120/190] [chromium] › cp29_knot.spec.ts:5:7 › knot › knot
+[1A[2K[121/190] [chromium] › cp30_cable.spec.ts:5:7 › cable › cable
+[1A[2K[122/190] [chromium] › cp31_hull.spec.ts:5:7 › hull › hull
+[1A[2K[123/190] [chromium] › cp32_keel.spec.ts:5:7 › keel › keel
+[1A[2K[124/190] [chromium] › cp33_bow.spec.ts:5:7 › bow › bow
+[1A[2K[125/190] [chromium] › cp34_stern.spec.ts:5:7 › stern › stern
+[1A[2K[126/190] [chromium] › cp35_helm.spec.ts:5:7 › helm › helm
+[1A[2K[127/190] [chromium] › cp36_freeboard.spec.ts:5:7 › freeboard › freeboard
+[1A[2K[128/190] [chromium] › cp37_rudder.spec.ts:5:7 › rudder › rudder
+[1A[2K[129/190] [chromium] › cp38_mast.spec.ts:5:7 › mast › mast
+[1A[2K[130/190] [chromium] › cp39_rigging.spec.ts:5:7 › rigging › rigging
+[1A[2K[131/190] [chromium] › cp40_patrons_mutual.spec.ts:5:7 › patrons mutual › patrons mutual
+[1A[2K[132/190] [chromium] › cp41_moor.spec.ts:5:7 › moor › moor
+[1A[2K[133/190] [chromium] › cp42_berth.spec.ts:5:7 › berth › berth
+[1A[2K[134/190] [chromium] › cp43_wharf.spec.ts:5:7 › wharf › wharf
+[1A[2K[135/190] [chromium] › cp44_wharf.spec.ts:5:7 › wharf › wharf
+[1A[2K[136/190] [chromium] › cp45_jetty.spec.ts:5:7 › jetty › jetty
+[1A[2K[137/190] [chromium] › cp46_pier.spec.ts:5:7 › pier › pier
+[1A[2K[138/190] [chromium] › cp47_ebb.spec.ts:5:7 › ebb › ebb
+[1A[2K[139/190] [chromium] › cp48_jetty.spec.ts:5:7 › jetty › jetty
+[1A[2K[140/190] [chromium] › cp49_flood.spec.ts:5:7 › flood › flood
+[1A[2K[141/190] [chromium] › cp50_swell.spec.ts:5:7 › swell › swell
+[1A[2K[142/190] [chromium] › cp51_fathom-total.spec.ts:5:7 › fathom-total › fathom-total
+[1A[2K[143/190] [chromium] › cp52_keel.spec.ts:5:7 › keel › keel
+[1A[2K[144/190] [chromium] › cp53_draft-total.spec.ts:5:7 › draft-total › draft-total
+[1A[2K[145/190] [chromium] › cp54_cascade-total.spec.ts:5:7 › cascade-total › cascade-total
+[1A[2K[146/190] [chromium] › cp55_ripple-total.spec.ts:5:7 › ripple-total › ripple-total
+[1A[2K[147/190] [chromium] › cp56_mast.spec.ts:5:7 › mast › mast
+[1A[2K[148/190] [chromium] › cp57_ballast-total.spec.ts:5:7 › ballast-total › ballast-total
+[1A[2K[149/190] [chromium] › cp58_keystone-total.spec.ts:5:7 › keystone-total › keystone-total
+[1A[2K[150/190] [chromium] › cp59_bearing-total.spec.ts:5:7 › bearing-total › bearing-total
+[1A[2K[151/190] [chromium] › cp60_keel.spec.ts:5:7 › keel › keel
+[1A[2K[152/190] [chromium] › cp61_fathom-low.spec.ts:5:7 › fathom-low › fathom-low
+[1A[2K[153/190] [chromium] › cp62_fathom-top.spec.ts:5:7 › fathom-top › fathom-top
+[1A[2K[154/190] [chromium] › cp63_fathom-spread.spec.ts:5:7 › fathom-spread › fathom-spread
+[1A[2K[155/190] [chromium] › cp64_keel.spec.ts:5:7 › keel › keel
+[1A[2K[156/190] [chromium] › cp65_fathom-even.spec.ts:5:7 › fathom-even › fathom-even
+[1A[2K[157/190] [chromium] › cp66_fathom-mean.spec.ts:5:7 › fathom-mean › fathom-mean
+[1A[2K[158/190] [chromium] › cp67_cascade-low.spec.ts:5:7 › cascade-low › cascade-low
+[1A[2K[159/190] [chromium] › cp68_fathom.spec.ts:5:7 › fathom › fathom
+[1A[2K[160/190] [chromium] › cp69_cascade-top.spec.ts:5:7 › cascade-top › cascade-top
+[1A[2K[161/190] [chromium] › cp70_cascade-spread.spec.ts:5:7 › cascade-spread › cascade-spread
+[1A[2K[162/190] [chromium] › cp71_cascade-even.spec.ts:5:7 › cascade-even › cascade-even
+[1A[2K[163/190] [chromium] › cp72_cascade.spec.ts:5:7 › cascade › cascade
+[1A[2K[164/190] [chromium] › cp73_cascade-mean.spec.ts:5:7 › cascade-mean › cascade-mean
+[1A[2K[165/190] [chromium] › cp74_ripple-low.spec.ts:5:7 › ripple-low › ripple-low
+[1A[2K[166/190] [chromium] › cp75_ripple-top.spec.ts:5:7 › ripple-top › ripple-top
+[1A[2K[167/190] [chromium] › cp76_ripple.spec.ts:5:7 › ripple › ripple
+[1A[2K[168/190] [chromium] › cp77_ripple-spread.spec.ts:5:7 › ripple-spread › ripple-spread
+[1A[2K[169/190] [chromium] › cp78_ripple-even.spec.ts:5:7 › ripple-even › ripple-even
+[1A[2K[170/190] [chromium] › cp79_ripple-mean.spec.ts:5:7 › ripple-mean › ripple-mean
+[1A[2K[171/190] [chromium] › cp80_ballast.spec.ts:5:7 › ballast › ballast
+[1A[2K[172/190] [chromium] › cp81_ballast-low.spec.ts:5:7 › ballast-low › ballast-low
+[1A[2K[173/190] [chromium] › cp82_ballast-top.spec.ts:5:7 › ballast-top › ballast-top
+[1A[2K[174/190] [chromium] › cp83_ballast-spread.spec.ts:5:7 › ballast-spread › ballast-spread
+[1A[2K[175/190] [chromium] › cp84_keystone.spec.ts:5:7 › keystone › keystone
+[1A[2K[176/190] [chromium] › cp85_ballast-even.spec.ts:5:7 › ballast-even › ballast-even
+[1A[2K[177/190] [chromium] › cp86_ballast-mean.spec.ts:5:7 › ballast-mean › ballast-mean
+[1A[2K[178/190] [chromium] › cp87_keystone-low.spec.ts:5:7 › keystone-low › keystone-low
+[1A[2K[179/190] [chromium] › cp88_draft.spec.ts:5:7 › draft › draft
+[1A[2K[180/190] [chromium] › cp89_keystone-top.spec.ts:5:7 › keystone-top › keystone-top
+[1A[2K[181/190] [chromium] › cp90_keystone-spread.spec.ts:5:7 › keystone-spread › keystone-spread
+[1A[2K[182/190] [chromium] › cp91_keystone-even.spec.ts:5:7 › keystone-even › keystone-even
+[1A[2K[183/190] [chromium] › cp92_trim.spec.ts:5:7 › trim › trim
+[1A[2K[184/190] [chromium] › cp93_keystone-mean.spec.ts:5:7 › keystone-mean › keystone-mean
+[1A[2K[185/190] [chromium] › cp94_draft-low.spec.ts:5:7 › draft-low › draft-low
+[1A[2K[186/190] [chromium] › cp95_draft-top.spec.ts:5:7 › draft-top › draft-top
+[1A[2K[187/190] [chromium] › cp96_heading.spec.ts:5:7 › heading › heading
+[1A[2K[188/190] [chromium] › cp97_draft-spread.spec.ts:5:7 › draft-spread › draft-spread
+[1A[2K[189/190] [chromium] › cp98_draft-even.spec.ts:5:7 › draft-even › draft-even
+[1A[2K[190/190] [chromium] › cp99_draft-mean.spec.ts:5:7 › draft-mean › draft-mean
+[1A[2K  190 passed (29.3s)
