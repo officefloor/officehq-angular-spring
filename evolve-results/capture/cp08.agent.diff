@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 51aa33e3..e5dad9d9 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -16,13 +16,13 @@ export interface Person {
+   momentum: number | null;
+   // momentum times two; null (n/a) when momentum is.
+   scaled: number | null;
+-  // scaled divided by three, rounded down (also below zero); null (n/a) when scaled is.
++  // scaled divided by three, rounded to the nearest (a half up); null (n/a) when scaled is.
+   third: number | null;
+-  // scaled minus the sheet's average scaled (n/a ones skipped, rounded down); null (n/a) when scaled is.
++  // scaled minus the sheet's average scaled (n/a ones skipped, rounded to the nearest); null (n/a) when scaled is.
+   norm: number | null;
+   // the patrons' momentum added up (n/a ones add nothing); null (n/a) when momentum is.
+   backing: number | null;
+-  // scaled divided by four, rounded down (also below zero); null (n/a) when scaled is.
++  // scaled divided by four, rounded to the nearest (a half up); null (n/a) when scaled is.
+   quarter: number | null;
+   // SINK below zero, STEADY from 0 up to 199, SURGE at 200 or more; null (n/a) when scaled is.
+   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 2f25634f..74acfc3c 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -6,7 +6,7 @@ import java.util.List;
+  * A person as the API returns it; patrons are referenced by id. thrust is alpha times beta, or null
+  * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
+  * when thrust or gamma is. scaled is momentum times two, and third is scaled divided by three (rounded
+- * down, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
++ * to the nearest, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
+  * sheet's average scaled (over the people whose scaled is not n/a, rounded like every divide), null
+  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
+  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
+diff --git a/src/main/java/net/officefloor/hq/app/people/SheetMath.java b/src/main/java/net/officefloor/hq/app/people/SheetMath.java
+index 143938c4..610f11a2 100644
+--- a/src/main/java/net/officefloor/hq/app/people/SheetMath.java
++++ b/src/main/java/net/officefloor/hq/app/people/SheetMath.java
+@@ -2,7 +2,8 @@ package net.officefloor.hq.app.people;
+ 
+ /**
+  * Arithmetic shared by every value on the sheet. Every divide on the sheet goes through
+- * {@link #divide}, which rounds down to the whole number below, also below zero (-8 / 3 is -3).
++ * {@link #divide}, which rounds to the nearest whole number, a half rounding up to the larger
++ * number (5 / 2 is 3, -5 / 2 is -2, -8 / 3 is -3).
+  */
+ final class SheetMath {
+ 
+@@ -10,6 +11,11 @@ final class SheetMath {
+     }
+ 
+     static long divide(long dividend, long divisor) {
+-        return Math.floorDiv(dividend, divisor);
++        if (divisor < 0) {
++            dividend = -dividend;
++            divisor = -divisor;
++        }
++        // floor(dividend / divisor + 1/2)
++        return Math.floorDiv(2 * dividend + divisor, 2 * divisor);
+     }
+ }
