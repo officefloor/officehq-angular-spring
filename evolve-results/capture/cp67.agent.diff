@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 8b3f2bc0..37a586b3 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -178,6 +178,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-cascade-total">{{ cascadeTotal() }}</td>
+               <td colspan="32"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="17">Cascade low</th>
++              <td data-testid="rollup-cascade-low">{{ cascadeLow() ?? 'n/a' }}</td>
++              <td colspan="32"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="19">Ripple total</th>
+               <td data-testid="rollup-ripple-total">{{ rippleTotal() }}</td>
+@@ -273,6 +278,15 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.cascade, hold: p.hold }))),
+   );
+ 
++  // The lowest cascade among the people not on hold (n/a cascades skipped); null (n/a) when nobody has one.
++  protected readonly cascadeLow = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.cascade)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.min(...values);
++  });
++
+   // Everyone's ripple added up, trimmed like every sheet total.
+   protected readonly rippleTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ripple, hold: p.hold }))),
