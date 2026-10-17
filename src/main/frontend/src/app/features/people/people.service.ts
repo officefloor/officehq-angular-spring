@@ -74,6 +74,8 @@ export interface Person {
   bow: number | null;
   // keel minus fathom; null (n/a) when keel is.
   stern: number | null;
+  // keel plus ripple; null (n/a) when keel or ripple is.
+  helm: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
