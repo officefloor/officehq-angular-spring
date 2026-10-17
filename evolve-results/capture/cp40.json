@@ -1,0 +1,402 @@
+{
+  "checkpoint": 40,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "469ff91103de89741d7fcc15fc67f3c61f01ccb4"
+  },
+  "checkpoint_id": "cp40_patrons_mutual",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    6
+  ],
+  "replaced_tests": [
+    "cp06_backing_norm.spec.ts::backing norm"
+  ],
+  "request": {
+    "spec": "Treat patronage as mutual: if one person is another's patron, each is the other's patron. A pair\nlinked both ways still counts once.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTreat patronage as mutual: if one person is another's patron, each is the other's patron. A pair\nlinked both ways still counts once.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "134749313f7b86edfc77f03ee47759ce8a5779e0",
+  "reset_sha": "",
+  "preagent_sha": "8169bd742a4ad8031eb827510e638b8bfc80315d",
+  "prev_sha": "8169bd742a4ad8031eb827510e638b8bfc80315d",
+  "base_sha": "469ff91103de89741d7fcc15fc67f3c61f01ccb4",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2555288,
+    "input_tokens": 10,
+    "output_tokens": 2508,
+    "cache_read_tokens": 112404,
+    "cache_creation_tokens": 22856,
+    "num_turns": 5,
+    "duration_ms": 54248,
+    "duration_api_ms": 34178,
+    "model": "claude-opus-5-5",
+    "session_id": "a4cd489c-f4fd-4c0c-9735-91ea03022b01",
+    "stop_reason": "success",
+    "result_text": "Patronage is now mutual: if one person is another's patron, each counts as the other's patron, and a pair linked both ways counts once. `bin/e2e` passes, including the stored test-data check that runs before it.\n\nHow it works:\n- **Stored data is unchanged.** Patron links are saved exactly as given. When the people list is built, the server merges each person's own patrons with the people who name them as a patron, without duplicates. The new `PersonView.mutualPatrons` does this, and `PeopleService.list` calls it. Because nothing extra is stored, seeding and reading back the test data still return the rows as they were sent.\n- **Backing** adds up the momentum of every patron in that merged set. In the test, Ada names Ben and Cam, so Ben's and Cam's backing are now 18 each (Ada's momentum) instead of 0.\n- **The Patrons column** uses the same merged set, so Ben's row now lists Ada.\n- A person who names themselves as their own patron is ignored.\n\nThe only front-end edit is the comment on `backing` in `people.service.ts`, updated to say patronage is mutual. The Java doc comment on `PersonView` got the same update.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.2555288,
+        "num_turns": 5,
+        "duration_ms": 54248,
+        "duration_api_ms": 34178,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp40.agent.jsonl",
+  "agent_diff_file": "cp40.agent.diff",
+  "build_log_file": "cp40.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 40,
+    "results": {
+      "cp01_people.spec.ts::people": true,
+      "cp02_thrust_thrust-total.spec.ts::thrust thrust-total": true,
+      "cp03_momentum.spec.ts::momentum": true,
+      "cp04_trim_total.spec.ts::trim total": true,
+      "cp05_scaled_third.spec.ts::scaled third": true,
+      "cp06_backing_norm.spec.ts::backing norm": true,
+      "cp07_quarter_tier.spec.ts::quarter tier": true,
+      "cp08_round_divides.spec.ts::round divides": true,
+      "cp09_keel_keel-total.spec.ts::keel keel-total": true,
+      "cp10_draft_fathom.spec.ts::draft fathom": true,
+      "cp11_cascade_trim.spec.ts::cascade trim": true,
+      "cp12_hold.spec.ts::hold": true,
+      "cp13_heading_ripple.spec.ts::heading ripple": true,
+      "cp14_ballast_keel-count.spec.ts::ballast keel-count": true,
+      "cp15_bearing_keystone.spec.ts::bearing keystone": true,
+      "cp16_keel.spec.ts::keel": true,
+      "cp17_pitch.spec.ts::pitch": true,
+      "cp18_tackle.spec.ts::tackle": true,
+      "cp19_yaw.spec.ts::yaw": true,
+      "cp20_missing_zero.spec.ts::missing zero": true,
+      "cp21_heave.spec.ts::heave": true,
+      "cp22_camber.spec.ts::camber": true,
+      "cp23_sheer.spec.ts::sheer": true,
+      "cp24_camber.spec.ts::camber": true,
+      "cp25_beam.spec.ts::beam": true,
+      "cp26_freeboard.spec.ts::freeboard": true,
+      "cp27_buoyancy.spec.ts::buoyancy": true,
+      "cp28_beam.spec.ts::beam": true,
+      "cp29_knot.spec.ts::knot": true,
+      "cp30_cable.spec.ts::cable": true,
+      "cp31_hull.spec.ts::hull": true,
+      "cp32_keel.spec.ts::keel": true,
+      "cp33_bow.spec.ts::bow": true,
+      "cp34_stern.spec.ts::stern": true,
+      "cp35_helm.spec.ts::helm": true,
+      "cp36_freeboard.spec.ts::freeboard": true,
+      "cp37_rudder.spec.ts::rudder": true,
+      "cp38_mast.spec.ts::mast": true,
+      "cp39_rigging.spec.ts::rigging": true,
+      "cp40_patrons_mutual.spec.ts::patrons mutual": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1310,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_thrust_thrust-total.spec.ts::thrust thrust-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_momentum.spec.ts::momentum",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_trim_total.spec.ts::trim total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 111,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_scaled_third.spec.ts::scaled third",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 158,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_backing_norm.spec.ts::backing norm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 150,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_quarter_tier.spec.ts::quarter tier",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_round_divides.spec.ts::round divides",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 176,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_keel_keel-total.spec.ts::keel keel-total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 137,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_draft_fathom.spec.ts::draft fathom",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_cascade_trim.spec.ts::cascade trim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 161,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 136,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_heading_ripple.spec.ts::heading ripple",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_ballast_keel-count.spec.ts::ballast keel-count",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 131,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_bearing_keystone.spec.ts::bearing keystone",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 155,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_pitch.spec.ts::pitch",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_tackle.spec.ts::tackle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_yaw.spec.ts::yaw",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_missing_zero.spec.ts::missing zero",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 166,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_heave.spec.ts::heave",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 129,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_camber.spec.ts::camber",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_sheer.spec.ts::sheer",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 129,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_camber.spec.ts::camber",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_beam.spec.ts::beam",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 129,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_freeboard.spec.ts::freeboard",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 128,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_buoyancy.spec.ts::buoyancy",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 128,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_beam.spec.ts::beam",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_knot.spec.ts::knot",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 144,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_cable.spec.ts::cable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 126,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_hull.spec.ts::hull",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 127,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_keel.spec.ts::keel",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 133,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_bow.spec.ts::bow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 131,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_stern.spec.ts::stern",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_helm.spec.ts::helm",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 128,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_freeboard.spec.ts::freeboard",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 132,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_rudder.spec.ts::rudder",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 129,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_mast.spec.ts::mast",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 131,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_rigging.spec.ts::rigging",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 131,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_patrons_mutual.spec.ts::patrons mutual",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 130,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": {
+      "ok": true,
+      "checked": 38,
+      "failures": []
+    }
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
