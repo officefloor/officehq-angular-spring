@@ -25,12 +25,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class ClaimController {
 
-    /** The amount is sent as text with exactly two decimals, so it is never rounded as a float. */
+    /**
+     * The amount is sent as text with exactly two decimals, so it is never rounded as a float; so is
+     * the due fixed when the claim was settled (null if it is not settled or had no rate then).
+     */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Long number) {
+            ClaimStatus status, Long number, String settledDue) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
         }
     }
 

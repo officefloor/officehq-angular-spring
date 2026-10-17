@@ -8,6 +8,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -24,12 +25,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -66,6 +70,7 @@ public class ClaimService {
     /**
      * Move a claim to the next status; a change its status does not allow is refused (409). Opening
      * gives the claim the sheet's next number; voiding clears it (the number is not given again).
+     * Settling fixes the claim's due at its person's grade's rate at that moment.
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long claimId, ClaimStatus next) {
@@ -80,33 +85,43 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
         Long number = next == ClaimStatus.OPEN ? Long.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
-        claim.setStatus(next);
-        claim.setNumber(next == ClaimStatus.VOID ? null : number);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        claim.setStatus(next);
+        claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        List<String> extra = new ArrayList<>();
+        if (next == ClaimStatus.SETTLED) {
+            BigDecimal due = rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+                    .map(rate -> claim.getAmount().multiply(rate.getRate())
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                    .orElse(null);
+            claim.setSettledDue(due);
+            extra.add("due=" + (due == null ? "n/a" : due.toPlainString()));
+        }
         record(switch (next) {
             case OPEN -> "CLAIM_OPENED";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
-        }, user, person, claim, number);
+        }, user, person, claim, number, extra);
         return claim;
     }
 
     private void record(String event, String user, Person person, Claim claim) {
-        record(event, user, person, claim, claim.getNumber());
+        record(event, user, person, claim, claim.getNumber(), List.of());
     }
 
     /**
      * Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. A claim with a number
-     * (or, when voided, the number it had) ends the line with number=&lt;number&gt;.
+     * (or, when voided, the number it had) adds number=&lt;number&gt;; any extra fields follow it.
      */
-    private void record(String event, String user, Person person, Claim claim, Long number) {
+    private void record(String event, String user, Person person, Claim claim, Long number, List<String> extra) {
         List<String> fields = new ArrayList<>(List.of("person=" + person.getName(),
                 "amount=" + claim.getAmount().toPlainString(), "date=" + claim.getDate()));
         if (number != null) {
             fields.add("number=" + number);
         }
+        fields.addAll(extra);
         audit.change(event, claim.getSheetId(), user, fields.toArray(String[]::new));
     }
 
