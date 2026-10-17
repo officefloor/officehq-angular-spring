@@ -3,9 +3,9 @@ package net.officefloor.hq.app.people;
 import java.util.List;
 
 /**
- * A person as the API returns it; patrons are referenced by id. thrust is alpha times beta, or null
- * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
- * when thrust or gamma is. scaled is momentum times two, and third is scaled divided by three (rounded
+ * A person as the API returns it; patrons are referenced by id. A blank alpha, beta or gamma counts as
+ * zero in every calculation. thrust is alpha times beta. momentum is thrust plus three times (gamma
+ * minus alpha). scaled is momentum times two, and third is scaled divided by three (rounded
  * to the nearest, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
  * sheet's average scaled (over the people not on hold whose scaled is not n/a, rounded like every divide), null
  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
@@ -62,18 +62,16 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     }
 
     private static Long thrust(Person p) {
-        if (p.getAlpha() == null || p.getBeta() == null) {
-            return null;
-        }
-        return (long) p.getAlpha() * p.getBeta();
+        return orZero(p.getAlpha()) * orZero(p.getBeta());
     }
 
     private static Long momentum(Person p) {
-        Long thrust = thrust(p);
-        if (thrust == null || p.getGamma() == null) {
-            return null;
-        }
-        return thrust + 3L * ((long) p.getGamma() - p.getAlpha());
+        return thrust(p) + 3L * (orZero(p.getGamma()) - orZero(p.getAlpha()));
+    }
+
+    /** A blank number counts as zero. */
+    private static long orZero(Integer value) {
+        return value == null ? 0L : value;
     }
 
     private static Long scaled(Person p) {

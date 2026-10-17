@@ -10,9 +10,9 @@ export interface Person {
   gamma: number | null;
   hold: boolean;
   patronIds: number[];
-  // alpha times beta; null (n/a) when either is blank.
+  // alpha times beta, a blank one counting as zero.
   thrust: number | null;
-  // thrust plus three times (gamma minus alpha); null (n/a) when thrust or gamma is.
+  // thrust plus three times (gamma minus alpha), a blank one counting as zero.
   momentum: number | null;
   // momentum times two; null (n/a) when momentum is.
   scaled: number | null;
