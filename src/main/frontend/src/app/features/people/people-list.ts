@@ -199,6 +199,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="32"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="17">Cascade mean</th>
+              <td data-testid="rollup-cascade-mean">{{ cascadeMean() ?? 'n/a' }}</td>
+              <td colspan="32"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="19">Ripple total</th>
               <td data-testid="rollup-ripple-total">{{ rippleTotal() }}</td>
               <td colspan="30"></td>
@@ -316,6 +321,18 @@ export class PeopleList {
     const top = this.cascadeTop();
     const low = this.cascadeLow();
     return top === null || low === null ? null : top - low;
+  });
+
+  // The average cascade among the people not on hold (n/a cascades skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly cascadeMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.cascade)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // Everyone's ripple added up, trimmed like every sheet total.
