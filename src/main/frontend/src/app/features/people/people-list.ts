@@ -683,6 +683,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-hull-top">{{ hullTop() ?? 'n/a' }}</td>
               <td colspan="14"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="35">Hull spread</th>
+              <td data-testid="rollup-hull-spread">{{ hullSpread() ?? 'n/a' }}</td>
+              <td colspan="14"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1238,6 +1243,15 @@ export class PeopleList {
       .map((p) => p.hull)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest hull minus the lowest among the people not on hold (n/a hulls skipped); null (n/a) when nobody has one.
+  protected readonly hullSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.hull)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // The highest cable among the people not on hold (n/a cables skipped); null (n/a) when nobody has one.
