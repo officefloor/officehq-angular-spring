@@ -23,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/periods")
 public class PeriodController {
 
-    public record PeriodView(Long id, String name, LocalDate from, LocalDate to) {
+    /** The closed total is sent as text with two decimals; null while the period is open. */
+    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal) {
         static PeriodView of(Period period) {
-            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo());
+            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
+                    period.isClosed(), period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString());
         }
     }
 
@@ -51,5 +53,12 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated PeriodRequest request) {
         return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.from(), request.to()));
+    }
+
+    @PostMapping("/{name}/close")
+    public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @NotBlank @Size(max = 100) String name,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.close(sheetId.trim(), user.trim(), name));
     }
 }

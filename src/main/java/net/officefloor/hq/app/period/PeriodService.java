@@ -1,8 +1,18 @@
 package net.officefloor.hq.app.period;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -11,17 +21,25 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The periods on a sheet, in date order. A period's name is unique on its sheet regardless of case,
- * its from-date is not after its to-date, and it overlaps no other period on the sheet.
+ * its from-date is not after its to-date, and it overlaps no other period on the sheet. Closing a
+ * period fixes its due-total as it is at that moment.
  */
 @Service
 public class PeriodService {
 
     private final PeriodRepository periods;
+    private final ClaimRepository claims;
+    private final PersonRepository people;
+    private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public PeriodService(PeriodRepository periods, SheetService sheets, Audit audit) {
+    public PeriodService(PeriodRepository periods, ClaimRepository claims, PersonRepository people, RateService rates,
+            SheetService sheets, Audit audit) {
         this.periods = periods;
+        this.claims = claims;
+        this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -49,6 +67,45 @@ public class PeriodService {
         }
         Period period = periods.save(new Period(sheetId, name, from, to));
         audit.change("PERIOD_ADDED", sheetId, user, "period=" + name, "from=" + from, "to=" + to);
+        return period;
+    }
+
+    /**
+     * Close a period, fixing its due-total: the dues of the counted claims dated in it, each a settled
+     * claim's fixed due or else its amount at its person's grade's rate in force on its date, rounded
+     * half to even to cents; a claim with no such rate adds nothing. A closed period cannot be closed again (409).
+     */
+    @Transactional
+    public Period close(String sheetId, String user, String name) {
+        sheets.load(sheetId, user);
+        // Lock the sheet, so no claim changes while the total is taken.
+        sheets.lock(sheetId);
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period"));
+        if (period.isClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed");
+        }
+        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (!claim.getStatus().counts() || person == null || !period.contains(claim.getDate())) {
+                continue;
+            }
+            BigDecimal due = switch (claim.getStatus()) {
+                case SETTLED -> claim.getSettledDue();
+                default -> rates.inForce(sheetId, person.getGrade(), claim.getDate())
+                        .map(rate -> claim.getAmount().multiply(rate.getRate())
+                                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                        .orElse(null);
+            };
+            if (due != null) {
+                total = total.add(due);
+            }
+        }
+        period.close(total);
+        audit.change("PERIOD_CLOSED", sheetId, user, "period=" + period.getName(), "total=" + total.toPlainString());
         return period;
     }
 }

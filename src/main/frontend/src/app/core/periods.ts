@@ -11,6 +11,9 @@ export interface Period {
   from: string;
   /** yyyy-mm-dd, inclusive. */
   to: string;
+  closed: boolean;
+  /** The due-total fixed when the period was closed, two decimals; null while it is open. */
+  closedTotal: string | null;
 }
 
 /** A period name the store accepts: up to 100 characters, without spaces. */
@@ -34,6 +37,11 @@ export class Periods {
     return periodOn(this.all(), date);
   }
 
+  /** Whether a date (yyyy-mm-dd) falls in a closed period; no claim dated in one can be changed. */
+  closedOn(date: string): boolean {
+    return this.on(date)?.closed ?? false;
+  }
+
   async reload(): Promise<void> {
     try {
       this.all.set(await firstValueFrom(this.http.get<Period[]>(this.url(), { headers: this.headers() })));
@@ -48,6 +56,14 @@ export class Periods {
       this.http.post<Period>(this.url(), { name, from, to }, { headers: this.headers() }),
     );
     this.all.update((list) => [...list, added].sort((a, b) => a.from.localeCompare(b.from)));
+  }
+
+  /** Close a period, fixing its due-total; the store refuses one already closed. */
+  async close(name: string): Promise<void> {
+    const saved = await firstValueFrom(
+      this.http.post<Period>(`${this.url()}/${encodeURIComponent(name)}/close`, null, { headers: this.headers() }),
+    );
+    this.all.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
   }
 
   private url(): string {

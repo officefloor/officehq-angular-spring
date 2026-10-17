@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Claims, counts, formatCents } from '../../core/claims';
 import { Person } from '../../core/people';
-import { PERIOD_NAME, Periods } from '../../core/periods';
+import { PERIOD_NAME, Period, Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 
@@ -44,7 +44,7 @@ import { Session } from '../../core/session';
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods.all(); track p.id) {
@@ -52,7 +52,18 @@ import { Session } from '../../core/session';
               <td data-testid="period-name">{{ p.name }}</td>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotal(p.id) }}</td>
+              <td data-testid="period-due-total">{{ dueTotal(p) }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                @if (!p.closed) {
+                  <button type="button" data-testid="period-close" (click)="close(p)">
+                    Close<span class="visually-hidden"> period {{ p.name }}</span>
+                  </button>
+                }
+                @if (rowError()?.id === p.id) {
+                  <p role="alert" data-testid="period-error">{{ rowError()?.message }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -73,6 +84,8 @@ export class PeriodsPanel {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The error of the last action taken on a period's row, if it was refused. */
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** Set while a submit awaits the store, so a second submit does not add the period twice. */
   private saving = false;
 
@@ -99,13 +112,25 @@ export class PeriodsPanel {
       this.session.loads();
       untracked(() => {
         this.error.set(null);
+        this.rowError.set(null);
         void this.periods.reload();
       });
     });
   }
 
-  protected dueTotal(periodId: number): string {
-    return formatCents(this.dueCents().get(periodId) ?? 0);
+  /** A closed period's due-total as fixed when it was closed; an open one's as it is now. */
+  protected dueTotal(period: Period): string {
+    if (period.closedTotal !== null) return period.closedTotal;
+    return formatCents(this.dueCents().get(period.id) ?? 0);
+  }
+
+  protected async close(period: Period): Promise<void> {
+    this.rowError.set(null);
+    try {
+      await this.periods.close(period.name);
+    } catch {
+      this.rowError.set({ id: period.id, message: `The period ${period.name} could not be closed.` });
+    }
   }
 
   protected async save(event: Event): Promise<void> {

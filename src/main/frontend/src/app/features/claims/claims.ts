@@ -6,6 +6,8 @@ import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 
+const CLOSED = 'The claim is dated in a closed period, so it cannot be changed.';
+
 // One person's claims, newest first, and the one form that adds a claim or edits an existing one.
 @Component({
   selector: 'app-person-claims',
@@ -110,10 +112,16 @@ export class PersonClaims {
 
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.rowError.set(null);
+    if (this.periods.closedOn(claim.date)) {
+      this.rowError.set({ id: claim.id, message: CLOSED });
+      return;
+    }
     try {
       await this.claims.act(claim.id, action);
     } catch (e) {
-      const message = e instanceof HttpErrorResponse && e.status === 403
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 403
         ? 'The user who opened a claim cannot settle it.'
         : `A ${claim.status} claim cannot be changed that way.`;
       this.rowError.set({ id: claim.id, message });
@@ -122,6 +130,11 @@ export class PersonClaims {
 
   protected edit(claim: Claim): void {
     this.rowError.set(null);
+    if (this.periods.closedOn(claim.date)) {
+      this.reset();
+      this.rowError.set({ id: claim.id, message: CLOSED });
+      return;
+    }
     this.editingId.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
@@ -146,6 +159,10 @@ export class PersonClaims {
       this.error.set('Enter an amount of 0.00 or more, with at most two decimals.');
       return;
     }
+    if (this.periods.closedOn(fields.date || (this.session.today() ?? ''))) {
+      this.error.set(CLOSED);
+      return;
+    }
     const id = this.editingId();
     this.saving = true;
     try {
@@ -155,8 +172,10 @@ export class PersonClaims {
         await this.claims.update(id, fields);
       }
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } catch (e) {
+      this.error.set(e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
     } finally {
       this.saving = false;
     }

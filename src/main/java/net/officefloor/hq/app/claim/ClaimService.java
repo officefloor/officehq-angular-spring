@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -18,21 +19,24 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The claims kept on a sheet, newest first. A claim without a date takes the sheet's today; a
- * missing note is stored empty.
+ * missing note is stored empty. No claim dated in a closed period can be added, edited or change
+ * status (423).
  */
 @Service
 public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final PeriodRepository periods;
     private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, PeriodRepository periods, RateService rates,
+            SheetService sheets, Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.periods = periods;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
@@ -46,20 +50,27 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
         sheets.load(sheetId, user);
+        // Lock the sheet, so a period closed at the same moment is seen.
+        sheets.lock(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount),
-                date != null ? date : sheets.today(sheetId), note != null ? note : ""));
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseIfClosed(sheetId, on);
+        Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount), on, note != null ? note : ""));
         record("CLAIM_ADDED", user, person, claim);
         return claim;
     }
 
     @Transactional
     public Claim update(String sheetId, String user, Long claimId, BigDecimal amount, LocalDate date, String note) {
+        sheets.lock(sheetId);
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfClosed(sheetId, on);
         claim.setAmount(scaled(amount));
-        claim.setDate(date != null ? date : sheets.today(sheetId));
+        claim.setDate(on);
         claim.setNote(note != null ? note : "");
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -75,12 +86,13 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long claimId, ClaimStatus next) {
-        // Lock the sheet before reading the claim, so claims opened at the same moment get different numbers.
-        Sheet sheet = next == ClaimStatus.OPEN
-                ? sheets.lock(sheetId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"))
-                : null;
+        // Lock the sheet before reading the claim, so claims opened at the same moment get different numbers
+        // and a period closed at the same moment is seen.
+        Sheet sheet = sheets.lock(sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
@@ -112,6 +124,16 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         }, user, person, claim, number, extra);
         return claim;
+    }
+
+    /** Refuse (423) a change to a claim dated in a closed period. */
+    private void refuseIfClosed(String sheetId, LocalDate date) {
+        periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(period -> period.isClosed() && period.contains(date))
+                .findFirst()
+                .ifPresent(period -> {
+                    throw new ResponseStatusException(HttpStatus.LOCKED, "The period " + period.getName() + " is closed");
+                });
     }
 
     private void record(String event, String user, Person person, Claim claim) {
