@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 5d3af286..74d7540b 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -613,6 +613,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-buoyancy-spread">{{ buoyancySpread() ?? 'n/a' }}</td>
+               <td colspan="17"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="32">Buoyancy even</th>
++              <td data-testid="rollup-buoyancy-even">{{ buoyancyEven() }}</td>
++              <td colspan="17"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1376,6 +1381,13 @@ export class PeopleList {
+         .length,
+   );
+ 
++  // How many counted people have an even buoyancy (n/a buoyancies are not counted).
++  protected readonly buoyancyEven = computed(
++    () =>
++      countable(this.people() ?? []).filter((p) => p.buoyancy !== null && p.buoyancy % 2 === 0)
++        .length,
++  );
++
+   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
+   // divide; null (n/a) when nobody has one.
+   protected readonly camberMean = computed(() => {
