@@ -518,6 +518,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-camber-even">{{ camberEven() }}</td>
               <td colspan="21"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="28">Camber mean</th>
+              <td data-testid="rollup-camber-mean">{{ camberMean() ?? 'n/a' }}</td>
+              <td colspan="21"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1164,6 +1169,18 @@ export class PeopleList {
     () =>
       countable(this.people() ?? []).filter((p) => p.camber !== null && p.camber % 2 === 0).length,
   );
+
+  // The average camber among the people not on hold (n/a cambers skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly camberMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.camber)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
 
   protected patronNames(ids: number[]): string {
     const names = this.names();
