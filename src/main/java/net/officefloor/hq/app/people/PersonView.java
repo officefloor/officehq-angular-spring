@@ -11,17 +11,17 @@ import java.util.List;
  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
- * null (n/a) when scaled is.
+ * null (n/a) when scaled is. keel is scaled plus momentum, null (n/a) when momentum is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
-        Long backing, Long quarter, String tier) {
+        Long backing, Long quarter, String tier, Long keel) {
 
     static PersonView of(Person p, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
                 scaled(p), third(p), norm(p, averageScaled), backing(p),
-                quarter(p), tier(p));
+                quarter(p), tier(p), keel(p));
     }
 
     /** The average scaled across the people, skipping n/a; null when nobody has one. */
@@ -75,6 +75,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long quarter(Person p) {
         Long scaled = scaled(p);
         return scaled == null ? null : SheetMath.divide(scaled, 4L);
+    }
+
+    private static Long keel(Person p) {
+        Long momentum = momentum(p);
+        return momentum == null ? null : scaled(p) + momentum;
     }
 
     private static String tier(Person p) {

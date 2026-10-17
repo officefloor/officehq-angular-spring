@@ -26,6 +26,8 @@ export interface Person {
   quarter: number | null;
   // SINK below zero, STEADY from 0 up to 199, SURGE at 200 or more; null (n/a) when scaled is.
   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
+  // scaled plus momentum; null (n/a) when momentum is.
+  keel: number | null;
 }
 
 @Injectable({ providedIn: 'root' })

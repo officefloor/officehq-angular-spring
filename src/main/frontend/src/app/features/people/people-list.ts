@@ -28,6 +28,7 @@ import { PeopleService } from './people.service';
               <th scope="col">Backing</th>
               <th scope="col">Quarter</th>
               <th scope="col">Tier</th>
+              <th scope="col">Keel</th>
             </tr>
           </thead>
           <tbody>
@@ -47,6 +48,7 @@ import { PeopleService } from './people.service';
                 <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
                 <td data-testid="concept-quarter">{{ p.quarter ?? 'n/a' }}</td>
                 <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+                <td data-testid="concept-keel">{{ p.keel ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
@@ -55,6 +57,11 @@ import { PeopleService } from './people.service';
               <th scope="row" colspan="6">Thrust total</th>
               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
               <td colspan="7"></td>
+              <td></td>
+            </tr>
+            <tr>
+              <th scope="row" colspan="14">Keel total</th>
+              <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
             </tr>
           </tfoot>
         </table>
@@ -72,6 +79,11 @@ export class PeopleList {
   // Everyone's thrust added up, skipping the people for whom it is n/a.
   protected readonly thrustTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => p.thrust)),
+  );
+
+  // Everyone's keel added up, trimmed like every sheet total.
+  protected readonly keelTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => p.keel)),
   );
 
   protected patronNames(ids: number[]): string {
