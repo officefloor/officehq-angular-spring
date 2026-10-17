@@ -187,6 +187,28 @@ public class PersonService {
         return person;
     }
 
+    /**
+     * Name another person on the same sheet as one of this person's patrons. Naming themselves is
+     * refused (422), and so is naming someone already a patron (409).
+     */
+    @Transactional
+    public Person addPatron(String sheetId, String user, Long personId, Long patronId) {
+        sheets.lock(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Person patron = people.findByIdAndSheetId(patronId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such patron"));
+        if (patron.getId().equals(person.getId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "A person cannot be their own patron");
+        }
+        if (!person.getPatronIds().add(patron.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Already a patron");
+        }
+        person = people.saveAndFlush(person);
+        audit.change("PATRON_ADDED", sheetId, user, "name=" + person.getName(), "patron=" + patron.getName());
+        return person;
+    }
+
     private static ResponseStatusException changedMeanwhile() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Person changed since it was loaded");
     }

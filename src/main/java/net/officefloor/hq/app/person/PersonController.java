@@ -26,10 +26,10 @@ public class PersonController {
 
     /** The version is the one an edit sends back, so a save made from an out-of-date copy is refused. */
     public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom,
-            boolean held) {
+            boolean held, List<Long> patronIds) {
         static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    person.getRetiredFrom(), person.isHeld());
+                    person.getRetiredFrom(), person.isHeld(), person.getPatronIds().stream().sorted().toList());
         }
     }
 
@@ -48,6 +48,10 @@ public class PersonController {
 
     /** Retire a person from a date; a missing date is the sheet's today. */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** Name another person on the sheet as a patron. */
+    public record PatronRequest(@NotNull Long patronId) {
     }
 
     /** Lines of name,grade pasted into the import box. */
@@ -102,6 +106,14 @@ public class PersonController {
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, false));
+    }
+
+    @PostMapping("/{personId}/patrons")
+    public PersonView addPatron(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Validated PatronRequest request) {
+        return PersonView.of(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()));
     }
 
     @PostMapping("/import")

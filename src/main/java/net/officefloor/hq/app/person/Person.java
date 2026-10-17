@@ -1,6 +1,10 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -8,6 +12,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
 /** A person on a sheet, with a name and a grade (A, B or C), who may be retired from a date
@@ -36,6 +42,12 @@ public class Person {
     /** Whether the person is on hold: while held, their open claims count in no live total. */
     @Column(name = "held", nullable = false)
     private boolean held;
+
+    /** The ids of the other people on the sheet this person names as their patrons. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_patron", joinColumns = @JoinColumn(name = "person_id"))
+    @Column(name = "patron_id", nullable = false)
+    private Set<Long> patronIds = new HashSet<>();
 
     /** Raised each time the person is saved. */
     @Version
@@ -99,6 +111,10 @@ public class Person {
     /** Whether a claim of this person in this status counts toward the totals: an open one not while held. */
     public boolean counts(ClaimStatus status) {
         return status.counts() && !(held && status == ClaimStatus.OPEN);
+    }
+
+    public Set<Long> getPatronIds() {
+        return patronIds;
     }
 
     public long getVersion() {

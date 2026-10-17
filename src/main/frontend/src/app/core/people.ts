@@ -16,6 +16,8 @@ export interface Person {
   retiredFrom: string | null;
   /** Whether the person is on hold: while held, their open claims count in no live total. */
   held: boolean;
+  /** The ids of the other people on the sheet this person names as their patrons. */
+  patronIds: number[];
 }
 
 /** Whether a claim dated on this date (yyyy-mm-dd) is refused: it is after the person's retirement. */
@@ -82,6 +84,13 @@ export class PeopleApi {
   setHeld(id: number, held: boolean): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url()}/${id}/${held ? 'hold' : 'release'}`, null, { headers: this.headers() }),
+    );
+  }
+
+  /** Name another person as a patron; refused with 422 for themselves and 409 when already named. */
+  addPatron(id: number, patronId: number): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url()}/${id}/patrons`, { patronId }, { headers: this.headers() }),
     );
   }
 

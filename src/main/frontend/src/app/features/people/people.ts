@@ -113,7 +113,7 @@ const LEAVE_DELAY_MS = 1000;
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -127,6 +127,8 @@ const LEAVE_DELAY_MS = 1000;
               <td data-testid="person-due-total">{{ dueTotal(p) }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</td>
               <td data-testid="person-overdue-total">{{ formatCents(overdueOf(p.id).cents) }}</td>
+              <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+              <td data-testid="person-backing">{{ backing(p) }}</td>
               <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" [retiredFrom]="p.retiredFrom" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
@@ -135,6 +137,23 @@ const LEAVE_DELAY_MS = 1000;
                 <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)">
                   {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'person-patron-select-' + p.id">Patron</label>
+                <select
+                  [id]="'person-patron-select-' + p.id"
+                  data-testid="person-patron-select"
+                  (change)="setPatronChoice(p.id, $any($event.target).value)"
+                >
+                  <option value="" [selected]="patronChoice(p.id) === ''">Choose a person</option>
+                  @for (o of people(); track o.id) {
+                    <option [value]="o.id" [selected]="patronChoice(p.id) === '' + o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-patron-add" (click)="addPatron(p)">
+                  Add patron<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+                @if (patronError()?.id === p.id) {
+                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
+                }
                 @if (p.retiredFrom === null) {
                   <label [for]="'person-retire-date-' + p.id">Retire from</label>
                   <input
@@ -196,6 +215,10 @@ export class People {
   private quickAdding = false;
   /** The retire date typed on each person's row, by person id; the sheet's today when not typed. */
   private readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The patron chosen on each person's row, by person id, as the chosen person's id. */
+  private readonly patronChoices = signal<ReadonlyMap<number, string>>(new Map());
+  /** The error of the last patron added on a person's row, if it was refused. */
+  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** The error of the last action taken on a person's row, if it was refused. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
 
@@ -235,8 +258,7 @@ export class People {
 
   /**
    * Each person's due-total in cents, by person id: the sum of their counted claims' due figures as
-   * shown (each already rounded), skipping those that are n/a. Absent when none has a figure and
-   * their grade has no rate today.
+   * shown (each already rounded), skipping those that are n/a; 0 when none has a figure.
    */
   private readonly dueCents = computed(() => {
     const out = new Map<number, number>();
@@ -246,9 +268,7 @@ export class People {
         .filter((c) => c.personId === p.id && counts(c, p))
         .map((c) => this.rates.dueOf(c, p.grade))
         .filter((c) => c !== undefined);
-      if (figures.length > 0 || this.rates.byGrade().has(p.grade)) {
-        out.set(p.id, figures.reduce((sum, c) => sum + c, 0));
-      }
+      out.set(p.id, figures.reduce((sum, c) => sum + c, 0));
     }
     return out;
   });
@@ -304,6 +324,8 @@ export class People {
         this.quickError.set(null);
         this.retireDates.set(new Map());
         this.rowError.set(null);
+        this.patronChoices.set(new Map());
+        this.patronError.set(null);
         void this.reload();
         void this.claims.reload();
       });
@@ -317,6 +339,64 @@ export class People {
   protected dueTotal(person: Person): string {
     const cents = this.dueCents().get(person.id);
     return cents === undefined ? 'n/a' : formatCents(cents);
+  }
+
+  /** The names of the person's patrons, sorted, comma and space separated. */
+  protected patronNames(person: Person): string {
+    const byId = new Map(this.people().map((p) => [p.id, p.name]));
+    return person.patronIds
+      .map((id) => byId.get(id))
+      .filter((n) => n !== undefined)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      .join(', ');
+  }
+
+  /** The person's patrons' due-totals added up, skipping those that are n/a; 0.00 with no patrons. */
+  protected backing(person: Person): string {
+    const due = this.dueCents();
+    return formatCents(person.patronIds.reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
+  }
+
+  protected patronChoice(personId: number): string {
+    return this.patronChoices().get(personId) ?? '';
+  }
+
+  protected setPatronChoice(personId: number, value: string): void {
+    this.patronChoices.update((choices) => new Map(choices).set(personId, value));
+    if (this.patronError()?.id === personId) this.patronError.set(null);
+  }
+
+  /** Name the person chosen on the row as one of this person's patrons. */
+  protected async addPatron(person: Person): Promise<void> {
+    this.patronError.set(null);
+    this.rowError.set(null);
+    const patronId = Number(this.patronChoice(person.id));
+    if (!patronId) {
+      this.patronError.set({ id: person.id, message: 'Choose a person to name as a patron.' });
+      return;
+    }
+    if (patronId === person.id) {
+      this.patronError.set({ id: person.id, message: 'A person cannot be their own patron.' });
+      return;
+    }
+    if (person.patronIds.includes(patronId)) {
+      this.patronError.set({ id: person.id, message: 'That person is already a patron.' });
+      return;
+    }
+    try {
+      const saved = await this.api.addPatron(person.id, patronId);
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.patronChoices.update((choices) => new Map(choices).set(person.id, ''));
+    } catch (e) {
+      this.patronError.set({
+        id: person.id,
+        message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'That person is already a patron.'
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? 'A person cannot be their own patron.'
+          : 'The patron could not be added.',
+      });
+    }
   }
 
   protected overdueOf(personId: number): { count: number; cents: number } {
@@ -335,6 +415,7 @@ export class People {
   /** Retire the person from the date on their row (the sheet's today when left as it is). */
   protected async retire(person: Person): Promise<void> {
     this.rowError.set(null);
+    this.patronError.set(null);
     const from = this.retireDate(person.id).trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       this.rowError.set({ id: person.id, message: 'Enter a date as yyyy-mm-dd.' });
@@ -356,6 +437,7 @@ export class People {
   /** Put the person on hold, or release them when they are held. */
   protected async toggleHold(person: Person): Promise<void> {
     this.rowError.set(null);
+    this.patronError.set(null);
     try {
       const saved = await this.api.setHeld(person.id, !person.held);
       this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
