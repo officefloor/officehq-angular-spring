@@ -1,0 +1,29 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 44ec1aed..184f601a 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -788,6 +788,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-rudder-spread">{{ rudderSpread() ?? 'n/a' }}</td>
+               <td colspan="10"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="39">Rudder even</th>
++              <td data-testid="rollup-rudder-even">{{ rudderEven() }}</td>
++              <td colspan="10"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1753,6 +1758,12 @@ export class PeopleList {
+     () => countable(this.people() ?? []).filter((p) => p.helm !== null && p.helm % 2 === 0).length,
+   );
+ 
++  // How many counted people have an even rudder (n/a rudders are not counted).
++  protected readonly rudderEven = computed(
++    () =>
++      countable(this.people() ?? []).filter((p) => p.rudder !== null && p.rudder % 2 === 0).length,
++  );
++
+   // The average helm among the people not on hold (n/a helms skipped), rounded like every
+   // divide; null (n/a) when nobody has one.
+   protected readonly helmMean = computed(() => {
