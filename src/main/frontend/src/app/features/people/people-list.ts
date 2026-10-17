@@ -543,6 +543,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-sheer-even">{{ sheerEven() }}</td>
               <td colspan="20"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="29">Sheer mean</th>
+              <td data-testid="rollup-sheer-mean">{{ sheerMean() ?? 'n/a' }}</td>
+              <td colspan="20"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1226,6 +1231,18 @@ export class PeopleList {
     const values = (this.people() ?? [])
       .filter((p) => !p.hold)
       .map((p) => p.camber)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
+
+  // The average sheer among the people not on hold (n/a sheers skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly sheerMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.sheer)
       .filter((v): v is number => v !== null);
     return values.length === 0
       ? null
