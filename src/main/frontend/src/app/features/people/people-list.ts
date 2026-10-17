@@ -778,6 +778,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-rudder-total">{{ rudderTotal() }}</td>
               <td colspan="10"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="39">Rudder top</th>
+              <td data-testid="rollup-rudder-top">{{ rudderTop() ?? 'n/a' }}</td>
+              <td colspan="10"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1340,6 +1345,15 @@ export class PeopleList {
   protected readonly rudderTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.rudder, hold: p.hold }))),
   );
+
+  // The highest rudder among the people not on hold, skipping n/a; n/a when there is none.
+  protected readonly rudderTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.rudder)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // Everyone's helm added up, trimmed like every sheet total.
   protected readonly helmTotal = computed(() =>
