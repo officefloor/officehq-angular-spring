@@ -1,0 +1,280 @@
+{
+  "checkpoint": 24,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp24_floor",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    7,
+    10,
+    11
+  ],
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated"
+  ],
+  "request": {
+    "spec": "The sheet has a floor (two decimals, settings; SETTING_CHANGED key=floor value=<floor>). It starts\nat 1.00. A claim's live due is at least the floor. A settled claim's frozen figure and a closed\nperiod's fixed total are unchanged by the floor. The floored figure shows wherever due appears, and\nevery total adds up the floored figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a floor (two decimals, settings; SETTING_CHANGED key=floor value=<floor>). It starts\nat 1.00. A claim's live due is at least the floor. A settled claim's frozen figure and a closed\nperiod's fixed total are unchanged by the floor. The floored figure shows wherever due appears, and\nevery total adds up the floored figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "be85a50603f6f1eebe7e4bcae13882d7f4a19051",
+  "reset_sha": "",
+  "preagent_sha": "6fac3d49928a09f09358c283782f0bc919099b3f",
+  "prev_sha": "6fac3d49928a09f09358c283782f0bc919099b3f",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6168841999999999,
+    "input_tokens": 16,
+    "output_tokens": 6662,
+    "cache_read_tokens": 305661,
+    "cache_creation_tokens": 52806,
+    "num_turns": 9,
+    "duration_ms": 80409,
+    "duration_api_ms": 56965,
+    "model": "claude-opus-5-5",
+    "session_id": "6634d82e-0e9b-4fdc-a2b2-595d1b8bdfe1",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a floor setting that starts at 1.00, and `bin/e2e` passes.\n\n**How it behaves**\n- Every live due (any claim not yet settled) shows as at least the floor: on each claim row, in each person's due total, in the overall due total and in each open period's total. The screen works these out in `Rates.dueOf` in `core/rates.ts`, which all of them use.\n- Settling a claim fixes its due with the floor applied at that moment, so the settle audit line shows `due=1.00` for a 0.50 due. Changing the floor later leaves that figure alone. Closing a period fixes its total from floored dues, and a later floor change doesn't touch it either.\n- Changing the floor writes `SETTING_CHANGED key=floor value=<floor>`. Saving the value it already has writes nothing.\n- The settings form has a new `setting-floor` input and shows the current value in `setting-floor-current`. If both settings change in one save, the clerk-limit line is written before the floor line.\n\n**Changes**\n- **Stored data:** a new migration, `V19__sheet_floor.sql`, adds the column to the sheet table with a default of 1.00.\n- **Server:** the sheet settings endpoint takes and returns the floor. If a request leaves the floor out, it stays as it is.\n\n**Two choices the request didn't settle**\n- **No rate:** a claim whose grade has no rate still shows `n/a` rather than the floor.\n- **Clerk limit:** when a clerk settles a claim, the limit is now checked against the floored due. So a small claim can be refused if the floor is above the clerk limit.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6168841999999999,
+        "num_turns": 9,
+        "duration_ms": 80409,
+        "duration_api_ms": 56965,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp24.agent.jsonl",
+  "agent_diff_file": "cp24.agent.diff",
+  "build_log_file": "cp24.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 24,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp07_rates-and-due.spec.ts::rates and due": false,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated": true,
+      "cp12_half-even.spec.ts::half even": true,
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp14_edit-conflict.spec.ts::edit conflict": true,
+      "cp15_import-people.spec.ts::import people": true,
+      "cp16_import-upserts.spec.ts::import upserts": true,
+      "cp17_periods.spec.ts::periods": true,
+      "cp18_close-period.spec.ts::close period": true,
+      "cp19_quick-add.spec.ts::quick add": false,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable": true,
+      "cp21_retire.spec.ts::retire": true,
+      "cp22_hold.spec.ts::hold": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit": true,
+      "cp24_floor.spec.ts::floor": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1234,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 838,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1408,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1493,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1844,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1163,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 7031,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-11').getByTestId('person-due-total')\nExpected string: \u001b[32m\"0.00\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-11').getByTestId('person-due-total')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  25 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n  26 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_ben_0).getByTestId(\"claim-due\")).toHaveText(\"1.00\");\n> 27 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n     |                                                                                             ^\n  28 |     await expect(pg_uma.getByTestId(\"claim-row-\" + c_cam_0).ge"
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2056,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2269,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1676,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2464,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1471,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1871,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2168,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_import-people.spec.ts::import people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1291,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_import-upserts.spec.ts::import upserts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1459,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1862,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2344,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30003,
+        "failure": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m | Error: locator.getAttribute: Test ended.\nCall log:\n  \u001b[2m- waiting for locator('[data-testid^=\"person-row-\"]').filter({ has: getByTestId('person-name').filter({ hasText: /^\\s*dot\\s*$/ }) }).last().locator('[data-testid^=\"claim-row-\"]').first()\u001b[22m\n\n\n   at ../support/ui.ts:210\n\n  208 |\n  209 | async function newestClaim(r: Locator): Promise<string> {\n> 210 |   return idOf(await claimRows(r).first().getAttribute('data-testid'), 'claim-row-');\n      |                                          ^\n  211 | }\n  212 |\n  213 | /** Add a claim from the person's row. The new claim's id (listed newest first), or null. */\n\n    at newestClaim (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:210:42)\n    at Object.quickAdd (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:298:10)\n    at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/specs/cp19_quick-add.spec.ts:16:29 | \u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1538,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3616,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2072,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2704,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2532,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": {
+    "probe_cost_usd": 0.678713,
+    "probe_input_tokens": 20,
+    "probe_cache_read_tokens": 388365,
+    "probe_recall": 0.64,
+    "probe_text": "I've read all the code and changed nothing.\n\n## 1. Figures and the rules behind them\n\n### What the sheet shows\n\n**Person row** (`features/people/people.ts`)\n| testid | Figure | Where it's worked out |\n|---|---|---|\n| `person-name`, `person-grade` | Name and grade (A, B or C) | `Person` |\n| `person-retired` / `person-retired-from` | \"yes\"/\"no\" and the `retiredFrom` date | `Person.retiredFrom` |\n| `person-hold` | \"yes\"/\"no\" from `held` | `Person.held` |\n| `person-claimed` | `claimedCents`: the sum of the **amounts** of the person's claims that pass `counts()` | client only |\n| `person-due-total` | `dueCents`: the sum of `Rates.dueOf()` over claims that pass `counts()`, skipping n/a ones. It shows **\"n/a\"** only when no claim has a figure **and** the grade has no rate in force on the sheet's today (`rates.byGrade()`). | client only |\n\n**Sheet roll-up:** `rollup-claimed-total` adds up every person's claimed. `rollup-due-total` (`dueTotalAll`) adds up every person's due-total and skips the n/a ones.\n\n**Claim row** (`features/claims/claims.ts`): `claim-number`, `claim-amount`, `claim-due` (from `Rates.dueOf`, or \"n/a\"), `claim-date`, `claim-period` (`periods.on(date)?.name`), `claim-note`, `claim-status`, `claim-opened-by`.\n\n**Period row** (`features/periods/periods.ts`): `period-due-total`. A closed period shows its frozen `closedTotal`. An open one shows a live sum of `dueOf` over the claims that pass `counts()` and are dated in it. There is also `period-closed`.\n\n**Elsewhere:** `rate-current-<grade>` is the rate in force on today, or \"n/a\". There are also `sheet-today`, `setting-clerk-limit-current`, `setting-floor-current`, `role-value`, and the import's `import-added` / `import-updated`.\n\n### Which claims count\n- `ClaimStatus.counts()` counts OPEN or SETTLED claims, so DRAFT and VOID never count.\n- `Person.counts(status)` (server) and `counts(claim, person)` in `core/claims.ts` (client) add one more rule: **an OPEN claim of a held person does not count**. A SETTLED claim still counts.\n- These rules apply to claimed, due-total, the roll-ups, the live period total, and the server's `PeriodService.close`.\n\n### How due is worked out and rounded\n- The rate comes from `RateService.inForce` (server) or `rateOn` (client). It is the grade's rate with the latest `from` on or before the **claim's date**. A rate with no `from` applies from the beginning of time.\n- The calculation is `amount \u00d7 rate / 100`, rounded **HALF_EVEN** to cents. On the server this is `RoundingMode.HALF_EVEN`; on the client it is `dueCents()`, which does banker's rounding with BigInt.\n- **Floor:** `Sheet.floored()` raises any live due to the sheet's `floor` (1.00 by default). A missing rate stays null (n/a).\n- The rate used is the person's **current** grade. Editing a grade or importing one changes every live due retroactively.\n- `Rates.dueOf` (client):\n  - SETTLED \u2192 the fixed `settledDue`, or n/a if that is null.\n  - Any other claim \u2192 the live rate, raised to the floor.\n  - On the client, a null floor is treated as 0.\n\n### What is frozen, and when\n- **Settling** fixes `Claim.settledDue`: the rate on the claim's date, raised to the floor *at that moment*. Later changes to rates, floor or grade don't affect it. If there was no rate, it stays null, shows n/a forever and adds nothing.\n- **Closing a period** (`PeriodService.close`) fixes `Period.closedTotal`, using the same counting and due rules. A period can't be closed twice (409).\n- **Claim number:** `Sheet.takeClaimNumber()` gives out the next number per sheet, only when a claim is **opened**. A voided claim keeps its number, and numbers are never reused.\n- `openedBy` is recorded when the claim is opened.\n- The claimed figure is **never** frozen. It is not stored anywhere.\n\n### Status changes (`ClaimStatus.canBecome`)\n- DRAFT \u2192 OPEN \u2192 SETTLED.\n- DRAFT or OPEN \u2192 VOID.\n- SETTLED and VOID are final.\n- Any other change is refused with 409.\n- Only a DRAFT claim can be edited (409, `NOT_DRAFT`).\n\n### Who may do what\n- `RoleService.of`: any name without a role is a **CLERK**. The other role is **STEWARD**.\n- The user who **opened** a claim can't settle it (403). This applies to stewards too.\n- `refuseIfOverClerkLimit`: if the sheet has a `clerkLimit` and the user is a clerk, settling is refused (403) when the floored due is **above** the limit, or when the due is null.\n- Stewards can settle any claim.\n- **Nothing else is checked by role.** Anyone can set roles, settings, rates, today, or close periods.\n\n### What a date decides\n- **The sheet's today** (`Sheet.today`, `SheetService.today`):\n  - It is the default claim date, the quick-add date and the default retire date.\n  - It picks `rate-current` and the \"n/a\" test for a person's due-total.\n  - Any user can change it, and nothing records the change in the audit file.\n- **The claim's date:**\n  - It picks the rate used for its due.\n  - It decides which period the claim falls in.\n  - It decides whether a closed period or a retirement blocks the claim.\n- **Retirement:** `Person.retiredOn(date)` is true for dates *after* `retiredFrom`.\n  - Claims dated on the retirement day itself are still allowed.\n  - Adding or editing a claim dated later is refused (422).\n  - Retiring someone already retired is refused (409).\n  - Existing claims are unaffected.\n- **Listing:** retired people are hidden unless `showRetired` is on, or while they still have a DRAFT claim. They stay listed for `LEAVE_DELAY_MS` (1 s) after their last draft is opened or voided.\n\n### Closed periods\n`refuseIfClosed` refuses with 423:\n- adding a claim dated in a closed period;\n- editing one whose old **or** new date is in a closed period;\n- **any** status change (open, settle or void) on a claim dated in a closed period.\n\nPeriods are inclusive (`contains`). They may not overlap, the from-date can't be after the to-date, and names are unique regardless of case and contain no spaces.\n\n### Hold\n`PersonService.hold`: holding a person already held, or releasing one who isn't, is refused (409). A hold only takes the person's OPEN claims out of every *live* total. It doesn't block any action, and it doesn't change frozen figures (`settledDue` or `closedTotal`).\n\n### Import (`PersonService.importPeople`)\n- Each line is split on its **last** comma into name and grade, both trimmed. Blank lines are skipped.\n- Every line is checked first: name present, at most 100 characters, grade A/B/C, and no name repeated in the paste (ignoring case).\n- If any line fails, **nothing** is changed and the errors are returned per line.\n- Otherwise:\n  - An existing name (matched ignoring case) has its grade overwritten. This bypasses the version check, changes live dues retroactively, and writes `PERSON_EDITED`.\n  - A new name is added (`PERSON_ADDED`).\n- Retirement and hold are never touched.\n\n### Quick add (`QuickAddService`)\nQuick add creates a DRAFT claim dated today, with an empty note. If the name isn't on the sheet, it first adds the person with grade A. If the claim is refused (closed period or retired), the new person is rolled back too.\n\n### Validation\n- Amounts must be 0 or more with at most 2 decimals.\n- Rates must be at least 0 and below 1000, with at most 2 decimals.\n- Clerk limit: same format, or blank for no limit.\n- Floor: same format; required on the client.\n\n## 2. How hard this was to follow\n\nThe logic is scattered, and some of it is duplicated:\n- **Due:** the formula and floor are coded twice on the server (`ClaimService.changeStatus` and `PeriodService.close`) and again on the client (`Rates.dueOf` / `dueCents`).\n- **Counting:** the rule exists both as `Person.counts` and as the client's `counts()`.\n- **Displayed totals:** claimed, due-total and the live period totals are worked out **only in the Angular components**.\n- **Refusal checks:** closed-period and retirement checks are repeated in the components.\n- **Edge cases:** the n/a rule, the floor default and the role rules each sit in a different file.\n\nThe code comments are good, so it can be followed. But no single place holds the rules, and a new developer would need to read about a dozen files across Java and TypeScript, and keep the copies in sync."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
