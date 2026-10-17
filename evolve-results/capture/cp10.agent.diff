@@ -1,0 +1,93 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 5a2e1282..a4ae4892 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -29,6 +29,8 @@ import { PeopleService } from './people.service';
+               <th scope="col">Quarter</th>
+               <th scope="col">Tier</th>
+               <th scope="col">Keel</th>
++              <th scope="col">Fathom</th>
++              <th scope="col">Draft</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -49,6 +51,8 @@ import { PeopleService } from './people.service';
+                 <td data-testid="concept-quarter">{{ p.quarter ?? 'n/a' }}</td>
+                 <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
+                 <td data-testid="concept-keel">{{ p.keel ?? 'n/a' }}</td>
++                <td data-testid="concept-fathom">{{ p.fathom ?? 'n/a' }}</td>
++                <td data-testid="concept-draft">{{ p.draft ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -57,11 +61,12 @@ import { PeopleService } from './people.service';
+               <th scope="row" colspan="6">Thrust total</th>
+               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+               <td colspan="7"></td>
+-              <td></td>
++              <td colspan="3"></td>
+             </tr>
+             <tr>
+               <th scope="row" colspan="14">Keel total</th>
+               <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
++              <td colspan="2"></td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 7930f9ce..5fa9d3bd 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -28,6 +28,10 @@ export interface Person {
+   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
+   // scaled plus momentum; null (n/a) when momentum is.
+   keel: number | null;
++  // keel plus momentum; null (n/a) when keel is.
++  fathom: number | null;
++  // keel plus thrust; null (n/a) when keel is.
++  draft: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 873c8ca8..fc614076 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -12,16 +12,18 @@ import java.util.List;
+  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
+  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
+  * null (n/a) when scaled is. keel is scaled plus momentum, null (n/a) when momentum is.
++ * fathom is keel plus momentum and draft is keel plus thrust; both null (n/a) when keel is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
+-        Long backing, Long quarter, String tier, Long keel) {
++        Long backing, Long quarter, String tier, Long keel,
++        Long fathom, Long draft) {
+ 
+     static PersonView of(Person p, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
+                 scaled(p), third(p), norm(p, averageScaled), backing(p),
+-                quarter(p), tier(p), keel(p));
++                quarter(p), tier(p), keel(p), fathom(p), draft(p));
+     }
+ 
+     /** The average scaled across the people, skipping n/a; null when nobody has one. */
+@@ -82,6 +84,16 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return momentum == null ? null : scaled(p) + momentum;
+     }
+ 
++    private static Long fathom(Person p) {
++        Long keel = keel(p);
++        return keel == null ? null : keel + momentum(p);
++    }
++
++    private static Long draft(Person p) {
++        Long keel = keel(p);
++        return keel == null ? null : keel + thrust(p);
++    }
++
+     private static String tier(Person p) {
+         Long scaled = scaled(p);
+         if (scaled == null) {
