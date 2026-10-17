@@ -603,6 +603,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-buoyancy-total">{{ buoyancyTotal() }}</td>
               <td colspan="17"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="32">Buoyancy top</th>
+              <td data-testid="rollup-buoyancy-top">{{ buoyancyTop() ?? 'n/a' }}</td>
+              <td colspan="17"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1135,6 +1140,16 @@ export class PeopleList {
   protected readonly buoyancyTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.buoyancy, hold: p.hold }))),
   );
+
+  // The highest buoyancy among the people not on hold (n/a buoyancies skipped); null (n/a) when
+  // nobody has one.
+  protected readonly buoyancyTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.buoyancy)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // The highest freeboard among the people not on hold (n/a freeboards skipped); null (n/a) when
   // nobody has one.
