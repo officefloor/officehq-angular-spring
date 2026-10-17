@@ -259,6 +259,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="28"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="21">Ballast mean</th>
+              <td data-testid="rollup-ballast-mean">{{ ballastMean() ?? 'n/a' }}</td>
+              <td colspan="28"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="22">Keystone total</th>
               <td data-testid="rollup-keystone-total">{{ keystoneTotal() }}</td>
               <td colspan="27"></td>
@@ -450,6 +455,18 @@ export class PeopleList {
     const top = this.ballastTop();
     const low = this.ballastLow();
     return top === null || low === null ? null : top - low;
+  });
+
+  // The average ballast among the people not on hold (n/a ballasts skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly ballastMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.ballast)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // Everyone's keystone added up, trimmed like every sheet total.
