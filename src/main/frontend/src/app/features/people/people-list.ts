@@ -438,6 +438,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-tackle-spread">{{ tackleSpread() ?? 'n/a' }}</td>
               <td colspan="24"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="25">Tackle even</th>
+              <td data-testid="rollup-tackle-even">{{ tackleEven() }}</td>
+              <td colspan="24"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -952,6 +957,12 @@ export class PeopleList {
   // How many counted people have an even pitch (n/a pitches are not counted).
   protected readonly pitchEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.pitch !== null && p.pitch % 2 === 0).length,
+  );
+
+  // How many counted people have an even tackle (n/a tackles are not counted).
+  protected readonly tackleEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.tackle !== null && p.tackle % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {
