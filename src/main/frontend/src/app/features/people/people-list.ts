@@ -863,6 +863,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-moor-spread">{{ moorSpread() ?? 'n/a' }}</td>
               <td colspan="7"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="42">Moor even</th>
+              <td data-testid="rollup-moor-even">{{ moorEven() }}</td>
+              <td colspan="7"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1914,6 +1919,11 @@ export class PeopleList {
   protected readonly riggingEven = computed(
     () =>
       countable(this.people() ?? []).filter((p) => p.rigging !== null && p.rigging % 2 === 0).length,
+  );
+
+  // How many counted people have an even moor (n/a moors are not counted).
+  protected readonly moorEven = computed(
+    () => countable(this.people() ?? []).filter((p) => p.moor !== null && p.moor % 2 === 0).length,
   );
 
   // The average rigging among the people not on hold (n/a riggings skipped), rounded like every
