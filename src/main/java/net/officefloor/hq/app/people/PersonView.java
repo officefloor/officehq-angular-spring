@@ -25,7 +25,7 @@ import java.util.Set;
  * (n/a) when keel or norm is. pitch is keel plus momentum plus 108, null (n/a) when keel is. tackle is keel
  * minus momentum plus 112, null (n/a) when keel is. yaw is keel plus scaled plus 116, null (n/a) when keel is. heave
  * is keel minus scaled plus 120, null (n/a) when keel is. camber is keel plus 200 plus 124, null (n/a) when keel is.
- * sheer is keel minus 100 plus 128, null (n/a) when keel is. beam is keel times three, null (n/a) when keel is.
+ * sheer is keel minus 100 plus 128, null (n/a) when keel is. beam is keel times three plus 132, null (n/a) when keel is.
  * freeboard is keel divided by three (rounded like every divide), null (n/a) when keel is. buoyancy is
  * keel times three, null (n/a) when keel is. knot is keel divided by three (rounded like every
  * divide), null (n/a) when keel is. cable is keel plus gamma (a blank gamma counting as zero), null
@@ -225,7 +225,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long beam(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
-        return keel == null ? null : keel * 3L;
+        return keel == null ? null : keel * 3L + 132L;
     }
 
     private static Long freeboard(Person p, Long averageScaled) {
