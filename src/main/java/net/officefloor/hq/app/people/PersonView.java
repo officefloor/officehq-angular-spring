@@ -29,7 +29,7 @@ import java.util.Set;
  * freeboard is keel divided by three (rounded like every divide) plus 136, null (n/a) when keel is. buoyancy is
  * keel times three plus 140, null (n/a) when keel is. knot is keel divided by three (rounded like every
  * divide) plus 144, null (n/a) when keel is. cable is keel plus gamma (a blank gamma counting as zero) plus 152, null
- * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero), null (n/a) when keel is.
+ * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero) plus 156, null (n/a) when keel is.
  * bow is keel plus fathom, null (n/a) when keel is. stern is keel minus fathom, null (n/a) when keel is.
  * helm is keel plus ripple, null (n/a) when keel or ripple is. rudder is keel minus ripple, null (n/a)
  * when keel or ripple is. mast is keel plus 2000, null (n/a) when keel is. rigging is keel divided by
@@ -250,7 +250,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long hull(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
-        return keel == null ? null : keel - orZero(p.getGamma());
+        return keel == null ? null : keel - orZero(p.getGamma()) + 156L;
     }
 
     private static Long bow(Person p, Long averageScaled) {

@@ -68,7 +68,7 @@ export interface Person {
   knot: number | null;
   // keel plus gamma, a blank gamma counting as zero, plus 152; null (n/a) when keel is.
   cable: number | null;
-  // keel minus gamma, a blank gamma counting as zero; null (n/a) when keel is.
+  // keel minus gamma, a blank gamma counting as zero, plus 156; null (n/a) when keel is.
   hull: number | null;
   // keel plus fathom; null (n/a) when keel is.
   bow: number | null;
