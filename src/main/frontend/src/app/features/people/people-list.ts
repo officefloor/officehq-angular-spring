@@ -194,6 +194,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="33"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="16">Draft mean</th>
+              <td data-testid="rollup-draft-mean">{{ draftMean() ?? 'n/a' }}</td>
+              <td colspan="33"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="17">Cascade total</th>
               <td data-testid="rollup-cascade-total">{{ cascadeTotal() }}</td>
               <td colspan="32"></td>
@@ -411,6 +416,18 @@ export class PeopleList {
     const top = this.draftTop();
     const low = this.draftLow();
     return top === null || low === null ? null : top - low;
+  });
+
+  // The average draft among the people not on hold (n/a drafts skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly draftMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.draft)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // Everyone's cascade added up, trimmed like every sheet total.
