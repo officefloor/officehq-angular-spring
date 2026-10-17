@@ -269,6 +269,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="27"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="22">Keystone low</th>
+              <td data-testid="rollup-keystone-low">{{ keystoneLow() ?? 'n/a' }}</td>
+              <td colspan="27"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="23">Bearing total</th>
               <td data-testid="rollup-bearing-total">{{ bearingTotal() }}</td>
               <td colspan="26"></td>
@@ -473,6 +478,15 @@ export class PeopleList {
   protected readonly keystoneTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keystone, hold: p.hold }))),
   );
+
+  // The lowest keystone among the people not on hold (n/a keystones skipped); null (n/a) when nobody has one.
+  protected readonly keystoneLow = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.keystone)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.min(...values);
+  });
 
   // Everyone's bearing added up, trimmed like every sheet total.
   protected readonly bearingTotal = computed(() =>
