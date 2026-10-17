@@ -34,7 +34,7 @@ import java.util.Set;
  * helm is keel plus ripple, null (n/a) when keel or ripple is. rudder is keel minus ripple, null (n/a)
  * when keel or ripple is. mast is keel plus 1000, null (n/a) when keel is. rigging is keel divided by
  * four (rounded like every divide), null (n/a) when keel is. moor is keel plus keystone, null (n/a)
- * when keel or keystone is.
+ * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
@@ -42,7 +42,8 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
         Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
-        Long hull, Long bow, Long stern, Long helm, Long rudder, Long mast, Long rigging, Long moor) {
+        Long hull, Long bow, Long stern, Long helm, Long rudder, Long mast, Long rigging, Long moor,
+        Long berth) {
 
     static PersonView of(Person p, Set<Person> patrons, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
@@ -57,7 +58,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
                 freeboard(p, averageScaled), buoyancy(p, averageScaled), knot(p, averageScaled), cable(p, averageScaled),
                 hull(p, averageScaled), bow(p, averageScaled), stern(p, averageScaled),
                 helm(p, averageScaled), rudder(p, averageScaled), mast(p, averageScaled),
-                rigging(p, averageScaled), moor(p, averageScaled));
+                rigging(p, averageScaled), moor(p, averageScaled), berth(p, averageScaled));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -281,6 +282,12 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
         Long keel = keel(p, averageScaled);
         Long keystone = keystone(p, averageScaled);
         return keel == null || keystone == null ? null : keel + keystone;
+    }
+
+    private static Long berth(Person p, Long averageScaled) {
+        Long keel = keel(p, averageScaled);
+        Long keystone = keystone(p, averageScaled);
+        return keel == null || keystone == null ? null : keel - keystone;
     }
 
     private static String tier(Person p) {

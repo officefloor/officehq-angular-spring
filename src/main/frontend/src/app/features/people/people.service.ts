@@ -84,6 +84,8 @@ export interface Person {
   rigging: number | null;
   // keel plus keystone; null (n/a) when keel or keystone is.
   moor: number | null;
+  // keel minus keystone; null (n/a) when keel or keystone is.
+  berth: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
