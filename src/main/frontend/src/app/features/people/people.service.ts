@@ -70,7 +70,7 @@ export interface Person {
   cable: number | null;
   // keel minus gamma, a blank gamma counting as zero, plus 156; null (n/a) when keel is.
   hull: number | null;
-  // keel plus fathom; null (n/a) when keel is.
+  // keel plus fathom plus 160; null (n/a) when keel is.
   bow: number | null;
   // keel minus fathom; null (n/a) when keel is.
   stern: number | null;
