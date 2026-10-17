@@ -763,6 +763,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-helm-spread">{{ helmSpread() ?? 'n/a' }}</td>
               <td colspan="11"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="38">Helm even</th>
+              <td data-testid="rollup-helm-even">{{ helmEven() }}</td>
+              <td colspan="11"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1697,6 +1702,11 @@ export class PeopleList {
   // How many counted people have an even stern (n/a sterns are not counted).
   protected readonly sternEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.stern !== null && p.stern % 2 === 0).length,
+  );
+
+  // How many counted people have an even helm (n/a helms are not counted).
+  protected readonly helmEven = computed(
+    () => countable(this.people() ?? []).filter((p) => p.helm !== null && p.helm % 2 === 0).length,
   );
 
   // The average stern among the people not on hold (n/a sterns skipped), rounded like every
