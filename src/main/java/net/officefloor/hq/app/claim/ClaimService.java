@@ -93,7 +93,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             BigDecimal due = rates.inForce(sheetId, person.getGrade(), claim.getDate())
                     .map(rate -> claim.getAmount().multiply(rate.getRate())
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
                     .orElse(null);
             claim.setSettledDue(due);
             extra.add("due=" + (due == null ? "n/a" : due.toPlainString()));

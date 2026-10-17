@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
-import { AMOUNT, Claim, ClaimAction, Claims, formatCents, toCents } from '../../core/claims';
+import { AMOUNT, Claim, ClaimAction, Claims, formatCents } from '../../core/claims';
 import { Grade } from '../../core/people';
-import { dueCents, Rates } from '../../core/rates';
+import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // One person's claims, newest first, and the one form that adds a claim or edits an existing one.
@@ -97,9 +97,8 @@ export class PersonClaims {
    * rate in force on the claim's date. n/a when there was or is no such rate.
    */
   protected due(claim: Claim): string {
-    if (claim.status === 'SETTLED') return claim.settledDue ?? 'n/a';
-    const rate = this.rates.on(this.grade(), claim.date);
-    return rate === undefined ? 'n/a' : formatCents(dueCents(toCents(claim.amount), rate));
+    const cents = this.rates.dueOf(claim, this.grade());
+    return cents === undefined ? 'n/a' : formatCents(cents);
   }
 
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {

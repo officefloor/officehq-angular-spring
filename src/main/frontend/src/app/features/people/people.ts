@@ -1,8 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { Claims, formatCents } from '../../core/claims';
+import { Claims, counts, formatCents } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, Person } from '../../core/people';
-import { dueCents, Rates } from '../../core/rates';
+import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
 
@@ -86,12 +86,22 @@ export class People {
   protected readonly error = signal<string | null>(null);
   protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
 
-  /** Each person's due-total in cents, by person id; absent when their grade has no rate. */
+  /**
+   * Each person's due-total in cents, by person id: the sum of their counted claims' due figures as
+   * shown (each already rounded), skipping those that are n/a. Absent when none has a figure and
+   * their grade has no rate today.
+   */
   private readonly dueCents = computed(() => {
     const out = new Map<number, number>();
     for (const p of this.people()) {
-      const rate = this.rates.byGrade().get(p.grade);
-      if (rate !== undefined) out.set(p.id, dueCents(this.claims.claimedCents().get(p.id) ?? 0, rate));
+      const figures = this.claims
+        .all()
+        .filter((c) => c.personId === p.id && counts(c))
+        .map((c) => this.rates.dueOf(c, p.grade))
+        .filter((c) => c !== undefined);
+      if (figures.length > 0 || this.rates.byGrade().has(p.grade)) {
+        out.set(p.id, figures.reduce((sum, c) => sum + c, 0));
+      }
     }
     return out;
   });

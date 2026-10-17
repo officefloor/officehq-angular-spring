@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { toCents } from './claims';
+import { Claim, toCents } from './claims';
 import { Grade } from './people';
 import { Session } from './session';
 
@@ -18,10 +18,13 @@ export const RATE = /^\d{1,3}(\.\d{1,2})?$/;
 
 /**
  * Cents due on an amount in cents at a rate (a percent with two decimals): amount times rate
- * divided by 100, rounded half up to whole cents. Exact, as the rate is taken in hundredths.
+ * divided by 100, rounded half to even to whole cents. Exact, as the rate is taken in hundredths.
  */
 export function dueCents(cents: number, rate: string): number {
-  return Number((BigInt(cents) * BigInt(toCents(rate)) + 5000n) / 10000n);
+  const product = BigInt(cents) * BigInt(toCents(rate));
+  const whole = product / 10000n;
+  const rest = product % 10000n;
+  return Number(rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole);
 }
 
 /**
@@ -66,6 +69,16 @@ export class Rates {
   /** The grade's rate in force on a date; undefined when none applies. */
   on(grade: Grade, date: string): string | undefined {
     return rateOn(this.ofGrade().get(grade) ?? [], date);
+  }
+
+  /**
+   * A claim's due in cents: a settled claim's as fixed when it was settled; any other claim's at
+   * the grade's rate in force on the claim's date. Undefined (n/a) when there was or is no such rate.
+   */
+  dueOf(claim: Claim, grade: Grade): number | undefined {
+    if (claim.status === 'SETTLED') return claim.settledDue === null ? undefined : toCents(claim.settledDue);
+    const rate = this.on(grade, claim.date);
+    return rate === undefined ? undefined : dueCents(toCents(claim.amount), rate);
   }
 
   async reload(): Promise<void> {
