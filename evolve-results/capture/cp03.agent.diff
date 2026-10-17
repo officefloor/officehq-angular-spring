@@ -1,0 +1,77 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 4d4a11d4..22f3af13 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -21,6 +21,7 @@ import { PeopleService } from './people.service';
+               <th scope="col">On hold</th>
+               <th scope="col">Patrons</th>
+               <th scope="col">Thrust</th>
++              <th scope="col">Momentum</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -33,6 +34,7 @@ import { PeopleService } from './people.service';
+                 <td [attr.data-testid]="'person-hold-' + p.id">{{ p.hold ? 'Yes' : 'No' }}</td>
+                 <td [attr.data-testid]="'person-patrons-' + p.id">{{ patronNames(p.patronIds) }}</td>
+                 <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
++                <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -40,6 +42,7 @@ import { PeopleService } from './people.service';
+             <tr>
+               <th scope="row" colspan="6">Thrust total</th>
+               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
++              <td></td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 0f7fc731..aee824ca 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -12,6 +12,8 @@ export interface Person {
+   patronIds: number[];
+   // alpha times beta; null (n/a) when either is blank.
+   thrust: number | null;
++  // thrust plus three times (gamma minus alpha); null (n/a) when thrust or gamma is.
++  momentum: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 1b226d4d..4e8cb7a0 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -4,14 +4,15 @@ import java.util.List;
+ 
+ /**
+  * A person as the API returns it; patrons are referenced by id. thrust is alpha times beta, or null
+- * (n/a) when either is blank.
++ * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
++ * when thrust or gamma is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+-        List<Long> patronIds, Long thrust) {
++        List<Long> patronIds, Long thrust, Long momentum) {
+ 
+     static PersonView of(Person p) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+-                p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p));
++                p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p));
+     }
+ 
+     private static Long thrust(Person p) {
+@@ -20,4 +21,12 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         }
+         return (long) p.getAlpha() * p.getBeta();
+     }
++
++    private static Long momentum(Person p) {
++        Long thrust = thrust(p);
++        if (thrust == null || p.getGamma() == null) {
++            return null;
++        }
++        return thrust + 3L * ((long) p.getGamma() - p.getAlpha());
++    }
+ }
