@@ -72,7 +72,7 @@ export interface Person {
   hull: number | null;
   // keel plus fathom plus 160; null (n/a) when keel is.
   bow: number | null;
-  // keel minus fathom; null (n/a) when keel is.
+  // keel minus fathom plus 164; null (n/a) when keel is.
   stern: number | null;
   // keel plus ripple; null (n/a) when keel or ripple is.
   helm: number | null;
