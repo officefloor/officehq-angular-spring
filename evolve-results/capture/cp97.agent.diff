@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 7dab7186..84736393 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -183,6 +183,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-draft-top">{{ draftTop() ?? 'n/a' }}</td>
+               <td colspan="33"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="16">Draft spread</th>
++              <td data-testid="rollup-draft-spread">{{ draftSpread() ?? 'n/a' }}</td>
++              <td colspan="33"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="17">Cascade total</th>
+               <td data-testid="rollup-cascade-total">{{ cascadeTotal() }}</td>
+@@ -396,6 +401,13 @@ export class PeopleList {
+     return values.length === 0 ? null : Math.max(...values);
+   });
+ 
++  // The highest draft minus the lowest among the people not on hold; null (n/a) when nobody has one.
++  protected readonly draftSpread = computed(() => {
++    const top = this.draftTop();
++    const low = this.draftLow();
++    return top === null || low === null ? null : top - low;
++  });
++
+   // Everyone's cascade added up, trimmed like every sheet total.
+   protected readonly cascadeTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.cascade, hold: p.hold }))),
