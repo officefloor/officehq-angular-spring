@@ -19,7 +19,7 @@ import java.util.List;
  * keystone is ballast plus norm, null (n/a) when ballast or norm is. bearing is keel minus norm, null
  * (n/a) when keel or norm is. pitch is keel plus momentum, null (n/a) when keel is. tackle is keel
  * minus momentum, null (n/a) when keel is. yaw is keel plus scaled, null (n/a) when keel is. heave
- * is keel minus scaled, null (n/a) when keel is. camber is keel plus 100, null (n/a) when keel is.
+ * is keel minus scaled, null (n/a) when keel is. camber is keel plus 200, null (n/a) when keel is.
  * sheer is keel minus 100, null (n/a) when keel is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
@@ -169,7 +169,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long camber(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
-        return keel == null ? null : keel + 100L;
+        return keel == null ? null : keel + 200L;
     }
 
     private static Long sheer(Person p, Long averageScaled) {
