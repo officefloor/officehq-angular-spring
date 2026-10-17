@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 79a9cc1c..bfe1de12 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -228,6 +228,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-cascade-mean">{{ cascadeMean() ?? 'n/a' }}</td>
+               <td colspan="32"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="18">Trim total</th>
++              <td data-testid="rollup-trim-total">{{ trimTotal() }}</td>
++              <td colspan="31"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="19">Ripple total</th>
+               <td data-testid="rollup-ripple-total">{{ rippleTotal() }}</td>
+@@ -472,6 +477,11 @@ export class PeopleList {
+       : divide(values.reduce((total, v) => total + v, 0), values.length);
+   });
+ 
++  // Everyone's trim added up, trimmed like every sheet total.
++  protected readonly trimTotal = computed(() =>
++    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.trim, hold: p.hold }))),
++  );
++
+   // Everyone's ripple added up, trimmed like every sheet total.
+   protected readonly rippleTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ripple, hold: p.hold }))),
