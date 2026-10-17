@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,10 +17,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -34,11 +37,13 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
             throw nameInUse();
         }
-        return people.save(new Person(sheetId, trimmed, grade));
+        Person person = people.save(new Person(sheetId, trimmed, grade));
+        audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        return person;
     }
 
     @Transactional
-    public Person update(String sheetId, Long personId, String name, String grade) {
+    public Person update(String sheetId, String user, Long personId, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         String trimmed = name.trim();
@@ -47,6 +52,7 @@ public class PersonService {
         }
         person.setName(trimmed);
         person.setGrade(grade);
+        audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
         return person;
     }
 

@@ -66,7 +66,7 @@ public class ClaimController {
             @PathVariable Long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated ClaimRequest request) {
-        return ClaimView.of(service.update(sheetId.trim(), claimId,
+        return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId,
                 new BigDecimal(request.amount()), request.date(), request.note()));
     }
 }

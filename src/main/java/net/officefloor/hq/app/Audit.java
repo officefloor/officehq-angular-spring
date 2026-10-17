@@ -8,6 +8,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Audit sink: appends one record per line to a KNOWN FILE (app.audit.file, default .run/audit.log)
@@ -38,6 +40,29 @@ public class Audit {
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.SYNC);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * Append one record for a change to a sheet: the event, then sheet=&lt;id&gt; and by=&lt;user&gt;, then
+     * the fields, separated by single spaces. Inside a transaction the record is written only once
+     * it commits, so a change that is refused or rolled back writes nothing.
+     */
+    public void change(String event, String sheetId, String user, String... fields) {
+        StringBuilder entry = new StringBuilder(event).append(" sheet=").append(sheetId).append(" by=").append(user);
+        for (String field : fields) {
+            entry.append(' ').append(field);
+        }
+        String line = entry.toString();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    record(line);
+                }
+            });
+        } else {
+            record(line);
         }
     }
 
