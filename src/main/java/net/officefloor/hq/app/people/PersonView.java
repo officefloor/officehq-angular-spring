@@ -17,7 +17,7 @@ import java.util.Set;
  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
  * null (n/a) when scaled is. keel is twice scaled plus three times momentum plus three times norm plus twice
  * thrust, null (n/a) when momentum or norm is.
- * fathom is keel plus momentum plus 288 and draft is keel plus thrust plus 88; both null (n/a) when keel is.
+ * fathom is keel plus momentum plus 288 and draft is keel plus thrust plus 332; both null (n/a) when keel is.
  * cascade is fathom plus scaled plus 296, null (n/a) when fathom is. trim is keel minus thrust plus 92, null (n/a)
  * when keel is. ripple is cascade plus keel plus 304, null (n/a) when cascade is. heading is keel plus norm plus 96,
  * null (n/a) when keel or norm is. ballast is ripple plus thrust plus 312, null (n/a) when ripple is.
@@ -152,7 +152,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long draft(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
-        return keel == null ? null : keel + thrust(p) + 88L;
+        return keel == null ? null : keel + thrust(p) + 332L;
     }
 
     private static Long cascade(Person p, Long averageScaled) {

@@ -30,7 +30,7 @@ export interface Person {
   keel: number | null;
   // keel plus momentum plus 288; null (n/a) when keel is.
   fathom: number | null;
-  // keel plus thrust; null (n/a) when keel is.
+  // keel plus thrust plus 332; null (n/a) when keel is.
   draft: number | null;
   // fathom plus scaled plus 296; null (n/a) when fathom is.
   cascade: number | null;
