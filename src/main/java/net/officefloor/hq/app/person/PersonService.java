@@ -7,7 +7,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The people kept on a sheet, in the order they were added. */
+/**
+ * The people kept on a sheet, in the order they were added. A name is stored without surrounding
+ * spaces and is unique on its sheet regardless of case.
+ */
 @Service
 public class PersonService {
 
@@ -27,15 +30,27 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId, user);
-        return people.save(new Person(sheetId, name, grade));
+        String trimmed = name.trim();
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, trimmed)) {
+            throw nameInUse();
+        }
+        return people.save(new Person(sheetId, trimmed, grade));
     }
 
     @Transactional
     public Person update(String sheetId, Long personId, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        person.setName(name);
+        String trimmed = name.trim();
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, trimmed, personId)) {
+            throw nameInUse();
+        }
+        person.setName(trimmed);
         person.setGrade(grade);
         return person;
+    }
+
+    private static ResponseStatusException nameInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Name already in use");
     }
 }

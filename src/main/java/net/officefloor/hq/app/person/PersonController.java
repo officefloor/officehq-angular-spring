@@ -29,7 +29,7 @@ public class PersonController {
         }
     }
 
-    /** The name is kept as typed; one that is empty or only spaces is refused. */
+    /** The name is stored trimmed; one that is empty or only spaces is refused. */
     public record PersonRequest(
             @NotBlank @Size(max = 100) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
