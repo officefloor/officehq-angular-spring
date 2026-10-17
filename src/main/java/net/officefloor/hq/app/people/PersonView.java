@@ -32,7 +32,7 @@ import java.util.Set;
  * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero), null (n/a) when keel is.
  * bow is keel plus fathom, null (n/a) when keel is. stern is keel minus fathom, null (n/a) when keel is.
  * helm is keel plus ripple, null (n/a) when keel or ripple is. rudder is keel minus ripple, null (n/a)
- * when keel or ripple is. mast is keel plus 1000, null (n/a) when keel is. rigging is keel divided by
+ * when keel or ripple is. mast is keel plus 2000, null (n/a) when keel is. rigging is keel divided by
  * four (rounded like every divide), null (n/a) when keel is. moor is keel plus keystone, null (n/a)
  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
  * keel times five, null (n/a) when keel is. jetty is keel divided by ten (rounded like every divide),
@@ -277,7 +277,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
 
     private static Long mast(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
-        return keel == null ? null : keel + 1000L;
+        return keel == null ? null : keel + 2000L;
     }
 
     private static Long rigging(Person p, Long averageScaled) {
