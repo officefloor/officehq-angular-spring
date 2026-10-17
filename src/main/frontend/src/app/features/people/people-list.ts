@@ -798,6 +798,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-rudder-mean">{{ rudderMean() ?? 'n/a' }}</td>
               <td colspan="10"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="40">Mast total</th>
+              <td data-testid="rollup-mast-total">{{ mastTotal() }}</td>
+              <td colspan="9"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1354,6 +1359,11 @@ export class PeopleList {
   // Everyone's stern added up, trimmed like every sheet total.
   protected readonly sternTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.stern, hold: p.hold }))),
+  );
+
+  // Everyone's mast added up, trimmed like every sheet total.
+  protected readonly mastTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.mast, hold: p.hold }))),
   );
 
   // Everyone's rudder added up, trimmed like every sheet total.
