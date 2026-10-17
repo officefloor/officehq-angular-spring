@@ -1,0 +1,32 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 4aabf4b8..6efb3dc9 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -853,6 +853,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-moor-total">{{ moorTotal() }}</td>
+               <td colspan="7"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="42">Moor top</th>
++              <td data-testid="rollup-moor-top">{{ moorTop() ?? 'n/a' }}</td>
++              <td colspan="7"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1426,6 +1431,15 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.moor, hold: p.hold }))),
+   );
+ 
++  // The highest moor among the people not on hold, skipping n/a; n/a when there is none.
++  protected readonly moorTop = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.moor)
++      .filter((v): v is number => v !== null);
++    return values.length === 0 ? null : Math.max(...values);
++  });
++
+   // The highest rigging among the people not on hold, skipping n/a; n/a when there is none.
+   protected readonly riggingTop = computed(() => {
+     const values = (this.people() ?? [])
