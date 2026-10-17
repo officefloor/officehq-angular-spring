@@ -418,6 +418,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-pitch-even">{{ pitchEven() }}</td>
               <td colspan="25"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="24">Pitch mean</th>
+              <td data-testid="rollup-pitch-mean">{{ pitchMean() ?? 'n/a' }}</td>
+              <td colspan="25"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -835,6 +840,18 @@ export class PeopleList {
       .map((p) => p.pitch)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
+  });
+
+  // The average pitch among the people not on hold (n/a pitches skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly pitchMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.pitch)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // How many counted people have an even keel (n/a keels are not counted).
