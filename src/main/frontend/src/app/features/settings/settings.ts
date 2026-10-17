@@ -3,7 +3,7 @@ import { AMOUNT } from '../../core/claims';
 import { ROLES, RoleName, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit) and the roles given to user names.
+// The sheet's settings (the clerk limit and the floor) and the roles given to user names.
 @Component({
   selector: 'app-settings',
   template: `
@@ -19,6 +19,15 @@ import { Session } from '../../core/session';
           data-testid="setting-clerk-limit"
           [value]="clerkLimit()"
           (input)="clerkLimit.set($any($event.target).value); settingsError.set(null)"
+        />
+        <p>Floor <strong data-testid="setting-floor-current">{{ session.floor() ?? '' }}</strong></p>
+        <label for="setting-floor">Floor (the least any live due can be)</label>
+        <input
+          id="setting-floor"
+          inputmode="decimal"
+          data-testid="setting-floor"
+          [value]="floor()"
+          (input)="floor.set($any($event.target).value); settingsError.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
@@ -76,6 +85,7 @@ export class SettingsPanel {
   protected readonly roles = inject(Roles);
 
   protected readonly clerkLimit = linkedSignal(() => this.session.clerkLimit() ?? '');
+  protected readonly floor = linkedSignal(() => this.session.floor() ?? '');
   protected readonly settingsError = signal<string | null>(null);
   protected readonly user = signal('');
   protected readonly role = signal('');
@@ -110,9 +120,14 @@ export class SettingsPanel {
       this.settingsError.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank.');
       return;
     }
+    const floor = this.floor().trim();
+    if (!AMOUNT.test(floor)) {
+      this.settingsError.set('Enter a floor of 0.00 or more, with at most two decimals.');
+      return;
+    }
     this.savingSettings = true;
     try {
-      await this.session.setClerkLimit(limit || null);
+      await this.session.setSettings(limit || null, floor);
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {

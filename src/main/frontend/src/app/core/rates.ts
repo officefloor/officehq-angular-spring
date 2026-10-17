@@ -73,12 +73,15 @@ export class Rates {
 
   /**
    * A claim's due in cents: a settled claim's as fixed when it was settled; any other claim's at
-   * the grade's rate in force on the claim's date. Undefined (n/a) when there was or is no such rate.
+   * the grade's rate in force on the claim's date, raised to the sheet's floor. Undefined (n/a) when
+   * there was or is no such rate.
    */
   dueOf(claim: Claim, grade: Grade): number | undefined {
     if (claim.status === 'SETTLED') return claim.settledDue === null ? undefined : toCents(claim.settledDue);
     const rate = this.on(grade, claim.date);
-    return rate === undefined ? undefined : dueCents(toCents(claim.amount), rate);
+    if (rate === undefined) return undefined;
+    const floor = this.session.floor();
+    return Math.max(dueCents(toCents(claim.amount), rate), floor === null ? 0 : toCents(floor));
   }
 
   async reload(): Promise<void> {

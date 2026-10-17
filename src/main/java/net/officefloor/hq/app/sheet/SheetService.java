@@ -46,12 +46,13 @@ public class SheetService {
     }
 
     /**
-     * Change the sheet's clerk limit (two decimals; null for no limit). A change is recorded as
-     * SETTING_CHANGED key=clerk-limit value=&lt;limit&gt;, the value empty for no limit; setting the
-     * limit it already has records nothing.
+     * Change the sheet's clerk limit (two decimals; null for no limit) and floor (two decimals; null
+     * leaves it as it is). Each change is recorded as SETTING_CHANGED key=&lt;key&gt; value=&lt;value&gt;,
+     * clerk-limit first then floor, the clerk limit's value empty for no limit; setting a value it
+     * already has records nothing.
      */
     @Transactional
-    public Sheet setClerkLimit(String id, String user, BigDecimal limit) {
+    public Sheet setSettings(String id, String user, BigDecimal limit, BigDecimal floor) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
         BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY);
@@ -59,6 +60,13 @@ public class SheetService {
             sheet.setClerkLimit(scaled);
             audit.change("SETTING_CHANGED", id, user, "key=clerk-limit",
                     "value=" + (scaled == null ? "" : scaled.toPlainString()));
+        }
+        if (floor != null) {
+            BigDecimal scaledFloor = floor.setScale(2, RoundingMode.UNNECESSARY);
+            if (scaledFloor.compareTo(sheet.getFloor()) != 0) {
+                sheet.setFloor(scaledFloor);
+                audit.change("SETTING_CHANGED", id, user, "key=floor", "value=" + scaledFloor.toPlainString());
+            }
         }
         return sheet;
     }

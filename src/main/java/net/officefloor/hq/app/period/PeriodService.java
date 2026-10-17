@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -74,13 +75,13 @@ public class PeriodService {
      * Close a period, fixing its due-total: the dues of the counted claims dated in it (an open claim of a
      * person on hold is not counted), each a settled
      * claim's fixed due or else its amount at its person's grade's rate in force on its date, rounded
-     * half to even to cents; a claim with no such rate adds nothing. A closed period cannot be closed again (409).
+     * half to even to cents and raised to the sheet's floor; a claim with no such rate adds nothing. A closed period cannot be closed again (409).
      */
     @Transactional
     public Period close(String sheetId, String user, String name) {
         sheets.load(sheetId, user);
         // Lock the sheet, so no claim changes while the total is taken.
-        sheets.lock(sheetId);
+        Sheet sheet = sheets.lock(sheetId).orElseThrow();
         Period period = periods.findBySheetIdAndName(sheetId, name)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period"));
         if (period.isClosed()) {
@@ -96,10 +97,10 @@ public class PeriodService {
             }
             BigDecimal due = switch (claim.getStatus()) {
                 case SETTLED -> claim.getSettledDue();
-                default -> rates.inForce(sheetId, person.getGrade(), claim.getDate())
+                default -> sheet.floored(rates.inForce(sheetId, person.getGrade(), claim.getDate())
                         .map(rate -> claim.getAmount().multiply(rate.getRate())
                                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                        .orElse(null);
+                        .orElse(null));
             };
             if (due != null) {
                 total = total.add(due);
