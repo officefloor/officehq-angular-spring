@@ -234,6 +234,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="31"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="18">Trim top</th>
+              <td data-testid="rollup-trim-top">{{ trimTop() ?? 'n/a' }}</td>
+              <td colspan="31"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="19">Ripple total</th>
               <td data-testid="rollup-ripple-total">{{ rippleTotal() }}</td>
               <td colspan="30"></td>
@@ -481,6 +486,15 @@ export class PeopleList {
   protected readonly trimTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.trim, hold: p.hold }))),
   );
+
+  // The highest trim among the people not on hold (n/a trims skipped); null (n/a) when nobody has one.
+  protected readonly trimTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.trim)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // Everyone's ripple added up, trimmed like every sheet total.
   protected readonly rippleTotal = computed(() =>
