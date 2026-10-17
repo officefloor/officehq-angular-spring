@@ -29,6 +29,8 @@ import { PeopleService } from './people.service';
               <th scope="col">Quarter</th>
               <th scope="col">Tier</th>
               <th scope="col">Keel</th>
+              <th scope="col">Fathom</th>
+              <th scope="col">Draft</th>
             </tr>
           </thead>
           <tbody>
@@ -49,6 +51,8 @@ import { PeopleService } from './people.service';
                 <td data-testid="concept-quarter">{{ p.quarter ?? 'n/a' }}</td>
                 <td data-testid="concept-tier">{{ p.tier ?? 'n/a' }}</td>
                 <td data-testid="concept-keel">{{ p.keel ?? 'n/a' }}</td>
+                <td data-testid="concept-fathom">{{ p.fathom ?? 'n/a' }}</td>
+                <td data-testid="concept-draft">{{ p.draft ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
@@ -57,11 +61,12 @@ import { PeopleService } from './people.service';
               <th scope="row" colspan="6">Thrust total</th>
               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
               <td colspan="7"></td>
-              <td></td>
+              <td colspan="3"></td>
             </tr>
             <tr>
               <th scope="row" colspan="14">Keel total</th>
               <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
+              <td colspan="2"></td>
             </tr>
           </tfoot>
         </table>

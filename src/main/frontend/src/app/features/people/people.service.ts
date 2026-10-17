@@ -28,6 +28,10 @@ export interface Person {
   tier: 'SINK' | 'STEADY' | 'SURGE' | null;
   // scaled plus momentum; null (n/a) when momentum is.
   keel: number | null;
+  // keel plus momentum; null (n/a) when keel is.
+  fathom: number | null;
+  // keel plus thrust; null (n/a) when keel is.
+  draft: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
