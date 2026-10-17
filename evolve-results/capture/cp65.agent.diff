@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 36d9cf26..219cfb29 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -158,6 +158,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-fathom-spread">{{ fathomSpread() ?? 'n/a' }}</td>
+               <td colspan="34"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="15">Fathom even</th>
++              <td data-testid="rollup-fathom-even">{{ fathomEven() }}</td>
++              <td colspan="34"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="16">Draft total</th>
+               <td data-testid="rollup-draft-total">{{ draftTotal() }}</td>
+@@ -276,6 +281,11 @@ export class PeopleList {
+     () => countable(this.people() ?? []).filter((p) => p.keel !== null && p.keel % 2 === 0).length,
+   );
+ 
++  // How many counted people have an even fathom (n/a fathoms are not counted).
++  protected readonly fathomEven = computed(
++    () => countable(this.people() ?? []).filter((p) => p.fathom !== null && p.fathom % 2 === 0).length,
++  );
++
+   protected patronNames(ids: number[]): string {
+     const names = this.names();
+     return ids.map((id) => names.get(id) ?? String(id)).join(', ');
