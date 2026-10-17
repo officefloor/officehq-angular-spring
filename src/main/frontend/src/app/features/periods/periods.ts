@@ -1,9 +1,32 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
-import { Claims, counts, formatCents } from '../../core/claims';
+import { Claim, Claims, counts, formatCents } from '../../core/claims';
 import { Person, gradeOn } from '../../core/people';
 import { PERIOD_NAME, Period, Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
+
+/**
+ * Each period's due-total in cents, by period id: the due figures (as shown, each already rounded)
+ * of the counted claims dated in it, skipping those that are n/a.
+ */
+export function periodDueCents(people: Person[], claims: Claim[], periods: Periods, rates: Rates): Map<number, number> {
+  const byId = new Map(people.map((p) => [p.id, p]));
+  const out = new Map<number, number>();
+  for (const c of claims) {
+    const person = byId.get(c.personId);
+    const period = periods.on(c.date);
+    if (person === undefined || period === undefined || !counts(c, person)) continue;
+    const due = rates.dueOf(c, gradeOn(person.grades, c.date));
+    if (due !== undefined) out.set(period.id, (out.get(period.id) ?? 0) + due);
+  }
+  return out;
+}
+
+/** A closed period's due-total as fixed when it was closed; an open one's as it is now. */
+export function periodDueTotal(period: Period, dueCents: ReadonlyMap<number, number>): string {
+  if (period.closedTotal !== null) return period.closedTotal;
+  return formatCents(dueCents.get(period.id) ?? 0);
+}
 
 // The sheet's periods, each with the due-total of the counted claims dated in it, and the form that adds one.
 @Component({
@@ -96,18 +119,7 @@ export class PeriodsPanel {
    * Each period's due-total in cents, by period id: the due figures (as shown, each already rounded)
    * of the counted claims dated in it, skipping those that are n/a.
    */
-  private readonly dueCents = computed(() => {
-    const byId = new Map(this.people().map((p) => [p.id, p]));
-    const out = new Map<number, number>();
-    for (const c of this.claims.all()) {
-      const person = byId.get(c.personId);
-      const period = this.periods.on(c.date);
-      if (person === undefined || period === undefined || !counts(c, person)) continue;
-      const due = this.rates.dueOf(c, gradeOn(person.grades, c.date));
-      if (due !== undefined) out.set(period.id, (out.get(period.id) ?? 0) + due);
-    }
-    return out;
-  });
+  private readonly dueCents = computed(() => periodDueCents(this.people(), this.claims.all(), this.periods, this.rates));
 
   constructor() {
     // Re-read the store each time the sheet is (re-)loaded.
@@ -121,10 +133,8 @@ export class PeriodsPanel {
     });
   }
 
-  /** A closed period's due-total as fixed when it was closed; an open one's as it is now. */
   protected dueTotal(period: Period): string {
-    if (period.closedTotal !== null) return period.closedTotal;
-    return formatCents(this.dueCents().get(period.id) ?? 0);
+    return periodDueTotal(period, this.dueCents());
   }
 
   protected async close(period: Period): Promise<void> {

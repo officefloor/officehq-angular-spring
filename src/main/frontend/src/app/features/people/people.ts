@@ -7,6 +7,7 @@ import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
 import { PeriodsPanel } from '../periods/periods';
+import { SummaryPanel } from '../summary/summary';
 
 /** How long a retired person stays listed after their last draft claim is opened or voided. */
 const LEAVE_DELAY_MS = 1000;
@@ -15,7 +16,7 @@ const LEAVE_DELAY_MS = 1000;
 // an existing one.
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, PeriodsPanel],
+  imports: [PersonClaims, PeriodsPanel, SummaryPanel],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -190,6 +191,8 @@ const LEAVE_DELAY_MS = 1000;
       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ formatCents(overdueAll().cents) }}</strong></p>
 
       <app-periods [people]="people()" />
+
+      <app-summary [people]="people()" [dueCents]="dueCents()" />
     </section>
   `,
 })
@@ -270,7 +273,7 @@ export class People {
    * Each person's due-total in cents, by person id: the sum of their counted claims' due figures as
    * shown (each already rounded), skipping those that are n/a; 0 when none has a figure.
    */
-  private readonly dueCents = computed(() => {
+  protected readonly dueCents = computed(() => {
     const out = new Map<number, number>();
     for (const p of this.people()) {
       const figures = this.claims
