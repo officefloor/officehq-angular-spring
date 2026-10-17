@@ -403,6 +403,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-pitch-total">{{ pitchTotal() }}</td>
               <td colspan="25"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="24">Pitch top</th>
+              <td data-testid="rollup-pitch-top">{{ pitchTop() ?? 'n/a' }}</td>
+              <td colspan="25"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -802,6 +807,15 @@ export class PeopleList {
   protected readonly pitchTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.pitch, hold: p.hold }))),
   );
+
+  // The highest pitch among the people not on hold (n/a pitches skipped); null (n/a) when nobody has one.
+  protected readonly pitchTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.pitch)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // How many counted people have an even keel (n/a keels are not counted).
   protected readonly keelCount = computed(
