@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 246c3b84..2fd661b3 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -303,6 +303,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-heading-even">{{ headingEven() }}</td>
+               <td colspan="29"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="20">Heading mean</th>
++              <td data-testid="rollup-heading-mean">{{ headingMean() ?? 'n/a' }}</td>
++              <td colspan="29"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="21">Ballast total</th>
+               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
+@@ -625,6 +630,18 @@ export class PeopleList {
+     return top === null || low === null ? null : top - low;
+   });
+ 
++  // The average heading among the people not on hold (n/a headings skipped), rounded like every
++  // divide; null (n/a) when nobody has one.
++  protected readonly headingMean = computed(() => {
++    const values = (this.people() ?? [])
++      .filter((p) => !p.hold)
++      .map((p) => p.heading)
++      .filter((v): v is number => v !== null);
++    return values.length === 0
++      ? null
++      : divide(values.reduce((total, v) => total + v, 0), values.length);
++  });
++
+   // Everyone's ballast added up, trimmed like every sheet total.
+   protected readonly ballastTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.ballast, hold: p.hold }))),
