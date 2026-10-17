@@ -728,6 +728,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-stern-total">{{ sternTotal() }}</td>
               <td colspan="12"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="37">Stern top</th>
+              <td data-testid="rollup-stern-top">{{ sternTop() ?? 'n/a' }}</td>
+              <td colspan="12"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1285,6 +1290,15 @@ export class PeopleList {
   protected readonly sternTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.stern, hold: p.hold }))),
   );
+
+  // The highest stern among the people not on hold (n/a sterns skipped); null (n/a) when nobody has one.
+  protected readonly sternTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.stern)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // The highest bow among the people not on hold (n/a bows skipped); null (n/a) when nobody has one.
   protected readonly bowTop = computed(() => {
