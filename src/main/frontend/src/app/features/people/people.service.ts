@@ -14,6 +14,10 @@ export interface Person {
   thrust: number | null;
   // thrust plus three times (gamma minus alpha); null (n/a) when thrust or gamma is.
   momentum: number | null;
+  // momentum times two; null (n/a) when momentum is.
+  scaled: number | null;
+  // scaled divided by three, rounded down (also below zero); null (n/a) when scaled is.
+  third: number | null;
 }
 
 @Injectable({ providedIn: 'root' })

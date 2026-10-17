@@ -22,6 +22,8 @@ import { PeopleService } from './people.service';
               <th scope="col">Patrons</th>
               <th scope="col">Thrust</th>
               <th scope="col">Momentum</th>
+              <th scope="col">Scaled</th>
+              <th scope="col">Third</th>
             </tr>
           </thead>
           <tbody>
@@ -35,6 +37,8 @@ import { PeopleService } from './people.service';
                 <td [attr.data-testid]="'person-patrons-' + p.id">{{ patronNames(p.patronIds) }}</td>
                 <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
                 <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+                <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
+                <td data-testid="concept-third">{{ p.third ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
@@ -42,7 +46,7 @@ import { PeopleService } from './people.service';
             <tr>
               <th scope="row" colspan="6">Thrust total</th>
               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
-              <td></td>
+              <td colspan="3"></td>
             </tr>
           </tfoot>
         </table>
