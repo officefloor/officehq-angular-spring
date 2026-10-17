@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index f27b7ca1..11416d91 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -61,6 +61,7 @@ import { Person, PeopleService } from './people.service';
+               <th scope="col">Wharf</th>
+               <th scope="col">Jetty</th>
+               <th scope="col">Pier</th>
++              <th scope="col">Ebb</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -113,6 +114,7 @@ import { Person, PeopleService } from './people.service';
+                 <td data-testid="concept-wharf">{{ p.wharf ?? 'n/a' }}</td>
+                 <td data-testid="concept-jetty">{{ p.jetty ?? 'n/a' }}</td>
+                 <td data-testid="concept-pier">{{ p.pier ?? 'n/a' }}</td>
++                <td data-testid="concept-ebb">{{ p.ebb ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -120,17 +122,17 @@ import { Person, PeopleService } from './people.service';
+             <tr>
+               <th scope="row" colspan="6">Thrust total</th>
+               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+-              <td colspan="37"></td>
++              <td colspan="41"></td>
+             </tr>
+             <tr>
+               <th scope="row" colspan="14">Keel total</th>
+               <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
+-              <td colspan="29"></td>
++              <td colspan="33"></td>
+             </tr>
+             <tr>
+               <th scope="row" colspan="14">Keel count</th>
+               <td data-testid="rollup-keel-count">{{ keelCount() }}</td>
+-              <td colspan="29"></td>
++              <td colspan="33"></td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 0920493b..19d8227e 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -92,6 +92,8 @@ export interface Person {
+   jetty: number | null;
+   // keel plus 500; null (n/a) when keel is.
+   pier: number | null;
++  // keel minus 500; null (n/a) when keel is.
++  ebb: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 06e7a2a6..63389028 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -36,7 +36,8 @@ import java.util.Set;
+  * four (rounded like every divide), null (n/a) when keel is. moor is keel plus keystone, null (n/a)
+  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
+  * keel times five, null (n/a) when keel is. jetty is keel divided by five (rounded like every divide),
+- * null (n/a) when keel is. pier is keel plus 500, null (n/a) when keel is.
++ * null (n/a) when keel is. pier is keel plus 500, null (n/a) when keel is. ebb is keel minus 500, null
++ * (n/a) when keel is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
+@@ -45,7 +46,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
+         Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
+         Long hull, Long bow, Long stern, Long helm, Long rudder, Long mast, Long rigging, Long moor,
+-        Long berth, Long wharf, Long jetty, Long pier) {
++        Long berth, Long wharf, Long jetty, Long pier, Long ebb) {
+ 
+     static PersonView of(Person p, Set<Person> patrons, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+@@ -61,7 +62,8 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+                 hull(p, averageScaled), bow(p, averageScaled), stern(p, averageScaled),
+                 helm(p, averageScaled), rudder(p, averageScaled), mast(p, averageScaled),
+                 rigging(p, averageScaled), moor(p, averageScaled), berth(p, averageScaled),
+-                wharf(p, averageScaled), jetty(p, averageScaled), pier(p, averageScaled));
++                wharf(p, averageScaled), jetty(p, averageScaled), pier(p, averageScaled),
++                ebb(p, averageScaled));
+     }
+ 
+     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
+@@ -308,6 +310,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return keel == null ? null : keel + 500L;
+     }
+ 
++    private static Long ebb(Person p, Long averageScaled) {
++        Long keel = keel(p, averageScaled);
++        return keel == null ? null : keel - 500L;
++    }
++
+     private static String tier(Person p) {
+         Long scaled = scaled(p);
+         if (scaled == null) {
