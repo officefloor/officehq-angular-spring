@@ -90,6 +90,8 @@ export interface Person {
   wharf: number | null;
   // keel divided by five, rounded to the nearest (a half up); null (n/a) when keel is.
   jetty: number | null;
+  // keel plus 500; null (n/a) when keel is.
+  pier: number | null;
 }
 
 @Injectable({ providedIn: 'root' })

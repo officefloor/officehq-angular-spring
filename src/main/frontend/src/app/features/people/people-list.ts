@@ -60,6 +60,7 @@ import { Person, PeopleService } from './people.service';
               <th scope="col">Berth</th>
               <th scope="col">Wharf</th>
               <th scope="col">Jetty</th>
+              <th scope="col">Pier</th>
             </tr>
           </thead>
           <tbody>
@@ -111,6 +112,7 @@ import { Person, PeopleService } from './people.service';
                 <td data-testid="concept-berth">{{ p.berth ?? 'n/a' }}</td>
                 <td data-testid="concept-wharf">{{ p.wharf ?? 'n/a' }}</td>
                 <td data-testid="concept-jetty">{{ p.jetty ?? 'n/a' }}</td>
+                <td data-testid="concept-pier">{{ p.pier ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
@@ -118,17 +120,17 @@ import { Person, PeopleService } from './people.service';
             <tr>
               <th scope="row" colspan="6">Thrust total</th>
               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
-              <td colspan="36"></td>
+              <td colspan="37"></td>
             </tr>
             <tr>
               <th scope="row" colspan="14">Keel total</th>
               <td data-testid="rollup-keel-total">{{ keelTotal() }}</td>
-              <td colspan="28"></td>
+              <td colspan="29"></td>
             </tr>
             <tr>
               <th scope="row" colspan="14">Keel count</th>
               <td data-testid="rollup-keel-count">{{ keelCount() }}</td>
-              <td colspan="28"></td>
+              <td colspan="29"></td>
             </tr>
           </tfoot>
         </table>
