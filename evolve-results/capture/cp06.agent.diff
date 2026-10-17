@@ -1,0 +1,111 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 6a0f6e6c..75ddfc0e 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -24,6 +24,8 @@ import { PeopleService } from './people.service';
+               <th scope="col">Momentum</th>
+               <th scope="col">Scaled</th>
+               <th scope="col">Third</th>
++              <th scope="col">Norm</th>
++              <th scope="col">Backing</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -39,6 +41,8 @@ import { PeopleService } from './people.service';
+                 <td data-testid="concept-momentum">{{ p.momentum ?? 'n/a' }}</td>
+                 <td data-testid="concept-scaled">{{ p.scaled ?? 'n/a' }}</td>
+                 <td data-testid="concept-third">{{ p.third ?? 'n/a' }}</td>
++                <td data-testid="concept-norm">{{ p.norm ?? 'n/a' }}</td>
++                <td data-testid="concept-backing">{{ p.backing ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -46,7 +50,7 @@ import { PeopleService } from './people.service';
+             <tr>
+               <th scope="row" colspan="6">Thrust total</th>
+               <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+-              <td colspan="3"></td>
++              <td colspan="5"></td>
+             </tr>
+           </tfoot>
+         </table>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 26e1376b..13e38004 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -18,6 +18,10 @@ export interface Person {
+   scaled: number | null;
+   // scaled divided by three, rounded down (also below zero); null (n/a) when scaled is.
+   third: number | null;
++  // scaled minus the sheet's average scaled (n/a ones skipped, rounded down); null (n/a) when scaled is.
++  norm: number | null;
++  // the patrons' momentum added up (n/a ones add nothing); null (n/a) when momentum is.
++  backing: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PeopleService.java b/src/main/java/net/officefloor/hq/app/people/PeopleService.java
+index fab83f4c..433ccdf9 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PeopleService.java
++++ b/src/main/java/net/officefloor/hq/app/people/PeopleService.java
+@@ -15,6 +15,8 @@ public class PeopleService {
+ 
+     @Transactional(readOnly = true)
+     public List<PersonView> list() {
+-        return people.findAllByOrderByIdAsc().stream().map(PersonView::of).toList();
++        List<Person> all = people.findAllByOrderByIdAsc();
++        Long averageScaled = PersonView.averageScaled(all);
++        return all.stream().map(p -> PersonView.of(p, averageScaled)).toList();
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 168b2f64..e11e4c2a 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -6,15 +6,42 @@ import java.util.List;
+  * A person as the API returns it; patrons are referenced by id. thrust is alpha times beta, or null
+  * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
+  * when thrust or gamma is. scaled is momentum times two, and third is scaled divided by three (rounded
+- * down, see {@link SheetMath#divide}); both null (n/a) when momentum is.
++ * down, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
++ * sheet's average scaled (over the people whose scaled is not n/a, rounded like every divide), null
++ * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
++ * (n/a) when the person's own momentum is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+-        List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third) {
++        List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
++        Long backing) {
+ 
+-    static PersonView of(Person p) {
++    static PersonView of(Person p, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+                 p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p), momentum(p),
+-                scaled(p), third(p));
++                scaled(p), third(p), norm(p, averageScaled), backing(p));
++    }
++
++    /** The average scaled across the people, skipping n/a; null when nobody has one. */
++    static Long averageScaled(List<Person> people) {
++        List<Long> values = people.stream().map(PersonView::scaled).filter(v -> v != null).toList();
++        if (values.isEmpty()) {
++            return null;
++        }
++        long sum = values.stream().mapToLong(Long::longValue).sum();
++        return SheetMath.divide(sum, values.size());
++    }
++
++    private static Long norm(Person p, Long averageScaled) {
++        Long scaled = scaled(p);
++        return scaled == null || averageScaled == null ? null : scaled - averageScaled;
++    }
++
++    private static Long backing(Person p) {
++        if (momentum(p) == null) {
++            return null;
++        }
++        return p.getPatrons().stream().map(PersonView::momentum).filter(m -> m != null)
++                .mapToLong(Long::longValue).sum();
+     }
+ 
+     private static Long thrust(Person p) {
