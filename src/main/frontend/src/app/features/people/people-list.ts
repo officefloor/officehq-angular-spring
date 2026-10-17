@@ -713,6 +713,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-bow-spread">{{ bowSpread() ?? 'n/a' }}</td>
               <td colspan="13"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="36">Bow even</th>
+              <td data-testid="rollup-bow-even">{{ bowEven() }}</td>
+              <td colspan="13"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1590,6 +1595,11 @@ export class PeopleList {
   // How many counted people have an even hull (n/a hulls are not counted).
   protected readonly hullEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.hull !== null && p.hull % 2 === 0).length,
+  );
+
+  // How many counted people have an even bow (n/a bows are not counted).
+  protected readonly bowEven = computed(
+    () => countable(this.people() ?? []).filter((p) => p.bow !== null && p.bow % 2 === 0).length,
   );
 
   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
