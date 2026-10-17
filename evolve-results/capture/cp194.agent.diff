@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 7d9a10ec..4bb8ec1d 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -673,6 +673,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-cable-mean">{{ cableMean() ?? 'n/a' }}</td>
+               <td colspan="15"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="35">Hull total</th>
++              <td data-testid="rollup-hull-total">{{ hullTotal() }}</td>
++              <td colspan="14"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1216,6 +1221,11 @@ export class PeopleList {
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.cable, hold: p.hold }))),
+   );
+ 
++  // Everyone's hull added up, trimmed like every sheet total.
++  protected readonly hullTotal = computed(() =>
++    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.hull, hold: p.hold }))),
++  );
++
+   // The highest cable among the people not on hold (n/a cables skipped); null (n/a) when nobody has one.
+   protected readonly cableTop = computed(() => {
+     const values = (this.people() ?? [])
