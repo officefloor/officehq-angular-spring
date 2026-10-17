@@ -638,6 +638,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-knot-spread">{{ knotSpread() ?? 'n/a' }}</td>
               <td colspan="16"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="33">Knot even</th>
+              <td data-testid="rollup-knot-even">{{ knotEven() }}</td>
+              <td colspan="16"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1430,6 +1435,11 @@ export class PeopleList {
     () =>
       countable(this.people() ?? []).filter((p) => p.buoyancy !== null && p.buoyancy % 2 === 0)
         .length,
+  );
+
+  // How many counted people have an even knot (n/a knots are not counted).
+  protected readonly knotEven = computed(
+    () => countable(this.people() ?? []).filter((p) => p.knot !== null && p.knot % 2 === 0).length,
   );
 
   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
