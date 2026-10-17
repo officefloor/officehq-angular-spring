@@ -758,6 +758,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-helm-top">{{ helmTop() ?? 'n/a' }}</td>
               <td colspan="11"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="38">Helm spread</th>
+              <td data-testid="rollup-helm-spread">{{ helmSpread() ?? 'n/a' }}</td>
+              <td colspan="11"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1328,6 +1333,16 @@ export class PeopleList {
       .map((p) => p.helm)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest helm minus the lowest helm among the people not on hold (n/a helms skipped); null (n/a)
+  // when nobody has one.
+  protected readonly helmSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.helm)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // The highest stern among the people not on hold (n/a sterns skipped); null (n/a) when nobody has one.
