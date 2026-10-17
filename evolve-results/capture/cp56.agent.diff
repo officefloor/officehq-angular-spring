@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index a85fa788..1af314bf 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -78,7 +78,7 @@ export interface Person {
+   helm: number | null;
+   // keel minus ripple; null (n/a) when keel or ripple is.
+   rudder: number | null;
+-  // keel plus 1000; null (n/a) when keel is.
++  // keel plus 2000; null (n/a) when keel is.
+   mast: number | null;
+   // keel divided by four, rounded to the nearest (a half up); null (n/a) when keel is.
+   rigging: number | null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 53813b79..eb35e5a2 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -32,7 +32,7 @@ import java.util.Set;
+  * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero), null (n/a) when keel is.
+  * bow is keel plus fathom, null (n/a) when keel is. stern is keel minus fathom, null (n/a) when keel is.
+  * helm is keel plus ripple, null (n/a) when keel or ripple is. rudder is keel minus ripple, null (n/a)
+- * when keel or ripple is. mast is keel plus 1000, null (n/a) when keel is. rigging is keel divided by
++ * when keel or ripple is. mast is keel plus 2000, null (n/a) when keel is. rigging is keel divided by
+  * four (rounded like every divide), null (n/a) when keel is. moor is keel plus keystone, null (n/a)
+  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
+  * keel times five, null (n/a) when keel is. jetty is keel divided by ten (rounded like every divide),
+@@ -277,7 +277,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+ 
+     private static Long mast(Person p, Long averageScaled) {
+         Long keel = keel(p, averageScaled);
+-        return keel == null ? null : keel + 1000L;
++        return keel == null ? null : keel + 2000L;
+     }
+ 
+     private static Long rigging(Person p, Long averageScaled) {
