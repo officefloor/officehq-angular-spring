@@ -1,0 +1,84 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 2655caff..4d4a11d4 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -20,6 +20,7 @@ import { PeopleService } from './people.service';
+               <th scope="col">Gamma</th>
+               <th scope="col">On hold</th>
+               <th scope="col">Patrons</th>
++              <th scope="col">Thrust</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -31,9 +32,16 @@ import { PeopleService } from './people.service';
+                 <td [attr.data-testid]="'person-gamma-' + p.id">{{ p.gamma ?? '' }}</td>
+                 <td [attr.data-testid]="'person-hold-' + p.id">{{ p.hold ? 'Yes' : 'No' }}</td>
+                 <td [attr.data-testid]="'person-patrons-' + p.id">{{ patronNames(p.patronIds) }}</td>
++                <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
++          <tfoot>
++            <tr>
++              <th scope="row" colspan="6">Thrust total</th>
++              <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
++            </tr>
++          </tfoot>
+         </table>
+       }
+     }
+@@ -46,6 +54,11 @@ export class PeopleList {
+     () => new Map((this.people() ?? []).map((p) => [p.id, p.name] as const)),
+   );
+ 
++  // Everyone's thrust added up, skipping the people for whom it is n/a.
++  protected readonly thrustTotal = computed(() =>
++    (this.people() ?? []).reduce((sum, p) => sum + (p.thrust ?? 0), 0),
++  );
++
+   protected patronNames(ids: number[]): string {
+     const names = this.names();
+     return ids.map((id) => names.get(id) ?? String(id)).join(', ');
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 772d83d8..0f7fc731 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -10,6 +10,8 @@ export interface Person {
+   gamma: number | null;
+   hold: boolean;
+   patronIds: number[];
++  // alpha times beta; null (n/a) when either is blank.
++  thrust: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 0489afd8..1b226d4d 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -2,12 +2,22 @@ package net.officefloor.hq.app.people;
+ 
+ import java.util.List;
+ 
+-/** A person as the API returns it; patrons are referenced by id. */
++/**
++ * A person as the API returns it; patrons are referenced by id. thrust is alpha times beta, or null
++ * (n/a) when either is blank.
++ */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+-        List<Long> patronIds) {
++        List<Long> patronIds, Long thrust) {
+ 
+     static PersonView of(Person p) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+-                p.getPatrons().stream().map(Person::getId).sorted().toList());
++                p.getPatrons().stream().map(Person::getId).sorted().toList(), thrust(p));
++    }
++
++    private static Long thrust(Person p) {
++        if (p.getAlpha() == null || p.getBeta() == null) {
++            return null;
++        }
++        return (long) p.getAlpha() * p.getBeta();
+     }
+ }
