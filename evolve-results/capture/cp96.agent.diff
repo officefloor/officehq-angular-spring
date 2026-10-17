@@ -1,0 +1,22 @@
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 27774f04..1219f642 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -19,7 +19,7 @@ import java.util.Set;
+  * thrust, null (n/a) when momentum or norm is.
+  * fathom is keel plus momentum plus 68 and draft is keel plus thrust plus 88; both null (n/a) when keel is.
+  * cascade is fathom plus scaled plus 72, null (n/a) when fathom is. trim is keel minus thrust plus 92, null (n/a)
+- * when keel is. ripple is cascade plus keel plus 76, null (n/a) when cascade is. heading is keel plus norm,
++ * when keel is. ripple is cascade plus keel plus 76, null (n/a) when cascade is. heading is keel plus norm plus 96,
+  * null (n/a) when keel or norm is. ballast is ripple plus thrust plus 80, null (n/a) when ripple is.
+  * keystone is ballast plus norm plus 84, null (n/a) when ballast or norm is. bearing is keel minus norm, null
+  * (n/a) when keel or norm is. pitch is keel plus momentum, null (n/a) when keel is. tackle is keel
+@@ -178,7 +178,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+     private static Long heading(Person p, Long averageScaled) {
+         Long keel = keel(p, averageScaled);
+         Long norm = norm(p, averageScaled);
+-        return keel == null || norm == null ? null : keel + norm;
++        return keel == null || norm == null ? null : keel + norm + 96L;
+     }
+ 
+     private static Long keystone(Person p, Long averageScaled) {
