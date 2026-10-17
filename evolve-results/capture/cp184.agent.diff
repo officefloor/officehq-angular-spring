@@ -1,0 +1,22 @@
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 1af24f1f..0883ddcc 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -33,7 +33,7 @@ import java.util.Set;
+  * bow is keel plus fathom plus 160, null (n/a) when keel is. stern is keel minus fathom plus 164, null (n/a) when keel is.
+  * helm is keel plus ripple plus 168, null (n/a) when keel or ripple is. rudder is keel minus ripple plus 172, null (n/a)
+  * when keel or ripple is. mast is keel plus 2000 plus 176, null (n/a) when keel is. rigging is keel divided by
+- * four (rounded like every divide) plus 180, null (n/a) when keel is. moor is keel plus keystone, null (n/a)
++ * four (rounded like every divide) plus 180, null (n/a) when keel is. moor is keel plus keystone plus 184, null (n/a)
+  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
+  * keel times five, null (n/a) when keel is. jetty is keel divided by ten (rounded like every divide),
+  * null (n/a) when keel is. pier is keel plus 500, null (n/a) when keel is. ebb is keel minus 500, null
+@@ -288,7 +288,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+     private static Long moor(Person p, Long averageScaled) {
+         Long keel = keel(p, averageScaled);
+         Long keystone = keystone(p, averageScaled);
+-        return keel == null || keystone == null ? null : keel + keystone;
++        return keel == null || keystone == null ? null : keel + keystone + 184L;
+     }
+ 
+     private static Long berth(Person p, Long averageScaled) {
