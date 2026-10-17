@@ -289,6 +289,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="29"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="20">Heading top</th>
+              <td data-testid="rollup-heading-top">{{ headingTop() ?? 'n/a' }}</td>
+              <td colspan="29"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="21">Ballast total</th>
               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
               <td colspan="28"></td>
@@ -584,6 +589,15 @@ export class PeopleList {
   protected readonly headingTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.heading, hold: p.hold }))),
   );
+
+  // The highest heading among the people not on hold (n/a headings skipped); null (n/a) when nobody has one.
+  protected readonly headingTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.heading)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // Everyone's ballast added up, trimmed like every sheet total.
   protected readonly ballastTotal = computed(() =>
