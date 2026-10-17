@@ -159,6 +159,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="34"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="15">Fathom even</th>
+              <td data-testid="rollup-fathom-even">{{ fathomEven() }}</td>
+              <td colspan="34"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="16">Draft total</th>
               <td data-testid="rollup-draft-total">{{ draftTotal() }}</td>
               <td colspan="33"></td>
@@ -274,6 +279,11 @@ export class PeopleList {
   // How many counted people have an even keel (n/a keels are not counted).
   protected readonly keelCount = computed(
     () => countable(this.people() ?? []).filter((p) => p.keel !== null && p.keel % 2 === 0).length,
+  );
+
+  // How many counted people have an even fathom (n/a fathoms are not counted).
+  protected readonly fathomEven = computed(
+    () => countable(this.people() ?? []).filter((p) => p.fathom !== null && p.fathom % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {
