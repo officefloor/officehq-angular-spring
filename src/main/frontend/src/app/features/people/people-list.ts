@@ -578,6 +578,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-freeboard-total">{{ freeboardTotal() }}</td>
               <td colspan="18"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="31">Freeboard top</th>
+              <td data-testid="rollup-freeboard-top">{{ freeboardTop() ?? 'n/a' }}</td>
+              <td colspan="18"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1105,6 +1110,16 @@ export class PeopleList {
   protected readonly freeboardTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.freeboard, hold: p.hold }))),
   );
+
+  // The highest freeboard among the people not on hold (n/a freeboards skipped); null (n/a) when
+  // nobody has one.
+  protected readonly freeboardTop = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.freeboard)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values);
+  });
 
   // The highest beam among the people not on hold (n/a beams skipped); null (n/a) when nobody has one.
   protected readonly beamTop = computed(() => {
