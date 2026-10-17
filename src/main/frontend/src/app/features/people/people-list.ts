@@ -463,6 +463,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-yaw-spread">{{ yawSpread() ?? 'n/a' }}</td>
               <td colspan="23"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="26">Yaw even</th>
+              <td data-testid="rollup-yaw-even">{{ yawEven() }}</td>
+              <td colspan="23"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1019,6 +1024,11 @@ export class PeopleList {
   protected readonly tackleEven = computed(
     () =>
       countable(this.people() ?? []).filter((p) => p.tackle !== null && p.tackle % 2 === 0).length,
+  );
+
+  // How many counted people have an even yaw (n/a yaws are not counted).
+  protected readonly yawEven = computed(
+    () => countable(this.people() ?? []).filter((p) => p.yaw !== null && p.yaw % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {
