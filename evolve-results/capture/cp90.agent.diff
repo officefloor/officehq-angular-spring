@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index e242bac7..90d81e0d 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -278,6 +278,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-keystone-top">{{ keystoneTop() ?? 'n/a' }}</td>
+               <td colspan="27"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="22">Keystone spread</th>
++              <td data-testid="rollup-keystone-spread">{{ keystoneSpread() ?? 'n/a' }}</td>
++              <td colspan="27"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="23">Bearing total</th>
+               <td data-testid="rollup-bearing-total">{{ bearingTotal() }}</td>
+@@ -502,6 +507,13 @@ export class PeopleList {
+     return values.length === 0 ? null : Math.max(...values);
+   });
+ 
++  // The highest keystone minus the lowest among the people not on hold; null (n/a) when nobody has one.
++  protected readonly keystoneSpread = computed(() => {
++    const top = this.keystoneTop();
++    const low = this.keystoneLow();
++    return top === null || low === null ? null : top - low;
++  });
++
+   // Everyone's bearing added up, trimmed like every sheet total.
+   protected readonly bearingTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.bearing, hold: p.hold }))),
