@@ -14,6 +14,8 @@ interface SheetView {
   terms: number;
   /** The late percent, two decimals: an overdue claim's live due gains it per full 30 days overdue. */
   latePct: string;
+  /** The policy date (yyyy-mm-dd) that decides how a claim's live figures round; null for the sheet's today. */
+  policyDate: string | null;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the app
@@ -34,6 +36,8 @@ export class Session {
   readonly terms = signal<number | null>(null);
   /** The active sheet's late percent (two decimals). */
   readonly latePct = signal<string | null>(null);
+  /** The active sheet's policy date (yyyy-mm-dd); null when none is set (the sheet's today is used). */
+  readonly policyDate = signal<string | null>(null);
   /** Counts sheet loads, so per-sheet data re-reads the store on every (re-)load. */
   readonly loads = signal(0);
   /** True while a sheet is being (re-)loaded, so nothing read from the store before is shown. */
@@ -88,13 +92,16 @@ export class Session {
     this.show(sheet);
   }
 
-  /** Change the active sheet's clerk limit (null for no limit), floor, terms (days) and late percent. */
-  async setSettings(clerkLimit: string | null, floor: string, terms: string, latePct: string): Promise<void> {
+  /**
+   * Change the active sheet's clerk limit (null for no limit), floor, terms (days), late percent and
+   * policy date (blank for none).
+   */
+  async setSettings(clerkLimit: string | null, floor: string, terms: string, latePct: string, policyDate: string): Promise<void> {
     const user = this.user();
     const id = this.sheetId();
     if (!user || !id) throw new Error('no sheet loaded');
     const sheet = await firstValueFrom(
-      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms, latePct }, {
+      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms, latePct, policyDate }, {
         headers: { 'X-User': user },
       }),
     );
@@ -108,5 +115,6 @@ export class Session {
     this.floor.set(sheet.floor);
     this.terms.set(sheet.terms);
     this.latePct.set(sheet.latePct);
+    this.policyDate.set(sheet.policyDate);
   }
 }

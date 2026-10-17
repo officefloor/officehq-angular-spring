@@ -44,6 +44,10 @@ public class Sheet {
     @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal latePct = new BigDecimal("0.00");
 
+    /** The sheet's policy date: it decides how a claim's live figures round; null for the sheet's today. */
+    @Column(name = "policy_date")
+    private LocalDate policyDate;
+
     protected Sheet() {
     }
 
@@ -101,10 +105,32 @@ public class Sheet {
         this.latePct = latePct;
     }
 
+    public LocalDate getPolicyDate() {
+        return policyDate;
+    }
+
+    public void setPolicyDate(LocalDate policyDate) {
+        this.policyDate = policyDate;
+    }
+
+    /**
+     * How a claim's live figures round: half up when it is dated before the policy date (the sheet's
+     * today when none is set), half to even when dated on or after it.
+     */
+    public RoundingMode roundingFor(LocalDate claimDate) {
+        LocalDate policy = policyDate != null ? policyDate : today;
+        return claimDate.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+    }
+
+    /** An amount's due at a rate (a percent), rounded to cents as the claim's date decides. */
+    public BigDecimal dueAt(BigDecimal amount, BigDecimal rate, LocalDate claimDate) {
+        return amount.multiply(rate).divide(BigDecimal.valueOf(100), 2, roundingFor(claimDate));
+    }
+
     /**
      * An open claim's live due (already floored; null stays null) with its late charge added: the late
      * percent of the floored due for every full 30 days its due-by (its date plus the terms) is before
-     * today, rounded half to even to cents.
+     * today, rounded to cents as the claim's date decides.
      */
     public BigDecimal withLateCharge(BigDecimal floored, LocalDate claimDate) {
         if (floored == null) {
@@ -113,7 +139,7 @@ public class Sheet {
         long days = ChronoUnit.DAYS.between(claimDate.plusDays(terms), today);
         long periods = days > 0 ? days / 30 : 0;
         BigDecimal late = floored.multiply(latePct).multiply(BigDecimal.valueOf(periods))
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
+                .divide(BigDecimal.valueOf(100), 2, roundingFor(claimDate));
         return floored.add(late);
     }
 

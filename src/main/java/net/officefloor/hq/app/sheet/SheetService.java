@@ -48,13 +48,15 @@ public class SheetService {
     /**
      * Change the sheet's clerk limit (two decimals; null for no limit), floor (two decimals; null
      * leaves it as it is) terms (days; null leaves them as they are) and late percent (two
-     * decimals; null leaves it as it is). Each change is recorded as
-     * SETTING_CHANGED key=&lt;key&gt; value=&lt;value&gt;, clerk-limit first, then floor, then terms, then late-pct, the
-     * clerk limit's value empty for no limit; setting a value it already has records nothing.
+     * decimals; null leaves it as it is) and policy date (empty for none, the sheet's today; null
+     * leaves it as it is). Each change is recorded as
+     * SETTING_CHANGED key=&lt;key&gt; value=&lt;value&gt;, clerk-limit first, then floor, then terms, then late-pct,
+     * then policy-date, the clerk limit's value empty for no limit and the policy date's empty for none;
+     * setting a value it already has records nothing.
      */
     @Transactional
     public Sheet setSettings(String id, String user, BigDecimal limit, BigDecimal floor, Integer terms,
-            BigDecimal latePct) {
+            BigDecimal latePct, Optional<LocalDate> policyDate) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
         BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY);
@@ -80,6 +82,11 @@ public class SheetService {
                 sheet.setLatePct(scaledPct);
                 audit.change("SETTING_CHANGED", id, user, "key=late-pct", "value=" + scaledPct.toPlainString());
             }
+        }
+        if (policyDate != null && !Objects.equals(sheet.getPolicyDate(), policyDate.orElse(null))) {
+            sheet.setPolicyDate(policyDate.orElse(null));
+            audit.change("SETTING_CHANGED", id, user, "key=policy-date",
+                    "value=" + policyDate.map(LocalDate::toString).orElse(""));
         }
         return sheet;
     }

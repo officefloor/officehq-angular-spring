@@ -18,15 +18,15 @@ export const RATE = /^\d{1,3}(\.\d{1,2})?$/;
 
 /**
  * Cents due on an amount in cents at a rate (a percent with two decimals): amount times rate
- * divided by 100, rounded half to even to whole cents (a negative amount's as its size, negated).
- * Exact, as the rate is taken in hundredths.
+ * divided by 100, rounded to whole cents half to even, or half up when `halfUp` (a negative
+ * amount's as its size, negated). Exact, as the rate is taken in hundredths.
  */
-export function dueCents(cents: number, rate: string): number {
-  if (cents < 0) return -dueCents(-cents, rate);
+export function dueCents(cents: number, rate: string, halfUp = false): number {
+  if (cents < 0) return -dueCents(-cents, rate, halfUp);
   const product = BigInt(cents) * BigInt(toCents(rate));
   const whole = product / 10000n;
   const rest = product % 10000n;
-  return Number(rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole);
+  return Number(rest > 5000n || (rest === 5000n && (halfUp || whole % 2n === 1n)) ? whole + 1n : whole);
 }
 
 /**
@@ -77,21 +77,23 @@ export class Rates {
    * A claim's due in cents: a settled claim's as fixed when it was settled; any other claim's at
    * the grade's rate in force on the claim's date, raised to the sheet's floor; an overdue claim's
    * then gains the late percent of that floored due for every full 30 days it is overdue, rounded
-   * like due. A correction's is its amount at the rate, with no floor and no late charge.
-   * Undefined (n/a) when there was or is no such rate.
+   * like due. A correction's is its amount at the rate, with no floor and no late charge. Every
+   * rounding is half up for a claim dated before the sheet's policy date (its today when none is
+   * set), half to even otherwise. Undefined (n/a) when there was or is no such rate.
    */
   dueOf(claim: Claim, grade: Grade): number | undefined {
     if (claim.status === 'SETTLED') return claim.settledDue === null ? undefined : toCents(claim.settledDue);
     const rate = this.on(grade, claim.date);
     if (rate === undefined) return undefined;
-    if (isCorrection(claim)) return dueCents(toCents(claim.amount), rate);
-    const floor = this.session.floor();
-    const floored = Math.max(dueCents(toCents(claim.amount), rate), floor === null ? 0 : toCents(floor));
-    const terms = this.session.terms() ?? 14;
     const today = this.session.today() ?? '';
+    const halfUp = claim.date < (this.session.policyDate() ?? today);
+    if (isCorrection(claim)) return dueCents(toCents(claim.amount), rate, halfUp);
+    const floor = this.session.floor();
+    const floored = Math.max(dueCents(toCents(claim.amount), rate, halfUp), floor === null ? 0 : toCents(floor));
+    const terms = this.session.terms() ?? 14;
     if (!overdue(claim, terms, today)) return floored;
     const periods = Math.floor(daysOverdue(claim, terms, today) / 30);
-    return floored + dueCents(floored * periods, this.session.latePct() ?? '0.00');
+    return floored + dueCents(floored * periods, this.session.latePct() ?? '0.00', halfUp);
   }
 
   async reload(): Promise<void> {

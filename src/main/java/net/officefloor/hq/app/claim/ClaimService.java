@@ -101,7 +101,8 @@ public class ClaimService {
      * Opening records who opened it; that user cannot settle it (403).
      * Settling fixes the claim's due at its person's grade's rate in force on the claim's date, raised to
      * the sheet's floor, with its late charge added if it is overdue; later floor and late percent changes
-     * leave it as fixed. A correction's due is its amount times that rate, rounded the same way, with no
+     * leave it as fixed. Every rounding is half up for a claim dated before the sheet's policy date and
+     * half to even otherwise; later policy date changes leave it as fixed too. A correction's due is its amount times that rate, rounded the same way, with no
      * floor and no late charge. A clerk
      * can settle a claim only when that due is at or below the sheet's clerk limit, if it has one (403);
      * a claim with no due (no rate) is then refused too, as it cannot be shown to be within the limit.
@@ -134,8 +135,7 @@ public class ClaimService {
         List<String> extra = new ArrayList<>();
         if (next == ClaimStatus.SETTLED) {
             BigDecimal due = sheet.liveDue(rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
-                    .map(rate -> claim.getAmount().multiply(rate.getRate())
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                    .map(rate -> sheet.dueAt(claim.getAmount(), rate.getRate(), claim.getDate()))
                     .orElse(null), claim.getDate(), claim.isCorrection());
             refuseIfOverClerkLimit(sheet, user, due);
             claim.setSettledDue(due);

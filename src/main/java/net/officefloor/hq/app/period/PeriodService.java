@@ -1,7 +1,6 @@
 package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -103,8 +102,7 @@ public class PeriodService {
             BigDecimal due = switch (claim.getStatus()) {
                 case SETTLED -> claim.getSettledDue();
                 default -> sheet.liveDue(rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
-                        .map(rate -> claim.getAmount().multiply(rate.getRate())
-                                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                        .map(rate -> sheet.dueAt(claim.getAmount(), rate.getRate(), claim.getDate()))
                         .orElse(null), claim.getDate(), claim.isCorrection());
             };
             if (due != null) {
