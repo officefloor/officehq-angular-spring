@@ -488,6 +488,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-heave-spread">{{ heaveSpread() ?? 'n/a' }}</td>
               <td colspan="22"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="27">Heave even</th>
+              <td data-testid="rollup-heave-even">{{ heaveEven() }}</td>
+              <td colspan="22"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1085,6 +1090,12 @@ export class PeopleList {
   // How many counted people have an even yaw (n/a yaws are not counted).
   protected readonly yawEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.yaw !== null && p.yaw % 2 === 0).length,
+  );
+
+  // How many counted people have an even heave (n/a heaves are not counted).
+  protected readonly heaveEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.heave !== null && p.heave % 2 === 0).length,
   );
 
   protected patronNames(ids: number[]): string {
