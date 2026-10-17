@@ -76,7 +76,7 @@ export interface Person {
   stern: number | null;
   // keel plus ripple plus 168; null (n/a) when keel or ripple is.
   helm: number | null;
-  // keel minus ripple; null (n/a) when keel or ripple is.
+  // keel minus ripple plus 172; null (n/a) when keel or ripple is.
   rudder: number | null;
   // keel plus 2000; null (n/a) when keel is.
   mast: number | null;
