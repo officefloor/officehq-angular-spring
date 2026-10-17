@@ -126,7 +126,9 @@ export class PersonClaims {
       const message = e instanceof HttpErrorResponse && e.status === 423
         ? CLOSED
         : e instanceof HttpErrorResponse && e.status === 403
-        ? 'The user who opened a claim cannot settle it.'
+        ? claim.openedBy === this.session.user()
+          ? 'The user who opened a claim cannot settle it.'
+          : `A clerk cannot settle a claim with a due above ${this.session.clerkLimit()}.`
         : `A ${claim.status} claim cannot be changed that way.`;
       this.rowError.set({ id: claim.id, message });
     }

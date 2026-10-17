@@ -1,8 +1,12 @@
 package net.officefloor.hq.app.sheet;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Objects;
 import java.util.Optional;
+import net.officefloor.hq.app.Audit;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,10 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final Audit audit;
     private final Clock clock = Clock.systemDefaultZone();
 
-    public SheetService(SheetRepository sheets) {
+    public SheetService(SheetRepository sheets, Audit audit) {
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     @Transactional
@@ -36,6 +42,24 @@ public class SheetService {
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
         sheet.setToday(today);
+        return sheet;
+    }
+
+    /**
+     * Change the sheet's clerk limit (two decimals; null for no limit). A change is recorded as
+     * SETTING_CHANGED key=clerk-limit value=&lt;limit&gt;, the value empty for no limit; setting the
+     * limit it already has records nothing.
+     */
+    @Transactional
+    public Sheet setClerkLimit(String id, String user, BigDecimal limit) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY);
+        if (!Objects.equals(sheet.getClerkLimit(), scaled)) {
+            sheet.setClerkLimit(scaled);
+            audit.change("SETTING_CHANGED", id, user, "key=clerk-limit",
+                    "value=" + (scaled == null ? "" : scaled.toPlainString()));
+        }
         return sheet;
     }
 

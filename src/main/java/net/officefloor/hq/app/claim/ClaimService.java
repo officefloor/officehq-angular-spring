@@ -10,6 +10,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -30,11 +32,13 @@ public class ClaimService {
     private final PersonRepository people;
     private final PeriodRepository periods;
     private final RateService rates;
+    private final RoleService roles;
     private final SheetService sheets;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, PeriodRepository periods, RateService rates,
-            SheetService sheets, Audit audit) {
+            RoleService roles, SheetService sheets, Audit audit) {
+        this.roles = roles;
         this.claims = claims;
         this.people = people;
         this.periods = periods;
@@ -88,7 +92,10 @@ public class ClaimService {
      * Move a claim to the next status; a change its status does not allow is refused (409). Opening
      * gives the claim the sheet's next number; a voided claim keeps it (the number is never given again).
      * Opening records who opened it; that user cannot settle it (403).
-     * Settling fixes the claim's due at its person's grade's rate in force on the claim's date.
+     * Settling fixes the claim's due at its person's grade's rate in force on the claim's date. A clerk
+     * can settle a claim only when that due is at or below the sheet's clerk limit, if it has one (403);
+     * a claim with no due (no rate) is then refused too, as it cannot be shown to be within the limit.
+     * A steward settles any claim.
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long claimId, ClaimStatus next) {
@@ -120,6 +127,7 @@ public class ClaimService {
                     .map(rate -> claim.getAmount().multiply(rate.getRate())
                             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
                     .orElse(null);
+            refuseIfOverClerkLimit(sheet, user, due);
             claim.setSettledDue(due);
             extra.add("due=" + (due == null ? "n/a" : due.toPlainString()));
         }
@@ -130,6 +138,18 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         }, user, person, claim, number, extra);
         return claim;
+    }
+
+    /** Refuse (403) a clerk settling a claim whose due is above the sheet's clerk limit. */
+    private void refuseIfOverClerkLimit(Sheet sheet, String user, BigDecimal due) {
+        BigDecimal limit = sheet.getClerkLimit();
+        if (limit == null || roles.of(sheet.getId(), user) != Role.CLERK) {
+            return;
+        }
+        if (due == null || due.compareTo(limit) > 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "A clerk cannot settle a claim with a due above " + limit.toPlainString());
+        }
     }
 
     /** Refuse (423) a change to a claim dated in a closed period. */

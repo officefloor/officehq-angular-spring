@@ -2,7 +2,9 @@ package net.officefloor.hq.app.sheet;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,10 +21,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    public record SheetView(String id, LocalDate today) {
+    /** The clerk limit is sent as text with exactly two decimals; null for no limit. */
+    public record SheetView(String id, LocalDate today, String clerkLimit) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday());
+            return new SheetView(sheet.getId(), sheet.getToday(),
+                    sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString());
         }
+    }
+
+    /** The clerk limit is 0 or more with at most two decimals; null or blank for no limit. */
+    public record SettingsRequest(@Pattern(regexp = "\\s*|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -45,5 +53,13 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated TodayRequest request) {
         return SheetView.of(service.setToday(id.trim(), user.trim(), request.today()));
+    }
+
+    @PutMapping("/{id}/settings")
+    public SheetView setSettings(@PathVariable @NotBlank @Size(max = 100) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Validated SettingsRequest request) {
+        String limit = request.clerkLimit() == null ? "" : request.clerkLimit().trim();
+        return SheetView.of(service.setClerkLimit(id.trim(), user.trim(), limit.isEmpty() ? null : new BigDecimal(limit)));
     }
 }

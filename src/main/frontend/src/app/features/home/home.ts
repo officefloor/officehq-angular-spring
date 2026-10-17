@@ -2,11 +2,12 @@ import { Component, inject, linkedSignal, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { People } from '../people/people';
 import { RatesPanel } from '../rates/rates';
+import { SettingsPanel } from '../settings/settings';
 
 // The one screen: sign in by name, then choose a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [People, RatesPanel],
+  imports: [People, RatesPanel, SettingsPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -46,6 +47,7 @@ import { RatesPanel } from '../rates/rates';
           }
         </form>
 
+        <app-settings />
         <app-rates />
         <app-people />
       }
