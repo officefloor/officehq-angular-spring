@@ -1,0 +1,392 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 00edab06..3983988f 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -34,6 +34,41 @@ export function counts(claim: Claim, person: { held: boolean }): boolean {
+   return claim.status === 'SETTLED' || (claim.status === 'OPEN' && !person.held);
+ }
+ 
++/** Days since 1970-01-01 of a yyyy-mm-dd date (proleptic Gregorian), without reading any clock. */
++function epochDay(date: string): number {
++  const [y0, m, d] = date.split('-').map(Number);
++  const y = m <= 2 ? y0 - 1 : y0;
++  const era = Math.floor(y / 400);
++  const yoe = y - era * 400;
++  const doy = Math.floor((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1;
++  const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
++  return era * 146097 + doe - 719468;
++}
++
++/** The yyyy-mm-dd date of a count of days since 1970-01-01. */
++function fromEpochDay(days: number): string {
++  const z = days + 719468;
++  const era = Math.floor(z / 146097);
++  const doe = z - era * 146097;
++  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
++  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
++  const mp = Math.floor((5 * doy + 2) / 153);
++  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
++  const m = mp < 10 ? mp + 3 : mp - 9;
++  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
++  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
++}
++
++/** A claim's due-by (yyyy-mm-dd): its date plus the sheet's terms in days. */
++export function dueBy(claim: Claim, terms: number): string {
++  return fromEpochDay(epochDay(claim.date) + terms);
++}
++
++/** Whether the claim is overdue: OPEN, with its due-by before the sheet's today. */
++export function overdue(claim: Claim, terms: number, today: string): boolean {
++  return claim.status === 'OPEN' && dueBy(claim, terms) < today;
++}
++
+ export interface ClaimFields {
+   amount: string;
+   date: string;
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index e80b2202..0f3836f7 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -10,6 +10,8 @@ interface SheetView {
+   clerkLimit: string | null;
+   /** The least any live due can be, two decimals. */
+   floor: string;
++  /** The terms: a claim is due by its date plus this many days. */
++  terms: number;
+ }
+ 
+ // The signed-in user (a typed name, no password) and the active sheet. Everything else in the app
+@@ -26,6 +28,8 @@ export class Session {
+   readonly clerkLimit = signal<string | null>(null);
+   /** The active sheet's floor (two decimals): every live due is at least it. */
+   readonly floor = signal<string | null>(null);
++  /** The active sheet's terms in days: a claim is due by its date plus these. */
++  readonly terms = signal<number | null>(null);
+   /** Counts sheet loads, so per-sheet data re-reads the store on every (re-)load. */
+   readonly loads = signal(0);
+   /** True while a sheet is being (re-)loaded, so nothing read from the store before is shown. */
+@@ -66,13 +70,13 @@ export class Session {
+     this.show(sheet);
+   }
+ 
+-  /** Change the active sheet's clerk limit (null for no limit) and floor. */
+-  async setSettings(clerkLimit: string | null, floor: string): Promise<void> {
++  /** Change the active sheet's clerk limit (null for no limit), floor and terms (days). */
++  async setSettings(clerkLimit: string | null, floor: string, terms: string): Promise<void> {
+     const user = this.user();
+     const id = this.sheetId();
+     if (!user || !id) throw new Error('no sheet loaded');
+     const sheet = await firstValueFrom(
+-      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor }, {
++      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms }, {
+         headers: { 'X-User': user },
+       }),
+     );
+@@ -84,5 +88,6 @@ export class Session {
+     this.today.set(sheet.today);
+     this.clerkLimit.set(sheet.clerkLimit);
+     this.floor.set(sheet.floor);
++    this.terms.set(sheet.terms);
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ffd06197..0a942a2e 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,6 +1,6 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
+-import { AMOUNT, Claim, ClaimAction, Claims, formatCents } from '../../core/claims';
++import { AMOUNT, Claim, ClaimAction, Claims, dueBy, formatCents, overdue } from '../../core/claims';
+ import { Grade, retiredOn } from '../../core/people';
+ import { Periods } from '../../core/periods';
+ import { Rates } from '../../core/rates';
+@@ -56,6 +56,8 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
+           <span data-testid="claim-amount">{{ c.amount }}</span>
+           <span data-testid="claim-due">{{ due(c) }}</span>
+           <span data-testid="claim-date">{{ c.date }}</span>
++          <span data-testid="claim-due-by">{{ dueBy(c) }}</span>
++          <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span>
+           <span data-testid="claim-period">{{ periods.on(c.date)?.name }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span data-testid="claim-status">{{ c.status }}</span>
+@@ -114,6 +116,16 @@ export class PersonClaims {
+     return cents === undefined ? 'n/a' : formatCents(cents);
+   }
+ 
++  /** The claim's due-by: its date plus the sheet's terms. */
++  protected dueBy(claim: Claim): string {
++    return dueBy(claim, this.session.terms() ?? 14);
++  }
++
++  /** Whether the claim is OPEN with its due-by before the sheet's today. */
++  protected overdue(claim: Claim): boolean {
++    return overdue(claim, this.session.terms() ?? 14, this.session.today() ?? '');
++  }
++
+   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
+     this.rowError.set(null);
+     if (this.periods.closedOn(claim.date)) {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8e4ad01b..c7cd04e7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,6 +1,6 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+-import { AMOUNT, Claims, counts, formatCents, toCents } from '../../core/claims';
++import { AMOUNT, Claims, counts, formatCents, overdue, toCents } from '../../core/claims';
+ import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
+ import { Periods } from '../../core/periods';
+ import { Rates } from '../../core/rates';
+@@ -113,7 +113,7 @@ const LEAVE_DELAY_MS = 1000;
+ 
+       <table>
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of listed(); track p.id) {
+@@ -125,6 +125,8 @@ const LEAVE_DELAY_MS = 1000;
+               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueTotal(p) }}</td>
++              <td data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</td>
++              <td data-testid="person-overdue-total">{{ formatCents(overdueOf(p.id).cents) }}</td>
+               <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" [retiredFrom]="p.retiredFrom" /></td>
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+@@ -157,6 +159,8 @@ const LEAVE_DELAY_MS = 1000;
+ 
+       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotalAll() }}</strong></p>
++      <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueAll().count }}</strong></p>
++      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ formatCents(overdueAll().cents) }}</strong></p>
+ 
+       <app-periods [people]="people()" />
+     </section>
+@@ -170,6 +174,7 @@ export class People {
+   private readonly periods = inject(Periods);
+ 
+   protected readonly grades = GRADES;
++  protected readonly formatCents = formatCents;
+   protected readonly people = signal<Person[]>([]);
+   protected readonly name = signal('');
+   protected readonly grade = signal<Grade>('A');
+@@ -253,6 +258,32 @@ export class People {
+     formatCents([...this.dueCents().values()].reduce((sum, c) => sum + c, 0)),
+   );
+ 
++  /**
++   * Each person's overdue claims that count, by person id: how many, and their due figures added up
++   * in cents, skipping those that are n/a.
++   */
++  private readonly overdueByPerson = computed(() => {
++    const terms = this.session.terms() ?? 14;
++    const today = this.session.today() ?? '';
++    const out = new Map<number, { count: number; cents: number }>();
++    for (const p of this.people()) {
++      const late = this.claims.all().filter((c) => c.personId === p.id && counts(c, p) && overdue(c, terms, today));
++      out.set(p.id, {
++        count: late.length,
++        cents: late.map((c) => this.rates.dueOf(c, p.grade) ?? 0).reduce((sum, c) => sum + c, 0),
++      });
++    }
++    return out;
++  });
++
++  /** Everyone's overdue claims that count: how many, and their due-total in cents. */
++  protected readonly overdueAll = computed(() =>
++    [...this.overdueByPerson().values()].reduce(
++      (all, o) => ({ count: all.count + o.count, cents: all.cents + o.cents }),
++      { count: 0, cents: 0 },
++    ),
++  );
++
+   constructor() {
+     effect((onCleanup) => {
+       const drafts = this.withDrafts();
+@@ -288,6 +319,10 @@ export class People {
+     return cents === undefined ? 'n/a' : formatCents(cents);
+   }
+ 
++  protected overdueOf(personId: number): { count: number; cents: number } {
++    return this.overdueByPerson().get(personId) ?? { count: 0, cents: 0 };
++  }
++
+   protected retireDate(personId: number): string {
+     return this.retireDates().get(personId) ?? this.session.today() ?? '';
+   }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 6d413986..b24dd405 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -3,7 +3,7 @@ import { AMOUNT } from '../../core/claims';
+ import { ROLES, RoleName, Roles } from '../../core/roles';
+ import { Session } from '../../core/session';
+ 
+-// The sheet's settings (the clerk limit and the floor) and the roles given to user names.
++// The sheet's settings (the clerk limit, the floor and the terms) and the roles given to user names.
+ @Component({
+   selector: 'app-settings',
+   template: `
+@@ -29,6 +29,15 @@ import { Session } from '../../core/session';
+           [value]="floor()"
+           (input)="floor.set($any($event.target).value); settingsError.set(null)"
+         />
++        <p>Terms (days) <strong data-testid="setting-terms-current">{{ session.terms() ?? '' }}</strong></p>
++        <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
++        <input
++          id="setting-terms"
++          inputmode="numeric"
++          data-testid="setting-terms"
++          [value]="terms()"
++          (input)="terms.set($any($event.target).value); settingsError.set(null)"
++        />
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (settingsError(); as err) {
+           <p role="alert" data-testid="settings-error">{{ err }}</p>
+@@ -86,6 +95,7 @@ export class SettingsPanel {
+ 
+   protected readonly clerkLimit = linkedSignal(() => this.session.clerkLimit() ?? '');
+   protected readonly floor = linkedSignal(() => this.session.floor() ?? '');
++  protected readonly terms = linkedSignal(() => String(this.session.terms() ?? ''));
+   protected readonly settingsError = signal<string | null>(null);
+   protected readonly user = signal('');
+   protected readonly role = signal('');
+@@ -125,9 +135,14 @@ export class SettingsPanel {
+       this.settingsError.set('Enter a floor of 0.00 or more, with at most two decimals.');
+       return;
+     }
++    const terms = this.terms().trim();
++    if (!/^\d{1,4}$/.test(terms)) {
++      this.settingsError.set('Enter terms as a whole number of days, from 0 to 9999.');
++      return;
++    }
+     this.savingSettings = true;
+     try {
+-      await this.session.setSettings(limit || null, floor);
++      await this.session.setSettings(limit || null, floor, terms);
+     } catch {
+       this.settingsError.set('The settings could not be saved.');
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 7a85db61..73aa5bab 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -34,6 +34,10 @@ public class Sheet {
+     @Column(name = "floor", nullable = false, precision = 14, scale = 2)
+     private BigDecimal floor = new BigDecimal("1.00");
+ 
++    /** The sheet's terms: a claim is due by its date plus this many days. */
++    @Column(name = "terms", nullable = false)
++    private int terms = 14;
++
+     protected Sheet() {
+     }
+ 
+@@ -75,6 +79,14 @@ public class Sheet {
+         this.floor = floor;
+     }
+ 
++    public int getTerms() {
++        return terms;
++    }
++
++    public void setTerms(int terms) {
++        this.terms = terms;
++    }
++
+     /** A live due raised to the sheet's floor; null (no rate) stays null. */
+     public BigDecimal floored(BigDecimal due) {
+         return due == null ? null : due.max(floor);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 45df4648..e8e9ba6a 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -21,21 +21,26 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets")
+ public class SheetController {
+ 
+-    /** The clerk limit and floor are sent as text with exactly two decimals; the clerk limit null for no limit. */
+-    public record SheetView(String id, LocalDate today, String clerkLimit, String floor) {
++    /**
++     * The clerk limit and floor are sent as text with exactly two decimals; the clerk limit null for no
++     * limit. The terms are a number of days.
++     */
++    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms) {
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(),
+                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+-                    sheet.getFloor().toPlainString());
++                    sheet.getFloor().toPlainString(), sheet.getTerms());
+         }
+     }
+ 
+     /**
+      * The clerk limit is 0 or more with at most two decimals; null or blank for no limit. The floor is
+-     * 0 or more with at most two decimals; null leaves it as it is.
++     * 0 or more with at most two decimals; null leaves it as it is. The terms are a whole number of
++     * days, 0 to 9999; null leaves them as they are.
+      */
+     public record SettingsRequest(@Pattern(regexp = "\\s*|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit,
+-            @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String floor) {
++            @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String floor,
++            @Pattern(regexp = "\\s*\\d{1,4}\\s*") String terms) {
+     }
+ 
+     public record TodayRequest(@NotNull LocalDate today) {
+@@ -66,6 +71,8 @@ public class SheetController {
+             @RequestBody @Validated SettingsRequest request) {
+         String limit = request.clerkLimit() == null ? "" : request.clerkLimit().trim();
+         BigDecimal floor = request.floor() == null ? null : new BigDecimal(request.floor().trim());
+-        return SheetView.of(service.setSettings(id.trim(), user.trim(), limit.isEmpty() ? null : new BigDecimal(limit), floor));
++        Integer terms = request.terms() == null ? null : Integer.valueOf(request.terms().trim());
++        return SheetView.of(service.setSettings(id.trim(), user.trim(), limit.isEmpty() ? null : new BigDecimal(limit),
++                floor, terms));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index df083a89..68b92b66 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -46,13 +46,13 @@ public class SheetService {
+     }
+ 
+     /**
+-     * Change the sheet's clerk limit (two decimals; null for no limit) and floor (two decimals; null
+-     * leaves it as it is). Each change is recorded as SETTING_CHANGED key=&lt;key&gt; value=&lt;value&gt;,
+-     * clerk-limit first then floor, the clerk limit's value empty for no limit; setting a value it
+-     * already has records nothing.
++     * Change the sheet's clerk limit (two decimals; null for no limit), floor (two decimals; null
++     * leaves it as it is) and terms (days; null leaves them as they are). Each change is recorded as
++     * SETTING_CHANGED key=&lt;key&gt; value=&lt;value&gt;, clerk-limit first, then floor, then terms, the
++     * clerk limit's value empty for no limit; setting a value it already has records nothing.
+      */
+     @Transactional
+-    public Sheet setSettings(String id, String user, BigDecimal limit, BigDecimal floor) {
++    public Sheet setSettings(String id, String user, BigDecimal limit, BigDecimal floor, Integer terms) {
+         load(id, user);
+         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+         BigDecimal scaled = limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY);
+@@ -68,6 +68,10 @@ public class SheetService {
+                 audit.change("SETTING_CHANGED", id, user, "key=floor", "value=" + scaledFloor.toPlainString());
+             }
+         }
++        if (terms != null && terms != sheet.getTerms()) {
++            sheet.setTerms(terms);
++            audit.change("SETTING_CHANGED", id, user, "key=terms", "value=" + terms);
++        }
+         return sheet;
+     }
+ 
+diff --git a/src/main/resources/db/migration/V20__sheet_terms.sql b/src/main/resources/db/migration/V20__sheet_terms.sql
+new file mode 100644
+index 00000000..b8e63694
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__sheet_terms.sql
+@@ -0,0 +1,2 @@
++-- The sheet's terms: the number of days after a claim's date that it is due by.
++ALTER TABLE sheet ADD COLUMN terms INT DEFAULT 14 NOT NULL;
