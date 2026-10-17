@@ -42,7 +42,7 @@ export interface Person {
   heading: number | null;
   // ripple plus thrust plus 80; null (n/a) when ripple is.
   ballast: number | null;
-  // ballast plus norm; null (n/a) when ballast or norm is.
+  // ballast plus norm plus 84; null (n/a) when ballast or norm is.
   keystone: number | null;
   // keel minus norm; null (n/a) when keel or norm is.
   bearing: number | null;
