@@ -9,6 +9,11 @@ import { PersonClaims } from '../claims/claims';
 import { PeriodsPanel } from '../periods/periods';
 import { SummaryPanel } from '../summary/summary';
 
+/** A CSV field: wrapped in double quotes, with any quote inside doubled, when it holds a comma, a quote or a line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value;
+}
+
 /** How long a retired person stays listed after their last draft claim is opened or voided. */
 const LEAVE_DELAY_MS = 1000;
 
@@ -119,6 +124,7 @@ const LEAVE_DELAY_MS = 1000;
         />
         Show retired
       </label>
+      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
 
       <table>
         <thead>
@@ -373,6 +379,22 @@ export class People {
   protected backing(person: Person): string {
     const due = this.dueCents();
     return formatCents(person.patronIds.reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
+  }
+
+  /**
+   * Download the people as CSV: a header line, then one line per person in list order, retired
+   * people included, with the grade in force today, the retired-from date and the due-total as shown.
+   */
+  protected exportCsv(): void {
+    const lines = [['name', 'grade', 'retired-from', 'due-total']];
+    for (const p of this.people()) lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', this.dueTotal(p)]);
+    const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'people.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   protected patronChoice(personId: number): string {
