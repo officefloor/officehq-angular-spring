@@ -87,12 +87,12 @@ export class PeopleList {
 
   // Everyone's thrust added up, skipping the people for whom it is n/a.
   protected readonly thrustTotal = computed(() =>
-    trimmedTotal((this.people() ?? []).map((p) => p.thrust)),
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.thrust, hold: p.hold }))),
   );
 
   // Everyone's keel added up, trimmed like every sheet total.
   protected readonly keelTotal = computed(() =>
-    trimmedTotal((this.people() ?? []).map((p) => p.keel)),
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keel, hold: p.hold }))),
   );
 
   protected patronNames(ids: number[]): string {
@@ -102,12 +102,26 @@ export class PeopleList {
 }
 
 // A sheet-wide total: the contributions (n/a ones skipped) added up, leaving out one highest and
-// one lowest whenever at least two people contribute. Every sheet total goes through this.
-export function trimmedTotal(values: (number | null)[]): number {
-  const contributions = values.filter((v): v is number => v !== null);
+// one lowest whenever at least two people contribute. A person on hold contributes half their
+// value (rounded like every divide), and that half takes part in leaving out the highest and
+// lowest. Every sheet total goes through this.
+export function trimmedTotal(values: { value: number | null; hold: boolean }[]): number {
+  const contributions = values
+    .filter((v): v is { value: number; hold: boolean } => v.value !== null)
+    .map((v) => (v.hold ? divide(v.value, 2) : v.value));
   const sum = contributions.reduce((total, v) => total + v, 0);
   if (contributions.length < 2) {
     return sum;
   }
   return sum - Math.max(...contributions) - Math.min(...contributions);
+}
+
+// Every divide on the sheet: rounded to the nearest whole number, a half rounding up to the larger
+// number (5 / 2 is 3, -5 / 2 is -2), as the server's SheetMath.divide.
+export function divide(dividend: number, divisor: number): number {
+  if (divisor < 0) {
+    dividend = -dividend;
+    divisor = -divisor;
+  }
+  return Math.floor((2 * dividend + divisor) / (2 * divisor));
 }

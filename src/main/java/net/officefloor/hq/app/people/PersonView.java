@@ -7,7 +7,7 @@ import java.util.List;
  * (n/a) when either is blank. momentum is thrust plus three times (gamma minus alpha), or null (n/a)
  * when thrust or gamma is. scaled is momentum times two, and third is scaled divided by three (rounded
  * to the nearest, see {@link SheetMath#divide}); both null (n/a) when momentum is. norm is scaled minus the
- * sheet's average scaled (over the people whose scaled is not n/a, rounded like every divide), null
+ * sheet's average scaled (over the people not on hold whose scaled is not n/a, rounded like every divide), null
  * (n/a) when scaled is. backing is the momentum of each patron added up (n/a patrons add nothing), null
  * (n/a) when the person's own momentum is. quarter is scaled divided by four (rounded like every divide)
  * and tier is SINK when scaled is below zero, STEADY from 0 up to 199 and SURGE at 200 or more; both
@@ -28,9 +28,10 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
                 quarter(p), tier(p), keel(p), fathom(p), draft(p), cascade(p), trim(p));
     }
 
-    /** The average scaled across the people, skipping n/a; null when nobody has one. */
+    /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
     static Long averageScaled(List<Person> people) {
-        List<Long> values = people.stream().map(PersonView::scaled).filter(v -> v != null).toList();
+        List<Long> values = people.stream().filter(p -> !p.isHold()).map(PersonView::scaled)
+                .filter(v -> v != null).toList();
         if (values.isEmpty()) {
             return null;
         }
