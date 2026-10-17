@@ -473,6 +473,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-yaw-mean">{{ yawMean() ?? 'n/a' }}</td>
               <td colspan="23"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="27">Heave total</th>
+              <td data-testid="rollup-heave-total">{{ heaveTotal() }}</td>
+              <td colspan="22"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -975,6 +980,11 @@ export class PeopleList {
       ? null
       : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
+
+  // Everyone's heave added up, trimmed like every sheet total.
+  protected readonly heaveTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.heave, hold: p.hold }))),
+  );
 
   // How many counted people have an even keel (n/a keels are not counted).
   protected readonly keelCount = computed(
