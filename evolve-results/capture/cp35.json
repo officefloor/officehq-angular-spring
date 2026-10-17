@@ -1,0 +1,354 @@
+{
+  "checkpoint": 35,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp35_numbering-per-period",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a setting, period numbering from (a date; blank means off; SETTING_CHANGED\nkey=period-numbering-from value=<date>). While the setting is a date and the sheet's today is on\nor after it, a claim opened receives a number within its period: <period name>-<n>, counting from 1\nin each period, and a claim in no period is numbered X-<n> in its own sequence. Claims opened\nbefore that keep their sheet-wide numbers, and the sheet-wide sequence continues if the setting\nis cleared.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a setting, period numbering from (a date; blank means off; SETTING_CHANGED\nkey=period-numbering-from value=<date>). While the setting is a date and the sheet's today is on\nor after it, a claim opened receives a number within its period: <period name>-<n>, counting from 1\nin each period, and a claim in no period is numbered X-<n> in its own sequence. Claims opened\nbefore that keep their sheet-wide numbers, and the sheet-wide sequence continues if the setting\nis cleared.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "492724e79cca7611404d09f148314166d9667e76",
+  "reset_sha": "",
+  "preagent_sha": "55bc89e368dc4861418ba0133ed140f61b884ad9",
+  "prev_sha": "55bc89e368dc4861418ba0133ed140f61b884ad9",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8830370000000001,
+    "input_tokens": 28,
+    "output_tokens": 11405,
+    "cache_read_tokens": 705125,
+    "cache_creation_tokens": 64225,
+    "num_turns": 15,
+    "duration_ms": 140016,
+    "duration_api_ms": 114082,
+    "model": "claude-opus-5-5",
+    "session_id": "f9d82746-21da-412e-9957-be50b9003285",
+    "stop_reason": "success",
+    "result_text": "I added the \"period numbering from\" setting, and `bin/e2e` passes (1 test, 1 passed).\n\n**How numbering works now**\n- While the setting is a date and the sheet's today is on or after it, a claim being opened is numbered by its date: `<period name>-<n>` for the period that date falls in, or `X-<n>` if it's in no period. Each period counts from 1.\n- Otherwise the claim gets the next sheet-wide number. That counter isn't touched while period numbering is on, so it carries on from where it stopped once the setting is cleared (the test checks this: the claim opened after clearing gets 3).\n- Claims opened earlier keep their numbers.\n- Changing the setting writes `SETTING_CHANGED key=period-numbering-from value=<date>`, with an empty value when it's cleared. The opened claim's audit line shows its number, e.g. `number=P1-1`.\n\n**What changed**\n- **Stored data** (new migration `V26__period_numbering.sql`): the sheet has a new `period_numbering_from` date. Claim numbers, and the claim number a correction refers to, are now stored as text instead of whole numbers. A new `claim_sequence` table keeps the last number given in each sequence on a sheet, so a number is never given twice.\n- **Server**: the numbering logic is `takeNumber` in `ClaimService`. `Sheet.numbersByPeriod()` decides whether period numbering applies, and the settings request and response carry the new setting.\n- **Front end**: the Settings panel has a date field (`setting-period-numbering-from`) that shows the current value. Claim numbers are handled as text, and the form for a correction (a negative amount) now accepts a number like `P1-1` as the claim it corrects.\n\n**Behaviour to be aware of**\n- Each period's sequence is tied to the period's name, not to the period itself. If a period is deleted and another is added with the same name, numbering continues from where the old one stopped.\n- A period named `X` would share its sequence with claims in no period.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8830370000000001,
+        "num_turns": 15,
+        "duration_ms": 140016,
+        "duration_api_ms": 114082,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp35.agent.jsonl",
+  "agent_diff_file": "cp35.agent.diff",
+  "build_log_file": "cp35.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 35,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp09_numbering.spec.ts::numbering": false,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated": true,
+      "cp12_half-even.spec.ts::half even": true,
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp14_edit-conflict.spec.ts::edit conflict": true,
+      "cp15_import-people.spec.ts::import people": true,
+      "cp16_import-upserts.spec.ts::import upserts": true,
+      "cp17_periods.spec.ts::periods": true,
+      "cp18_close-period.spec.ts::close period": true,
+      "cp19_quick-add.spec.ts::quick add": false,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable": true,
+      "cp21_retire.spec.ts::retire": true,
+      "cp22_hold.spec.ts::hold": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit": true,
+      "cp24_floor.spec.ts::floor": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue": true,
+      "cp26_late-charge.spec.ts::late charge": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing": true,
+      "cp28_grade-dated.spec.ts::grade dated": true,
+      "cp29_reopen-period.spec.ts::reopen period": true,
+      "cp30_corrections.spec.ts::corrections": true,
+      "cp31_summary.spec.ts::summary": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date": true,
+      "cp33_export-people.spec.ts::export people": false,
+      "cp34_bulk-open.spec.ts::bulk open": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1422,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1113,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1462,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1584,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2045,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1478,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2642,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2398,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 7641,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('claim-row-13').getByTestId('claim-number')\nExpected string: \u001b[32m\"3\"\u001b[39m\nReceived string: \u001b[31m\"4\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('claim-row-13').getByTestId('claim-number')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-number\">4</span>\u001b[22m\n\u001b[2m  -   unexpected value \"4\"\u001b[22m\n\n\n  22 |     expect((await ui.numbersOf(pg_vic, [c_ada_1, c_ben_1])).sort()).toEqual([\"3\", \"4\"]);\n  23 |     await ui.refresh(pg_vic);\n> 24 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_ada_1).getByTestId(\"claim-number\")).toHaveText(\"3\");\n     |                                                                                          ^\n  25 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_ada_1).getByTestId(\"claim-status\")).toHaveText(\"OPEN\");\n  26 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_ada_0).getByTestId(\"claim-number\")).toHaveText(\"1\");"
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2124,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2735,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1633,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2285,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2415,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_import-people.spec.ts::import people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1507,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_import-upserts.spec.ts::import upserts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1612,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2143,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2661,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30003,
+        "failure": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m | Error: locator.getAttribute: Test ended.\nCall log:\n  \u001b[2m- waiting for locator('[data-testid^=\"person-row-\"]').filter({ has: getByTestId('person-name').filter({ hasText: /^\\s*dot\\s*$/ }) }).last().locator('[data-testid^=\"claim-row-\"]').first()\u001b[22m\n\n\n   at ../support/ui.ts:210\n\n  208 |\n  209 | async function newestClaim(r: Locator): Promise<string> {\n> 210 |   return idOf(await claimRows(r).first().getAttribute('data-testid'), 'claim-row-');\n      |                                          ^\n  211 | }\n  212 |\n  213 | /** Add a claim from the person's row. The new claim's id (listed newest first), or null. */\n\n    at newestClaim (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:210:42)\n    at Object.quickAdd (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:298:10)\n    at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/specs/cp19_quick-add.spec.ts:16:29 | \u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1797,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3779,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2486,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3412,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3204,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2406,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2870,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2889,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2178,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2349,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2670,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3026,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2442,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 30003,
+        "failure": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m | Error: locator.textContent: Test ended.\nCall log:\n  \u001b[2m- waiting for getByTestId('person-row-53').getByTestId('person-retired')\u001b[22m\n\n\n   at ../support/ui.ts:145\n\n  143 |   await r.getByTestId('person-retire').click();\n  144 |   return until(page, async () => (await r.count()) === 0\n> 145 |     || (await r.getByTestId('person-retired').textContent() ?? '').trim() === 'yes',\n      |                                               ^\n  146 |     r.getByTestId('person-error'), 'retire');\n  147 | }\n  148 |\n\n    at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:145:47\n    at until (/home/daniel/ui-work/202610172303/just-solve-chain1/e2e/support/ui.ts:39:9)\n    at /home/daniel/ui-work/202610172303/just-solve-chain1/e2e/specs/cp33_export-people.spec.ts:18:12 | \u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2447,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2961,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
