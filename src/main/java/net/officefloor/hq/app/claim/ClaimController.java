@@ -30,7 +30,7 @@ public class ClaimController {
      * the due fixed when the claim was settled (null if it is not settled or had no rate then).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Long number, String settledDue, String openedBy, Long corrects) {
+            ClaimStatus status, String number, String settledDue, String openedBy, String corrects) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -47,7 +47,7 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "-?\\d{1,10}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 500) String note,
-            Long corrects) {
+            @Size(max = 120) String corrects) {
     }
 
     /** The quick-add bar: a name (stored trimmed) and an amount, with the rules of the person and claim forms. */
@@ -80,7 +80,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId,
-                new BigDecimal(request.amount()), request.date(), request.note(), request.corrects()));
+                new BigDecimal(request.amount()), request.date(), request.note(), blankAsNull(request.corrects())));
     }
 
     @PostMapping("/quick-add")
@@ -97,7 +97,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId,
-                new BigDecimal(request.amount()), request.date(), request.note(), request.corrects()));
+                new BigDecimal(request.amount()), request.date(), request.note(), blankAsNull(request.corrects())));
     }
 
     @PostMapping("/claims/{claimId}/open")
@@ -119,6 +119,11 @@ public class ClaimController {
             @PathVariable Long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+    }
+
+    /** A corrected number as sent, trimmed; none when blank. */
+    private static String blankAsNull(String text) {
+        return text == null || text.isBlank() ? null : text.trim();
     }
 
     @PostMapping("/claims/bulk-open")

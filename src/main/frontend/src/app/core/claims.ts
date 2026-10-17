@@ -12,14 +12,17 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The sheet's number given when the claim was opened; null for a draft; a voided claim keeps it. */
-  number: number | null;
+  /**
+   * The number given when the claim was opened: the sheet's next number, or its number within its
+   * period (such as P1-1, or X-1 in no period); null for a draft; a voided claim keeps it.
+   */
+  number: string | null;
   /** The due fixed when the claim was settled, two decimals; null if not settled or it had no rate then. */
   settledDue: string | null;
   /** The user who opened the claim; null while it has not been opened. That user cannot settle it. */
   openedBy: string | null;
   /** The number of the settled claim this correction (a negative amount) corrects; null for any other claim. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** How many selected claims a bulk open opened, and how many it refused. */
@@ -96,8 +99,8 @@ export const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 /** A claim amount the store accepts: at most two decimals; a negative one is a correction. */
 export const CLAIM_AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 
-/** A claim number, as typed in the claim form's corrects field. */
-export const CLAIM_NUMBER = /^\d{1,15}$/;
+/** A claim number, as typed in the claim form's corrects field: a sheet-wide 1, 2, ... or a period number such as P1-1. */
+export const CLAIM_NUMBER = /^(\d{1,15}|\S.{0,99}-\d{1,15})$/;
 
 /** Whether the claim is a correction: its amount is below 0. */
 export function isCorrection(claim: { amount: string }): boolean {
@@ -195,7 +198,7 @@ export class Claims {
 
   private body(fields: ClaimFields) {
     const corrects = fields.corrects.trim();
-    return { amount: fields.amount.trim(), date: fields.date || null, note: fields.note, corrects: corrects ? Number(corrects) : null };
+    return { amount: fields.amount.trim(), date: fields.date || null, note: fields.note, corrects: corrects || null };
   }
 
   private sheetUrl(): string {

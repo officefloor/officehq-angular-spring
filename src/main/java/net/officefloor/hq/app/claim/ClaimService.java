@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
@@ -36,6 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ClaimService {
 
     private final ClaimRepository claims;
+    private final ClaimSequenceRepository sequences;
     private final PersonRepository people;
     private final PeriodRepository periods;
     private final RateService rates;
@@ -43,10 +45,11 @@ public class ClaimService {
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, PeriodRepository periods, RateService rates,
+    public ClaimService(ClaimRepository claims, ClaimSequenceRepository sequences, PersonRepository people, PeriodRepository periods, RateService rates,
             RoleService roles, SheetService sheets, Audit audit) {
         this.roles = roles;
         this.claims = claims;
+        this.sequences = sequences;
         this.people = people;
         this.periods = periods;
         this.rates = rates;
@@ -61,7 +64,7 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
-            Long corrects) {
+            String corrects) {
         sheets.load(sheetId, user);
         // Lock the sheet, so a period closed at the same moment is seen.
         sheets.lock(sheetId);
@@ -70,7 +73,7 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseIfClosed(sheetId, on);
         refuseIfRetired(person, on);
-        Long corrected = correctedNumber(sheetId, personId, amount, corrects);
+        String corrected = correctedNumber(sheetId, personId, amount, corrects);
         Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount), on, note != null ? note : "", corrected));
         record("CLAIM_ADDED", user, person, claim);
         return claim;
@@ -78,7 +81,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, Long claimId, BigDecimal amount, LocalDate date, String note,
-            Long corrects) {
+            String corrects) {
         sheets.lock(sheetId);
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
@@ -91,7 +94,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfRetired(person, on);
-        Long corrected = correctedNumber(sheetId, person.getId(), amount, corrects);
+        String corrected = correctedNumber(sheetId, person.getId(), amount, corrects);
         claim.setAmount(scaled(amount));
         claim.setCorrects(corrected);
         claim.setDate(on);
@@ -102,7 +105,8 @@ public class ClaimService {
 
     /**
      * Move a claim to the next status; a change its status does not allow is refused (409). Opening
-     * gives the claim the sheet's next number; a voided claim keeps it (the number is never given again).
+     * gives the claim the sheet's next number, or its number within its period while the sheet numbers
+     * by period (see {@link #takeNumber}); a voided claim keeps it (the number is never given again).
      * Opening records who opened it; that user cannot settle it (403).
      * Settling fixes the claim's due at its person's grade's rate in force on the claim's date, raised to
      * the sheet's floor, with its late charge added if it is overdue; later floor and late percent changes
@@ -131,7 +135,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        Long number = next == ClaimStatus.OPEN ? Long.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
+        String number = next == ClaimStatus.OPEN ? takeNumber(sheet, claim.getDate()) : claim.getNumber();
         claim.setStatus(next);
         claim.setNumber(number);
         if (next == ClaimStatus.OPEN) {
@@ -196,7 +200,7 @@ public class ClaimService {
      * The number a claim corrects: for a negative amount, the number of a SETTLED claim of the same
      * person, refused (422) when none is named or it names no such claim; none for any other amount.
      */
-    private Long correctedNumber(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+    private String correctedNumber(String sheetId, Long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             return null;
         }
@@ -208,6 +212,26 @@ public class ClaimService {
                     "A negative amount must correct a settled claim of the same person");
         }
         return corrects;
+    }
+
+    /**
+     * The number a claim opened now is given: while the sheet numbers by period (its today on or after
+     * its period numbering from), the next in the sequence of the period the claim's date is in,
+     * &lt;period name&gt;-&lt;n&gt;, or X-&lt;n&gt; for a claim in no period; otherwise the sheet's next number.
+     * The caller holds the sheet's lock.
+     */
+    private String takeNumber(Sheet sheet, LocalDate date) {
+        if (!sheet.numbersByPeriod()) {
+            return String.valueOf(sheet.takeClaimNumber());
+        }
+        String prefix = periods.findBySheetIdOrderByFromAsc(sheet.getId()).stream()
+                .filter(period -> period.contains(date))
+                .map(Period::getName)
+                .findFirst()
+                .orElse("X");
+        ClaimSequence sequence = sequences.findById(new ClaimSequence.Key(sheet.getId(), prefix))
+                .orElseGet(() -> sequences.save(new ClaimSequence(sheet.getId(), prefix)));
+        return sequence.take();
     }
 
     /** Refuse (403) a clerk settling a claim whose due is above the sheet's clerk limit. */
@@ -247,7 +271,7 @@ public class ClaimService {
     /**
      * Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. A claim with a number adds number=&lt;number&gt;; any extra fields follow it.
      */
-    private void record(String event, String user, Person person, Claim claim, Long number, List<String> extra) {
+    private void record(String event, String user, Person person, Claim claim, String number, List<String> extra) {
         List<String> fields = new ArrayList<>(List.of("person=" + person.getName(),
                 "amount=" + claim.getAmount().toPlainString(), "date=" + claim.getDate()));
         if (number != null) {

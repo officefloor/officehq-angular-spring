@@ -10,5 +10,5 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
-    Optional<Claim> findFirstBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, Long number);
+    Optional<Claim> findFirstBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 }

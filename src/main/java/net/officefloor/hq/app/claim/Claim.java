@@ -42,9 +42,12 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The sheet's number given when the claim was opened; none for a draft, and kept when the claim is voided. */
+    /**
+     * The number given when the claim was opened: the sheet's next number, or a number within its
+     * period (such as P1-1, or X-1 in no period); none for a draft, and kept when the claim is voided.
+     */
     @Column(name = "claim_number")
-    private Long number;
+    private String number;
 
     /** The due fixed when the claim was settled; none while it is not settled, or if its grade had no rate then. */
     @Column(name = "settled_due", precision = 14, scale = 2)
@@ -56,12 +59,12 @@ public class Claim {
 
     /** The number of the claim this correction corrects; none for a claim that is not a correction. */
     @Column(name = "corrects")
-    private Long corrects;
+    private String corrects;
 
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Long corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
         this.sheetId = sheetId;
         this.corrects = corrects;
         this.personId = personId;
@@ -114,11 +117,11 @@ public class Claim {
         this.status = status;
     }
 
-    public Long getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Long number) {
+    public void setNumber(String number) {
         this.number = number;
     }
 
@@ -138,11 +141,11 @@ public class Claim {
         this.openedBy = openedBy;
     }
 
-    public Long getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Long corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 

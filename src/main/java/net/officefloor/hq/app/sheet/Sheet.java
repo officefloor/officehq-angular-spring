@@ -48,6 +48,10 @@ public class Sheet {
     @Column(name = "policy_date")
     private LocalDate policyDate;
 
+    /** The sheet's period numbering from: from this date (by the sheet's today) claims opened are numbered within their period; null for off. */
+    @Column(name = "period_numbering_from")
+    private LocalDate periodNumberingFrom;
+
     protected Sheet() {
     }
 
@@ -111,6 +115,19 @@ public class Sheet {
 
     public void setPolicyDate(LocalDate policyDate) {
         this.policyDate = policyDate;
+    }
+
+    public LocalDate getPeriodNumberingFrom() {
+        return periodNumberingFrom;
+    }
+
+    public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
+        this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    /** Whether a claim opened now is numbered within its period: the period numbering from is set and today is on or after it. */
+    public boolean numbersByPeriod() {
+        return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
     }
 
     /**

@@ -16,6 +16,8 @@ interface SheetView {
   latePct: string;
   /** The policy date (yyyy-mm-dd) that decides how a claim's live figures round; null for the sheet's today. */
   policyDate: string | null;
+  /** From this date (by the sheet's today) a claim opened is numbered within its period; null for off. */
+  periodNumberingFrom: string | null;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the app
@@ -38,6 +40,8 @@ export class Session {
   readonly latePct = signal<string | null>(null);
   /** The active sheet's policy date (yyyy-mm-dd); null when none is set (the sheet's today is used). */
   readonly policyDate = signal<string | null>(null);
+  /** The active sheet's period numbering from (yyyy-mm-dd); null when off (claims take the sheet-wide number). */
+  readonly periodNumberingFrom = signal<string | null>(null);
   /** Counts sheet loads, so per-sheet data re-reads the store on every (re-)load. */
   readonly loads = signal(0);
   /** True while a sheet is being (re-)loaded, so nothing read from the store before is shown. */
@@ -94,14 +98,15 @@ export class Session {
 
   /**
    * Change the active sheet's clerk limit (null for no limit), floor, terms (days), late percent and
-   * policy date (blank for none).
+   * policy date (blank for none) and period numbering from (blank for off).
    */
-  async setSettings(clerkLimit: string | null, floor: string, terms: string, latePct: string, policyDate: string): Promise<void> {
+  async setSettings(clerkLimit: string | null, floor: string, terms: string, latePct: string, policyDate: string,
+      periodNumberingFrom: string): Promise<void> {
     const user = this.user();
     const id = this.sheetId();
     if (!user || !id) throw new Error('no sheet loaded');
     const sheet = await firstValueFrom(
-      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms, latePct, policyDate }, {
+      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom }, {
         headers: { 'X-User': user },
       }),
     );
@@ -116,5 +121,6 @@ export class Session {
     this.terms.set(sheet.terms);
     this.latePct.set(sheet.latePct);
     this.policyDate.set(sheet.policyDate);
+    this.periodNumberingFrom.set(sheet.periodNumberingFrom);
   }
 }

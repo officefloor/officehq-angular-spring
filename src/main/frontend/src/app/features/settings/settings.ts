@@ -4,7 +4,7 @@ import { RATE } from '../../core/rates';
 import { ROLES, RoleName, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the floor, the terms, the late percent and the policy date) and the roles given to user names.
+// The sheet's settings (the clerk limit, the floor, the terms, the late percent, the policy date and the period numbering from) and the roles given to user names.
 @Component({
   selector: 'app-settings',
   template: `
@@ -56,6 +56,15 @@ import { Session } from '../../core/session';
           data-testid="setting-policy-date"
           [value]="policyDate()"
           (input)="policyDate.set($any($event.target).value); settingsError.set(null)"
+        />
+        <p>Period numbering from <strong data-testid="setting-period-numbering-from-current">{{ session.periodNumberingFrom() ?? '' }}</strong></p>
+        <label for="setting-period-numbering-from">Period numbering from (claims opened from this date are numbered within their period; blank for off)</label>
+        <input
+          id="setting-period-numbering-from"
+          type="date"
+          data-testid="setting-period-numbering-from"
+          [value]="periodNumberingFrom()"
+          (input)="periodNumberingFrom.set($any($event.target).value); settingsError.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
@@ -117,6 +126,7 @@ export class SettingsPanel {
   protected readonly terms = linkedSignal(() => String(this.session.terms() ?? ''));
   protected readonly latePct = linkedSignal(() => this.session.latePct() ?? '');
   protected readonly policyDate = linkedSignal(() => this.session.policyDate() ?? '');
+  protected readonly periodNumberingFrom = linkedSignal(() => this.session.periodNumberingFrom() ?? '');
   protected readonly settingsError = signal<string | null>(null);
   protected readonly user = signal('');
   protected readonly role = signal('');
@@ -171,9 +181,14 @@ export class SettingsPanel {
       this.settingsError.set('Enter a policy date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
       return;
     }
+    const periodNumberingFrom = this.periodNumberingFrom().trim();
+    if (periodNumberingFrom && !/^\d{4}-\d{2}-\d{2}$/.test(periodNumberingFrom)) {
+      this.settingsError.set('Enter a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
+      return;
+    }
     this.savingSettings = true;
     try {
-      await this.session.setSettings(limit || null, floor, terms, latePct, policyDate);
+      await this.session.setSettings(limit || null, floor, terms, latePct, policyDate, periodNumberingFrom);
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {
