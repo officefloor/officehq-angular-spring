@@ -568,6 +568,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-beam-even">{{ beamEven() }}</td>
               <td colspan="19"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="30">Beam mean</th>
+              <td data-testid="rollup-beam-mean">{{ beamMean() ?? 'n/a' }}</td>
+              <td colspan="19"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1292,6 +1297,18 @@ export class PeopleList {
     const values = (this.people() ?? [])
       .filter((p) => !p.hold)
       .map((p) => p.sheer)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
+
+  // The average beam among the people not on hold (n/a beams skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly beamMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.beam)
       .filter((v): v is number => v !== null);
     return values.length === 0
       ? null
