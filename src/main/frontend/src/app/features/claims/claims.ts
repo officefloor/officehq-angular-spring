@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { AMOUNT, Claim, ClaimAction, Claims, formatCents } from '../../core/claims';
 import { Grade } from '../../core/people';
+import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 
@@ -51,6 +52,7 @@ import { Session } from '../../core/session';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-due">{{ due(c) }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
+          <span data-testid="claim-period">{{ periods.on(c.date)?.name }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy }}</span>
@@ -74,6 +76,7 @@ export class PersonClaims {
   private readonly claims = inject(Claims);
   private readonly session = inject(Session);
   private readonly rates = inject(Rates);
+  protected readonly periods = inject(Periods);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();

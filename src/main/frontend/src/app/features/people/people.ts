@@ -5,12 +5,13 @@ import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/peopl
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
+import { PeriodsPanel } from '../periods/periods';
 
 // The sheet's people, in the order they were added, and the one form that adds a person or edits
 // an existing one.
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims],
+  imports: [PersonClaims, PeriodsPanel],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -98,6 +99,8 @@ import { PersonClaims } from '../claims/claims';
 
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotalAll() }}</strong></p>
+
+      <app-periods [people]="people()" />
     </section>
   `,
 })
