@@ -80,6 +80,8 @@ export interface Person {
   rudder: number | null;
   // keel plus 1000; null (n/a) when keel is.
   mast: number | null;
+  // keel divided by four, rounded to the nearest (a half up); null (n/a) when keel is.
+  rigging: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
