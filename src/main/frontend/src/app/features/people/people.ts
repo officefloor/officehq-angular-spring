@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { AMOUNT, Claims, counts, formatCents, toCents } from '../../core/claims';
+import { AMOUNT, Claims, counts, formatCents, overdue, toCents } from '../../core/claims';
 import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
@@ -113,7 +113,7 @@ const LEAVE_DELAY_MS = 1000;
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -125,6 +125,8 @@ const LEAVE_DELAY_MS = 1000;
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotal(p) }}</td>
+              <td data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</td>
+              <td data-testid="person-overdue-total">{{ formatCents(overdueOf(p.id).cents) }}</td>
               <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" [retiredFrom]="p.retiredFrom" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
@@ -157,6 +159,8 @@ const LEAVE_DELAY_MS = 1000;
 
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotalAll() }}</strong></p>
+      <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueAll().count }}</strong></p>
+      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ formatCents(overdueAll().cents) }}</strong></p>
 
       <app-periods [people]="people()" />
     </section>
@@ -170,6 +174,7 @@ export class People {
   private readonly periods = inject(Periods);
 
   protected readonly grades = GRADES;
+  protected readonly formatCents = formatCents;
   protected readonly people = signal<Person[]>([]);
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
@@ -253,6 +258,32 @@ export class People {
     formatCents([...this.dueCents().values()].reduce((sum, c) => sum + c, 0)),
   );
 
+  /**
+   * Each person's overdue claims that count, by person id: how many, and their due figures added up
+   * in cents, skipping those that are n/a.
+   */
+  private readonly overdueByPerson = computed(() => {
+    const terms = this.session.terms() ?? 14;
+    const today = this.session.today() ?? '';
+    const out = new Map<number, { count: number; cents: number }>();
+    for (const p of this.people()) {
+      const late = this.claims.all().filter((c) => c.personId === p.id && counts(c, p) && overdue(c, terms, today));
+      out.set(p.id, {
+        count: late.length,
+        cents: late.map((c) => this.rates.dueOf(c, p.grade) ?? 0).reduce((sum, c) => sum + c, 0),
+      });
+    }
+    return out;
+  });
+
+  /** Everyone's overdue claims that count: how many, and their due-total in cents. */
+  protected readonly overdueAll = computed(() =>
+    [...this.overdueByPerson().values()].reduce(
+      (all, o) => ({ count: all.count + o.count, cents: all.cents + o.cents }),
+      { count: 0, cents: 0 },
+    ),
+  );
+
   constructor() {
     effect((onCleanup) => {
       const drafts = this.withDrafts();
@@ -286,6 +317,10 @@ export class People {
   protected dueTotal(person: Person): string {
     const cents = this.dueCents().get(person.id);
     return cents === undefined ? 'n/a' : formatCents(cents);
+  }
+
+  protected overdueOf(personId: number): { count: number; cents: number } {
+    return this.overdueByPerson().get(personId) ?? { count: 0, cents: 0 };
   }
 
   protected retireDate(personId: number): string {

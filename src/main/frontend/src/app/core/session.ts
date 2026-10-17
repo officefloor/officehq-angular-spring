@@ -10,6 +10,8 @@ interface SheetView {
   clerkLimit: string | null;
   /** The least any live due can be, two decimals. */
   floor: string;
+  /** The terms: a claim is due by its date plus this many days. */
+  terms: number;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the app
@@ -26,6 +28,8 @@ export class Session {
   readonly clerkLimit = signal<string | null>(null);
   /** The active sheet's floor (two decimals): every live due is at least it. */
   readonly floor = signal<string | null>(null);
+  /** The active sheet's terms in days: a claim is due by its date plus these. */
+  readonly terms = signal<number | null>(null);
   /** Counts sheet loads, so per-sheet data re-reads the store on every (re-)load. */
   readonly loads = signal(0);
   /** True while a sheet is being (re-)loaded, so nothing read from the store before is shown. */
@@ -66,13 +70,13 @@ export class Session {
     this.show(sheet);
   }
 
-  /** Change the active sheet's clerk limit (null for no limit) and floor. */
-  async setSettings(clerkLimit: string | null, floor: string): Promise<void> {
+  /** Change the active sheet's clerk limit (null for no limit), floor and terms (days). */
+  async setSettings(clerkLimit: string | null, floor: string, terms: string): Promise<void> {
     const user = this.user();
     const id = this.sheetId();
     if (!user || !id) throw new Error('no sheet loaded');
     const sheet = await firstValueFrom(
-      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor }, {
+      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms }, {
         headers: { 'X-User': user },
       }),
     );
@@ -84,5 +88,6 @@ export class Session {
     this.today.set(sheet.today);
     this.clerkLimit.set(sheet.clerkLimit);
     this.floor.set(sheet.floor);
+    this.terms.set(sheet.terms);
   }
 }

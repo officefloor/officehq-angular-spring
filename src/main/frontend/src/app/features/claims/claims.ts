@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
-import { AMOUNT, Claim, ClaimAction, Claims, formatCents } from '../../core/claims';
+import { AMOUNT, Claim, ClaimAction, Claims, dueBy, formatCents, overdue } from '../../core/claims';
 import { Grade, retiredOn } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
@@ -56,6 +56,8 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-due">{{ due(c) }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
+          <span data-testid="claim-due-by">{{ dueBy(c) }}</span>
+          <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periods.on(c.date)?.name }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
@@ -112,6 +114,16 @@ export class PersonClaims {
   protected due(claim: Claim): string {
     const cents = this.rates.dueOf(claim, this.grade());
     return cents === undefined ? 'n/a' : formatCents(cents);
+  }
+
+  /** The claim's due-by: its date plus the sheet's terms. */
+  protected dueBy(claim: Claim): string {
+    return dueBy(claim, this.session.terms() ?? 14);
+  }
+
+  /** Whether the claim is OPEN with its due-by before the sheet's today. */
+  protected overdue(claim: Claim): boolean {
+    return overdue(claim, this.session.terms() ?? 14, this.session.today() ?? '');
   }
 
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {

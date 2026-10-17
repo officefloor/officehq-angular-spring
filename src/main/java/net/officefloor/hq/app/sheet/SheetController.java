@@ -21,21 +21,26 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    /** The clerk limit and floor are sent as text with exactly two decimals; the clerk limit null for no limit. */
-    public record SheetView(String id, LocalDate today, String clerkLimit, String floor) {
+    /**
+     * The clerk limit and floor are sent as text with exactly two decimals; the clerk limit null for no
+     * limit. The terms are a number of days.
+     */
+    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms) {
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString());
+                    sheet.getFloor().toPlainString(), sheet.getTerms());
         }
     }
 
     /**
      * The clerk limit is 0 or more with at most two decimals; null or blank for no limit. The floor is
-     * 0 or more with at most two decimals; null leaves it as it is.
+     * 0 or more with at most two decimals; null leaves it as it is. The terms are a whole number of
+     * days, 0 to 9999; null leaves them as they are.
      */
     public record SettingsRequest(@Pattern(regexp = "\\s*|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit,
-            @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String floor) {
+            @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String floor,
+            @Pattern(regexp = "\\s*\\d{1,4}\\s*") String terms) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -66,6 +71,8 @@ public class SheetController {
             @RequestBody @Validated SettingsRequest request) {
         String limit = request.clerkLimit() == null ? "" : request.clerkLimit().trim();
         BigDecimal floor = request.floor() == null ? null : new BigDecimal(request.floor().trim());
-        return SheetView.of(service.setSettings(id.trim(), user.trim(), limit.isEmpty() ? null : new BigDecimal(limit), floor));
+        Integer terms = request.terms() == null ? null : Integer.valueOf(request.terms().trim());
+        return SheetView.of(service.setSettings(id.trim(), user.trim(), limit.isEmpty() ? null : new BigDecimal(limit),
+                floor, terms));
     }
 }

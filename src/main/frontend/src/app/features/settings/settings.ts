@@ -3,7 +3,7 @@ import { AMOUNT } from '../../core/claims';
 import { ROLES, RoleName, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit and the floor) and the roles given to user names.
+// The sheet's settings (the clerk limit, the floor and the terms) and the roles given to user names.
 @Component({
   selector: 'app-settings',
   template: `
@@ -28,6 +28,15 @@ import { Session } from '../../core/session';
           data-testid="setting-floor"
           [value]="floor()"
           (input)="floor.set($any($event.target).value); settingsError.set(null)"
+        />
+        <p>Terms (days) <strong data-testid="setting-terms-current">{{ session.terms() ?? '' }}</strong></p>
+        <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
+        <input
+          id="setting-terms"
+          inputmode="numeric"
+          data-testid="setting-terms"
+          [value]="terms()"
+          (input)="terms.set($any($event.target).value); settingsError.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
@@ -86,6 +95,7 @@ export class SettingsPanel {
 
   protected readonly clerkLimit = linkedSignal(() => this.session.clerkLimit() ?? '');
   protected readonly floor = linkedSignal(() => this.session.floor() ?? '');
+  protected readonly terms = linkedSignal(() => String(this.session.terms() ?? ''));
   protected readonly settingsError = signal<string | null>(null);
   protected readonly user = signal('');
   protected readonly role = signal('');
@@ -125,9 +135,14 @@ export class SettingsPanel {
       this.settingsError.set('Enter a floor of 0.00 or more, with at most two decimals.');
       return;
     }
+    const terms = this.terms().trim();
+    if (!/^\d{1,4}$/.test(terms)) {
+      this.settingsError.set('Enter terms as a whole number of days, from 0 to 9999.');
+      return;
+    }
     this.savingSettings = true;
     try {
-      await this.session.setSettings(limit || null, floor);
+      await this.session.setSettings(limit || null, floor, terms);
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {
