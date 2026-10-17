@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index f5e0c67b..3a3a9efe 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -688,6 +688,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-hull-spread">{{ hullSpread() ?? 'n/a' }}</td>
+               <td colspan="14"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="35">Hull even</th>
++              <td data-testid="rollup-hull-even">{{ hullEven() }}</td>
++              <td colspan="14"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1539,6 +1544,11 @@ export class PeopleList {
+     () => countable(this.people() ?? []).filter((p) => p.cable !== null && p.cable % 2 === 0).length,
+   );
+ 
++  // How many counted people have an even hull (n/a hulls are not counted).
++  protected readonly hullEven = computed(
++    () => countable(this.people() ?? []).filter((p) => p.hull !== null && p.hull % 2 === 0).length,
++  );
++
+   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
+   // divide; null (n/a) when nobody has one.
+   protected readonly camberMean = computed(() => {
