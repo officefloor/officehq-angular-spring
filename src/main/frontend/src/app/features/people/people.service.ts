@@ -60,6 +60,8 @@ export interface Person {
   sheer: number | null;
   // keel times two; null (n/a) when keel is.
   beam: number | null;
+  // keel divided by two, rounded to the nearest (a half up); null (n/a) when keel is.
+  freeboard: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
