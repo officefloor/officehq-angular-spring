@@ -299,6 +299,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="29"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="20">Heading even</th>
+              <td data-testid="rollup-heading-even">{{ headingEven() }}</td>
+              <td colspan="29"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="21">Ballast total</th>
               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
               <td colspan="28"></td>
@@ -739,6 +744,12 @@ export class PeopleList {
   protected readonly rippleEven = computed(
     () =>
       countable(this.people() ?? []).filter((p) => p.ripple !== null && p.ripple % 2 === 0).length,
+  );
+
+  // How many counted people have an even heading (n/a headings are not counted).
+  protected readonly headingEven = computed(
+    () =>
+      countable(this.people() ?? []).filter((p) => p.heading !== null && p.heading % 2 === 0).length,
   );
 
   // How many counted people have an even ballast (n/a ballasts are not counted).
