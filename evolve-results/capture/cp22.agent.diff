@@ -1,0 +1,345 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 7be9dc4d..00edab06 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Injectable, computed, inject, signal } from '@angular/core';
++import { Injectable, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from './session';
+ 
+@@ -26,9 +26,12 @@ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+ /** The status changes a claim can be asked for, as named in the store's API. */
+ export type ClaimAction = 'open' | 'settle' | 'void';
+ 
+-/** Whether the claim counts toward claimed, due-total and every total. */
+-export function counts(claim: Claim): boolean {
+-  return claim.status === 'OPEN' || claim.status === 'SETTLED';
++/**
++ * Whether the claim counts toward claimed, due-total and every total: an OPEN or SETTLED one, but
++ * not an OPEN one while its person is on hold.
++ */
++export function counts(claim: Claim, person: { held: boolean }): boolean {
++  return claim.status === 'SETTLED' || (claim.status === 'OPEN' && !person.held);
+ }
+ 
+ export interface ClaimFields {
+@@ -58,18 +61,6 @@ export class Claims {
+ 
+   readonly all = signal<Claim[]>([]);
+ 
+-  /** The claims that count toward the totals: OPEN and SETTLED ones. */
+-  private readonly counted = computed(() => this.all().filter(counts));
+-
+-  /** Each person's claimed, in cents, by person id. */
+-  readonly claimedCents = computed(() => {
+-    const out = new Map<number, number>();
+-    for (const c of this.counted()) out.set(c.personId, (out.get(c.personId) ?? 0) + toCents(c.amount));
+-    return out;
+-  });
+-
+-  readonly totalCents = computed(() => this.counted().reduce((sum, c) => sum + toCents(c.amount), 0));
+-
+   /** Re-read the store; until it answers no claims are shown, so none is shown out of date. */
+   async reload(): Promise<void> {
+     this.all.set([]);
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index b1969e0f..0f736347 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -14,6 +14,8 @@ export interface Person {
+   version: number;
+   /** yyyy-mm-dd the person is retired from; null while they are not retired. */
+   retiredFrom: string | null;
++  /** Whether the person is on hold: while held, their open claims count in no live total. */
++  held: boolean;
+ }
+ 
+ /** Whether a claim dated on this date (yyyy-mm-dd) is refused: it is after the person's retirement. */
+@@ -76,6 +78,13 @@ export class PeopleApi {
+     );
+   }
+ 
++  /** Put the person on hold, or release them; refused with 409 when they already are (or are not). */
++  setHeld(id: number, held: boolean): Promise<Person> {
++    return firstValueFrom(
++      this.http.post<Person>(`${this.url()}/${id}/${held ? 'hold' : 'release'}`, null, { headers: this.headers() }),
++    );
++  }
++
+   private url(): string {
+     const id = this.session.sheetId();
+     if (!id) throw new Error('no sheet loaded');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b7b8203b..8e4ad01b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,6 +1,6 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+-import { AMOUNT, Claims, counts, formatCents } from '../../core/claims';
++import { AMOUNT, Claims, counts, formatCents, toCents } from '../../core/claims';
+ import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
+ import { Periods } from '../../core/periods';
+ import { Rates } from '../../core/rates';
+@@ -113,7 +113,7 @@ const LEAVE_DELAY_MS = 1000;
+ 
+       <table>
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of listed(); track p.id) {
+@@ -122,6 +122,7 @@ const LEAVE_DELAY_MS = 1000;
+               <td data-testid="person-grade">{{ p.grade }}</td>
+               <td data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
++              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueTotal(p) }}</td>
+               <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" [retiredFrom]="p.retiredFrom" /></td>
+@@ -129,6 +130,9 @@ const LEAVE_DELAY_MS = 1000;
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+                   Edit<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)">
++                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
++                </button>
+                 @if (p.retiredFrom === null) {
+                   <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                   <input
+@@ -209,7 +213,20 @@ export class People {
+     return this.people().filter((p) => p.retiredFrom === null || this.api.showRetired() || kept.has(p.id));
+   });
+ 
+-  protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
++  /** Each person's claimed in cents, by person id: the amounts of their counted claims. */
++  private readonly claimedCents = computed(() => {
++    const byId = new Map(this.people().map((p) => [p.id, p]));
++    const out = new Map<number, number>();
++    for (const c of this.claims.all()) {
++      const person = byId.get(c.personId);
++      if (person !== undefined && counts(c, person)) out.set(c.personId, (out.get(c.personId) ?? 0) + toCents(c.amount));
++    }
++    return out;
++  });
++
++  protected readonly claimedTotal = computed(() =>
++    formatCents([...this.claimedCents().values()].reduce((sum, c) => sum + c, 0)),
++  );
+ 
+   /**
+    * Each person's due-total in cents, by person id: the sum of their counted claims' due figures as
+@@ -221,7 +238,7 @@ export class People {
+     for (const p of this.people()) {
+       const figures = this.claims
+         .all()
+-        .filter((c) => c.personId === p.id && counts(c))
++        .filter((c) => c.personId === p.id && counts(c, p))
+         .map((c) => this.rates.dueOf(c, p.grade))
+         .filter((c) => c !== undefined);
+       if (figures.length > 0 || this.rates.byGrade().has(p.grade)) {
+@@ -263,7 +280,7 @@ export class People {
+   }
+ 
+   protected claimed(personId: number): string {
+-    return formatCents(this.claims.claimedCents().get(personId) ?? 0);
++    return formatCents(this.claimedCents().get(personId) ?? 0);
+   }
+ 
+   protected dueTotal(person: Person): string {
+@@ -301,6 +318,22 @@ export class People {
+     }
+   }
+ 
++  /** Put the person on hold, or release them when they are held. */
++  protected async toggleHold(person: Person): Promise<void> {
++    this.rowError.set(null);
++    try {
++      const saved = await this.api.setHeld(person.id, !person.held);
++      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++    } catch (e) {
++      this.rowError.set({
++        id: person.id,
++        message: e instanceof HttpErrorResponse && e.status === 409
++          ? (person.held ? 'This person is not on hold.' : 'This person is already on hold.')
++          : (person.held ? 'The person could not be released.' : 'The person could not be put on hold.'),
++      });
++    }
++  }
++
+   protected edit(person: Person): void {
+     this.editingId.set(person.id);
+     this.editingVersion = person.version;
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 022ffed3..2e50af76 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -94,13 +94,13 @@ export class PeriodsPanel {
+    * of the counted claims dated in it, skipping those that are n/a.
+    */
+   private readonly dueCents = computed(() => {
+-    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
++    const byId = new Map(this.people().map((p) => [p.id, p]));
+     const out = new Map<number, number>();
+     for (const c of this.claims.all()) {
+-      const grade = grades.get(c.personId);
++      const person = byId.get(c.personId);
+       const period = this.periods.on(c.date);
+-      if (!counts(c) || grade === undefined || period === undefined) continue;
+-      const due = this.rates.dueOf(c, grade);
++      if (person === undefined || period === undefined || !counts(c, person)) continue;
++      const due = this.rates.dueOf(c, person.grade);
+       if (due !== undefined) out.set(period.id, (out.get(period.id) ?? 0) + due);
+     }
+     return out;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index bb7223d0..63039017 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -71,7 +71,8 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * Close a period, fixing its due-total: the dues of the counted claims dated in it, each a settled
++     * Close a period, fixing its due-total: the dues of the counted claims dated in it (an open claim of a
++     * person on hold is not counted), each a settled
+      * claim's fixed due or else its amount at its person's grade's rate in force on its date, rounded
+      * half to even to cents; a claim with no such rate adds nothing. A closed period cannot be closed again (409).
+      */
+@@ -90,7 +91,7 @@ public class PeriodService {
+         BigDecimal total = BigDecimal.ZERO.setScale(2);
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             Person person = byId.get(claim.getPersonId());
+-            if (!claim.getStatus().counts() || person == null || !period.contains(claim.getDate())) {
++            if (person == null || !person.counts(claim.getStatus()) || !period.contains(claim.getDate())) {
+                 continue;
+             }
+             BigDecimal due = switch (claim.getStatus()) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index a574b0b5..3df823ec 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -8,8 +8,10 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ 
+-/** A person on a sheet, with a name and a grade (A, B or C), who may be retired from a date. */
++/** A person on a sheet, with a name and a grade (A, B or C), who may be retired from a date
++ * and may be put on hold. */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -31,6 +33,10 @@ public class Person {
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+ 
++    /** Whether the person is on hold: while held, their open claims count in no live total. */
++    @Column(name = "held", nullable = false)
++    private boolean held;
++
+     /** Raised each time the person is saved. */
+     @Version
+     @Column(name = "version", nullable = false)
+@@ -82,6 +88,19 @@ public class Person {
+         return retiredFrom != null && date.isAfter(retiredFrom);
+     }
+ 
++    public boolean isHeld() {
++        return held;
++    }
++
++    public void setHeld(boolean held) {
++        this.held = held;
++    }
++
++    /** Whether a claim of this person in this status counts toward the totals: an open one not while held. */
++    public boolean counts(ClaimStatus status) {
++        return status.counts() && !(held && status == ClaimStatus.OPEN);
++    }
++
+     public long getVersion() {
+         return version;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 0b36963a..d5660473 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -25,10 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
+ public class PersonController {
+ 
+     /** The version is the one an edit sends back, so a save made from an out-of-date copy is refused. */
+-    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom) {
++    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom,
++            boolean held) {
+         static PersonView of(Person person) {
+             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+-                    person.getRetiredFrom());
++                    person.getRetiredFrom(), person.isHeld());
+         }
+     }
+ 
+@@ -89,6 +90,20 @@ public class PersonController {
+         return PersonView.of(service.retire(sheetId.trim(), user.trim(), personId, request.from()));
+     }
+ 
++    @PostMapping("/{personId}/hold")
++    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, true));
++    }
++
++    @PostMapping("/{personId}/release")
++    public PersonView release(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, false));
++    }
++
+     @PostMapping("/import")
+     public PersonService.ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9d2720a3..968b2bae 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -167,6 +167,26 @@ public class PersonService {
+         return person;
+     }
+ 
++    /**
++     * Put a person on hold, or release them from it. Holding one already held, or releasing one not
++     * held, is refused (409).
++     */
++    @Transactional
++    public Person hold(String sheetId, String user, Long personId, boolean held) {
++        // Lock the sheet, so a period closed at the same moment sees the hold.
++        sheets.lock(sheetId);
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        if (person.isHeld() == held) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    held ? "Person already on hold" : "Person not on hold");
++        }
++        person.setHeld(held);
++        person = people.saveAndFlush(person);
++        audit.change(held ? "PERSON_HELD" : "PERSON_RELEASED", sheetId, user, "name=" + person.getName());
++        return person;
++    }
++
+     private static ResponseStatusException changedMeanwhile() {
+         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Person changed since it was loaded");
+     }
+diff --git a/src/main/resources/db/migration/V17__person_held.sql b/src/main/resources/db/migration/V17__person_held.sql
+new file mode 100644
+index 00000000..c5fc5a0a
+--- /dev/null
++++ b/src/main/resources/db/migration/V17__person_held.sql
+@@ -0,0 +1,2 @@
++-- Whether a person is on hold; while held, their open claims count in no live total.
++ALTER TABLE person ADD COLUMN held BOOLEAN DEFAULT FALSE NOT NULL;
