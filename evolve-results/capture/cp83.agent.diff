@@ -1,0 +1,30 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 2c28af1c..5e873991 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -248,6 +248,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-ballast-top">{{ ballastTop() ?? 'n/a' }}</td>
+               <td colspan="28"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="21">Ballast spread</th>
++              <td data-testid="rollup-ballast-spread">{{ ballastSpread() ?? 'n/a' }}</td>
++              <td colspan="28"></td>
++            </tr>
+             <tr>
+               <th scope="row" colspan="22">Keystone total</th>
+               <td data-testid="rollup-keystone-total">{{ keystoneTotal() }}</td>
+@@ -435,6 +440,13 @@ export class PeopleList {
+     return values.length === 0 ? null : Math.max(...values);
+   });
+ 
++  // The highest ballast minus the lowest among the people not on hold; null (n/a) when nobody has one.
++  protected readonly ballastSpread = computed(() => {
++    const top = this.ballastTop();
++    const low = this.ballastLow();
++    return top === null || low === null ? null : top - low;
++  });
++
+   // Everyone's keystone added up, trimmed like every sheet total.
+   protected readonly keystoneTotal = computed(() =>
+     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.keystone, hold: p.hold }))),
