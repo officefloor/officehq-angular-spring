@@ -51,6 +51,7 @@ import { Person, PeopleService } from './people.service';
               <th scope="col">Cable</th>
               <th scope="col">Hull</th>
               <th scope="col">Bow</th>
+              <th scope="col">Stern</th>
             </tr>
           </thead>
           <tbody>
@@ -93,6 +94,7 @@ import { Person, PeopleService } from './people.service';
                 <td data-testid="concept-cable">{{ p.cable ?? 'n/a' }}</td>
                 <td data-testid="concept-hull">{{ p.hull ?? 'n/a' }}</td>
                 <td data-testid="concept-bow">{{ p.bow ?? 'n/a' }}</td>
+                <td data-testid="concept-stern">{{ p.stern ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>

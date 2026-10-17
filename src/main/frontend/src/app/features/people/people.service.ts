@@ -72,6 +72,8 @@ export interface Person {
   hull: number | null;
   // keel plus fathom; null (n/a) when keel is.
   bow: number | null;
+  // keel minus fathom; null (n/a) when keel is.
+  stern: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
