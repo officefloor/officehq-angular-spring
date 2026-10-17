@@ -121,6 +121,25 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
     }
 
+    @PostMapping("/claims/{claimId}/approve")
+    public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** The reason a steward rejects a PENDING claim for, stored trimmed. */
+    public record RejectRequest(@NotBlank @Size(max = 200) String reason) {
+    }
+
+    @PostMapping("/claims/{claimId}/reject")
+    public ClaimView reject(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Validated RejectRequest request) {
+        return ClaimView.of(service.reject(sheetId.trim(), user.trim(), claimId, request.reason().trim()));
+    }
+
     /** A corrected number as sent, trimmed; none when blank. */
     private static String blankAsNull(String text) {
         return text == null || text.isBlank() ? null : text.trim();

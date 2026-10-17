@@ -87,6 +87,13 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
               {{ a.label }}<span class="visually-hidden"> claim of {{ c.amount }} on {{ c.date }}</span>
             </button>
           }
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input
+            [id]="'claim-reject-reason-' + c.id"
+            data-testid="claim-reject-reason"
+            [value]="reasons()[c.id] ?? ''"
+            (input)="setReason(c.id, $any($event.target).value)"
+          />
           @if (rowError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ rowError()?.message }}</p>
           }
@@ -125,7 +132,17 @@ export class PersonClaims {
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
     { action: 'void', label: 'Void' },
+    { action: 'approve', label: 'Approve' },
+    { action: 'reject', label: 'Reject' },
   ];
+
+  /** The reason typed for rejecting each pending claim, by claim id. */
+  protected readonly reasons = signal<Readonly<Record<number, string>>>({});
+
+  protected setReason(id: number, reason: string): void {
+    this.reasons.update((all) => ({ ...all, [id]: reason }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
 
   /**
    * A settled claim's due as fixed when it was settled; any other claim's due at its person's grade (in force on
@@ -141,7 +158,7 @@ export class PersonClaims {
     return dueBy(claim, this.session.terms() ?? 14);
   }
 
-  /** Whether the claim is OPEN with its due-by before the sheet's today. */
+  /** Whether the claim is open (OPEN or PENDING) with its due-by before the sheet's today. */
   protected overdue(claim: Claim): boolean {
     return overdue(claim, this.session.terms() ?? 14, this.session.today() ?? '');
   }
@@ -152,15 +169,25 @@ export class PersonClaims {
       this.rowError.set({ id: claim.id, message: CLOSED });
       return;
     }
+    const reason = (this.reasons()[claim.id] ?? '').trim();
+    if (action === 'reject' && !reason) {
+      this.rowError.set({ id: claim.id, message: 'Enter a reason to reject the claim.' });
+      return;
+    }
     try {
-      await this.claims.act(claim.id, action);
+      await this.claims.act(claim.id, action, reason);
+      if (action === 'reject') this.setReason(claim.id, '');
     } catch (e) {
       const message = e instanceof HttpErrorResponse && e.status === 423
         ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 403 && (action === 'approve' || action === 'reject')
+        ? claim.openedBy === this.session.user() && action === 'approve'
+          ? 'The user who opened a claim cannot approve it.'
+          : 'Only a steward can approve or reject a pending claim.'
         : e instanceof HttpErrorResponse && e.status === 403
         ? claim.openedBy === this.session.user()
           ? 'The user who opened a claim cannot settle it.'
-          : `A clerk cannot settle a claim with a due above ${this.session.clerkLimit()}.`
+          : `A clerk cannot settle a claim with no due while there is a clerk limit of ${this.session.clerkLimit()}.`
         : `A ${claim.status} claim cannot be changed that way.`;
       this.rowError.set({ id: claim.id, message });
     }

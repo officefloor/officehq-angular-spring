@@ -130,7 +130,7 @@ public class Person {
 
     /** Whether a claim of this person in this status counts toward the totals: an open one not while held. */
     public boolean counts(ClaimStatus status) {
-        return status.counts() && !(held && status == ClaimStatus.OPEN);
+        return status.counts() && !(held && status.isOpen());
     }
 
     public Set<Long> getPatronIds() {

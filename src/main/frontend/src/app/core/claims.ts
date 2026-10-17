@@ -31,18 +31,27 @@ export interface BulkResult {
   refused: number;
 }
 
-/** DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID instead. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/**
+ * DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID instead. A clerk settling a claim
+ * whose due is above the clerk limit makes it PENDING, until a steward approves it (SETTLED) or
+ * rejects it (back to OPEN).
+ */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** The status changes a claim can be asked for, as named in the store's API. */
-export type ClaimAction = 'open' | 'settle' | 'void';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
+
+/** Whether the claim counts as open: OPEN, or PENDING a steward's approval. */
+export function isOpen(claim: { status: ClaimStatus }): boolean {
+  return claim.status === 'OPEN' || claim.status === 'PENDING';
+}
 
 /**
- * Whether the claim counts toward claimed, due-total and every total: an OPEN or SETTLED one, but
- * not an OPEN one while its person is on hold.
+ * Whether the claim counts toward claimed, due-total and every total: an OPEN (or PENDING) or SETTLED
+ * one, but not an open one while its person is on hold.
  */
 export function counts(claim: Claim, person: { held: boolean }): boolean {
-  return claim.status === 'SETTLED' || (claim.status === 'OPEN' && !person.held);
+  return claim.status === 'SETTLED' || (isOpen(claim) && !person.held);
 }
 
 /** Days since 1970-01-01 of a yyyy-mm-dd date (proleptic Gregorian), without reading any clock. */
@@ -75,9 +84,9 @@ export function dueBy(claim: Claim, terms: number): string {
   return fromEpochDay(epochDay(claim.date) + terms);
 }
 
-/** Whether the claim is overdue: OPEN, with its due-by before the sheet's today. */
+/** Whether the claim is overdue: open (OPEN or PENDING), with its due-by before the sheet's today. */
 export function overdue(claim: Claim, terms: number, today: string): boolean {
-  return claim.status === 'OPEN' && dueBy(claim, terms) < today;
+  return isOpen(claim) && dueBy(claim, terms) < today;
 }
 
 /** How many days the claim's due-by is before the sheet's today; 0 when it is not. */
@@ -168,9 +177,10 @@ export class Claims {
   }
 
   /** Move a claim to its next status; the store refuses a change its status does not allow. */
-  async act(id: number, action: ClaimAction): Promise<void> {
+  async act(id: number, action: ClaimAction, reason?: string): Promise<void> {
+    const body = action === 'reject' ? { reason: (reason ?? '').trim() } : null;
     const saved = await firstValueFrom(
-      this.http.post<Claim>(`${this.sheetUrl()}/claims/${id}/${action}`, null, { headers: this.headers() }),
+      this.http.post<Claim>(`${this.sheetUrl()}/claims/${id}/${action}`, body, { headers: this.headers() }),
     );
     this.all.update((list) => list.map((c) => (c.id === saved.id ? saved : c)));
   }
