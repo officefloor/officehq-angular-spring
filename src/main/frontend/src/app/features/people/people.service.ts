@@ -46,6 +46,8 @@ export interface Person {
   keystone: number | null;
   // keel minus norm; null (n/a) when keel or norm is.
   bearing: number | null;
+  // keel plus momentum; null (n/a) when keel is.
+  pitch: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
