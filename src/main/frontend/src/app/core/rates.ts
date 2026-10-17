@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Claim, toCents } from './claims';
+import { Claim, daysOverdue, overdue, toCents } from './claims';
 import { Grade } from './people';
 import { Session } from './session';
 
@@ -73,15 +73,21 @@ export class Rates {
 
   /**
    * A claim's due in cents: a settled claim's as fixed when it was settled; any other claim's at
-   * the grade's rate in force on the claim's date, raised to the sheet's floor. Undefined (n/a) when
-   * there was or is no such rate.
+   * the grade's rate in force on the claim's date, raised to the sheet's floor; an overdue claim's
+   * then gains the late percent of that floored due for every full 30 days it is overdue, rounded
+   * like due. Undefined (n/a) when there was or is no such rate.
    */
   dueOf(claim: Claim, grade: Grade): number | undefined {
     if (claim.status === 'SETTLED') return claim.settledDue === null ? undefined : toCents(claim.settledDue);
     const rate = this.on(grade, claim.date);
     if (rate === undefined) return undefined;
     const floor = this.session.floor();
-    return Math.max(dueCents(toCents(claim.amount), rate), floor === null ? 0 : toCents(floor));
+    const floored = Math.max(dueCents(toCents(claim.amount), rate), floor === null ? 0 : toCents(floor));
+    const terms = this.session.terms() ?? 14;
+    const today = this.session.today() ?? '';
+    if (!overdue(claim, terms, today)) return floored;
+    const periods = Math.floor(daysOverdue(claim, terms, today) / 30);
+    return floored + dueCents(floored * periods, this.session.latePct() ?? '0.00');
   }
 
   async reload(): Promise<void> {

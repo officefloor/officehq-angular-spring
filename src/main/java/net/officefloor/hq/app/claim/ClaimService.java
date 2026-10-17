@@ -93,7 +93,8 @@ public class ClaimService {
      * gives the claim the sheet's next number; a voided claim keeps it (the number is never given again).
      * Opening records who opened it; that user cannot settle it (403).
      * Settling fixes the claim's due at its person's grade's rate in force on the claim's date, raised to
-     * the sheet's floor; later floor changes leave it as fixed. A clerk
+     * the sheet's floor, with its late charge added if it is overdue; later floor and late percent changes
+     * leave it as fixed. A clerk
      * can settle a claim only when that due is at or below the sheet's clerk limit, if it has one (403);
      * a claim with no due (no rate) is then refused too, as it cannot be shown to be within the limit.
      * A steward settles any claim.
@@ -124,10 +125,10 @@ public class ClaimService {
         }
         List<String> extra = new ArrayList<>();
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal due = sheet.floored(rates.inForce(sheetId, person.getGrade(), claim.getDate())
+            BigDecimal due = sheet.withLateCharge(sheet.floored(rates.inForce(sheetId, person.getGrade(), claim.getDate())
                     .map(rate -> claim.getAmount().multiply(rate.getRate())
                             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                    .orElse(null));
+                    .orElse(null)), claim.getDate());
             refuseIfOverClerkLimit(sheet, user, due);
             claim.setSettledDue(due);
             extra.add("due=" + (due == null ? "n/a" : due.toPlainString()));

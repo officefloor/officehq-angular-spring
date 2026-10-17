@@ -5,7 +5,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 
 /** A sheet, identified by the id a user types to load it. */
 @Entity
@@ -37,6 +39,10 @@ public class Sheet {
     /** The sheet's terms: a claim is due by its date plus this many days. */
     @Column(name = "terms", nullable = false)
     private int terms = 14;
+
+    /** The sheet's late percent: an overdue claim's live due gains it, of its floored due, per full 30 days overdue. */
+    @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal latePct = new BigDecimal("0.00");
 
     protected Sheet() {
     }
@@ -85,6 +91,30 @@ public class Sheet {
 
     public void setTerms(int terms) {
         this.terms = terms;
+    }
+
+    public BigDecimal getLatePct() {
+        return latePct;
+    }
+
+    public void setLatePct(BigDecimal latePct) {
+        this.latePct = latePct;
+    }
+
+    /**
+     * An open claim's live due (already floored; null stays null) with its late charge added: the late
+     * percent of the floored due for every full 30 days its due-by (its date plus the terms) is before
+     * today, rounded half to even to cents.
+     */
+    public BigDecimal withLateCharge(BigDecimal floored, LocalDate claimDate) {
+        if (floored == null) {
+            return null;
+        }
+        long days = ChronoUnit.DAYS.between(claimDate.plusDays(terms), today);
+        long periods = days > 0 ? days / 30 : 0;
+        BigDecimal late = floored.multiply(latePct).multiply(BigDecimal.valueOf(periods))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
+        return floored.add(late);
     }
 
     /** A live due raised to the sheet's floor; null (no rate) stays null. */

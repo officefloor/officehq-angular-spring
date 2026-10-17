@@ -1,9 +1,10 @@
 import { Component, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
 import { AMOUNT } from '../../core/claims';
+import { RATE } from '../../core/rates';
 import { ROLES, RoleName, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the floor and the terms) and the roles given to user names.
+// The sheet's settings (the clerk limit, the floor, the terms and the late percent) and the roles given to user names.
 @Component({
   selector: 'app-settings',
   template: `
@@ -37,6 +38,15 @@ import { Session } from '../../core/session';
           data-testid="setting-terms"
           [value]="terms()"
           (input)="terms.set($any($event.target).value); settingsError.set(null)"
+        />
+        <p>Late percent <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' }}</strong></p>
+        <label for="setting-late-pct">Late percent (added per full 30 days a claim is overdue)</label>
+        <input
+          id="setting-late-pct"
+          inputmode="decimal"
+          data-testid="setting-late-pct"
+          [value]="latePct()"
+          (input)="latePct.set($any($event.target).value); settingsError.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as err) {
@@ -96,6 +106,7 @@ export class SettingsPanel {
   protected readonly clerkLimit = linkedSignal(() => this.session.clerkLimit() ?? '');
   protected readonly floor = linkedSignal(() => this.session.floor() ?? '');
   protected readonly terms = linkedSignal(() => String(this.session.terms() ?? ''));
+  protected readonly latePct = linkedSignal(() => this.session.latePct() ?? '');
   protected readonly settingsError = signal<string | null>(null);
   protected readonly user = signal('');
   protected readonly role = signal('');
@@ -140,9 +151,14 @@ export class SettingsPanel {
       this.settingsError.set('Enter terms as a whole number of days, from 0 to 9999.');
       return;
     }
+    const latePct = this.latePct().trim();
+    if (!RATE.test(latePct)) {
+      this.settingsError.set('Enter a late percent of 0.00 or more, below 1000, with at most two decimals.');
+      return;
+    }
     this.savingSettings = true;
     try {
-      await this.session.setSettings(limit || null, floor, terms);
+      await this.session.setSettings(limit || null, floor, terms, latePct);
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {

@@ -69,6 +69,11 @@ export function overdue(claim: Claim, terms: number, today: string): boolean {
   return claim.status === 'OPEN' && dueBy(claim, terms) < today;
 }
 
+/** How many days the claim's due-by is before the sheet's today; 0 when it is not. */
+export function daysOverdue(claim: Claim, terms: number, today: string): number {
+  return Math.max(0, epochDay(today) - epochDay(claim.date) - terms);
+}
+
 export interface ClaimFields {
   amount: string;
   date: string;

@@ -12,6 +12,8 @@ interface SheetView {
   floor: string;
   /** The terms: a claim is due by its date plus this many days. */
   terms: number;
+  /** The late percent, two decimals: an overdue claim's live due gains it per full 30 days overdue. */
+  latePct: string;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the app
@@ -30,6 +32,8 @@ export class Session {
   readonly floor = signal<string | null>(null);
   /** The active sheet's terms in days: a claim is due by its date plus these. */
   readonly terms = signal<number | null>(null);
+  /** The active sheet's late percent (two decimals). */
+  readonly latePct = signal<string | null>(null);
   /** Counts sheet loads, so per-sheet data re-reads the store on every (re-)load. */
   readonly loads = signal(0);
   /** True while a sheet is being (re-)loaded, so nothing read from the store before is shown. */
@@ -70,13 +74,13 @@ export class Session {
     this.show(sheet);
   }
 
-  /** Change the active sheet's clerk limit (null for no limit), floor and terms (days). */
-  async setSettings(clerkLimit: string | null, floor: string, terms: string): Promise<void> {
+  /** Change the active sheet's clerk limit (null for no limit), floor, terms (days) and late percent. */
+  async setSettings(clerkLimit: string | null, floor: string, terms: string, latePct: string): Promise<void> {
     const user = this.user();
     const id = this.sheetId();
     if (!user || !id) throw new Error('no sheet loaded');
     const sheet = await firstValueFrom(
-      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms }, {
+      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings`, { clerkLimit, floor, terms, latePct }, {
         headers: { 'X-User': user },
       }),
     );
@@ -89,5 +93,6 @@ export class Session {
     this.clerkLimit.set(sheet.clerkLimit);
     this.floor.set(sheet.floor);
     this.terms.set(sheet.terms);
+    this.latePct.set(sheet.latePct);
   }
 }

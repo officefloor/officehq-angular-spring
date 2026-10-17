@@ -75,7 +75,7 @@ public class PeriodService {
      * Close a period, fixing its due-total: the dues of the counted claims dated in it (an open claim of a
      * person on hold is not counted), each a settled
      * claim's fixed due or else its amount at its person's grade's rate in force on its date, rounded
-     * half to even to cents and raised to the sheet's floor; a claim with no such rate adds nothing. A closed period cannot be closed again (409).
+     * half to even to cents and raised to the sheet's floor, an overdue one's late charge added; a claim with no such rate adds nothing. A closed period cannot be closed again (409).
      */
     @Transactional
     public Period close(String sheetId, String user, String name) {
@@ -97,10 +97,10 @@ public class PeriodService {
             }
             BigDecimal due = switch (claim.getStatus()) {
                 case SETTLED -> claim.getSettledDue();
-                default -> sheet.floored(rates.inForce(sheetId, person.getGrade(), claim.getDate())
+                default -> sheet.withLateCharge(sheet.floored(rates.inForce(sheetId, person.getGrade(), claim.getDate())
                         .map(rate -> claim.getAmount().multiply(rate.getRate())
                                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                        .orElse(null));
+                        .orElse(null)), claim.getDate());
             };
             if (due != null) {
                 total = total.add(due);
