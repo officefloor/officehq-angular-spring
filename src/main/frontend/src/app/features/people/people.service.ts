@@ -66,6 +66,8 @@ export interface Person {
   buoyancy: number | null;
   // keel divided by three, rounded to the nearest (a half up); null (n/a) when keel is.
   knot: number | null;
+  // keel plus gamma, a blank gamma counting as zero; null (n/a) when keel is.
+  cable: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
