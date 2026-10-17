@@ -1,12 +1,15 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Claims, formatCents } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, Person } from '../../core/people';
 import { Session } from '../../core/session';
+import { PersonClaims } from '../claims/claims';
 
 // The sheet's people, in the order they were added, and the one form that adds a person or edits
 // an existing one.
 @Component({
   selector: 'app-people',
+  imports: [PersonClaims],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -43,13 +46,15 @@ import { Session } from '../../core/session';
 
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+              <td><app-person-claims [personId]="p.id" [personName]="p.name" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -59,12 +64,15 @@ import { Session } from '../../core/session';
           }
         </tbody>
       </table>
+
+      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
     </section>
   `,
 })
 export class People {
   private readonly api = inject(PeopleApi);
   private readonly session = inject(Session);
+  private readonly claims = inject(Claims);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -72,6 +80,7 @@ export class People {
   protected readonly grade = signal<Grade>('A');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  protected readonly claimedTotal = computed(() => formatCents(this.claims.totalCents()));
 
   constructor() {
     // Re-read the store each time the sheet is (re-)loaded.
@@ -80,8 +89,13 @@ export class People {
       untracked(() => {
         this.reset();
         void this.reload();
+        void this.claims.reload();
       });
     });
+  }
+
+  protected claimed(personId: number): string {
+    return formatCents(this.claims.claimedCents().get(personId) ?? 0);
   }
 
   protected edit(person: Person): void {
