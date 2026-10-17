@@ -164,6 +164,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="34"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="15">Fathom mean</th>
+              <td data-testid="rollup-fathom-mean">{{ fathomMean() ?? 'n/a' }}</td>
+              <td colspan="34"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="16">Draft total</th>
               <td data-testid="rollup-draft-total">{{ draftTotal() }}</td>
               <td colspan="33"></td>
@@ -244,6 +249,18 @@ export class PeopleList {
     const top = this.fathomTop();
     const low = this.fathomLow();
     return top === null || low === null ? null : top - low;
+  });
+
+  // The average fathom among the people not on hold (n/a fathoms skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly fathomMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.fathom)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // Everyone's draft added up, trimmed like every sheet total.
