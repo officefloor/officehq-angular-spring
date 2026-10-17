@@ -868,6 +868,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-moor-even">{{ moorEven() }}</td>
               <td colspan="7"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="42">Moor mean</th>
+              <td data-testid="rollup-moor-mean">{{ moorMean() ?? 'n/a' }}</td>
+              <td colspan="7"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1925,6 +1930,18 @@ export class PeopleList {
   protected readonly moorEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.moor !== null && p.moor % 2 === 0).length,
   );
+
+  // The average moor among the people not on hold (n/a moors skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly moorMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.moor)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
 
   // The average rigging among the people not on hold (n/a riggings skipped), rounded like every
   // divide; null (n/a) when nobody has one.
