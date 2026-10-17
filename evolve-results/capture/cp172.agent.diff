@@ -1,0 +1,35 @@
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 67028445..0dc7e6af 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -76,7 +76,7 @@ export interface Person {
+   stern: number | null;
+   // keel plus ripple plus 168; null (n/a) when keel or ripple is.
+   helm: number | null;
+-  // keel minus ripple; null (n/a) when keel or ripple is.
++  // keel minus ripple plus 172; null (n/a) when keel or ripple is.
+   rudder: number | null;
+   // keel plus 2000; null (n/a) when keel is.
+   mast: number | null;
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index f21a1031..8a3f46c0 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -31,7 +31,7 @@ import java.util.Set;
+  * divide) plus 144, null (n/a) when keel is. cable is keel plus gamma (a blank gamma counting as zero) plus 152, null
+  * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero) plus 156, null (n/a) when keel is.
+  * bow is keel plus fathom plus 160, null (n/a) when keel is. stern is keel minus fathom plus 164, null (n/a) when keel is.
+- * helm is keel plus ripple plus 168, null (n/a) when keel or ripple is. rudder is keel minus ripple, null (n/a)
++ * helm is keel plus ripple plus 168, null (n/a) when keel or ripple is. rudder is keel minus ripple plus 172, null (n/a)
+  * when keel or ripple is. mast is keel plus 2000, null (n/a) when keel is. rigging is keel divided by
+  * four (rounded like every divide), null (n/a) when keel is. moor is keel plus keystone, null (n/a)
+  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
+@@ -272,7 +272,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+     private static Long rudder(Person p, Long averageScaled) {
+         Long keel = keel(p, averageScaled);
+         Long ripple = ripple(p, averageScaled);
+-        return keel == null || ripple == null ? null : keel - ripple;
++        return keel == null || ripple == null ? null : keel - ripple + 172L;
+     }
+ 
+     private static Long mast(Person p, Long averageScaled) {
