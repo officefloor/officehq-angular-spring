@@ -21,7 +21,7 @@ import java.util.Set;
  * cascade is fathom plus scaled plus 296, null (n/a) when fathom is. trim is keel minus thrust plus 92, null (n/a)
  * when keel is. ripple is cascade plus keel plus 304, null (n/a) when cascade is. heading is keel plus norm plus 96,
  * null (n/a) when keel or norm is. ballast is ripple plus thrust plus 312, null (n/a) when ripple is.
- * keystone is ballast plus norm plus 84, null (n/a) when ballast or norm is. bearing is keel minus norm plus 104, null
+ * keystone is ballast plus norm plus 320, null (n/a) when ballast or norm is. bearing is keel minus norm plus 104, null
  * (n/a) when keel or norm is. pitch is keel plus momentum plus 108, null (n/a) when keel is. tackle is keel
  * minus momentum plus 112, null (n/a) when keel is. yaw is keel plus scaled plus 116, null (n/a) when keel is. heave
  * is keel minus scaled plus 120, null (n/a) when keel is. camber is keel plus 200 plus 124, null (n/a) when keel is.
@@ -184,7 +184,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long keystone(Person p, Long averageScaled) {
         Long ballast = ballast(p, averageScaled);
         Long norm = norm(p, averageScaled);
-        return ballast == null || norm == null ? null : ballast + norm + 84L;
+        return ballast == null || norm == null ? null : ballast + norm + 320L;
     }
 
     private static Long bearing(Person p, Long averageScaled) {
