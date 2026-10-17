@@ -1,0 +1,77 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 05175767..76c53c71 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -49,6 +49,7 @@ import { Person, PeopleService } from './people.service';
+               <th scope="col">Buoyancy</th>
+               <th scope="col">Knot</th>
+               <th scope="col">Cable</th>
++              <th scope="col">Hull</th>
+             </tr>
+           </thead>
+           <tbody>
+@@ -89,6 +90,7 @@ import { Person, PeopleService } from './people.service';
+                 <td data-testid="concept-buoyancy">{{ p.buoyancy ?? 'n/a' }}</td>
+                 <td data-testid="concept-knot">{{ p.knot ?? 'n/a' }}</td>
+                 <td data-testid="concept-cable">{{ p.cable ?? 'n/a' }}</td>
++                <td data-testid="concept-hull">{{ p.hull ?? 'n/a' }}</td>
+               </tr>
+             }
+           </tbody>
+diff --git a/src/main/frontend/src/app/features/people/people.service.ts b/src/main/frontend/src/app/features/people/people.service.ts
+index 461a2ad5..bb13847d 100644
+--- a/src/main/frontend/src/app/features/people/people.service.ts
++++ b/src/main/frontend/src/app/features/people/people.service.ts
+@@ -68,6 +68,8 @@ export interface Person {
+   knot: number | null;
+   // keel plus gamma, a blank gamma counting as zero; null (n/a) when keel is.
+   cable: number | null;
++  // keel minus gamma, a blank gamma counting as zero; null (n/a) when keel is.
++  hull: number | null;
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+diff --git a/src/main/java/net/officefloor/hq/app/people/PersonView.java b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+index 631d607f..c606d52a 100644
+--- a/src/main/java/net/officefloor/hq/app/people/PersonView.java
++++ b/src/main/java/net/officefloor/hq/app/people/PersonView.java
+@@ -24,14 +24,15 @@ import java.util.List;
+  * freeboard is keel divided by two (rounded like every divide), null (n/a) when keel is. buoyancy is
+  * keel times three, null (n/a) when keel is. knot is keel divided by three (rounded like every
+  * divide), null (n/a) when keel is. cable is keel plus gamma (a blank gamma counting as zero), null
+- * (n/a) when keel is.
++ * (n/a) when keel is. hull is keel minus gamma (a blank gamma counting as zero), null (n/a) when keel is.
+  */
+ public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
+         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
+         Long backing, Long quarter, String tier, Long keel,
+         Long fathom, Long draft, Long cascade, Long trim, Long ripple, Long heading, Long ballast,
+         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
+-        Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable) {
++        Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
++        Long hull) {
+ 
+     static PersonView of(Person p, Long averageScaled) {
+         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
+@@ -43,7 +44,8 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+                 keystone(p, averageScaled), bearing(p, averageScaled), pitch(p, averageScaled),
+                 tackle(p, averageScaled), yaw(p, averageScaled), heave(p, averageScaled),
+                 camber(p, averageScaled), sheer(p, averageScaled), beam(p, averageScaled),
+-                freeboard(p, averageScaled), buoyancy(p, averageScaled), knot(p, averageScaled), cable(p, averageScaled));
++                freeboard(p, averageScaled), buoyancy(p, averageScaled), knot(p, averageScaled), cable(p, averageScaled),
++                hull(p, averageScaled));
+     }
+ 
+     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
+@@ -207,6 +209,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
+         return keel == null ? null : keel + orZero(p.getGamma());
+     }
+ 
++    private static Long hull(Person p, Long averageScaled) {
++        Long keel = keel(p, averageScaled);
++        return keel == null ? null : keel - orZero(p.getGamma());
++    }
++
+     private static String tier(Person p) {
+         Long scaled = scaled(p);
+         if (scaled == null) {
