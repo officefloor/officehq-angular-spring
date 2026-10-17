@@ -35,7 +35,8 @@ import java.util.Set;
  * when keel or ripple is. mast is keel plus 1000, null (n/a) when keel is. rigging is keel divided by
  * four (rounded like every divide), null (n/a) when keel is. moor is keel plus keystone, null (n/a)
  * when keel or keystone is. berth is keel minus keystone, null (n/a) when keel or keystone is. wharf is
- * keel times five, null (n/a) when keel is.
+ * keel times five, null (n/a) when keel is. jetty is keel divided by five (rounded like every divide),
+ * null (n/a) when keel is.
  */
 public record PersonView(Long id, String name, Integer alpha, Integer beta, Integer gamma, boolean hold,
         List<Long> patronIds, Long thrust, Long momentum, Long scaled, Long third, Long norm,
@@ -44,7 +45,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
         Long keystone, Long bearing, Long pitch, Long tackle, Long yaw, Long heave, Long camber,
         Long sheer, Long beam, Long freeboard, Long buoyancy, Long knot, Long cable,
         Long hull, Long bow, Long stern, Long helm, Long rudder, Long mast, Long rigging, Long moor,
-        Long berth, Long wharf) {
+        Long berth, Long wharf, Long jetty) {
 
     static PersonView of(Person p, Set<Person> patrons, Long averageScaled) {
         return new PersonView(p.getId(), p.getName(), p.getAlpha(), p.getBeta(), p.getGamma(), p.isHold(),
@@ -60,7 +61,7 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
                 hull(p, averageScaled), bow(p, averageScaled), stern(p, averageScaled),
                 helm(p, averageScaled), rudder(p, averageScaled), mast(p, averageScaled),
                 rigging(p, averageScaled), moor(p, averageScaled), berth(p, averageScaled),
-                wharf(p, averageScaled));
+                wharf(p, averageScaled), jetty(p, averageScaled));
     }
 
     /** The average scaled across the people, skipping n/a and people on hold; null when nobody has one. */
@@ -295,6 +296,11 @@ public record PersonView(Long id, String name, Integer alpha, Integer beta, Inte
     private static Long wharf(Person p, Long averageScaled) {
         Long keel = keel(p, averageScaled);
         return keel == null ? null : keel * 5L;
+    }
+
+    private static Long jetty(Person p, Long averageScaled) {
+        Long keel = keel(p, averageScaled);
+        return keel == null ? null : SheetMath.divide(keel, 5L);
     }
 
     private static String tier(Person p) {
