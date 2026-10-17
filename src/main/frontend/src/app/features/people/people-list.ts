@@ -723,6 +723,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-bow-mean">{{ bowMean() ?? 'n/a' }}</td>
               <td colspan="13"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="37">Stern total</th>
+              <td data-testid="rollup-stern-total">{{ sternTotal() }}</td>
+              <td colspan="12"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1274,6 +1279,11 @@ export class PeopleList {
   // Everyone's bow added up, trimmed like every sheet total.
   protected readonly bowTotal = computed(() =>
     trimmedTotal((this.people() ?? []).map((p) => ({ value: p.bow, hold: p.hold }))),
+  );
+
+  // Everyone's stern added up, trimmed like every sheet total.
+  protected readonly sternTotal = computed(() =>
+    trimmedTotal((this.people() ?? []).map((p) => ({ value: p.stern, hold: p.hold }))),
   );
 
   // The highest bow among the people not on hold (n/a bows skipped); null (n/a) when nobody has one.
