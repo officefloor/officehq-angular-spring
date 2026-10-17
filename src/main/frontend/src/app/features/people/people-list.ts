@@ -20,6 +20,7 @@ import { PeopleService } from './people.service';
               <th scope="col">Gamma</th>
               <th scope="col">On hold</th>
               <th scope="col">Patrons</th>
+              <th scope="col">Thrust</th>
             </tr>
           </thead>
           <tbody>
@@ -31,9 +32,16 @@ import { PeopleService } from './people.service';
                 <td [attr.data-testid]="'person-gamma-' + p.id">{{ p.gamma ?? '' }}</td>
                 <td [attr.data-testid]="'person-hold-' + p.id">{{ p.hold ? 'Yes' : 'No' }}</td>
                 <td [attr.data-testid]="'person-patrons-' + p.id">{{ patronNames(p.patronIds) }}</td>
+                <td data-testid="concept-thrust">{{ p.thrust ?? 'n/a' }}</td>
               </tr>
             }
           </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row" colspan="6">Thrust total</th>
+              <td data-testid="rollup-thrust-total">{{ thrustTotal() }}</td>
+            </tr>
+          </tfoot>
         </table>
       }
     }
@@ -44,6 +52,11 @@ export class PeopleList {
 
   private readonly names = computed(
     () => new Map((this.people() ?? []).map((p) => [p.id, p.name] as const)),
+  );
+
+  // Everyone's thrust added up, skipping the people for whom it is n/a.
+  protected readonly thrustTotal = computed(() =>
+    (this.people() ?? []).reduce((sum, p) => sum + (p.thrust ?? 0), 0),
   );
 
   protected patronNames(ids: number[]): string {

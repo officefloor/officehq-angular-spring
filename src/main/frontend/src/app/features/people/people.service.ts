@@ -10,6 +10,8 @@ export interface Person {
   gamma: number | null;
   hold: boolean;
   patronIds: number[];
+  // alpha times beta; null (n/a) when either is blank.
+  thrust: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
