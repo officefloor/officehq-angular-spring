@@ -50,6 +50,8 @@ export interface Person {
   pitch: number | null;
   // keel minus momentum; null (n/a) when keel is.
   tackle: number | null;
+  // keel plus scaled; null (n/a) when keel is.
+  yaw: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
