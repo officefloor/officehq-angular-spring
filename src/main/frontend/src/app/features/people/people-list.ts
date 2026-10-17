@@ -883,6 +883,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-berth-top">{{ berthTop() ?? 'n/a' }}</td>
               <td colspan="6"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="43">Berth spread</th>
+              <td data-testid="rollup-berth-spread">{{ berthSpread() ?? 'n/a' }}</td>
+              <td colspan="6"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1463,6 +1468,15 @@ export class PeopleList {
       .map((p) => p.berth)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest berth minus the lowest among the people not on hold, skipping n/a; n/a when there is none.
+  protected readonly berthSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.berth)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // Everyone's moor added up, trimmed like every sheet total.
