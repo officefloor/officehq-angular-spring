@@ -743,6 +743,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-stern-even">{{ sternEven() }}</td>
               <td colspan="12"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="37">Stern mean</th>
+              <td data-testid="rollup-stern-mean">{{ sternMean() ?? 'n/a' }}</td>
+              <td colspan="12"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1654,6 +1659,18 @@ export class PeopleList {
   protected readonly sternEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.stern !== null && p.stern % 2 === 0).length,
   );
+
+  // The average stern among the people not on hold (n/a sterns skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly sternMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.stern)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
 
   // The average bow among the people not on hold (n/a bows skipped), rounded like every
   // divide; null (n/a) when nobody has one.
