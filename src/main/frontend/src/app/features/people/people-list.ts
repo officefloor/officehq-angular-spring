@@ -304,6 +304,11 @@ import { Person, PeopleService } from './people.service';
               <td colspan="29"></td>
             </tr>
             <tr>
+              <th scope="row" colspan="20">Heading mean</th>
+              <td data-testid="rollup-heading-mean">{{ headingMean() ?? 'n/a' }}</td>
+              <td colspan="29"></td>
+            </tr>
+            <tr>
               <th scope="row" colspan="21">Ballast total</th>
               <td data-testid="rollup-ballast-total">{{ ballastTotal() }}</td>
               <td colspan="28"></td>
@@ -623,6 +628,18 @@ export class PeopleList {
     const top = this.headingTop();
     const low = this.headingLow();
     return top === null || low === null ? null : top - low;
+  });
+
+  // The average heading among the people not on hold (n/a headings skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly headingMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.heading)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
   });
 
   // Everyone's ballast added up, trimmed like every sheet total.
