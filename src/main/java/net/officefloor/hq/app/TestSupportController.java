@@ -42,7 +42,7 @@ public class TestSupportController {
 
     /**
      * Read back what is stored, in the same shape and with the same field names the fixtures use,
-     * so earlier checkpoints' test data can be replayed and checked (AGENTS.md §4.3, §4.4).
+     * so the app's test data sets can be checked (AGENTS.md §4.3, §4.4).
      */
     @GetMapping("/fixture")
     public Map<String, Object> fixture() {

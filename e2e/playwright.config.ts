@@ -22,7 +22,7 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Headless Chromium in a restricted/confined environment needs its own sandbox off and
+        // Headless Chromium needs its own sandbox off and
         // shared memory in /tmp, or renderer/GPU child processes crash. Harmless elsewhere too.
         launchOptions: { args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] },
       },
