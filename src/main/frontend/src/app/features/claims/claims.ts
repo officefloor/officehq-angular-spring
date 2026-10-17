@@ -7,6 +7,7 @@ import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 
 const CLOSED = 'The claim is dated in a closed period, so it cannot be changed.';
+const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, void it and add a new one.';
 
 // One person's claims, newest first, and the one form that adds a claim or edits an existing one.
 @Component({
@@ -135,6 +136,11 @@ export class PersonClaims {
       this.rowError.set({ id: claim.id, message: CLOSED });
       return;
     }
+    if (claim.status !== 'DRAFT') {
+      this.reset();
+      this.rowError.set({ id: claim.id, message: NOT_DRAFT });
+      return;
+    }
     this.editingId.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
@@ -175,6 +181,8 @@ export class PersonClaims {
     } catch (e) {
       this.error.set(e instanceof HttpErrorResponse && e.status === 423
         ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? NOT_DRAFT
         : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
     } finally {
       this.saving = false;

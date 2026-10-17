@@ -12,7 +12,7 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The sheet's number given when the claim was opened; null for a draft or a voided claim. */
+  /** The sheet's number given when the claim was opened; null for a draft; a voided claim keeps it. */
   number: number | null;
   /** The due fixed when the claim was settled, two decimals; null if not settled or it had no rate then. */
   settledDue: string | null;

@@ -19,7 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The claims kept on a sheet, newest first. A claim without a date takes the sheet's today; a
- * missing note is stored empty. No claim dated in a closed period can be added, edited or change
+ * missing note is stored empty. Only a DRAFT claim can be edited (409); an open claim is changed by
+ * voiding it and adding a new one. No claim dated in a closed period can be added, edited or change
  * status (423).
  */
 @Service
@@ -67,6 +68,9 @@ public class ClaimService {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim cannot be edited");
+        }
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, on);
         claim.setAmount(scaled(amount));
@@ -80,7 +84,7 @@ public class ClaimService {
 
     /**
      * Move a claim to the next status; a change its status does not allow is refused (409). Opening
-     * gives the claim the sheet's next number; voiding clears it (the number is not given again).
+     * gives the claim the sheet's next number; a voided claim keeps it (the number is never given again).
      * Opening records who opened it; that user cannot settle it (403).
      * Settling fixes the claim's due at its person's grade's rate in force on the claim's date.
      */
@@ -104,7 +108,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         claim.setStatus(next);
-        claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        claim.setNumber(number);
         if (next == ClaimStatus.OPEN) {
             claim.setOpenedBy(user);
         }
@@ -141,8 +145,7 @@ public class ClaimService {
     }
 
     /**
-     * Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. A claim with a number
-     * (or, when voided, the number it had) adds number=&lt;number&gt;; any extra fields follow it.
+     * Amounts are written with two decimals, as shown, and dates as yyyy-mm-dd. A claim with a number adds number=&lt;number&gt;; any extra fields follow it.
      */
     private void record(String event, String user, Person person, Claim claim, Long number, List<String> extra) {
         List<String> fields = new ArrayList<>(List.of("person=" + person.getName(),
