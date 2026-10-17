@@ -68,6 +68,8 @@ export interface Person {
   knot: number | null;
   // keel plus gamma, a blank gamma counting as zero; null (n/a) when keel is.
   cable: number | null;
+  // keel minus gamma, a blank gamma counting as zero; null (n/a) when keel is.
+  hull: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
