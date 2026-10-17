@@ -117,6 +117,14 @@ public class Sheet {
         return floored.add(late);
     }
 
+    /**
+     * A claim's due at its rate (null for none) as it counts: a correction's as it is, with no floor
+     * and no late charge; any other claim's floored, with its late charge added.
+     */
+    public BigDecimal liveDue(BigDecimal due, LocalDate claimDate, boolean correction) {
+        return correction ? due : withLateCharge(floored(due), claimDate);
+    }
+
     /** A live due raised to the sheet's floor; null (no rate) stays null. */
     public BigDecimal floored(BigDecimal due) {
         return due == null ? null : due.max(floor);

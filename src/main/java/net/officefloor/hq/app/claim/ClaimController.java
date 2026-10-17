@@ -30,20 +30,24 @@ public class ClaimController {
      * the due fixed when the claim was settled (null if it is not settled or had no rate then).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Long number, String settledDue, String openedBy) {
+            ClaimStatus status, Long number, String settledDue, String openedBy, Long corrects) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.getCorrects());
         }
     }
 
-    /** The amount is 0 or more with at most two decimals; a missing date is the sheet's today. */
+    /**
+     * The amount has at most two decimals; a negative one is a correction, which names the number of
+     * the settled claim it corrects. A missing date is the sheet's today.
+     */
     public record ClaimRequest(
-            @NotNull @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String amount,
+            @NotNull @Pattern(regexp = "-?\\d{1,10}(\\.\\d{1,2})?") String amount,
             LocalDate date,
-            @Size(max = 500) String note) {
+            @Size(max = 500) String note,
+            Long corrects) {
     }
 
     /** The quick-add bar: a name (stored trimmed) and an amount, with the rules of the person and claim forms. */
@@ -72,7 +76,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId,
-                new BigDecimal(request.amount()), request.date(), request.note()));
+                new BigDecimal(request.amount()), request.date(), request.note(), request.corrects()));
     }
 
     @PostMapping("/quick-add")
@@ -89,7 +93,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId,
-                new BigDecimal(request.amount()), request.date(), request.note()));
+                new BigDecimal(request.amount()), request.date(), request.note(), request.corrects()));
     }
 
     @PostMapping("/claims/{claimId}/open")

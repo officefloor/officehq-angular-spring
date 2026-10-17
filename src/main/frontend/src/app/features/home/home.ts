@@ -29,7 +29,11 @@ import { SettingsPanel } from '../settings/settings';
       @if (session.loading()) {
         <p role="status">Loading the sheet…</p>
       } @else if (session.sheetId(); as id) {
-        <p>Sheet <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+        @if (session.ready()) {
+          <p>Sheet <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+        } @else {
+          <p role="status">Reading the sheet…</p>
+        }
         <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
 
         <form (submit)="saveToday($event)">

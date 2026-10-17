@@ -9,4 +9,6 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+
+    Optional<Claim> findFirstBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, Long number);
 }

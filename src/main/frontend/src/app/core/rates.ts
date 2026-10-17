@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Claim, daysOverdue, overdue, toCents } from './claims';
+import { Claim, daysOverdue, isCorrection, overdue, toCents } from './claims';
 import { Grade } from './people';
 import { Session } from './session';
 
@@ -18,9 +18,11 @@ export const RATE = /^\d{1,3}(\.\d{1,2})?$/;
 
 /**
  * Cents due on an amount in cents at a rate (a percent with two decimals): amount times rate
- * divided by 100, rounded half to even to whole cents. Exact, as the rate is taken in hundredths.
+ * divided by 100, rounded half to even to whole cents (a negative amount's as its size, negated).
+ * Exact, as the rate is taken in hundredths.
  */
 export function dueCents(cents: number, rate: string): number {
+  if (cents < 0) return -dueCents(-cents, rate);
   const product = BigInt(cents) * BigInt(toCents(rate));
   const whole = product / 10000n;
   const rest = product % 10000n;
@@ -75,12 +77,14 @@ export class Rates {
    * A claim's due in cents: a settled claim's as fixed when it was settled; any other claim's at
    * the grade's rate in force on the claim's date, raised to the sheet's floor; an overdue claim's
    * then gains the late percent of that floored due for every full 30 days it is overdue, rounded
-   * like due. Undefined (n/a) when there was or is no such rate.
+   * like due. A correction's is its amount at the rate, with no floor and no late charge.
+   * Undefined (n/a) when there was or is no such rate.
    */
   dueOf(claim: Claim, grade: Grade): number | undefined {
     if (claim.status === 'SETTLED') return claim.settledDue === null ? undefined : toCents(claim.settledDue);
     const rate = this.on(grade, claim.date);
     if (rate === undefined) return undefined;
+    if (isCorrection(claim)) return dueCents(toCents(claim.amount), rate);
     const floor = this.session.floor();
     const floored = Math.max(dueCents(toCents(claim.amount), rate), floor === null ? 0 : toCents(floor));
     const terms = this.session.terms() ?? 14;

@@ -24,6 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
  * missing note is stored empty. Only a DRAFT claim can be edited (409); an open claim is changed by
  * voiding it and adding a new one. No claim dated in a closed period can be added, edited or change
  * status (423). No claim dated after its person's retirement date can be added or edited (422).
+ * A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
+ * same person, or it is refused (422); a claim that is not a correction names none.
  */
 @Service
 public class ClaimService {
@@ -53,7 +55,8 @@ public class ClaimService {
     }
 
     @Transactional
-    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         sheets.load(sheetId, user);
         // Lock the sheet, so a period closed at the same moment is seen.
         sheets.lock(sheetId);
@@ -62,13 +65,15 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseIfClosed(sheetId, on);
         refuseIfRetired(person, on);
-        Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount), on, note != null ? note : ""));
+        Long corrected = correctedNumber(sheetId, personId, amount, corrects);
+        Claim claim = claims.save(new Claim(sheetId, personId, scaled(amount), on, note != null ? note : "", corrected));
         record("CLAIM_ADDED", user, person, claim);
         return claim;
     }
 
     @Transactional
-    public Claim update(String sheetId, String user, Long claimId, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String sheetId, String user, Long claimId, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         sheets.lock(sheetId);
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
@@ -81,7 +86,9 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfRetired(person, on);
+        Long corrected = correctedNumber(sheetId, person.getId(), amount, corrects);
         claim.setAmount(scaled(amount));
+        claim.setCorrects(corrected);
         claim.setDate(on);
         claim.setNote(note != null ? note : "");
         record("CLAIM_EDITED", user, person, claim);
@@ -94,7 +101,8 @@ public class ClaimService {
      * Opening records who opened it; that user cannot settle it (403).
      * Settling fixes the claim's due at its person's grade's rate in force on the claim's date, raised to
      * the sheet's floor, with its late charge added if it is overdue; later floor and late percent changes
-     * leave it as fixed. A clerk
+     * leave it as fixed. A correction's due is its amount times that rate, rounded the same way, with no
+     * floor and no late charge. A clerk
      * can settle a claim only when that due is at or below the sheet's clerk limit, if it has one (403);
      * a claim with no due (no rate) is then refused too, as it cannot be shown to be within the limit.
      * A steward settles any claim.
@@ -125,10 +133,10 @@ public class ClaimService {
         }
         List<String> extra = new ArrayList<>();
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal due = sheet.withLateCharge(sheet.floored(rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
+            BigDecimal due = sheet.liveDue(rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                     .map(rate -> claim.getAmount().multiply(rate.getRate())
                             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                    .orElse(null)), claim.getDate());
+                    .orElse(null), claim.getDate(), claim.isCorrection());
             refuseIfOverClerkLimit(sheet, user, due);
             claim.setSettledDue(due);
             extra.add("due=" + (due == null ? "n/a" : due.toPlainString()));
@@ -140,6 +148,24 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         }, user, person, claim, number, extra);
         return claim;
+    }
+
+    /**
+     * The number a claim corrects: for a negative amount, the number of a SETTLED claim of the same
+     * person, refused (422) when none is named or it names no such claim; none for any other amount.
+     */
+    private Long correctedNumber(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+        if (amount.signum() >= 0) {
+            return null;
+        }
+        boolean settled = corrects != null && claims.findFirstBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .filter(claim -> claim.getStatus() == ClaimStatus.SETTLED)
+                .isPresent();
+        if (!settled) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A negative amount must correct a settled claim of the same person");
+        }
+        return corrects;
     }
 
     /** Refuse (403) a clerk settling a claim whose due is above the sheet's clerk limit. */

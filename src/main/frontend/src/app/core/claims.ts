@@ -18,6 +18,8 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened the claim; null while it has not been opened. That user cannot settle it. */
   openedBy: string | null;
+  /** The number of the settled claim this correction (a negative amount) corrects; null for any other claim. */
+  corrects: number | null;
 }
 
 /** DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID instead. */
@@ -78,19 +80,35 @@ export interface ClaimFields {
   amount: string;
   date: string;
   note: string;
+  /** The number of the settled claim a correction corrects, as typed; empty for none. */
+  corrects: string;
 }
 
 /** An amount the store accepts: 0 or more, with at most two decimals. */
 export const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
-/** Whole cents of a valid amount, so sums are exact. */
+/** A claim amount the store accepts: at most two decimals; a negative one is a correction. */
+export const CLAIM_AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
+
+/** A claim number, as typed in the claim form's corrects field. */
+export const CLAIM_NUMBER = /^\d{1,15}$/;
+
+/** Whether the claim is a correction: its amount is below 0. */
+export function isCorrection(claim: { amount: string }): boolean {
+  return claim.amount.trim().startsWith('-') && toCents(claim.amount) !== 0;
+}
+
+/** Whole cents of a valid amount (negative for a correction), so sums are exact. */
 export function toCents(amount: string): number {
-  const [whole, frac = ''] = amount.split('.');
-  return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  const negative = amount.trim().startsWith('-');
+  const [whole, frac = ''] = amount.trim().replace(/^-/, '').split('.');
+  const cents = Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  return negative ? -cents : cents;
 }
 
 export function formatCents(cents: number): string {
-  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+  const abs = Math.abs(cents);
+  return `${cents < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
 // The claims kept on the active sheet, newest first, read from and written to the store.
@@ -146,7 +164,8 @@ export class Claims {
   }
 
   private body(fields: ClaimFields) {
-    return { amount: fields.amount.trim(), date: fields.date || null, note: fields.note };
+    const corrects = fields.corrects.trim();
+    return { amount: fields.amount.trim(), date: fields.date || null, note: fields.note, corrects: corrects ? Number(corrects) : null };
   }
 
   private sheetUrl(): string {

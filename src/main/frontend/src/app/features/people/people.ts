@@ -336,8 +336,8 @@ export class People {
         this.rowError.set(null);
         this.patronChoices.set(new Map());
         this.patronError.set(null);
-        void this.reload();
-        void this.claims.reload();
+        void this.session.track(this.reload());
+        void this.session.track(this.claims.reload());
       });
     });
   }

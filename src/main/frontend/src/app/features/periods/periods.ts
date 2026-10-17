@@ -116,7 +116,7 @@ export class PeriodsPanel {
       untracked(() => {
         this.error.set(null);
         this.rowError.set(null);
-        void this.periods.reload();
+        void this.session.track(this.periods.reload());
       });
     });
   }

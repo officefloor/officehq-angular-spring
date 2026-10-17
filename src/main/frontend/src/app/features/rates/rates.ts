@@ -101,7 +101,7 @@ export class RatesPanel {
       this.session.loads();
       untracked(() => {
         this.error.set(null);
-        void this.rates.reload();
+        void this.session.track(this.rates.reload());
       });
     });
   }

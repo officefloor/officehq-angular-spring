@@ -39,6 +39,6 @@ public class QuickAddService {
         String trimmed = name.trim();
         Person person = people.findFirstBySheetIdAndNameIgnoreCase(sheetId, trimmed)
                 .orElseGet(() -> personService.add(sheetId, user, trimmed, NEW_GRADE));
-        return claimService.add(sheetId, user, person.getId(), amount, null, "");
+        return claimService.add(sheetId, user, person.getId(), amount, null, "", null);
     }
 }

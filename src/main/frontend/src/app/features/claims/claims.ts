@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
-import { AMOUNT, Claim, ClaimAction, Claims, dueBy, formatCents, overdue } from '../../core/claims';
+import { CLAIM_AMOUNT, CLAIM_NUMBER, Claim, ClaimAction, Claims, dueBy, formatCents, isCorrection, overdue } from '../../core/claims';
 import { GradeFrom, gradeOn, retiredOn } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
@@ -8,6 +8,7 @@ import { Session } from '../../core/session';
 
 const CLOSED = 'The claim is dated in a closed period, so it cannot be changed.';
 const RETIRED = 'The person is retired before that date, so no claim can be dated then.';
+const NOT_CORRECTING = 'A negative amount is a correction: name the number of a settled claim of this person that it corrects.';
 const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, void it and add a new one.';
 
 // One person's claims, newest first, and the one form that adds a claim or edits an existing one.
@@ -38,6 +39,14 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
         [value]="note()"
         (input)="note.set($any($event.target).value); error.set(null)"
       />
+      <label [for]="'claim-corrects-' + personId()">Corrects claim number</label>
+      <input
+        [id]="'claim-corrects-' + personId()"
+        inputmode="numeric"
+        data-testid="claim-form-corrects"
+        [value]="corrects()"
+        (input)="corrects.set($any($event.target).value); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -60,6 +69,7 @@ const NOT_DRAFT = 'Only a draft claim can be edited. To change an open claim, vo
           <span data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periods.on(c.date)?.name }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span data-testid="claim-corrects">{{ c.corrects }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy }}</span>
           <button type="button" data-testid="claim-edit" (click)="edit(c)">
@@ -95,6 +105,8 @@ export class PersonClaims {
   protected readonly amount = signal('');
   protected readonly date = linkedSignal(() => this.session.today() ?? '');
   protected readonly note = signal('');
+  /** The number of the settled claim a correction corrects, as typed. */
+  protected readonly corrects = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** Set while a submit awaits the store, so a second submit does not store a second claim. */
   private saving = false;
@@ -163,6 +175,7 @@ export class PersonClaims {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
+    this.corrects.set(claim.corrects === null ? '' : String(claim.corrects));
     this.error.set(null);
   }
 
@@ -171,6 +184,7 @@ export class PersonClaims {
     this.amount.set('');
     this.date.set(this.session.today() ?? '');
     this.note.set('');
+    this.corrects.set('');
     this.error.set(null);
   }
 
@@ -178,10 +192,19 @@ export class PersonClaims {
     event.preventDefault();
     if (this.saving) return;
     this.error.set(null);
-    const fields = { amount: this.amount().trim(), date: this.date(), note: this.note() };
-    if (!AMOUNT.test(fields.amount)) {
-      this.error.set('Enter an amount of 0.00 or more, with at most two decimals.');
+    const fields = { amount: this.amount().trim(), date: this.date(), note: this.note(), corrects: this.corrects().trim() };
+    if (!CLAIM_AMOUNT.test(fields.amount)) {
+      this.error.set('Enter an amount with at most two decimals.');
       return;
+    }
+    if (isCorrection(fields)) {
+      // Whether it names a settled claim of this person is the store's to say, as the screen may be out of date.
+      if (!CLAIM_NUMBER.test(fields.corrects)) {
+        this.error.set(NOT_CORRECTING);
+        return;
+      }
+    } else {
+      fields.corrects = '';
     }
     if (this.periods.closedOn(fields.date || (this.session.today() ?? ''))) {
       this.error.set(CLOSED);
@@ -206,7 +229,7 @@ export class PersonClaims {
         : e instanceof HttpErrorResponse && e.status === 409
         ? NOT_DRAFT
         : e instanceof HttpErrorResponse && e.status === 422
-        ? RETIRED
+        ? isCorrection(fields) ? NOT_CORRECTING : RETIRED
         : id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
     } finally {
       this.saving = false;

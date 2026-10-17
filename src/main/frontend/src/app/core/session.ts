@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 interface SheetView {
@@ -38,6 +38,10 @@ export class Session {
   readonly loads = signal(0);
   /** True while a sheet is being (re-)loaded, so nothing read from the store before is shown. */
   readonly loading = signal(false);
+  /** How many re-reads of the sheet's data, started by a (re-)load, have not answered yet. */
+  private readonly reading = signal(0);
+  /** True once the sheet is loaded and every re-read its load started has answered. */
+  readonly ready = computed(() => !this.loading() && this.reading() === 0);
 
   signIn(name: string): void {
     this.user.set(name.trim());
@@ -58,6 +62,16 @@ export class Session {
       this.loads.update((n) => n + 1);
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  /** Count a re-read of the sheet's data, started by a (re-)load, until it answers. */
+  async track(reread: Promise<unknown>): Promise<void> {
+    this.reading.update((n) => n + 1);
+    try {
+      await reread;
+    } finally {
+      this.reading.update((n) => n - 1);
     }
   }
 

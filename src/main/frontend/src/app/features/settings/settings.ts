@@ -127,7 +127,7 @@ export class SettingsPanel {
       untracked(() => {
         this.settingsError.set(null);
         this.roleError.set(null);
-        void this.roles.reload();
+        void this.session.track(this.roles.reload());
       });
     });
   }
