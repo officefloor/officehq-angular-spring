@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 25f33e5f..f7b46d03 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -563,6 +563,11 @@ import { Person, PeopleService } from './people.service';
+               <td data-testid="rollup-beam-spread">{{ beamSpread() ?? 'n/a' }}</td>
+               <td colspan="19"></td>
+             </tr>
++            <tr>
++              <th scope="row" colspan="30">Beam even</th>
++              <td data-testid="rollup-beam-even">{{ beamEven() }}</td>
++              <td colspan="19"></td>
++            </tr>
+           </tfoot>
+         </table>
+       }
+@@ -1264,6 +1269,11 @@ export class PeopleList {
+       countable(this.people() ?? []).filter((p) => p.sheer !== null && p.sheer % 2 === 0).length,
+   );
+ 
++  // How many counted people have an even beam (n/a beams are not counted).
++  protected readonly beamEven = computed(
++    () => countable(this.people() ?? []).filter((p) => p.beam !== null && p.beam % 2 === 0).length,
++  );
++
+   // The average camber among the people not on hold (n/a cambers skipped), rounded like every
+   // divide; null (n/a) when nobody has one.
+   protected readonly camberMean = computed(() => {
