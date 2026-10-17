@@ -818,6 +818,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-mast-even">{{ mastEven() }}</td>
               <td colspan="9"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="40">Mast mean</th>
+              <td data-testid="rollup-mast-mean">{{ mastMean() ?? 'n/a' }}</td>
+              <td colspan="9"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1817,6 +1822,18 @@ export class PeopleList {
   protected readonly mastEven = computed(
     () => countable(this.people() ?? []).filter((p) => p.mast !== null && p.mast % 2 === 0).length,
   );
+
+  // The average mast among the people not on hold (n/a masts skipped), rounded like every
+  // divide; null (n/a) when nobody has one.
+  protected readonly mastMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.mast)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
 
   // The average rudder among the people not on hold (n/a rudders skipped), rounded like every
   // divide; null (n/a) when nobody has one.
