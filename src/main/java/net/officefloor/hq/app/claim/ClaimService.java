@@ -125,7 +125,7 @@ public class ClaimService {
         }
         List<String> extra = new ArrayList<>();
         if (next == ClaimStatus.SETTLED) {
-            BigDecimal due = sheet.withLateCharge(sheet.floored(rates.inForce(sheetId, person.getGrade(), claim.getDate())
+            BigDecimal due = sheet.withLateCharge(sheet.floored(rates.inForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                     .map(rate -> claim.getAmount().multiply(rate.getRate())
                             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
                     .orElse(null)), claim.getDate());

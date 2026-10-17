@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { AMOUNT, Claim, ClaimAction, Claims, dueBy, formatCents, overdue } from '../../core/claims';
-import { Grade, retiredOn } from '../../core/people';
+import { GradeFrom, gradeOn, retiredOn } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -86,7 +86,8 @@ export class PersonClaims {
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
-  readonly grade = input.required<Grade>();
+  /** The person's grades, each with the date it applies from; a claim uses the one in force on its date. */
+  readonly grades = input.required<GradeFrom[]>();
   /** yyyy-mm-dd the person is retired from, or null; a claim dated after it is refused. */
   readonly retiredFrom = input<string | null>(null);
 
@@ -108,11 +109,11 @@ export class PersonClaims {
   ];
 
   /**
-   * A settled claim's due as fixed when it was settled; any other claim's due at its person's grade's
-   * rate in force on the claim's date. n/a when there was or is no such rate.
+   * A settled claim's due as fixed when it was settled; any other claim's due at its person's grade (in force on
+   * the claim's date)'s rate in force on the claim's date. n/a when there was or is no such rate.
    */
   protected due(claim: Claim): string {
-    const cents = this.rates.dueOf(claim, this.grade());
+    const cents = this.rates.dueOf(claim, gradeOn(this.grades(), claim.date));
     return cents === undefined ? 'n/a' : formatCents(cents);
   }
 

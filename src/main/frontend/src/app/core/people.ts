@@ -9,7 +9,10 @@ export const GRADES: readonly Grade[] = ['A', 'B', 'C'];
 export interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the person was read. */
   grade: Grade;
+  /** The grades recorded, oldest first; the first has no from-date and applies from the beginning of time. */
+  grades: GradeFrom[];
   /** Raised each time the person is saved; an edit sends back the version it was made from. */
   version: number;
   /** yyyy-mm-dd the person is retired from; null while they are not retired. */
@@ -20,6 +23,22 @@ export interface Person {
   patronIds: number[];
 }
 
+/** A grade recorded for a person, in force from its from-date (yyyy-mm-dd), or from the beginning of time when null. */
+export interface GradeFrom {
+  from: string | null;
+  grade: Grade;
+}
+
+/** A person's grade in force on a date (yyyy-mm-dd): the one with the latest from-date on or before it. */
+export function gradeOn(grades: readonly GradeFrom[], date: string): Grade {
+  let found: GradeFrom | undefined;
+  for (const g of grades) {
+    if (g.from !== null && g.from > date) continue;
+    if (found === undefined || (found.from ?? '') <= (g.from ?? '')) found = g;
+  }
+  return (found ?? grades[0]).grade;
+}
+
 /** Whether a claim dated on this date (yyyy-mm-dd) is refused: it is after the person's retirement. */
 export function retiredOn(person: { retiredFrom: string | null }, date: string): boolean {
   return person.retiredFrom !== null && date > person.retiredFrom;
@@ -28,6 +47,11 @@ export function retiredOn(person: { retiredFrom: string | null }, date: string):
 export interface PersonFields {
   name: string;
   grade: Grade;
+}
+
+/** An edit also gives the date (yyyy-mm-dd) its grade applies from; the sheet's today when empty. */
+export interface PersonEditFields extends PersonFields {
+  gradeFrom: string;
 }
 
 /**
@@ -66,10 +90,13 @@ export class PeopleApi {
     );
   }
 
-  /** Refused with 412 when someone else has saved the person since this version was read. */
-  update(id: number, version: number, fields: PersonFields): Promise<Person> {
+  /**
+   * Save the name, and record the grade from its from-date, keeping the grades already recorded.
+   * Refused with 412 when someone else has saved the person since this version was read. */
+  update(id: number, version: number, fields: PersonEditFields): Promise<Person> {
+    const body = { ...fields, gradeFrom: fields.gradeFrom || null, version };
     return firstValueFrom(
-      this.http.put<Person>(`${this.url()}/${id}`, { ...fields, version }, { headers: this.headers() }),
+      this.http.put<Person>(`${this.url()}/${id}`, body, { headers: this.headers() }),
     );
   }
 

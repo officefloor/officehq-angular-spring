@@ -36,6 +36,12 @@ public class PersonService {
         this.audit = audit;
     }
 
+    /** The sheet's today, the date the grade each person is listed with is in force on. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
+    }
+
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByIdAsc(sheetId);
@@ -49,7 +55,7 @@ public class PersonService {
             throw nameInUse();
         }
         Person person = people.save(new Person(sheetId, trimmed, grade));
-        audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + grade);
         return person;
     }
 
@@ -68,7 +74,7 @@ public class PersonService {
      * Import people from lines of name,grade. Every line is checked first with the rules of the form;
      * a name repeated in the paste is compared like uniqueness on the sheet. If any line breaks a
      * rule nothing is changed; otherwise, in order, a name already on the sheet has its grade
-     * updated and any other name is added. Blank lines are skipped.
+     * recorded from the sheet's today and any other name is added. Blank lines are skipped.
      */
     @Transactional
     public ImportResult importPeople(String sheetId, String user, String text) {
@@ -104,8 +110,10 @@ public class PersonService {
         if (!errors.isEmpty()) {
             return new ImportResult(0, 0, errors);
         }
+        LocalDate today = null;
         if (!rows.isEmpty()) {
             sheets.load(sheetId, user);
+            today = sheets.today(sheetId);
         }
         int added = 0;
         int updated = 0;
@@ -113,21 +121,26 @@ public class PersonService {
             Optional<Person> existing = people.findFirstBySheetIdAndNameIgnoreCase(sheetId, row[0]);
             if (existing.isPresent()) {
                 Person person = existing.get();
-                person.setGrade(row[1]);
+                person.setGradeFrom(today, row[1]);
                 person = people.saveAndFlush(person);
-                audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+                audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + row[1]);
                 updated++;
             } else {
                 Person person = people.save(new Person(sheetId, row[0], row[1]));
-                audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+                audit.change("PERSON_ADDED", sheetId, user, "name=" + person.getName(), "grade=" + row[1]);
                 added++;
             }
         }
         return new ImportResult(added, updated, List.of());
     }
 
+    /**
+     * Save a person's name, and record the grade from a date (the sheet's today when none is given),
+     * keeping the grades already recorded; a grade already recorded from that date is replaced.
+     */
     @Transactional
-    public Person update(String sheetId, String user, Long personId, long version, String name, String grade) {
+    public Person update(String sheetId, String user, Long personId, long version, String name, String grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (person.getVersion() != version) {
@@ -138,13 +151,13 @@ public class PersonService {
             throw nameInUse();
         }
         person.setName(trimmed);
-        person.setGrade(grade);
+        person.setGradeFrom(gradeFrom != null ? gradeFrom : sheets.today(sheetId), grade);
         try {
             person = people.saveAndFlush(person);
         } catch (OptimisticLockingFailureException e) {
             throw changedMeanwhile();
         }
-        audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + person.getGrade());
+        audit.change("PERSON_EDITED", sheetId, user, "name=" + person.getName(), "grade=" + grade);
         return person;
     }
 

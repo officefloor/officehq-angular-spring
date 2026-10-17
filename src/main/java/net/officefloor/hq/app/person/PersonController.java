@@ -24,12 +24,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    /** The version is the one an edit sends back, so a save made from an out-of-date copy is refused. */
-    public record PersonView(Long id, String name, String grade, long version, LocalDate retiredFrom,
-            boolean held, List<Long> patronIds) {
-        static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    person.getRetiredFrom(), person.isHeld(), person.getPatronIds().stream().sorted().toList());
+    /** A grade recorded for a person; from is null for the first one, in force from the beginning of time. */
+    public record GradeView(LocalDate from, String grade) {
+    }
+
+    /**
+     * The version is the one an edit sends back, so a save made from an out-of-date copy is refused.
+     * The grade is the one in force on the sheet's today; grades are all those recorded, oldest first.
+     */
+    public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+            LocalDate retiredFrom, boolean held, List<Long> patronIds) {
+        static PersonView of(Person person, LocalDate today) {
+            return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                    person.getGrades().stream().map(g -> new GradeView(g.getFrom(), g.getGrade())).toList(),
+                    person.getVersion(), person.getRetiredFrom(), person.isHeld(),
+                    person.getPatronIds().stream().sorted().toList());
         }
     }
 
@@ -39,10 +48,12 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
     }
 
-    /** An edit carries the version of the person it was made from. */
+    /** An edit carries the version of the person it was made from, and the date its grade applies from
+     * (the sheet's today when none is given). */
     public record PersonUpdateRequest(
             @NotBlank @Size(max = 100) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate gradeFrom,
             @NotNull Long version) {
     }
 
@@ -66,7 +77,8 @@ public class PersonController {
 
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PersonView::of).toList();
+        LocalDate today = service.today(sheetId.trim());
+        return service.list(sheetId.trim()).stream().map(person -> PersonView.of(person, today)).toList();
     }
 
     @PostMapping
@@ -74,7 +86,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated PersonRequest request) {
-        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
+        return view(sheetId, service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
     }
 
     @PutMapping("/{personId}")
@@ -82,8 +94,8 @@ public class PersonController {
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated PersonUpdateRequest request) {
-        return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                request.name(), request.grade()));
+        return view(sheetId, service.update(sheetId.trim(), user.trim(), personId, request.version(),
+                request.name(), request.grade(), request.gradeFrom()));
     }
 
     @PostMapping("/{personId}/retire")
@@ -91,21 +103,21 @@ public class PersonController {
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireRequest request) {
-        return PersonView.of(service.retire(sheetId.trim(), user.trim(), personId, request.from()));
+        return view(sheetId, service.retire(sheetId.trim(), user.trim(), personId, request.from()));
     }
 
     @PostMapping("/{personId}/hold")
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, true));
+        return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId, true));
     }
 
     @PostMapping("/{personId}/release")
     public PersonView release(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return PersonView.of(service.hold(sheetId.trim(), user.trim(), personId, false));
+        return view(sheetId, service.hold(sheetId.trim(), user.trim(), personId, false));
     }
 
     @PostMapping("/{personId}/patrons")
@@ -113,7 +125,11 @@ public class PersonController {
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Validated PatronRequest request) {
-        return PersonView.of(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()));
+        return view(sheetId, service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()));
+    }
+
+    private PersonView view(String sheetId, Person person) {
+        return PersonView.of(person, service.today(sheetId.trim()));
     }
 
     @PostMapping("/import")

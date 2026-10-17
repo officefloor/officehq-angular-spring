@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Claims, counts, formatCents } from '../../core/claims';
-import { Person } from '../../core/people';
+import { Person, gradeOn } from '../../core/people';
 import { PERIOD_NAME, Period, Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -100,7 +100,7 @@ export class PeriodsPanel {
       const person = byId.get(c.personId);
       const period = this.periods.on(c.date);
       if (person === undefined || period === undefined || !counts(c, person)) continue;
-      const due = this.rates.dueOf(c, person.grade);
+      const due = this.rates.dueOf(c, gradeOn(person.grades, c.date));
       if (due !== undefined) out.set(period.id, (out.get(period.id) ?? 0) + due);
     }
     return out;

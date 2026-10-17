@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
 import { AMOUNT, Claims, counts, formatCents, overdue, toCents } from '../../core/claims';
-import { GRADES, Grade, ImportResult, PeopleApi, Person } from '../../core/people';
+import { GRADES, Grade, ImportResult, PeopleApi, Person, gradeOn } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -39,6 +39,14 @@ const LEAVE_DELAY_MS = 1000;
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
+        <label for="person-grade-from">Grade from</label>
+        <input
+          id="person-grade-from"
+          type="date"
+          data-testid="person-form-grade-from"
+          [value]="gradeFrom()"
+          (input)="gradeFrom.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -119,7 +127,7 @@ const LEAVE_DELAY_MS = 1000;
           @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
@@ -129,7 +137,7 @@ const LEAVE_DELAY_MS = 1000;
               <td data-testid="person-overdue-total">{{ formatCents(overdueOf(p.id).cents) }}</td>
               <td data-testid="person-patrons">{{ patronNames(p) }}</td>
               <td data-testid="person-backing">{{ backing(p) }}</td>
-              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" [retiredFrom]="p.retiredFrom" /></td>
+              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grades]="p.grades" [retiredFrom]="p.retiredFrom" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -197,6 +205,8 @@ export class People {
   protected readonly people = signal<Person[]>([]);
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
+  /** The date the form's grade applies from; the sheet's today until another is typed. */
+  protected readonly gradeFrom = linkedSignal(() => this.session.today() ?? '');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion = 0;
@@ -266,7 +276,7 @@ export class People {
       const figures = this.claims
         .all()
         .filter((c) => c.personId === p.id && counts(c, p))
-        .map((c) => this.rates.dueOf(c, p.grade))
+        .map((c) => this.rates.dueOf(c, gradeOn(p.grades, c.date)))
         .filter((c) => c !== undefined);
       out.set(p.id, figures.reduce((sum, c) => sum + c, 0));
     }
@@ -290,7 +300,7 @@ export class People {
       const late = this.claims.all().filter((c) => c.personId === p.id && counts(c, p) && overdue(c, terms, today));
       out.set(p.id, {
         count: late.length,
-        cents: late.map((c) => this.rates.dueOf(c, p.grade) ?? 0).reduce((sum, c) => sum + c, 0),
+        cents: late.map((c) => this.rates.dueOf(c, gradeOn(p.grades, c.date)) ?? 0).reduce((sum, c) => sum + c, 0),
       });
     }
     return out;
@@ -334,6 +344,11 @@ export class People {
 
   protected claimed(personId: number): string {
     return formatCents(this.claimedCents().get(personId) ?? 0);
+  }
+
+  /** The person's grade in force on the sheet's today. */
+  protected gradeToday(person: Person): Grade {
+    return gradeOn(person.grades, this.session.today() ?? '');
   }
 
   protected dueTotal(person: Person): string {
@@ -455,7 +470,8 @@ export class People {
     this.editingId.set(person.id);
     this.editingVersion = person.version;
     this.name.set(person.name);
-    this.grade.set(person.grade);
+    this.grade.set(this.gradeToday(person));
+    this.gradeFrom.set(this.session.today() ?? '');
     this.error.set(null);
   }
 
@@ -463,6 +479,7 @@ export class People {
     this.editingId.set(null);
     this.name.set('');
     this.grade.set('A');
+    this.gradeFrom.set(this.session.today() ?? '');
     this.error.set(null);
   }
 
@@ -475,6 +492,11 @@ export class People {
       this.error.set('Enter a name.');
       return;
     }
+    const gradeFrom = this.gradeFrom().trim();
+    if (gradeFrom && !/^\d{4}-\d{2}-\d{2}$/.test(gradeFrom)) {
+      this.error.set('Enter the grade\'s from-date as yyyy-mm-dd.');
+      return;
+    }
     const id = this.editingId();
     this.saving = true;
     try {
@@ -482,7 +504,7 @@ export class People {
         const added = await this.api.add(fields);
         this.people.update((list) => [...list, added]);
       } else {
-        const saved = await this.api.update(id, this.editingVersion, fields);
+        const saved = await this.api.update(id, this.editingVersion, { ...fields, gradeFrom });
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
@@ -571,7 +593,7 @@ export class People {
     const current = this.people().find((p) => p.id === id);
     if (current) {
       this.name.set(current.name);
-      this.grade.set(current.grade);
+      this.grade.set(this.gradeToday(current));
     }
   }
 
