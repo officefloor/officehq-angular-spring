@@ -643,6 +643,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-knot-even">{{ knotEven() }}</td>
               <td colspan="16"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="33">Knot mean</th>
+              <td data-testid="rollup-knot-mean">{{ knotMean() ?? 'n/a' }}</td>
+              <td colspan="16"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -1496,6 +1501,18 @@ export class PeopleList {
     const values = (this.people() ?? [])
       .filter((p) => !p.hold)
       .map((p) => p.buoyancy)
+      .filter((v): v is number => v !== null);
+    return values.length === 0
+      ? null
+      : divide(values.reduce((total, v) => total + v, 0), values.length);
+  });
+
+  // The average knot among the people not on hold (n/a knots skipped), rounded like every divide;
+  // null (n/a) when nobody has one.
+  protected readonly knotMean = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.knot)
       .filter((v): v is number => v !== null);
     return values.length === 0
       ? null
