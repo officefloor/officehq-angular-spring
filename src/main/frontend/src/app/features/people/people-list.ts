@@ -483,6 +483,11 @@ import { Person, PeopleService } from './people.service';
               <td data-testid="rollup-heave-top">{{ heaveTop() ?? 'n/a' }}</td>
               <td colspan="22"></td>
             </tr>
+            <tr>
+              <th scope="row" colspan="27">Heave spread</th>
+              <td data-testid="rollup-heave-spread">{{ heaveSpread() ?? 'n/a' }}</td>
+              <td colspan="22"></td>
+            </tr>
           </tfoot>
         </table>
       }
@@ -998,6 +1003,16 @@ export class PeopleList {
       .map((p) => p.heave)
       .filter((v): v is number => v !== null);
     return values.length === 0 ? null : Math.max(...values);
+  });
+
+  // The highest heave minus the lowest among the people not on hold (n/a heaves skipped); null
+  // (n/a) when nobody has one.
+  protected readonly heaveSpread = computed(() => {
+    const values = (this.people() ?? [])
+      .filter((p) => !p.hold)
+      .map((p) => p.heave)
+      .filter((v): v is number => v !== null);
+    return values.length === 0 ? null : Math.max(...values) - Math.min(...values);
   });
 
   // How many counted people have an even keel (n/a keels are not counted).
