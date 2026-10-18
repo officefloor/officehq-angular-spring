@@ -27,6 +27,8 @@ import { PersonClaims } from './person-claims';
 // before the sheet's today) and those claims' dues added up (a claim with none adds nothing).
 // A person can name other people on the sheet as patrons, one at a time from their row; the row shows
 // their patrons' names (sorted) and their backing: the patrons' due-totals added up, skipping n/a.
+// An export button downloads everyone (retired too) in list order as CSV: name, grade in force today,
+// retired-from date (or nothing) and due-total as shown.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims],
@@ -66,6 +68,9 @@ import { PersonClaims } from './person-claims';
         <input type="checkbox" id="show-retired" data-testid="show-retired"
           [checked]="people.showRetired()" (change)="people.showRetired.set($any($event.target).checked)" />
         <label for="show-retired">Show retired</label>
+      </p>
+      <p>
+        <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       </p>
       <table>
         <thead>
@@ -262,6 +267,20 @@ export class People {
     return cents === undefined ? 'n/a' : money(cents);
   }
 
+  /** Download everyone, retired people included, in list order as a CSV file. */
+  protected exportCsv(): void {
+    const totals = this.dueTotals();
+    const lines = [['name', 'grade', 'retired-from', 'due-total'], ...this.people.people().map((p) => [
+      p.name, this.gradeToday(p) ?? '', p.retiredFrom ?? '', this.amountOrNa(totals.get(p.id)),
+    ])].map((cells) => cells.map(csvCell).join(',') + '\n');
+    const url = URL.createObjectURL(new Blob(lines, { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'people.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
+  }
+
   /** Take a statement for the person, then re-read the people to show its count, due-total and date. */
   protected statement(p: Person): void {
     this.setRowError(p.id, '');
@@ -387,4 +406,9 @@ export class People {
       },
     });
   }
+}
+
+/** A CSV value: wrapped in double quotes, inner quotes doubled, when it holds a comma, quote or line break. */
+function csvCell(value: string): string {
+  return /[",\r\n]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value;
 }
