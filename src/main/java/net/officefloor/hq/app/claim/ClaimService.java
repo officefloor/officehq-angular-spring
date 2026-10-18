@@ -98,9 +98,9 @@ public class ClaimService {
         return saved;
     }
 
-    /** The amount times the rate's percent, rounded half up to cents (as the screen works it out). */
+    /** The amount times the rate's percent, rounded half to even to cents (as the screen works it out). */
     private static BigDecimal due(BigDecimal amount, Rate rate) {
-        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
+        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /**

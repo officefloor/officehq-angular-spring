@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, of, tap } from 'rxjs';
+import { due } from './rates.service';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
 
@@ -27,6 +28,16 @@ export type ClaimAction = 'open' | 'settle' | 'void';
 /** Only open and settled claims count toward claimed and due; drafts and voided claims do not. */
 export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
+}
+
+/**
+ * A claim's due in cents: a settled claim's fixed figure, otherwise its amount times the rate in force
+ * on its date (looked up by `rateOn`, in hundredths of a percent); undefined when it has none.
+ */
+export function claimDue(c: Claim, rateOn: (date: string) => number | undefined): number | undefined {
+  if (c.due !== null) return cents(c.due);
+  const rate = rateOn(c.date);
+  return rate === undefined ? undefined : due(cents(c.amount), rate);
 }
 
 export interface ClaimForm {

@@ -2,14 +2,15 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
-import { ClaimsService, money } from '../../core/claims.service';
-import { RatesService, due } from '../../core/rates.service';
+import { ClaimsService, claimDue, counts, money } from '../../core/claims.service';
+import { RatesService } from '../../core/rates.service';
 import { PersonClaims } from './person-claims';
 
 // The sheet's people: a form that adds a person or edits the one opened, and the list with each
 // person's claims, claimed and due-total, and the sheet's claimed total and due-total. A due-total
-// uses the grade's rate in force on the sheet's today; a person whose grade has none then has no
-// due-total (n/a), and the sheet's due-total skips them.
+// is the sum of the person's open and settled claims' (already rounded) dues, 0.00 with none; a
+// person whose grade has no rate in force on the sheet's today has no due-total (n/a) unless a
+// settled claim of theirs keeps a fixed due. The sheet's due-total skips those with none.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims],
@@ -74,12 +75,17 @@ export class People {
   });
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
-  /** Each person's due-total in cents: their claimed times their grade's rate in force today; absent when it has none. */
+  /**
+   * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
+   * absent when their grade has no rate in force today and no settled claim of theirs keeps a due.
+   */
   protected readonly dueTotals = computed(() => {
     const out = new Map<number, number>();
     for (const p of this.people.people()) {
-      const rate = this.rates.byGrade().get(p.grade);
-      if (rate !== undefined) out.set(p.id, due(this.claims.claimedCents().get(p.id) ?? 0, rate));
+      const counted = (this.claims.byPerson().get(p.id) ?? []).filter(counts);
+      if (!this.rates.byGrade().has(p.grade) && !counted.some((c) => c.due !== null)) continue;
+      const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
+      out.set(p.id, counted.reduce((sum, c) => sum + (claimDue(c, rateOn) ?? 0), 0));
     }
     return out;
   });

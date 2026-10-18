@@ -102,9 +102,12 @@ function hundredths(pct: string): number {
 }
 
 /**
- * Cents times a rate (in hundredths of a percent) divided by 100, in cents, rounded half up (a half
- * rounds away from zero). Worked in BigInt so it is exact for any amount.
+ * Cents times a rate (in hundredths of a percent) divided by 100, in cents, rounded half to even (a
+ * half goes to the even cent). Worked in BigInt so it is exact for any amount.
  */
 export function due(cents: number, rate: number): number {
-  return Number((BigInt(cents) * BigInt(rate) + 5000n) / 10000n);
+  const product = BigInt(cents) * BigInt(rate);
+  const q = product / 10000n;
+  const r = product % 10000n;
+  return Number(r > 5000n || (r === 5000n && q % 2n === 1n) ? q + 1n : q);
 }

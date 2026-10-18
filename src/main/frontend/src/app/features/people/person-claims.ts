@@ -1,8 +1,8 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, ClaimAction, ClaimsService, cents, money } from '../../core/claims.service';
+import { Claim, ClaimAction, ClaimsService, claimDue, money } from '../../core/claims.service';
 import { Grade } from '../../core/people.service';
-import { RatesService, due } from '../../core/rates.service';
+import { RatesService } from '../../core/rates.service';
 
 // A person's claims, newest first, each with its status and buttons to open, settle or void it, its due (n/a when the person's grade has no rate in force on the claim's date), and a form that adds a claim or edits the one opened.
 @Component({
@@ -77,9 +77,8 @@ export class PersonClaims {
 
   /** A settled claim shows the due fixed when it was settled; any other (or one settled without a rate) follows the rate in force on its date. */
   protected dueOf(c: Claim): string {
-    if (c.due !== null) return c.due;
-    const rate = this.rates.rateOn(this.grade(), c.date);
-    return rate === undefined ? 'n/a' : money(due(cents(c.amount), rate));
+    const d = claimDue(c, (date) => this.rates.rateOn(this.grade(), date));
+    return d === undefined ? 'n/a' : money(d);
   }
 
   protected change(c: Claim, action: ClaimAction): void {
