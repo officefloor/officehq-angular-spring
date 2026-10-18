@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, of, tap } from 'rxjs';
+import { PeopleService } from './people.service';
 import { due } from './rates.service';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
@@ -66,9 +67,21 @@ export class ClaimsService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(SessionService);
   private readonly sheets = inject(SheetService);
+  private readonly people = inject(PeopleService);
   private readonly list = signal<Claim[]>([]);
 
   readonly claims = this.list.asReadonly();
+
+  /** The ids of the people on hold. */
+  private readonly heldIds = computed(
+    () => new Set(this.people.people().filter((p) => p.held).map((p) => p.id)),
+  );
+
+  /** Whether a claim counts in the live totals: open and settled ones do, except a held person's open ones. */
+  readonly live = computed(() => {
+    const held = this.heldIds();
+    return (c: Claim) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId));
+  });
 
   /** Each person's claims, newest first. */
   readonly byPerson = computed(() => {
@@ -77,15 +90,15 @@ export class ClaimsService {
     return out;
   });
 
-  /** Each person's claimed (open and settled claims), in cents. */
+  /** Each person's claimed (live claims), in cents. */
   readonly claimedCents = computed(() => {
     const out = new Map<number, number>();
-    for (const c of this.list().filter(counts)) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
+    for (const c of this.list().filter(this.live())) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
     return out;
   });
 
-  /** Everyone's claimed (open and settled claims) added up, in cents. */
-  readonly totalCents = computed(() => this.list().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0));
+  /** Everyone's claimed (live claims) added up, in cents. */
+  readonly totalCents = computed(() => this.list().filter(this.live()).reduce((sum, c) => sum + cents(c.amount), 0));
 
   /** Re-read the active sheet's claims from the store. */
   reload(): Observable<unknown> {

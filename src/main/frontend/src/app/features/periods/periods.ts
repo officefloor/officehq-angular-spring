@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { ClaimsService, claimDue, counts, money } from '../../core/claims.service';
+import { ClaimsService, claimDue, money } from '../../core/claims.service';
 import { PeopleService } from '../../core/people.service';
 import { Period, PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
@@ -76,7 +76,7 @@ export class Periods {
   protected readonly dueTotals = computed(() => {
     const grades = new Map(this.people.people().map((p) => [p.id, p.grade]));
     const out = new Map<number, number>();
-    for (const c of this.claims.claims().filter(counts)) {
+    for (const c of this.claims.claims().filter(this.claims.live())) {
       const period = this.periods.periodOn(c.date);
       const grade = grades.get(c.personId);
       if (!period || !grade) continue;

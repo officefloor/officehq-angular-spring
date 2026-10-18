@@ -31,13 +31,13 @@ public class PersonController {
      * two decimals, "n/a" when it had none) and date; both null before their first statement.
      */
     public record PersonView(long id, String name, Grade grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, LocalDate retiredFrom) {
+            String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held) {
         static PersonView of(Person person, PersonService.Statements statements) {
             Statement last = statements.last();
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.count(), last == null ? null
                             : last.getDueTotal() == null ? "n/a" : last.getDueTotal().setScale(2).toPlainString(),
-                    last == null ? null : last.getTakenOn(), person.getRetiredFrom());
+                    last == null ? null : last.getTakenOn(), person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -94,6 +94,15 @@ public class PersonController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @RequestBody(required = false) RetireForm form) {
         return view(sheetId, service.retire(sheetId, user, personId, form == null ? null : form.from()));
+    }
+
+    /** Put a person on hold, or take them off hold when they are held. */
+    @PostMapping("/{personId}/hold")
+    public PersonView hold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user) {
+        return view(sheetId, service.toggleHold(sheetId, user, personId));
     }
 
     private PersonView view(String sheetId, Person person) {

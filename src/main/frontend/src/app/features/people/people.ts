@@ -3,7 +3,7 @@ import { finalize, switchMap } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
-import { ClaimsService, claimDue, counts, fixed, money } from '../../core/claims.service';
+import { ClaimsService, claimDue, fixed, money } from '../../core/claims.service';
 import { RatesService } from '../../core/rates.service';
 import { PersonClaims } from './person-claims';
 
@@ -16,6 +16,8 @@ import { PersonClaims } from './person-claims';
 // their figures then; the row shows how many statements were taken, and the last one's due-total and date.
 // A person can be retired from a date (the sheet's today when none is entered). Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in every total.
+// A person can be put on hold and taken off it again: while held, their open claims count in no
+// live total (settled ones still do).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims],
@@ -59,7 +61,7 @@ import { PersonClaims } from './person-claims';
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -75,6 +77,7 @@ import { PersonClaims } from './person-claims';
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retiredFrom ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
@@ -85,6 +88,8 @@ import { PersonClaims } from './person-claims';
                   #retireDate (input)="setRowError(p.id, '')" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
+                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)"
+                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
                 @if (rowErrors().get(p.id); as e) {
                   <p role="alert" data-testid="person-error">{{ e }}</p>
                 }
@@ -137,7 +142,7 @@ export class People {
   protected readonly dueTotals = computed(() => {
     const out = new Map<number, number>();
     for (const p of this.people.people()) {
-      const counted = (this.claims.byPerson().get(p.id) ?? []).filter(counts);
+      const counted = (this.claims.byPerson().get(p.id) ?? []).filter(this.claims.live());
       if (!this.rates.byGrade().has(p.grade) && !counted.some(fixed)) continue;
       const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
       out.set(p.id, counted.reduce((sum, c) => sum + (claimDue(c, rateOn) ?? 0), 0));
@@ -177,6 +182,14 @@ export class People {
     this.setRowError(p.id, '');
     this.people.retire(p.id, from.trim() || null).subscribe({
       error: () => this.setRowError(p.id, 'Could not retire ' + p.name + '.'),
+    });
+  }
+
+  /** Put the person on hold, or take them off it. */
+  protected toggleHold(p: Person): void {
+    this.setRowError(p.id, '');
+    this.people.toggleHold(p.id).subscribe({
+      error: () => this.setRowError(p.id, 'Could not change the hold on ' + p.name + '.'),
     });
   }
 

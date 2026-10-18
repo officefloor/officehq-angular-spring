@@ -77,7 +77,7 @@ public class PeriodService {
 
     /**
      * Close a period, fixing its due-total now: the sum of the figures (those with one) of the open and
-     * settled claims dated in it. A period already closed is refused.
+     * settled claims dated in it (not a held person's open ones). A period already closed is refused.
      */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
@@ -92,7 +92,7 @@ public class PeriodService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
-            if (!c.getStatus().counts() || person == null || !period.contains(c.getDate())) continue;
+            if (person == null || !RollupService.counts(person, c) || !period.contains(c.getDate())) continue;
             BigDecimal figure = rollups.figure(sheetId, person, c);
             if (figure != null) total = total.add(figure);
         }

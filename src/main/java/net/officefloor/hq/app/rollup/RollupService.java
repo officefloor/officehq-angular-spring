@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -51,7 +52,7 @@ public class RollupService {
     }
 
     /**
-     * The sheet's figures now. Only open and settled claims count; a person's due-total is the sum of
+     * The sheet's figures now. Only open and settled claims count (a held person's open ones do not); a person's due-total is the sum of
      * their figures (those with one), n/a when their grade has no rate in force on the sheet's today
      * and no counting claim of theirs keeps a fixed (settled or stated) figure.
      */
@@ -65,7 +66,9 @@ public class RollupService {
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            List<Claim> counted = byPerson.getOrDefault(p.getId(), List.of());
+            List<Claim> counted = byPerson.getOrDefault(p.getId(), List.of()).stream()
+                    .filter(c -> counts(p, c))
+                    .toList();
             BigDecimal claimed = BigDecimal.ZERO.setScale(2);
             BigDecimal due = BigDecimal.ZERO.setScale(2);
             for (Claim c : counted) {
@@ -80,6 +83,14 @@ public class RollupService {
             out.put(p.getId(), new Figures(p.getName(), text(claimed), rated || anyFixed ? text(due) : "n/a"));
         }
         return new Rollup(out, text(claimedTotal), text(dueTotal));
+    }
+
+    /**
+     * Whether a claim counts in the live totals: open and settled claims do, except the open claims
+     * of a person on hold.
+     */
+    public static boolean counts(Person person, Claim claim) {
+        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus() == ClaimStatus.OPEN);
     }
 
     /**

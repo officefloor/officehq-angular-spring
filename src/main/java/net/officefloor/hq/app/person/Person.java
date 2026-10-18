@@ -34,6 +34,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** On hold: their open claims count in no live total (settled ones still do). */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -63,6 +67,10 @@ public class Person {
     public LocalDate getRetiredFrom() { return retiredFrom; }
 
     public void setRetiredFrom(LocalDate retiredFrom) { this.retiredFrom = retiredFrom; }
+
+    public boolean isHeld() { return held; }
+
+    public void setHeld(boolean held) { this.held = held; }
 
     /** Whether a claim dated {@code date} is after their retirement. */
     public boolean retiredOn(LocalDate date) { return retiredFrom != null && date.isAfter(retiredFrom); }

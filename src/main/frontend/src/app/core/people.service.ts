@@ -22,6 +22,8 @@ export interface Person {
   statementDate: string | null;
   /** Retired from this date (yyyy-MM-dd): claims dated after it are refused; null when not retired. */
   retiredFrom: string | null;
+  /** On hold: their open claims count in no live total (settled ones still do). */
+  held: boolean;
 }
 
 export interface PersonForm {
@@ -72,6 +74,13 @@ export class PeopleService {
   retire(personId: number, from: string | null): Observable<Person> {
     return this.http
       .post<Person>(`${this.url(this.sheet())}/${personId}/retire`, { from }, { headers: this.session.headers() })
+      .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
+  }
+
+  /** Put the person on hold, or take them off hold when they are held. */
+  toggleHold(personId: number): Observable<Person> {
+    return this.http
+      .post<Person>(`${this.url(this.sheet())}/${personId}/hold`, null, { headers: this.session.headers() })
       .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
   }
 

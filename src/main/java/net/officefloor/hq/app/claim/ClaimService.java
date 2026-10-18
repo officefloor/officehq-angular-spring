@@ -145,8 +145,8 @@ public class ClaimService {
 
     /**
      * Take a statement for a person on the sheet's today: their due-total then (the sum of the figures
-     * of their claims that count; n/a when their grade has no rate in force today and none of those
-     * claims has a fixed or bound figure) is recorded, and each claim that counts is bound to its
+     * of their claims that count, a held person's open ones not among them; n/a when their grade has
+     * no rate in force today and none of those claims has a fixed or bound figure) is recorded, and each claim that counts is bound to its
      * figure then, the others left unbound. Their claims, newest first.
      */
     @Transactional
@@ -158,12 +158,12 @@ public class ClaimService {
         List<Claim> theirs = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> c.getPersonId().equals(personId))
                 .toList();
-        List<Claim> counting = theirs.stream().filter(c -> c.getStatus().counts()).toList();
+        List<Claim> counting = theirs.stream().filter(c -> RollupService.counts(person, c)).toList();
         boolean anyFixed = counting.stream().anyMatch(c -> c.getDue() != null || c.isStated());
         boolean rated = rates.findInForce(sheetId, person.getGrade(), sheet.getToday()).isPresent();
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim c : theirs) {
-            if (c.getStatus().counts()) {
+            if (RollupService.counts(person, c)) {
                 BigDecimal figure = figure(sheetId, person, c);
                 if (figure != null) total = total.add(figure);
                 c.bind(figure);

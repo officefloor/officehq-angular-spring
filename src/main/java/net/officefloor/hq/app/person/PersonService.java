@@ -113,6 +113,24 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * Put a person on hold, or release them when held. Followed by the rollup lines of the figures it
+     * moves (their open claims leave, or rejoin, the live totals).
+     */
+    @Transactional
+    public Person toggleHold(String sheetId, String user, long personId) {
+        sheets.lock(sheetId, user);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Rollup before = rollups.snapshot(sheetId);
+        person.setHeld(!person.isHeld());
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
+                + " by=" + user + " name=" + saved.getName());
+        rollups.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
     private void audit(String sheetId, String user, String event, Person person) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.getGrade());
