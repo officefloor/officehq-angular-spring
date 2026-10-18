@@ -72,6 +72,15 @@ export class PeriodsService {
       .pipe(tap((p) => this.list.update((all) => all.map((q) => (q.id === p.id ? p : q)))));
   }
 
+  /** Reopen a closed period, making its due-total live again; refused unless a steward reopens a closed one. */
+  reopen(periodId: number): Observable<Period> {
+    const id = this.sheets.sheetId();
+    if (!id) throw new Error('no sheet loaded');
+    return this.http
+      .post<Period>(`${this.url(id)}/${periodId}/reopen`, null, { headers: this.session.headers() })
+      .pipe(tap((p) => this.list.update((all) => all.map((q) => (q.id === p.id ? p : q)))));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
   }

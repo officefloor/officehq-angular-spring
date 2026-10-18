@@ -9,7 +9,7 @@ import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 
 // The sheet's periods, each with its due-total: the sum of the dues (those with one) of the open and
-// settled claims dated in it; once the period is closed, the due-total fixed when it closed. A form adds a period: a name unique on the sheet and a from and to date,
+// settled claims dated in it; once the period is closed, the due-total fixed when it closed (live again if a steward reopens it). A form adds a period: a name unique on the sheet and a from and to date,
 // both inclusive, overlapping no other period.
 @Component({
   selector: 'app-periods',
@@ -45,6 +45,7 @@ import { SheetService } from '../../core/sheet.service';
                 @if (!p.closed) {
                   <button type="button" data-testid="period-close" (click)="close(p)">Close</button>
                 }
+                <button type="button" data-testid="period-reopen" (click)="reopen(p)">Reopen</button>
                 @if (rowErrors()[p.id]) {
                   <p role="alert" data-testid="period-error">{{ rowErrors()[p.id] }}</p>
                 }
@@ -107,6 +108,15 @@ export class Periods {
     this.rowErrors.update((all) => ({ ...all, [p.id]: '' }));
     this.periods.close(p.id).subscribe({
       error: () => this.rowErrors.update((all) => ({ ...all, [p.id]: 'Could not close that period.' })),
+    });
+  }
+
+  protected reopen(p: Period): void {
+    this.rowErrors.update((all) => ({ ...all, [p.id]: '' }));
+    this.periods.reopen(p.id).subscribe({
+      error: () => this.rowErrors.update((all) => ({
+        ...all, [p.id]: 'Could not reopen that period: only a steward can reopen a closed period.',
+      })),
     });
   }
 
