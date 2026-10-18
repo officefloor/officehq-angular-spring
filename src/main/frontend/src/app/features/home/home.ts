@@ -1,9 +1,21 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { SessionService } from '../../core/session.service';
+import { SheetPicker } from '../session/sheet-picker';
+import { SignIn } from '../session/signin';
 
-// The base home page (empty). A page is an Angular component like this one, plus one entry in
-// app.routes.ts.
+// The one screen: sign in, then choose a sheet.
 @Component({
   selector: 'app-home',
-  template: `<p data-testid="home-empty">Nothing here yet.</p>`,
+  imports: [SignIn, SheetPicker],
+  template: `
+    @if (session.user(); as user) {
+      <p>Signed in as <span data-testid="current-user">{{ user }}</span></p>
+      <app-sheet-picker />
+    } @else {
+      <app-signin />
+    }
+  `,
 })
-export class Home {}
+export class Home {
+  protected readonly session = inject(SessionService);
+}
