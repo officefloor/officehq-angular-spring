@@ -19,16 +19,19 @@ export class SheetService {
   private readonly session = inject(SessionService);
   private readonly current = signal<string | null>(null);
   private readonly currentToday = signal<string | null>(null);
+  private readonly loadCount = signal(0);
 
   readonly sheetId = this.current.asReadonly();
   readonly today = this.currentToday.asReadonly();
+  /** Bumped on every load, so what is kept per sheet is re-read even when the same id is loaded again. */
+  readonly loads = this.loadCount.asReadonly();
 
   load(id: string): Observable<string> {
     return this.http
       .post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
         headers: this.session.headers(),
       })
-      .pipe(map((s) => this.show(s)));
+      .pipe(map((s) => (this.show(s), this.loadCount.update((n) => n + 1), s.id)));
   }
 
   setToday(today: string): Observable<string> {

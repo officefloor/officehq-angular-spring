@@ -1,12 +1,13 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { SheetService } from '../../core/sheet.service';
+import { People } from '../people/people';
 import { SheetToday } from './sheet-today';
 
 // Choose the active sheet by typing its id and loading it.
 @Component({
   selector: 'app-sheet-picker',
-  imports: [ReactiveFormsModule, SheetToday],
+  imports: [ReactiveFormsModule, SheetToday, People],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Load sheet">
       <label for="sheet-id-input">Sheet id</label>
@@ -19,6 +20,7 @@ import { SheetToday } from './sheet-today';
     @if (sheets.sheetId(); as current) {
       <p>Sheet: <span data-testid="sheet-current-id">{{ current }}</span></p>
       <app-sheet-today />
+      <app-people />
     }
   `,
 })
