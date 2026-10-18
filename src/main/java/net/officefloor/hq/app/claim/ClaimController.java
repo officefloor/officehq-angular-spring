@@ -64,7 +64,7 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
-        return ClaimView.of(service.add(sheetId, personId, form.amountValue(), form.date(), form.note()));
+        return ClaimView.of(service.add(sheetId, user, personId, form.amountValue(), form.date(), form.note()));
     }
 
     /** Change a claim's amount, date and note. */
@@ -74,6 +74,6 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
-        return ClaimView.of(service.edit(sheetId, claimId, form.amountValue(), form.date(), form.note()));
+        return ClaimView.of(service.edit(sheetId, user, claimId, form.amountValue(), form.date(), form.note()));
     }
 }

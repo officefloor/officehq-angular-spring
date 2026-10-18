@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import java.util.Locale;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -14,10 +15,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     /** The sheet's people, in the order they were added. */
@@ -32,27 +35,38 @@ public class PersonService {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         requireUnusedName(sheetId, null, trimmed);
+        Person saved;
         try {
-            return people.saveAndFlush(new Person(sheetId, trimmed, grade));
+            saved = people.saveAndFlush(new Person(sheetId, trimmed, grade));
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
+        audit(sheetId, user, "PERSON_ADDED", saved);
+        return saved;
     }
 
     /** Change a person's name and grade. */
     @Transactional
-    public Person edit(String sheetId, long personId, String name, Grade grade) {
+    public Person edit(String sheetId, String user, long personId, String name, Grade grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         String trimmed = name.trim();
         requireUnusedName(sheetId, personId, trimmed);
         person.setName(trimmed);
         person.setGrade(grade);
+        Person saved;
         try {
-            return people.saveAndFlush(person);
+            saved = people.saveAndFlush(person);
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
+        audit(sheetId, user, "PERSON_EDITED", saved);
+        return saved;
+    }
+
+    private void audit(String sheetId, String user, String event, Person person) {
+        audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " grade=" + person.getGrade());
     }
 
     /** Refuse a name another person on the sheet already has, ignoring case. */

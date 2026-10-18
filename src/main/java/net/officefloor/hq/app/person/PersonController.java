@@ -60,6 +60,6 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.edit(sheetId, personId, form.name(), form.grade()));
+        return PersonView.of(service.edit(sheetId, user, personId, form.name(), form.grade()));
     }
 }
