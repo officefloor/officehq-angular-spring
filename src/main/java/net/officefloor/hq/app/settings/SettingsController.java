@@ -8,7 +8,10 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.session.SessionController;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.http.HttpStatus;
@@ -29,16 +32,17 @@ public class SettingsController {
 
     /**
      * The sheet's settings, as text with two decimals: the clerk limit (null when there is none) and
-     * the floor; the terms in days; the late percent, with two decimals; and the policy date
+     * the floor; the terms in days; the terms in days of each grade that has its own; the late percent, with two decimals; and the policy date
      * (yyyy-mm-dd, null when there is none: the sheet's today is used); and the period numbering from-date
      * (yyyy-mm-dd, null when off).
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, String policyDate,
+    public record SettingsView(String clerkLimit, String floor, int terms, Map<Grade, Integer> gradeTerms,
+            String latePct, String policyDate,
             String periodNumberingFrom) {
         static SettingsView of(Sheet sheet) {
             BigDecimal limit = sheet.getClerkLimit();
             return new SettingsView(limit == null ? null : limit.setScale(2).toPlainString(),
-                    sheet.getFloor().setScale(2).toPlainString(), sheet.getTerms(),
+                    sheet.getFloor().setScale(2).toPlainString(), sheet.getTerms(), sheet.getGradeTerms(),
                     sheet.getLatePct().setScale(2).toPlainString(),
                     sheet.getPolicyDate() == null ? null : sheet.getPolicyDate().toString(),
                     sheet.getPeriodNumberingFrom() == null ? null : sheet.getPeriodNumberingFrom().toString());
@@ -47,12 +51,13 @@ public class SettingsController {
 
     /**
      * The settings to save; a setting left out (null) is not changed. The clerk limit is 0.00 or more
-     * with up to two decimals, blank for no limit; the floor is 0.00 or more with up to two decimals; the terms are a whole number of days, 0 or more; the late percent is 0.00 or more with up to two decimals; the policy date is yyyy-mm-dd, blank for none; so is the period numbering from-date.
+     * with up to two decimals, blank for no limit; the floor is 0.00 or more with up to two decimals; the terms are a whole number of days, 0 or more; so are a grade's own terms, blank for the sheet's; the late percent is 0.00 or more with up to two decimals; the policy date is yyyy-mm-dd, blank for none; so is the period numbering from-date.
      */
     public record SettingsForm(
             @Pattern(regexp = "\\s*|\\d{1,13}(\\.\\d{1,2})?") String clerkLimit,
             @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String floor,
             @Pattern(regexp = "\\d{1,4}") String terms,
+            Map<Grade, @NotNull @Pattern(regexp = "\\s*|\\d{1,4}") String> gradeTerms,
             @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String latePct,
             @Pattern(regexp = "\\s*|\\d{4}-\\d{2}-\\d{2}") String policyDate,
             @Pattern(regexp = "\\s*|\\d{4}-\\d{2}-\\d{2}") String periodNumberingFrom) {
@@ -67,6 +72,16 @@ public class SettingsController {
 
         Integer termsValue() {
             return terms == null ? null : Integer.valueOf(terms);
+        }
+
+        /** The grades given, each with its own terms (null: blank, it uses the sheet's terms). */
+        Map<Grade, Integer> gradeTermsValue() {
+            Map<Grade, Integer> values = new HashMap<>();
+            if (gradeTerms != null) {
+                gradeTerms.forEach((grade, days) ->
+                        values.put(grade, days.isBlank() ? null : Integer.valueOf(days.trim())));
+            }
+            return values;
         }
 
         BigDecimal latePctValue() {
@@ -127,7 +142,7 @@ public class SettingsController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody SettingsForm form) {
         return SettingsView.of(service.save(sheetId, user, form.clerkLimit() != null, form.clerkLimitValue(),
-                form.floorValue(), form.termsValue(), form.latePctValue(), form.policyDate() != null,
+                form.floorValue(), form.termsValue(), form.gradeTermsValue(), form.latePctValue(), form.policyDate() != null,
                 form.policyDateValue(), form.periodNumberingFrom() != null, form.periodNumberingFromValue()));
     }
 

@@ -82,15 +82,17 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
-        sheets.lock(sheetId, user);
+        Sheet sheet = sheets.lock(sheetId, user);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate dated = dateOrToday(sheetId, date);
         periods.requireOpenOn(sheetId, dated);
         requireNotRetired(person, dated);
         String corrected = correctedNumber(sheetId, personId, amount, corrects);
+        LocalDate dueBy = dated.plusDays(sheet.termsFor(person.gradeOn(dated)));
         RollupService.Rollup before = rollups.snapshot(sheetId);
-        Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note), corrected));
+        Claim saved = claims.saveAndFlush(
+                new Claim(sheetId, personId, amount, dated, dueBy, noteOf(note), corrected));
         audit(sheetId, user, "CLAIM_ADDED", person, saved, saved.getNumber());
         rollups.recordChanges(sheetId, user, before);
         return saved;

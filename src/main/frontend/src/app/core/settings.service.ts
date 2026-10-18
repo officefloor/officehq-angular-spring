@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, forkJoin, of, tap } from 'rxjs';
 import { LateTerms, cents } from './claims.service';
+import { Grade } from './people.service';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
 
@@ -21,6 +22,8 @@ interface SettingsView {
   floor: string;
   /** Days: a claim is due by its date plus these. */
   terms: number;
+  /** Days: the terms of each grade that has its own (a grade left out uses the sheet's terms). */
+  gradeTerms: Partial<Record<Grade, number>>;
   /** Two decimals: an overdue claim gains this percent of its figure for every full 30 days overdue. */
   latePct: string;
   /** yyyy-MM-dd; null when none is set (the sheet's today is the policy date). */
@@ -34,6 +37,8 @@ export interface SettingsChange {
   clerkLimit?: string;
   floor?: string;
   terms?: string;
+  /** A grade's own terms; '' for the sheet's terms. */
+  gradeTerms?: Partial<Record<Grade, string>>;
   latePct?: string;
   policyDate?: string;
   periodNumberingFrom?: string;
@@ -50,7 +55,8 @@ const DEFAULT_LATE_PCT = '0.00';
 
 // The active sheet's settings and the roles it gives user names. A name with no role is a clerk; a
 // clerk may settle a claim only when its due is at or below the clerk limit (none: no limit), a
-// steward any claim. A claim's live due is at least the floor; it is due by its date plus the terms;
+// steward any claim. A claim's live due is at least the floor; it is due by its date plus the terms of its
+// person's grade (the sheet's terms for a grade without its own) when it was created;
 // an overdue one gains the late percent of its figure for every full 30 days overdue. A claim dated
 // before the policy date (none: the sheet's today) rounds its live figures half up, else half to even.
 // While the period numbering from-date is set and the sheet's today is on or after it, a claim opened
@@ -63,6 +69,7 @@ export class SettingsService {
   private readonly limit = signal<string | null>(null);
   private readonly floorValue = signal<string>(DEFAULT_FLOOR);
   private readonly termsValue = signal<number>(DEFAULT_TERMS);
+  private readonly gradeTermsValue = signal<Partial<Record<Grade, number>>>({});
   private readonly latePctValue = signal<string>(DEFAULT_LATE_PCT);
   private readonly policyDateValue = signal<string | null>(null);
   private readonly periodNumberingFromValue = signal<string | null>(null);
@@ -74,6 +81,8 @@ export class SettingsService {
   readonly floorCents = computed(() => cents(this.floorValue()));
   /** The terms in days. */
   readonly terms = this.termsValue.asReadonly();
+  /** The terms in days of each grade that has its own. */
+  readonly gradeTerms = this.gradeTermsValue.asReadonly();
   readonly latePct = this.latePctValue.asReadonly();
   /** The late percent in hundredths of a percent. */
   readonly latePctHundredths = computed(() => cents(this.latePctValue()));
@@ -86,7 +95,7 @@ export class SettingsService {
   readonly roles = this.list.asReadonly();
   /** What an overdue claim's late charge follows now. */
   readonly late = computed<LateTerms>(() => ({
-    terms: this.termsValue(), today: this.sheets.today(), pct: this.latePctHundredths(),
+    today: this.sheets.today(), pct: this.latePctHundredths(),
   }));
 
   /** Re-read the active sheet's settings and roles from the store. */
@@ -96,6 +105,7 @@ export class SettingsService {
       this.limit.set(null);
       this.floorValue.set(DEFAULT_FLOOR);
       this.termsValue.set(DEFAULT_TERMS);
+      this.gradeTermsValue.set({});
       this.latePctValue.set(DEFAULT_LATE_PCT);
       this.policyDateValue.set(null);
       this.periodNumberingFromValue.set(null);
@@ -126,6 +136,7 @@ export class SettingsService {
     this.limit.set(settings.clerkLimit);
     this.floorValue.set(settings.floor);
     this.termsValue.set(settings.terms);
+    this.gradeTermsValue.set(settings.gradeTerms);
     this.latePctValue.set(settings.latePct);
     this.policyDateValue.set(settings.policyDate);
     this.periodNumberingFromValue.set(settings.periodNumberingFrom);

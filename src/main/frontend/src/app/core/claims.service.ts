@@ -13,6 +13,8 @@ export interface Claim {
   amount: string;
   /** yyyy-MM-dd */
   date: string;
+  /** yyyy-MM-dd: fixed when it was created, from the terms of its person's grade in force on its date. */
+  dueBy: string;
   note: string;
   status: ClaimStatus;
   /** Given when opened; null while a draft and once voided. */
@@ -60,9 +62,8 @@ export function fixed(c: Claim): boolean {
   return c.due !== null || (bound(c) && c.statedDue !== null);
 }
 
-/** What an overdue claim's late charge follows: the terms (days), the sheet's today (yyyy-MM-dd; null: none loaded) and the late percent (in hundredths of a percent). */
+/** What an overdue claim's late charge follows: the sheet's today (yyyy-MM-dd; null: none loaded) and the late percent (in hundredths of a percent). */
 export interface LateTerms {
-  terms: number;
   today: string | null;
   pct: number;
 }
@@ -101,20 +102,14 @@ export function correction(c: Claim): boolean {
 
 /** The late charge in cents on a figure: the late percent of it for every full 30 days the claim is overdue, rounded like due. */
 export function lateCharge(c: Claim, figure: number, late: LateTerms, halfUp = false): number {
-  if (late.today === null || !overdue(c, late.terms, late.today)) return 0;
-  const days = (Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000;
+  if (late.today === null || !overdue(c, late.today)) return 0;
+  const days = (Date.parse(late.today) - Date.parse(c.dueBy)) / 86_400_000;
   return due(figure, late.pct * Math.floor(days / 30), halfUp);
 }
 
-/** The date (yyyy-MM-dd) a claim is due by: its date plus the terms (days). */
-export function dueBy(c: Claim, terms: number): string {
-  const [y, m, d] = c.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
-}
-
 /** A claim is overdue when it is open (or pending) and its due-by is before the sheet's today (yyyy-MM-dd; null: none loaded). */
-export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return today !== null && isOpen(c) && dueBy(c, terms) < today;
+export function overdue(c: Claim, today: string | null): boolean {
+  return today !== null && isOpen(c) && c.dueBy < today;
 }
 
 export interface ClaimForm {

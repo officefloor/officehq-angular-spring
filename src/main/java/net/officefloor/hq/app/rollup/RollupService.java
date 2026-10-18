@@ -154,12 +154,12 @@ public class RollupService {
 
     /**
      * An overdue claim's late charge on a figure: the sheet's late percent of it for every full 30
-     * days the claim is overdue (open, due by its date plus the terms, before the sheet's today),
+     * days the claim is overdue (open, its due-by before the sheet's today),
      * rounded like due; zero when it is not overdue.
      */
     private static BigDecimal lateCharge(Sheet sheet, Claim claim, BigDecimal figure, RoundingMode rounding) {
         if (!claim.getStatus().isOpen()) return BigDecimal.ZERO;
-        long daysOver = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday());
+        long daysOver = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday());
         if (daysOver <= 0) return BigDecimal.ZERO;
         BigDecimal pct = sheet.getLatePct().multiply(BigDecimal.valueOf(daysOver / 30));
         return figure.multiply(pct).movePointLeft(2).setScale(2, rounding);

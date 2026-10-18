@@ -27,14 +27,14 @@ public class ClaimController {
     /**
      * A claim; the amount (and a settled claim's fixed due, null otherwise) is sent as text with two
      * decimals so it is never rounded on the way. A claim bound by its person's last statement is
-     * stated, with the figure it had then (null: n/a).
+     * stated, with the figure it had then (null: n/a). Its due-by was fixed when it was created.
      */
-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+    public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String due, String openedBy, boolean stated, String statedDue,
             String corrects) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                    claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getDue() == null ? null : claim.getDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),

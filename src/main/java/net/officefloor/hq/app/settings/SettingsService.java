@@ -3,14 +3,16 @@ package net.officefloor.hq.app.settings;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.Grade;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The sheet's settings (its clerk limit, floor, terms, late percent, policy date and period numbering from-date) and the roles it gives user names. */
+/** The sheet's settings (its clerk limit, floor, terms, terms per grade, late percent, policy date and period numbering from-date) and the roles it gives user names. */
 @Service
 public class SettingsService {
 
@@ -34,7 +36,8 @@ public class SettingsService {
 
     /**
      * Save the settings given: {@code setClerkLimit} the clerk limit (null: no limit), a non-null
-     * {@code floor} the floor, a non-null {@code terms} the terms in days, a non-null {@code latePct} the
+     * {@code floor} the floor, a non-null {@code terms} the terms in days, each grade in {@code gradeTerms}
+     * its own terms in days (null: it uses the sheet's terms), a non-null {@code latePct} the
      * late percent, {@code setPolicyDate} the policy date (null: the sheet's today), {@code setPeriodNumberingFrom}
      * the period numbering from-date (null: off); each one saved is
      * audited, even when its value is the same. A floor, terms, late percent or policy date that moves
@@ -42,7 +45,7 @@ public class SettingsService {
      */
     @Transactional
     public Sheet save(String sheetId, String user, boolean setClerkLimit, BigDecimal clerkLimit, BigDecimal floor,
-            Integer terms, BigDecimal latePct, boolean setPolicyDate, LocalDate policyDate,
+            Integer terms, Map<Grade, Integer> gradeTerms, BigDecimal latePct, boolean setPolicyDate, LocalDate policyDate,
             boolean setPeriodNumberingFrom, LocalDate periodNumberingFrom) {
         Sheet sheet = sheets.lock(sheetId, user);
         if (setClerkLimit) {
@@ -63,6 +66,13 @@ public class SettingsService {
             audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                     + " key=terms value=" + terms);
             rollups.recordChanges(sheetId, user, before);
+        }
+        for (Grade grade : Grade.values()) {
+            if (!gradeTerms.containsKey(grade)) continue;
+            Integer days = gradeTerms.get(grade);
+            sheet.setGradeTerms(grade, days);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                    + " key=terms-" + grade + " value=" + (days == null ? "" : days));
         }
         if (latePct != null) {
             RollupService.Rollup before = rollups.snapshot(sheetId);

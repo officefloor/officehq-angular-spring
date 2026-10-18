@@ -2,10 +2,12 @@ import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ROLES, SettingsChange, SettingsService } from '../../core/settings.service';
+import { GRADES, Grade } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
 
 // The sheet's settings (its clerk limit: blank for none; its floor, the least a claim's live due is; its terms,
-// the days after its date a claim is due by; its late percent, what an overdue claim gains per full 30 days; its
+// the days after its date a claim is due by, and each grade's own terms, blank for the sheet's: a claim's due-by
+// is fixed when it is added, from the terms of its person's grade in force on its date; its late percent, what an overdue claim gains per full 30 days; its
 // policy date, blank for the sheet's today: a claim dated before it rounds half up, else half to even; its period numbering from-date, blank for off: from it
 // on, a claim opened is numbered within its period) and the roles it gives user names (clerk,
 // the default for any name, or steward), each with a form that changes it.
@@ -23,6 +25,11 @@ import { SheetService } from '../../core/sheet.service';
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days; empty: the sheet's terms)</label>
+          <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControl]="gradeTerms[g]"
+            inputmode="numeric" />
+        }
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <label for="setting-policy-date">Policy date (yyyy-mm-dd; empty: the sheet's today)</label>
@@ -38,6 +45,10 @@ import { SheetService } from '../../core/sheet.service';
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ settings.clerkLimit() ?? '' }}</span></p>
       <p>Floor now: <span data-testid="setting-floor-current">{{ settings.floor() }}</span></p>
       <p>Terms now: <span data-testid="setting-terms-current">{{ settings.terms() }}</span> days</p>
+      @for (g of grades; track g) {
+        <p>Terms for grade {{ g }} now:
+          <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ settings.gradeTerms()[g] ?? '' }}</span></p>
+      }
       <p>Late percent now: <span data-testid="setting-late-pct-current">{{ settings.latePct() }}</span></p>
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ settings.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now:
@@ -73,6 +84,11 @@ export class Settings {
   protected readonly settings = inject(SettingsService);
   private readonly sheets = inject(SheetService);
   protected readonly roles = ROLES;
+  protected readonly grades = GRADES;
+  /** Each grade's own terms (days; empty: the sheet's terms). */
+  protected readonly gradeTerms = Object.fromEntries(
+    GRADES.map((g) => [g, new FormControl('', { nonNullable: true })]),
+  ) as Record<Grade, FormControl<string>>;
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
@@ -80,6 +96,7 @@ export class Settings {
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+    gradeTerms: new FormGroup(this.gradeTerms),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -127,6 +144,11 @@ export class Settings {
       this.settingsError.set('Enter terms of 0 or more whole days.');
       return;
     }
+    const ownTerms = GRADES.filter((g) => !/^(\d{1,4})?$/.test(this.gradeTerms[g].value.trim()));
+    if (ownTerms.length > 0) {
+      this.settingsError.set(`Enter terms for grade ${ownTerms[0]} of 0 or more whole days, or leave them empty.`);
+      return;
+    }
     if (!/^\d{1,3}(\.\d{1,2})?$/.test(late)) {
       this.settingsError.set('Enter a late percent of 0.00 or more with up to two decimals.');
       return;
@@ -144,6 +166,10 @@ export class Settings {
     if (clerkLimit.dirty || clerkLimit.touched) change.clerkLimit = limit;
     if (floor.dirty || floor.touched) change.floor = least;
     if (terms.dirty || terms.touched) change.terms = days;
+    for (const g of GRADES) {
+      const own = this.gradeTerms[g];
+      if (own.dirty || own.touched) change.gradeTerms = { ...change.gradeTerms, [g]: own.value.trim() };
+    }
     if (latePct.dirty || latePct.touched) change.latePct = late;
     if (policyDate.dirty || policyDate.touched) change.policyDate = policy;
     if (periodNumberingFrom.dirty || periodNumberingFrom.touched) change.periodNumberingFrom = numberingFrom;
@@ -159,7 +185,8 @@ export class Settings {
       { clerkLimit: this.settings.clerkLimit() ?? '', floor: this.settings.floor(),
         terms: String(this.settings.terms()), latePct: this.settings.latePct(),
         policyDate: this.settings.policyDate() ?? '',
-        periodNumberingFrom: this.settings.periodNumberingFrom() ?? '' },
+        periodNumberingFrom: this.settings.periodNumberingFrom() ?? '',
+        gradeTerms: Object.fromEntries(GRADES.map((g) => [g, String(this.settings.gradeTerms()[g] ?? '')])) },
       { emitEvent: false },
     );
   }

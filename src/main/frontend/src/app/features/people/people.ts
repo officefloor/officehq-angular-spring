@@ -203,12 +203,11 @@ export class People {
     const floor = this.settings.floorCents();
     const late = this.settings.late();
     const halfUp = this.totals.halfUp();
-    const terms = this.settings.terms();
     const today = this.sheets.today();
     for (const p of this.people.people()) {
       const behind = (this.claims.byPerson().get(p.id) ?? [])
         .filter(this.claims.live())
-        .filter((c) => overdue(c, terms, today));
+        .filter((c) => overdue(c, today));
       const rateOn = (date: string) => this.rateOn(p, date);
       out.set(p.id, {
         count: behind.length,

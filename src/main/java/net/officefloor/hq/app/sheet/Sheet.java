@@ -1,12 +1,23 @@
 package net.officefloor.hq.app.sheet;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.MapKeyEnumerated;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import net.officefloor.hq.app.person.Grade;
 
 /** A sheet: the unit everything else in the app is kept under. */
 @Entity
@@ -41,6 +52,14 @@ public class Sheet {
     /** A claim is due by its date plus this many days. */
     @Column(name = "terms", nullable = false)
     private int terms = 14;
+
+    /** The terms of a grade that has its own; a grade without uses the sheet's terms. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_grade_terms", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "grade")
+    @MapKeyEnumerated(EnumType.STRING)
+    @Column(name = "terms", nullable = false)
+    private Map<Grade, Integer> gradeTerms = new HashMap<>();
 
     /** An overdue claim gains this percent of its figure for every full 30 days it is overdue. */
     @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
@@ -87,6 +106,20 @@ public class Sheet {
     public int getTerms() { return terms; }
 
     public void setTerms(int terms) { this.terms = terms; }
+
+    /** The terms each grade with its own has. */
+    public Map<Grade, Integer> getGradeTerms() {
+        return Collections.unmodifiableMap(gradeTerms);
+    }
+
+    /** Give a grade its own terms; null: it uses the sheet's terms. */
+    public void setGradeTerms(Grade grade, Integer days) {
+        if (days == null) gradeTerms.remove(grade);
+        else gradeTerms.put(grade, days);
+    }
+
+    /** The terms in force for a grade: its own, else the sheet's. */
+    public int termsFor(Grade grade) { return gradeTerms.getOrDefault(grade, terms); }
 
     public BigDecimal getLatePct() { return latePct; }
 
