@@ -7,8 +7,9 @@ import { RatesService, due } from '../../core/rates.service';
 import { PersonClaims } from './person-claims';
 
 // The sheet's people: a form that adds a person or edits the one opened, and the list with each
-// person's claims, claimed and due-total, and the sheet's claimed total and due-total. A person whose
-// grade has no rate has no due-total (n/a), and the sheet's due-total skips them.
+// person's claims, claimed and due-total, and the sheet's claimed total and due-total. A due-total
+// uses the grade's rate in force on the sheet's today; a person whose grade has none then has no
+// due-total (n/a), and the sheet's due-total skips them.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims],
@@ -73,7 +74,7 @@ export class People {
   });
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
-  /** Each person's due-total in cents: their claimed times their grade's rate; absent when it has no rate. */
+  /** Each person's due-total in cents: their claimed times their grade's rate in force today; absent when it has none. */
   protected readonly dueTotals = computed(() => {
     const out = new Map<number, number>();
     for (const p of this.people.people()) {

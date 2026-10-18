@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rate;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Grade;
@@ -21,21 +22,27 @@ public class RateService {
         this.audit = audit;
     }
 
-    /** The sheet's rates, one per grade that has one. */
+    /** The sheet's rates, by grade then from-date (the one with none first). */
     @Transactional(readOnly = true)
     public List<Rate> list(String sheetId) {
-        return rates.findBySheetIdOrderByGradeAsc(sheetId);
+        return rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
     }
 
-    /** Set a grade's rate, replacing the one it had (the sheet is started when it was never loaded before). */
+    /**
+     * Set a grade's rate from a date ({@code null}: from the beginning of time), replacing the one it
+     * had for that from-date. The sheet is locked so two settings of the same rate go one at a time
+     * (and is started when it was never loaded before).
+     */
     @Transactional
-    public Rate set(String sheetId, String user, Grade grade, BigDecimal pct) {
-        sheets.load(sheetId, user);
-        Rate rate = rates.findBySheetIdAndGrade(sheetId, grade).orElseGet(() -> new Rate(sheetId, grade, pct));
+    public Rate set(String sheetId, String user, Grade grade, LocalDate from, BigDecimal pct) {
+        sheets.lock(sheetId, user);
+        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from)
+                .orElseGet(() -> new Rate(sheetId, grade, from, pct));
         rate.setPct(pct);
         Rate saved = rates.saveAndFlush(rate);
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
-                + " grade=" + saved.getGrade() + " rate=" + saved.getPct().setScale(2).toPlainString());
+                + " grade=" + saved.getGrade() + " rate=" + saved.getPct().setScale(2).toPlainString()
+                + (from != null ? " from=" + from : ""));
         return saved;
     }
 }

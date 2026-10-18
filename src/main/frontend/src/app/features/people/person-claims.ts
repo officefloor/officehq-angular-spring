@@ -4,7 +4,7 @@ import { Claim, ClaimAction, ClaimsService, cents, money } from '../../core/clai
 import { Grade } from '../../core/people.service';
 import { RatesService, due } from '../../core/rates.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, its due (n/a when the person's grade has no rate), and a form that adds a claim or edits the one opened.
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, its due (n/a when the person's grade has no rate in force on the claim's date), and a form that adds a claim or edits the one opened.
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -55,7 +55,6 @@ export class PersonClaims {
   readonly grade = input.required<Grade>();
   private readonly service = inject(ClaimsService);
   private readonly rates = inject(RatesService);
-  private readonly rate = computed(() => this.rates.byGrade().get(this.grade()));
   protected readonly claims = computed(() => this.service.byPerson().get(this.personId()) ?? []);
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
@@ -76,10 +75,10 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
-  /** A settled claim shows the due fixed when it was settled; any other (or one settled without a rate) follows the rates. */
+  /** A settled claim shows the due fixed when it was settled; any other (or one settled without a rate) follows the rate in force on its date. */
   protected dueOf(c: Claim): string {
     if (c.due !== null) return c.due;
-    const rate = this.rate();
+    const rate = this.rates.rateOn(this.grade(), c.date);
     return rate === undefined ? 'n/a' : money(due(cents(c.amount), rate));
   }
 

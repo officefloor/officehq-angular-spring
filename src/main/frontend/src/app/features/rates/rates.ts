@@ -4,7 +4,8 @@ import { GRADES, Grade } from '../../core/people.service';
 import { RatesService } from '../../core/rates.service';
 import { SheetService } from '../../core/sheet.service';
 
-// The sheet's rate for each grade, and a form that sets a grade's rate.
+// Each grade's rate in force on the sheet's today, every rate the sheet has (by grade and from-date),
+// and a form that sets a grade's rate from a date (none: from the beginning of time).
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -20,26 +21,38 @@ import { SheetService } from '../../core/sheet.service';
         </select>
         <label for="rate-form-pct">Rate (%)</label>
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" />
+        <label for="rate-form-from">From (empty: always)</label>
+        <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
         }
       </form>
       <table>
+        <caption>In force today</caption>
         <thead>
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (g of grades; track g) {
-            <tr [attr.data-testid]="pctOf(g) === null ? null : 'rate-row-' + g + '-start'">
+            <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">
-                @if (pctOf(g); as pct) {
-                  <span data-testid="rate-pct">{{ pct }}</span>
-                } @else {
-                  n/a
-                }
-              </td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ rates.current().get(g)?.pct ?? 'n/a' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>All rates</caption>
+        <thead>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+        </thead>
+        <tbody>
+          @for (r of rates.rates(); track r.grade + (r.from ?? 'start')) {
+            <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+              <th scope="row">{{ r.grade }}</th>
+              <td>{{ r.from ?? 'always' }}</td>
+              <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
         </tbody>
@@ -48,12 +61,13 @@ import { SheetService } from '../../core/sheet.service';
   `,
 })
 export class Rates {
-  private readonly rates = inject(RatesService);
+  protected readonly rates = inject(RatesService);
   private readonly sheets = inject(SheetService);
   protected readonly grades = GRADES;
   protected readonly form = new FormGroup({
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
   });
   protected readonly error = signal('');
 
@@ -67,24 +81,20 @@ export class Rates {
     });
   }
 
-  protected pctOf(grade: Grade): string | null {
-    return this.rates.rates().find((r) => r.grade === grade)?.pct ?? null;
-  }
-
   private reset(): void {
     this.error.set('');
-    this.form.reset({ grade: 'A', pct: '' }, { emitEvent: false });
+    this.form.reset({ grade: 'A', pct: '', from: '' }, { emitEvent: false });
   }
 
   protected submit(): void {
     this.error.set('');
-    const { grade, pct } = this.form.getRawValue();
+    const { grade, pct, from } = this.form.getRawValue();
     const p = pct.trim();
     if (!/^\d{1,3}(\.\d{1,2})?$/.test(p)) {
       this.error.set('Enter a rate of 0.00 or more, up to 999.99, with up to two decimals.');
       return;
     }
-    this.rates.set(grade, p).subscribe({
+    this.rates.set(grade, p, from.trim() || null).subscribe({
       next: () => this.reset(),
       error: () => this.error.set('Could not set that rate.'),
     });

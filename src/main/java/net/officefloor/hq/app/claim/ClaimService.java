@@ -81,7 +81,7 @@ public class ClaimService {
         claim.setStatus(next);
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
         if (next == ClaimStatus.SETTLED) {
-            claim.setDue(rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+            claim.setDue(rates.findInForce(sheetId, person.getGrade(), claim.getDate())
                     .map(rate -> due(claim.getAmount(), rate))
                     .orElse(null));
         }
