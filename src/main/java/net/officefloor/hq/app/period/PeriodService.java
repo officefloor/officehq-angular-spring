@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -126,6 +127,12 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
         return saved;
+    }
+
+    /** The period of the sheet whose dates contain {@code date}; none when no period does. */
+    @Transactional(readOnly = true)
+    public Optional<Period> periodOn(String sheetId, LocalDate date) {
+        return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().filter(p -> p.contains(date)).findFirst();
     }
 
     /** Refuse a change to a claim dated {@code date} when a closed period of the sheet contains it. */

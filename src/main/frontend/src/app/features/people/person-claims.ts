@@ -155,7 +155,7 @@ export class PersonClaims {
     }
     this.error.set('');
     this.editing.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects?.toString() ?? '' },
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
       { emitEvent: false });
   }
 
@@ -175,11 +175,11 @@ export class PersonClaims {
       return;
     }
     const k = corrects.trim();
-    if (a.startsWith('-') && !/^[1-9]\d{0,8}$/.test(k)) {
+    if (a.startsWith('-') && k === '') {
       this.error.set('A negative amount is a correction: give the number of the settled claim it corrects.');
       return;
     }
-    const form = { amount: a, date: date.trim() || null, note: note.trim(), corrects: k && a.startsWith('-') ? Number(k) : null };
+    const form = { amount: a, date: date.trim() || null, note: note.trim(), corrects: k && a.startsWith('-') ? k : null };
     const id = this.editing();
     const saved = id === null ? this.service.add(this.personId(), form) : this.service.edit(id, form);
     this.saving = true;

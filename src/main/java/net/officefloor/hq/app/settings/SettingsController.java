@@ -30,28 +30,32 @@ public class SettingsController {
     /**
      * The sheet's settings, as text with two decimals: the clerk limit (null when there is none) and
      * the floor; the terms in days; the late percent, with two decimals; and the policy date
-     * (yyyy-mm-dd, null when there is none: the sheet's today is used).
+     * (yyyy-mm-dd, null when there is none: the sheet's today is used); and the period numbering from-date
+     * (yyyy-mm-dd, null when off).
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, String policyDate) {
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, String policyDate,
+            String periodNumberingFrom) {
         static SettingsView of(Sheet sheet) {
             BigDecimal limit = sheet.getClerkLimit();
             return new SettingsView(limit == null ? null : limit.setScale(2).toPlainString(),
                     sheet.getFloor().setScale(2).toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().setScale(2).toPlainString(),
-                    sheet.getPolicyDate() == null ? null : sheet.getPolicyDate().toString());
+                    sheet.getPolicyDate() == null ? null : sheet.getPolicyDate().toString(),
+                    sheet.getPeriodNumberingFrom() == null ? null : sheet.getPeriodNumberingFrom().toString());
         }
     }
 
     /**
      * The settings to save; a setting left out (null) is not changed. The clerk limit is 0.00 or more
-     * with up to two decimals, blank for no limit; the floor is 0.00 or more with up to two decimals; the terms are a whole number of days, 0 or more; the late percent is 0.00 or more with up to two decimals; the policy date is yyyy-mm-dd, blank for none.
+     * with up to two decimals, blank for no limit; the floor is 0.00 or more with up to two decimals; the terms are a whole number of days, 0 or more; the late percent is 0.00 or more with up to two decimals; the policy date is yyyy-mm-dd, blank for none; so is the period numbering from-date.
      */
     public record SettingsForm(
             @Pattern(regexp = "\\s*|\\d{1,13}(\\.\\d{1,2})?") String clerkLimit,
             @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String floor,
             @Pattern(regexp = "\\d{1,4}") String terms,
             @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String latePct,
-            @Pattern(regexp = "\\s*|\\d{4}-\\d{2}-\\d{2}") String policyDate) {
+            @Pattern(regexp = "\\s*|\\d{4}-\\d{2}-\\d{2}") String policyDate,
+            @Pattern(regexp = "\\s*|\\d{4}-\\d{2}-\\d{2}") String periodNumberingFrom) {
 
         BigDecimal clerkLimitValue() {
             return clerkLimit == null || clerkLimit.isBlank() ? null : new BigDecimal(clerkLimit).setScale(2);
@@ -70,11 +74,19 @@ public class SettingsController {
         }
 
         LocalDate policyDateValue() {
-            if (policyDate == null || policyDate.isBlank()) return null;
+            return dateValue(policyDate);
+        }
+
+        LocalDate periodNumberingFromValue() {
+            return dateValue(periodNumberingFrom);
+        }
+
+        private static LocalDate dateValue(String text) {
+            if (text == null || text.isBlank()) return null;
             try {
-                return LocalDate.parse(policyDate);
+                return LocalDate.parse(text.trim());
             } catch (DateTimeParseException e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + policyDate);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + text);
             }
         }
     }
@@ -116,7 +128,7 @@ public class SettingsController {
             @Valid @RequestBody SettingsForm form) {
         return SettingsView.of(service.save(sheetId, user, form.clerkLimit() != null, form.clerkLimitValue(),
                 form.floorValue(), form.termsValue(), form.latePctValue(), form.policyDate() != null,
-                form.policyDateValue()));
+                form.policyDateValue(), form.periodNumberingFrom() != null, form.periodNumberingFromValue()));
     }
 
     /** The roles the sheet gives user names, by name. */

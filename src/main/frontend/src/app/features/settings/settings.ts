@@ -6,7 +6,8 @@ import { SheetService } from '../../core/sheet.service';
 
 // The sheet's settings (its clerk limit: blank for none; its floor, the least a claim's live due is; its terms,
 // the days after its date a claim is due by; its late percent, what an overdue claim gains per full 30 days; its
-// policy date, blank for the sheet's today: a claim dated before it rounds half up, else half to even) and the roles it gives user names (clerk,
+// policy date, blank for the sheet's today: a claim dated before it rounds half up, else half to even; its period numbering from-date, blank for off: from it
+// on, a claim opened is numbered within its period) and the roles it gives user names (clerk,
 // the default for any name, or steward), each with a form that changes it.
 @Component({
   selector: 'app-settings',
@@ -26,6 +27,9 @@ import { SheetService } from '../../core/sheet.service';
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <label for="setting-policy-date">Policy date (yyyy-mm-dd; empty: the sheet's today)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" />
+        <label for="setting-period-numbering-from">Period numbering from (yyyy-mm-dd; empty: off)</label>
+        <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from"
+          formControlName="periodNumberingFrom" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -36,6 +40,8 @@ import { SheetService } from '../../core/sheet.service';
       <p>Terms now: <span data-testid="setting-terms-current">{{ settings.terms() }}</span> days</p>
       <p>Late percent now: <span data-testid="setting-late-pct-current">{{ settings.latePct() }}</span></p>
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ settings.policyDate() ?? '' }}</span></p>
+      <p>Period numbering from now:
+        <span data-testid="setting-period-numbering-from-current">{{ settings.periodNumberingFrom() ?? '' }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -73,6 +79,7 @@ export class Settings {
     terms: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
+    periodNumberingFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -101,12 +108,13 @@ export class Settings {
   protected save(): void {
     if (this.savingSettings) return;
     this.settingsError.set('');
-    const { clerkLimit, floor, terms, latePct, policyDate } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const least = floor.value.trim();
     const days = terms.value.trim();
     const late = latePct.value.trim();
     const policy = policyDate.value.trim();
+    const numberingFrom = periodNumberingFrom.value.trim();
     if (limit !== '' && !/^\d{1,13}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it empty.');
       return;
@@ -127,6 +135,10 @@ export class Settings {
       this.settingsError.set('Enter a policy date as yyyy-mm-dd, or leave it empty.');
       return;
     }
+    if (numberingFrom !== '' && !validDate(numberingFrom)) {
+      this.settingsError.set('Enter a period numbering from-date as yyyy-mm-dd, or leave it empty.');
+      return;
+    }
     // Only the settings the user changed or filled in are saved (and audited).
     const change: SettingsChange = {};
     if (clerkLimit.dirty || clerkLimit.touched) change.clerkLimit = limit;
@@ -134,6 +146,7 @@ export class Settings {
     if (terms.dirty || terms.touched) change.terms = days;
     if (latePct.dirty || latePct.touched) change.latePct = late;
     if (policyDate.dirty || policyDate.touched) change.policyDate = policy;
+    if (periodNumberingFrom.dirty || periodNumberingFrom.touched) change.periodNumberingFrom = numberingFrom;
     this.savingSettings = true;
     this.settings.save(change).pipe(finalize(() => (this.savingSettings = false))).subscribe({
       next: () => this.resetSettings(),
@@ -145,7 +158,8 @@ export class Settings {
     this.settingsForm.reset(
       { clerkLimit: this.settings.clerkLimit() ?? '', floor: this.settings.floor(),
         terms: String(this.settings.terms()), latePct: this.settings.latePct(),
-        policyDate: this.settings.policyDate() ?? '' },
+        policyDate: this.settings.policyDate() ?? '',
+        periodNumberingFrom: this.settings.periodNumberingFrom() ?? '' },
       { emitEvent: false },
     );
   }

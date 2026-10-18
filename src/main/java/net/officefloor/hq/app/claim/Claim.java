@@ -41,7 +41,7 @@ public class Claim {
 
     /** Given when the claim is opened; none while a draft; a voided claim keeps it (never reused). */
     @Column(name = "number")
-    private Integer number;
+    private String number;
 
     /** The user who opened the claim; none while a draft. They may not settle it. */
     @Column(name = "opened_by")
@@ -61,11 +61,11 @@ public class Claim {
 
     /** A correction's (negative amount) number of the settled claim of the same person it corrects; none otherwise. */
     @Column(name = "corrects")
-    private Integer corrects;
+    private String corrects;
 
     protected Claim() {}
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
         this.corrects = corrects;
         this.sheetId = sheetId;
         this.personId = personId;
@@ -96,9 +96,9 @@ public class Claim {
 
     public void setStatus(ClaimStatus status) { this.status = status; }
 
-    public Integer getNumber() { return number; }
+    public String getNumber() { return number; }
 
-    public void setNumber(Integer number) { this.number = number; }
+    public void setNumber(String number) { this.number = number; }
 
     public String getOpenedBy() { return openedBy; }
 
@@ -108,9 +108,9 @@ public class Claim {
 
     public void setDue(BigDecimal due) { this.due = due; }
 
-    public Integer getCorrects() { return corrects; }
+    public String getCorrects() { return corrects; }
 
-    public void setCorrects(Integer corrects) { this.corrects = corrects; }
+    public void setCorrects(String corrects) { this.corrects = corrects; }
 
     /** A correction: a negative amount; its due has no floor and no late charge. */
     public boolean isCorrection() {

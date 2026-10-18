@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -31,8 +30,8 @@ public class ClaimController {
      * stated, with the figure it had then (null: n/a).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String due, String openedBy, boolean stated, String statedDue,
-            Integer corrects) {
+            ClaimStatus status, String number, String due, String openedBy, boolean stated, String statedDue,
+            String corrects) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -51,10 +50,14 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "-?\\d{1,13}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Positive Integer corrects) {
+            @Size(max = 220) String corrects) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount).setScale(2);
+        }
+
+        String correctsValue() {
+            return corrects == null || corrects.isBlank() ? null : corrects.trim();
         }
     }
 
@@ -80,7 +83,7 @@ public class ClaimController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.add(sheetId, user, personId, form.amountValue(), form.date(), form.note(),
-                form.corrects()));
+                form.correctsValue()));
     }
 
     /**
@@ -103,7 +106,7 @@ public class ClaimController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.edit(sheetId, user, claimId, form.amountValue(), form.date(), form.note(),
-                form.corrects()));
+                form.correctsValue()));
     }
 
     /** The claims a bulk open asks for. */

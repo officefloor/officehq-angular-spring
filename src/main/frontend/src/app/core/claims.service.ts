@@ -16,7 +16,7 @@ export interface Claim {
   note: string;
   status: ClaimStatus;
   /** Given when opened; null while a draft and once voided. */
-  number: number | null;
+  number: string | null;
   /** A settled claim's due, fixed when it was settled, as text with two decimals; null while live, or when its grade had no rate then (it then follows the rates). */
   due: string | null;
   /** The user who opened it; null while a draft. They may not settle it. */
@@ -26,7 +26,7 @@ export interface Claim {
   /** The figure it had at that statement, as text with two decimals; null when it had none (n/a). */
   statedDue: string | null;
   /** A correction's (negative amount) number of the settled claim of the same person it corrects; null otherwise. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** What a bulk open did: how many claims were opened and how many refused. */
@@ -113,7 +113,7 @@ export interface ClaimForm {
   date: string | null;
   note: string;
   /** For a correction (a negative amount): the number of the settled claim it corrects. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 // The active sheet's claims, newest first, and what they add up to (kept in cents so sums are exact).

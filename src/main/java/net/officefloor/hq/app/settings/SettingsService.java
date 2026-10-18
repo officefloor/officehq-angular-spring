@@ -10,7 +10,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The sheet's settings (its clerk limit, floor, terms, late percent and policy date) and the roles it gives user names. */
+/** The sheet's settings (its clerk limit, floor, terms, late percent, policy date and period numbering from-date) and the roles it gives user names. */
 @Service
 public class SettingsService {
 
@@ -35,13 +35,15 @@ public class SettingsService {
     /**
      * Save the settings given: {@code setClerkLimit} the clerk limit (null: no limit), a non-null
      * {@code floor} the floor, a non-null {@code terms} the terms in days, a non-null {@code latePct} the
-     * late percent, {@code setPolicyDate} the policy date (null: the sheet's today); each one saved is
+     * late percent, {@code setPolicyDate} the policy date (null: the sheet's today), {@code setPeriodNumberingFrom}
+     * the period numbering from-date (null: off); each one saved is
      * audited, even when its value is the same. A floor, terms, late percent or policy date that moves
      * dues records the rollups that moved.
      */
     @Transactional
     public Sheet save(String sheetId, String user, boolean setClerkLimit, BigDecimal clerkLimit, BigDecimal floor,
-            Integer terms, BigDecimal latePct, boolean setPolicyDate, LocalDate policyDate) {
+            Integer terms, BigDecimal latePct, boolean setPolicyDate, LocalDate policyDate,
+            boolean setPeriodNumberingFrom, LocalDate periodNumberingFrom) {
         Sheet sheet = sheets.lock(sheetId, user);
         if (setClerkLimit) {
             sheet.setClerkLimit(clerkLimit);
@@ -75,6 +77,11 @@ public class SettingsService {
             audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                     + " key=policy-date value=" + (policyDate == null ? "" : policyDate));
             rollups.recordChanges(sheetId, user, before);
+        }
+        if (setPeriodNumberingFrom) {
+            sheet.setPeriodNumberingFrom(periodNumberingFrom);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                    + " key=period-numbering-from value=" + (periodNumberingFrom == null ? "" : periodNumberingFrom));
         }
         return sheet;
     }
