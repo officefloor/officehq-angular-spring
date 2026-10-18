@@ -9,7 +9,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The sheet's settings (its clerk limit, floor and terms) and the roles it gives user names. */
+/** The sheet's settings (its clerk limit, floor, terms and late percent) and the roles it gives user names. */
 @Service
 public class SettingsService {
 
@@ -33,12 +33,13 @@ public class SettingsService {
 
     /**
      * Save the settings given: {@code setClerkLimit} the clerk limit (null: no limit), a non-null
-     * {@code floor} the floor, a non-null {@code terms} the terms in days; each one saved is audited, even when its value is the same. A floor
-     * that moves live dues records the rollups that moved.
+     * {@code floor} the floor, a non-null {@code terms} the terms in days, a non-null {@code latePct} the
+     * late percent; each one saved is audited, even when its value is the same. A floor, terms or late
+     * percent that moves dues records the rollups that moved.
      */
     @Transactional
     public Sheet save(String sheetId, String user, boolean setClerkLimit, BigDecimal clerkLimit, BigDecimal floor,
-            Integer terms) {
+            Integer terms, BigDecimal latePct) {
         Sheet sheet = sheets.lock(sheetId, user);
         if (setClerkLimit) {
             sheet.setClerkLimit(clerkLimit);
@@ -53,9 +54,18 @@ public class SettingsService {
             rollups.recordChanges(sheetId, user, before);
         }
         if (terms != null) {
+            RollupService.Rollup before = rollups.snapshot(sheetId);
             sheet.setTerms(terms);
             audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                     + " key=terms value=" + terms);
+            rollups.recordChanges(sheetId, user, before);
+        }
+        if (latePct != null) {
+            RollupService.Rollup before = rollups.snapshot(sheetId);
+            sheet.setLatePct(latePct);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                    + " key=late-pct value=" + latePct.toPlainString());
+            rollups.recordChanges(sheetId, user, before);
         }
         return sheet;
     }

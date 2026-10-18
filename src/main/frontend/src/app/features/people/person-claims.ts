@@ -94,7 +94,8 @@ export class PersonClaims {
 
   /** A settled claim shows the due fixed when it was settled, a stated one the figure it was bound to; any other (or one settled without a rate) follows the rate in force on its date, at least the floor. */
   protected dueOf(c: Claim): string {
-    const d = claimDue(c, (date) => this.rates.rateOn(this.grade(), date), this.settings.floorCents());
+    const d = claimDue(c, (date) => this.rates.rateOn(this.grade(), date), this.settings.floorCents(),
+      this.settings.late());
     return d === undefined ? 'n/a' : money(d);
   }
 

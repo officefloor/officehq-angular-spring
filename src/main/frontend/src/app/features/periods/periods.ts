@@ -79,11 +79,12 @@ export class Periods {
     const grades = new Map(this.people.people().map((p) => [p.id, p.grade]));
     const out = new Map<number, number>();
     const floor = this.settings.floorCents();
+    const late = this.settings.late();
     for (const c of this.claims.claims().filter(this.claims.live())) {
       const period = this.periods.periodOn(c.date);
       const grade = grades.get(c.personId);
       if (!period || !grade) continue;
-      const d = claimDue(c, (date) => this.rates.rateOn(grade, date), floor);
+      const d = claimDue(c, (date) => this.rates.rateOn(grade, date), floor, late);
       out.set(period.id, (out.get(period.id) ?? 0) + (d ?? 0));
     }
     return out;

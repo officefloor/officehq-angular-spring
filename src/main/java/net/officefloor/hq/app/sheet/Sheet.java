@@ -42,6 +42,10 @@ public class Sheet {
     @Column(name = "terms", nullable = false)
     private int terms = 14;
 
+    /** An overdue claim gains this percent of its figure for every full 30 days it is overdue. */
+    @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal latePct = new BigDecimal("0.00");
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
@@ -72,6 +76,10 @@ public class Sheet {
     public int getTerms() { return terms; }
 
     public void setTerms(int terms) { this.terms = terms; }
+
+    public BigDecimal getLatePct() { return latePct; }
+
+    public void setLatePct(BigDecimal latePct) { this.latePct = latePct; }
 
     /** Give out the sheet's next claim number. */
     public int takeClaimNumber() { return ++lastClaimNumber; }

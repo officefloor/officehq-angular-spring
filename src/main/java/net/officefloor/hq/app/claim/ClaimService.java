@@ -130,13 +130,15 @@ public class ClaimService {
         }
         RollupService.Rollup before = rollups.snapshot(sheetId);
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
+        // Worked out while the claim is still open, so settling freezes its late charge in.
+        BigDecimal settledDue = next == ClaimStatus.SETTLED ? figure(sheetId, person, claim) : null;
         claim.setStatus(next);
         claim.setNumber(number);
         if (next == ClaimStatus.OPEN) {
             claim.setOpenedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
-            claim.setDue(figure(sheetId, person, claim));
+            claim.setDue(settledDue);
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
@@ -155,8 +157,8 @@ public class ClaimService {
     /**
      * Take a statement for a person on the sheet's today: their due-total then (the sum of the figures
      * of their claims that count, a held person's open ones not among them; n/a when their grade has
-     * no rate in force today and none of those claims has a fixed or bound figure) is recorded, and each claim that counts is bound to its
-     * figure then, the others left unbound. Their claims, newest first.
+     * no rate in force today and none of those claims has a fixed or bound figure; late charges in) is recorded, and each claim that counts is bound to its
+     * figure then (its late charge not bound: it keeps following the sheet's today), the others left unbound. Their claims, newest first.
      */
     @Transactional
     public List<Claim> statement(String sheetId, String user, long personId) {
@@ -175,7 +177,7 @@ public class ClaimService {
             if (RollupService.counts(person, c)) {
                 BigDecimal figure = figure(sheetId, person, c);
                 if (figure != null) total = total.add(figure);
-                c.bind(figure);
+                c.bind(rollups.boundFigure(sheetId, person, c));
             } else {
                 c.unbind();
             }

@@ -151,31 +151,33 @@ export class People {
   protected readonly dueTotals = computed(() => {
     const out = new Map<number, number>();
     const floor = this.settings.floorCents();
+    const late = this.settings.late();
     for (const p of this.people.people()) {
       const counted = (this.claims.byPerson().get(p.id) ?? []).filter(this.claims.live());
       if (!this.rates.byGrade().has(p.grade) && !counted.some(fixed)) continue;
       const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
-      out.set(p.id, counted.reduce((sum, c) => sum + (claimDue(c, rateOn, floor) ?? 0), 0));
+      out.set(p.id, counted.reduce((sum, c) => sum + (claimDue(c, rateOn, floor, late) ?? 0), 0));
     }
     return out;
   });
   /** Everyone's due-total added up, in cents, skipping those with none. */
   protected readonly dueTotal = computed(() => [...this.dueTotals().values()].reduce((sum, d) => sum + d, 0));
 
-  /** Each person's overdue claims that count: how many, and their dues added up in cents. */
+  /** Each person's overdue claims that count: how many, and their dues (late charges in) added up in cents. */
   protected readonly overdue = computed(() => {
     const out = new Map<number, { count: number; cents: number }>();
     const floor = this.settings.floorCents();
+    const late = this.settings.late();
     const terms = this.settings.terms();
     const today = this.sheets.today();
     for (const p of this.people.people()) {
-      const late = (this.claims.byPerson().get(p.id) ?? [])
+      const behind = (this.claims.byPerson().get(p.id) ?? [])
         .filter(this.claims.live())
         .filter((c) => overdue(c, terms, today));
       const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
       out.set(p.id, {
-        count: late.length,
-        cents: late.reduce((sum, c) => sum + (claimDue(c, rateOn, floor) ?? 0), 0),
+        count: behind.length,
+        cents: behind.reduce((sum, c) => sum + (claimDue(c, rateOn, floor, late) ?? 0), 0),
       });
     }
     return out;

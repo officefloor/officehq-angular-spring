@@ -5,7 +5,7 @@ import { ROLES, SettingsChange, SettingsService } from '../../core/settings.serv
 import { SheetService } from '../../core/sheet.service';
 
 // The sheet's settings (its clerk limit: blank for none; its floor, the least a claim's live due is; its terms,
-// the days after its date a claim is due by) and the roles it gives user names (clerk,
+// the days after its date a claim is due by; its late percent, what an overdue claim gains per full 30 days) and the roles it gives user names (clerk,
 // the default for any name, or steward), each with a form that changes it.
 @Component({
   selector: 'app-settings',
@@ -21,6 +21,8 @@ import { SheetService } from '../../core/sheet.service';
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
+        <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
+        <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -29,6 +31,7 @@ import { SheetService } from '../../core/sheet.service';
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ settings.clerkLimit() ?? '' }}</span></p>
       <p>Floor now: <span data-testid="setting-floor-current">{{ settings.floor() }}</span></p>
       <p>Terms now: <span data-testid="setting-terms-current">{{ settings.terms() }}</span> days</p>
+      <p>Late percent now: <span data-testid="setting-late-pct-current">{{ settings.latePct() }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -64,6 +67,7 @@ export class Settings {
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
+    latePct: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -92,10 +96,11 @@ export class Settings {
   protected save(): void {
     if (this.savingSettings) return;
     this.settingsError.set('');
-    const { clerkLimit, floor, terms } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const least = floor.value.trim();
     const days = terms.value.trim();
+    const late = latePct.value.trim();
     if (limit !== '' && !/^\d{1,13}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it empty.');
       return;
@@ -108,11 +113,16 @@ export class Settings {
       this.settingsError.set('Enter terms of 0 or more whole days.');
       return;
     }
-    // Only the settings the user changed are saved (and audited).
+    if (!/^\d{1,3}(\.\d{1,2})?$/.test(late)) {
+      this.settingsError.set('Enter a late percent of 0.00 or more with up to two decimals.');
+      return;
+    }
+    // Only the settings the user changed or filled in are saved (and audited).
     const change: SettingsChange = {};
-    if (clerkLimit.dirty) change.clerkLimit = limit;
-    if (floor.dirty) change.floor = least;
-    if (terms.dirty) change.terms = days;
+    if (clerkLimit.dirty || clerkLimit.touched) change.clerkLimit = limit;
+    if (floor.dirty || floor.touched) change.floor = least;
+    if (terms.dirty || terms.touched) change.terms = days;
+    if (latePct.dirty || latePct.touched) change.latePct = late;
     this.savingSettings = true;
     this.settings.save(change).pipe(finalize(() => (this.savingSettings = false))).subscribe({
       next: () => this.resetSettings(),
@@ -123,7 +133,7 @@ export class Settings {
   private resetSettings(): void {
     this.settingsForm.reset(
       { clerkLimit: this.settings.clerkLimit() ?? '', floor: this.settings.floor(),
-        terms: String(this.settings.terms()) },
+        terms: String(this.settings.terms()), latePct: this.settings.latePct() },
       { emitEvent: false },
     );
   }

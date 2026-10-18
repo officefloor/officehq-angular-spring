@@ -42,16 +42,38 @@ export function fixed(c: Claim): boolean {
   return c.due !== null || (c.stated && c.statedDue !== null);
 }
 
+/** What an overdue claim's late charge follows: the terms (days), the sheet's today (yyyy-MM-dd; null: none loaded) and the late percent (in hundredths of a percent). */
+export interface LateTerms {
+  terms: number;
+  today: string | null;
+  pct: number;
+}
+
 /**
- * A claim's due in cents: a settled claim's fixed figure, else the figure its person's last statement
- * bound it to, otherwise its amount times the rate in force on its date (looked up by `rateOn`, in
- * hundredths of a percent), raised to the sheet's floor (in cents); undefined when it has none.
+ * A claim's due in cents: a settled claim's fixed figure (any late charge frozen in), else the figure
+ * its person's last statement bound it to, otherwise its amount times the rate in force on its date
+ * (looked up by `rateOn`, in hundredths of a percent), raised to the sheet's floor (in cents);
+ * undefined when it has none. An overdue claim's figure gains its late charge on top (never bound).
  */
-export function claimDue(c: Claim, rateOn: (date: string) => number | undefined, floor: number): number | undefined {
+export function claimDue(
+  c: Claim, rateOn: (date: string) => number | undefined, floor: number, late?: LateTerms,
+): number | undefined {
   if (c.due !== null) return cents(c.due);
+  const figure = baseDue(c, rateOn, floor);
+  return figure === undefined || !late ? figure : figure + lateCharge(c, figure, late);
+}
+
+function baseDue(c: Claim, rateOn: (date: string) => number | undefined, floor: number): number | undefined {
   if (c.stated) return c.statedDue === null ? undefined : cents(c.statedDue);
   const rate = rateOn(c.date);
   return rate === undefined ? undefined : Math.max(due(cents(c.amount), rate), floor);
+}
+
+/** The late charge in cents on a figure: the late percent of it for every full 30 days the claim is overdue, rounded like due. */
+export function lateCharge(c: Claim, figure: number, late: LateTerms): number {
+  if (late.today === null || !overdue(c, late.terms, late.today)) return 0;
+  const days = (Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000;
+  return due(figure, late.pct * Math.floor(days / 30));
 }
 
 /** The date (yyyy-MM-dd) a claim is due by: its date plus the terms (days). */

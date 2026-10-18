@@ -25,24 +25,26 @@ public class SettingsController {
 
     /**
      * The sheet's settings, as text with two decimals: the clerk limit (null when there is none) and
-     * the floor; and the terms in days.
+     * the floor; the terms in days; and the late percent, with two decimals.
      */
-    public record SettingsView(String clerkLimit, String floor, int terms) {
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct) {
         static SettingsView of(Sheet sheet) {
             BigDecimal limit = sheet.getClerkLimit();
             return new SettingsView(limit == null ? null : limit.setScale(2).toPlainString(),
-                    sheet.getFloor().setScale(2).toPlainString(), sheet.getTerms());
+                    sheet.getFloor().setScale(2).toPlainString(), sheet.getTerms(),
+                    sheet.getLatePct().setScale(2).toPlainString());
         }
     }
 
     /**
      * The settings to save; a setting left out (null) is not changed. The clerk limit is 0.00 or more
-     * with up to two decimals, blank for no limit; the floor is 0.00 or more with up to two decimals; the terms are a whole number of days, 0 or more.
+     * with up to two decimals, blank for no limit; the floor is 0.00 or more with up to two decimals; the terms are a whole number of days, 0 or more; the late percent is 0.00 or more with up to two decimals.
      */
     public record SettingsForm(
             @Pattern(regexp = "\\s*|\\d{1,13}(\\.\\d{1,2})?") String clerkLimit,
             @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String floor,
-            @Pattern(regexp = "\\d{1,4}") String terms) {
+            @Pattern(regexp = "\\d{1,4}") String terms,
+            @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String latePct) {
 
         BigDecimal clerkLimitValue() {
             return clerkLimit == null || clerkLimit.isBlank() ? null : new BigDecimal(clerkLimit).setScale(2);
@@ -54,6 +56,10 @@ public class SettingsController {
 
         Integer termsValue() {
             return terms == null ? null : Integer.valueOf(terms);
+        }
+
+        BigDecimal latePctValue() {
+            return latePct == null ? null : new BigDecimal(latePct).setScale(2);
         }
     }
 
@@ -93,7 +99,7 @@ public class SettingsController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody SettingsForm form) {
         return SettingsView.of(service.save(sheetId, user, form.clerkLimit() != null, form.clerkLimitValue(),
-                form.floorValue(), form.termsValue()));
+                form.floorValue(), form.termsValue(), form.latePctValue()));
     }
 
     /** The roles the sheet gives user names, by name. */

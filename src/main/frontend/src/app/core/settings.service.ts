@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, forkJoin, of, tap } from 'rxjs';
-import { cents } from './claims.service';
+import { LateTerms, cents } from './claims.service';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
 
@@ -21,6 +21,8 @@ interface SettingsView {
   floor: string;
   /** Days: a claim is due by its date plus these. */
   terms: number;
+  /** Two decimals: an overdue claim gains this percent of its figure for every full 30 days overdue. */
+  latePct: string;
 }
 
 /** The settings to save; one left out keeps its value. The clerk limit is '' for no limit. */
@@ -28,6 +30,7 @@ export interface SettingsChange {
   clerkLimit?: string;
   floor?: string;
   terms?: string;
+  latePct?: string;
 }
 
 /** The floor a sheet starts with. */
@@ -36,9 +39,13 @@ const DEFAULT_FLOOR = '1.00';
 /** The terms (days) a sheet starts with. */
 const DEFAULT_TERMS = 14;
 
+/** The late percent a sheet starts with. */
+const DEFAULT_LATE_PCT = '0.00';
+
 // The active sheet's settings and the roles it gives user names. A name with no role is a clerk; a
 // clerk may settle a claim only when its due is at or below the clerk limit (none: no limit), a
-// steward any claim. A claim's live due is at least the floor; it is due by its date plus the terms.
+// steward any claim. A claim's live due is at least the floor; it is due by its date plus the terms;
+// an overdue one gains the late percent of its figure for every full 30 days overdue.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -47,6 +54,7 @@ export class SettingsService {
   private readonly limit = signal<string | null>(null);
   private readonly floorValue = signal<string>(DEFAULT_FLOOR);
   private readonly termsValue = signal<number>(DEFAULT_TERMS);
+  private readonly latePctValue = signal<string>(DEFAULT_LATE_PCT);
   private readonly list = signal<RoleEntry[]>([]);
 
   readonly clerkLimit = this.limit.asReadonly();
@@ -55,7 +63,14 @@ export class SettingsService {
   readonly floorCents = computed(() => cents(this.floorValue()));
   /** The terms in days. */
   readonly terms = this.termsValue.asReadonly();
+  readonly latePct = this.latePctValue.asReadonly();
+  /** The late percent in hundredths of a percent. */
+  readonly latePctHundredths = computed(() => cents(this.latePctValue()));
   readonly roles = this.list.asReadonly();
+  /** What an overdue claim's late charge follows now. */
+  readonly late = computed<LateTerms>(() => ({
+    terms: this.termsValue(), today: this.sheets.today(), pct: this.latePctHundredths(),
+  }));
 
   /** Re-read the active sheet's settings and roles from the store. */
   reload(): Observable<unknown> {
@@ -64,6 +79,7 @@ export class SettingsService {
       this.limit.set(null);
       this.floorValue.set(DEFAULT_FLOOR);
       this.termsValue.set(DEFAULT_TERMS);
+      this.latePctValue.set(DEFAULT_LATE_PCT);
       this.list.set([]);
       return of(null);
     }
@@ -91,6 +107,7 @@ export class SettingsService {
     this.limit.set(settings.clerkLimit);
     this.floorValue.set(settings.floor);
     this.termsValue.set(settings.terms);
+    this.latePctValue.set(settings.latePct);
   }
 
   /** Give a user name a role, replacing the one it had; refused for any role but clerk or steward. */

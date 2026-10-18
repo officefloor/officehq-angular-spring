@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -118,18 +119,43 @@ public class RollupService {
     }
 
     /**
-     * The figure a claim shows: a settled claim's fixed due, else the figure its person's last
-     * statement bound it to, else its amount times the rate in force on its date, raised to the
-     * sheet's floor; null when none.
+     * The figure a claim shows: a settled claim's fixed due (any late charge frozen in), else its
+     * bound figure (see {@link #boundFigure}) with, when it is overdue, its late charge on top; null
+     * when none.
      */
     @Transactional(readOnly = true)
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getDue() != null) return claim.getDue();
+        BigDecimal figure = boundFigure(sheetId, person, claim);
+        if (figure == null) return null;
+        return sheets.findById(sheetId).map(sheet -> figure.add(lateCharge(sheet, claim, figure))).orElse(figure);
+    }
+
+    /**
+     * The figure a statement binds a live claim to, without any late charge: the figure its person's
+     * last statement bound it to, else its amount times the rate in force on its date, raised to the
+     * sheet's floor; null when none.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal boundFigure(String sheetId, Person person, Claim claim) {
         if (claim.isStated()) return claim.getStatedDue();
         BigDecimal floor = sheets.findById(sheetId).map(Sheet::getFloor).orElse(BigDecimal.ZERO);
         return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
                 .map(rate -> due(claim.getAmount(), rate).max(floor).setScale(2))
                 .orElse(null);
+    }
+
+    /**
+     * An overdue claim's late charge on a figure: the sheet's late percent of it for every full 30
+     * days the claim is overdue (open, due by its date plus the terms, before the sheet's today),
+     * rounded like due; zero when it is not overdue.
+     */
+    private static BigDecimal lateCharge(Sheet sheet, Claim claim, BigDecimal figure) {
+        if (claim.getStatus() != ClaimStatus.OPEN) return BigDecimal.ZERO;
+        long daysOver = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday());
+        if (daysOver <= 0) return BigDecimal.ZERO;
+        BigDecimal pct = sheet.getLatePct().multiply(BigDecimal.valueOf(daysOver / 30));
+        return figure.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /** The amount times the rate's percent, rounded half to even to cents (as the screen works it out). */
