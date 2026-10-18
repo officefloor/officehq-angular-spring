@@ -29,11 +29,12 @@ public class ClaimController {
      * decimals so it is never rounded on the way.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String due) {
+            ClaimStatus status, Integer number, String due, String openedBy) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
-                    claim.getDue() == null ? null : claim.getDue().setScale(2).toPlainString());
+                    claim.getDue() == null ? null : claim.getDue().setScale(2).toPlainString(),
+                    claim.getOpenedBy());
         }
     }
 
@@ -82,7 +83,10 @@ public class ClaimController {
         return ClaimView.of(service.edit(sheetId, user, claimId, form.amountValue(), form.date(), form.note()));
     }
 
-    /** Open, settle or void a claim; a change its status does not allow is refused (409). */
+    /**
+     * Open, settle or void a claim; a change its status does not allow is refused (409), as is
+     * settling it by the user who opened it (403).
+     */
     @PostMapping("/claims/{claimId}/{action:open|settle|void}")
     public ClaimView changeStatus(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,

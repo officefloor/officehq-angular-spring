@@ -43,6 +43,10 @@ public class Claim {
     @Column(name = "number")
     private Integer number;
 
+    /** The user who opened the claim; none while a draft. They may not settle it. */
+    @Column(name = "opened_by")
+    private String openedBy;
+
     /** Fixed when the claim is settled; none while live, or when its grade had no rate then (it stays live). */
     @Column(name = "due", precision = 15, scale = 2)
     private BigDecimal due;
@@ -82,6 +86,10 @@ public class Claim {
     public Integer getNumber() { return number; }
 
     public void setNumber(Integer number) { this.number = number; }
+
+    public String getOpenedBy() { return openedBy; }
+
+    public void setOpenedBy(String openedBy) { this.openedBy = openedBy; }
 
     public BigDecimal getDue() { return due; }
 

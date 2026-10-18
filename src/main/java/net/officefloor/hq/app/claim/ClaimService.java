@@ -65,7 +65,10 @@ public class ClaimService {
         return saved;
     }
 
-    /** Move a claim to its next status; a change its current status does not allow is refused. */
+    /**
+     * Move a claim to its next status; a change its current status does not allow is refused, as is
+     * settling it by the user who opened it.
+     */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
         Sheet sheet = sheets.lock(sheetId, user);
@@ -75,11 +78,17 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it");
+        }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         claim.setStatus(next);
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        if (next == ClaimStatus.OPEN) {
+            claim.setOpenedBy(user);
+        }
         if (next == ClaimStatus.SETTLED) {
             claim.setDue(rates.findInForce(sheetId, person.getGrade(), claim.getDate())
                     .map(rate -> due(claim.getAmount(), rate))

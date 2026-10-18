@@ -1,10 +1,11 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, ClaimAction, ClaimsService, claimDue, money } from '../../core/claims.service';
 import { Grade } from '../../core/people.service';
 import { RatesService } from '../../core/rates.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, its due (n/a when the person's grade has no rate in force on the claim's date), and a form that adds a claim or edits the one opened.
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), and a form that adds a claim or edits the one opened.
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -18,6 +19,7 @@ import { RatesService } from '../../core/rates.service';
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @for (a of actions; track a.action) {
@@ -84,7 +86,10 @@ export class PersonClaims {
   protected change(c: Claim, action: ClaimAction): void {
     this.setClaimError(c.id, '');
     this.service.changeStatus(c.id, action).subscribe({
-      error: () => this.setClaimError(c.id, `A ${c.status} claim cannot be changed that way.`),
+      error: (e: unknown) => this.setClaimError(c.id,
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'You opened this claim, so someone else must settle it.'
+          : `A ${c.status} claim cannot be changed that way.`),
     });
   }
 
