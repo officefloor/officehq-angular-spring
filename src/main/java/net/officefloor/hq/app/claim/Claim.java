@@ -43,6 +43,10 @@ public class Claim {
     @Column(name = "number")
     private Integer number;
 
+    /** Fixed when the claim is settled; none while live, or when its grade had no rate then (it stays live). */
+    @Column(name = "due", precision = 15, scale = 2)
+    private BigDecimal due;
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
@@ -78,4 +82,8 @@ public class Claim {
     public Integer getNumber() { return number; }
 
     public void setNumber(Integer number) { this.number = number; }
+
+    public BigDecimal getDue() { return due; }
+
+    public void setDue(BigDecimal due) { this.due = due; }
 }

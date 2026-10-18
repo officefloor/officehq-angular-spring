@@ -1,11 +1,14 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -18,12 +21,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -69,19 +75,32 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         claim.setStatus(next);
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        if (next == ClaimStatus.SETTLED) {
+            claim.setDue(rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+                    .map(rate -> due(claim.getAmount(), rate))
+                    .orElse(null));
+        }
         Claim saved = claims.saveAndFlush(claim);
-        Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
             case SETTLED -> "CLAIM_SETTLED";
             default -> "CLAIM_VOIDED";
         };
-        audit(sheetId, user, event, person, saved, number);
+        String suffix = next == ClaimStatus.SETTLED
+                ? " due=" + (saved.getDue() == null ? "n/a" : saved.getDue().setScale(2).toPlainString())
+                : "";
+        audit(sheetId, user, event, person, saved, number, suffix);
         return saved;
+    }
+
+    /** The amount times the rate's percent, rounded half up to cents (as the screen works it out). */
+    private static BigDecimal due(BigDecimal amount, Rate rate) {
+        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**
@@ -89,9 +108,15 @@ public class ClaimService {
      * with a number (or, when voided, that had one) ends with it.
      */
     private void audit(String sheetId, String user, String event, Person person, Claim claim, Integer number) {
+        audit(sheetId, user, event, person, claim, number, "");
+    }
+
+    /** As above, with {@code suffix} (fields a later change added) at the end of the line. */
+    private void audit(String sheetId, String user, String event, Person person, Claim claim, Integer number,
+            String suffix) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
-                + (number != null ? " number=" + number : ""));
+                + (number != null ? " number=" + number : "") + suffix);
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {

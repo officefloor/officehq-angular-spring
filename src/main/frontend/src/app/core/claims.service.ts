@@ -15,6 +15,8 @@ export interface Claim {
   status: ClaimStatus;
   /** Given when opened; null while a draft and once voided. */
   number: number | null;
+  /** A settled claim's due, fixed when it was settled, as text with two decimals; null while live, or when its grade had no rate then (it then follows the rates). */
+  due: string | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';

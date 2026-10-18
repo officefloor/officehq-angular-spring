@@ -76,7 +76,9 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
+  /** A settled claim shows the due fixed when it was settled; any other (or one settled without a rate) follows the rates. */
   protected dueOf(c: Claim): string {
+    if (c.due !== null) return c.due;
     const rate = this.rate();
     return rate === undefined ? 'n/a' : money(due(cents(c.amount), rate));
   }
