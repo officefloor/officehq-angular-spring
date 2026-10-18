@@ -56,20 +56,25 @@ export interface LateTerms {
  * its person's last statement bound it to, otherwise its amount times the rate in force on its date
  * (looked up by `rateOn`, in hundredths of a percent), raised to the sheet's floor (in cents) unless a correction;
  * undefined when it has none. An overdue claim's figure gains its late charge on top (never bound).
+ * Its live figures round half up when `halfUp` says so for it, else half to even.
  */
 export function claimDue(
   c: Claim, rateOn: (date: string) => number | undefined, floor: number, late?: LateTerms,
+  halfUp: (c: Claim) => boolean = () => false,
 ): number | undefined {
   if (c.due !== null) return cents(c.due);
-  const figure = baseDue(c, rateOn, floor);
-  return figure === undefined || !late || correction(c) ? figure : figure + lateCharge(c, figure, late);
+  const up = halfUp(c);
+  const figure = baseDue(c, rateOn, floor, up);
+  return figure === undefined || !late || correction(c) ? figure : figure + lateCharge(c, figure, late, up);
 }
 
-function baseDue(c: Claim, rateOn: (date: string) => number | undefined, floor: number): number | undefined {
+function baseDue(
+  c: Claim, rateOn: (date: string) => number | undefined, floor: number, halfUp: boolean,
+): number | undefined {
   if (c.stated) return c.statedDue === null ? undefined : cents(c.statedDue);
   const rate = rateOn(c.date);
   if (rate === undefined) return undefined;
-  const d = due(cents(c.amount), rate);
+  const d = due(cents(c.amount), rate, halfUp);
   return correction(c) ? d : Math.max(d, floor);
 }
 
@@ -79,10 +84,10 @@ export function correction(c: Claim): boolean {
 }
 
 /** The late charge in cents on a figure: the late percent of it for every full 30 days the claim is overdue, rounded like due. */
-export function lateCharge(c: Claim, figure: number, late: LateTerms): number {
+export function lateCharge(c: Claim, figure: number, late: LateTerms, halfUp = false): number {
   if (late.today === null || !overdue(c, late.terms, late.today)) return 0;
   const days = (Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000;
-  return due(figure, late.pct * Math.floor(days / 30));
+  return due(figure, late.pct * Math.floor(days / 30), halfUp);
 }
 
 /** The date (yyyy-MM-dd) a claim is due by: its date plus the terms (days). */
@@ -143,6 +148,16 @@ export class ClaimsService {
 
   /** Everyone's claimed (live claims) added up, in cents. */
   readonly totalCents = computed(() => this.list().filter(this.live()).reduce((sum, c) => sum + cents(c.amount), 0));
+
+  /**
+   * The date a claim rounds by: a correction's is the date of the claim it corrects (its own when
+   * that is not found), any other claim's its own.
+   */
+  readonly roundingDate = computed(() => {
+    const byNumber = new Map<string, string>();
+    for (const c of this.list()) if (c.number !== null) byNumber.set(`${c.personId}:${c.number}`, c.date);
+    return (c: Claim) => (c.corrects === null ? c.date : byNumber.get(`${c.personId}:${c.corrects}`) ?? c.date);
+  });
 
   /** Re-read the active sheet's claims from the store. */
   reload(): Observable<unknown> {

@@ -129,22 +129,25 @@ public class RollupService {
         if (claim.getDue() != null) return claim.getDue();
         BigDecimal figure = boundFigure(sheetId, person, claim);
         if (figure == null || claim.isCorrection()) return figure;
-        return sheets.findById(sheetId).map(sheet -> figure.add(lateCharge(sheet, claim, figure))).orElse(figure);
+        return sheets.findById(sheetId)
+                .map(sheet -> figure.add(lateCharge(sheet, claim, figure, rounding(sheet, claim))))
+                .orElse(figure);
     }
 
     /**
      * The figure a statement binds a live claim to, without any late charge: the figure its person's
      * last statement bound it to, else its amount times the rate in force on its date for the grade
-     * in force on its date, raised to the
-     * sheet's floor (a correction has no floor); null when none.
+     * in force on its date (rounded as {@link #rounding} says), raised to the sheet's floor (a
+     * correction has no floor); null when none.
      */
     @Transactional(readOnly = true)
     public BigDecimal boundFigure(String sheetId, Person person, Claim claim) {
         if (claim.isStated()) return claim.getStatedDue();
-        BigDecimal floor = claim.isCorrection() ? null
-                : sheets.findById(sheetId).map(Sheet::getFloor).orElse(BigDecimal.ZERO);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        BigDecimal floor = claim.isCorrection() ? null : sheet == null ? BigDecimal.ZERO : sheet.getFloor();
+        RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN : rounding(sheet, claim);
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
-                .map(rate -> due(claim.getAmount(), rate))
+                .map(rate -> due(claim.getAmount(), rate, rounding))
                 .map(due -> (floor == null ? due : due.max(floor)).setScale(2))
                 .orElse(null);
     }
@@ -154,17 +157,35 @@ public class RollupService {
      * days the claim is overdue (open, due by its date plus the terms, before the sheet's today),
      * rounded like due; zero when it is not overdue.
      */
-    private static BigDecimal lateCharge(Sheet sheet, Claim claim, BigDecimal figure) {
+    private static BigDecimal lateCharge(Sheet sheet, Claim claim, BigDecimal figure, RoundingMode rounding) {
         if (claim.getStatus() != ClaimStatus.OPEN) return BigDecimal.ZERO;
         long daysOver = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday());
         if (daysOver <= 0) return BigDecimal.ZERO;
         BigDecimal pct = sheet.getLatePct().multiply(BigDecimal.valueOf(daysOver / 30));
-        return figure.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        return figure.multiply(pct).movePointLeft(2).setScale(2, rounding);
     }
 
-    /** The amount times the rate's percent, rounded half to even to cents (as the screen works it out). */
-    private static BigDecimal due(BigDecimal amount, Rate rate) {
-        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    /**
+     * How a claim's live figures round: half up when it is dated before the sheet's policy date (its
+     * today when none is set), else half to even. A correction rounds by the date of the claim it
+     * corrects (its own when that is not found).
+     */
+    private RoundingMode rounding(Sheet sheet, Claim claim) {
+        LocalDate dated = claim.getDate();
+        if (claim.getCorrects() != null) {
+            dated = claims.findBySheetIdOrderByIdDesc(sheet.getId()).stream()
+                    .filter(c -> c.getPersonId().equals(claim.getPersonId())
+                            && claim.getCorrects().equals(c.getNumber()) && !c.getId().equals(claim.getId()))
+                    .map(Claim::getDate)
+                    .findFirst()
+                    .orElse(dated);
+        }
+        return dated.isBefore(sheet.policyDateInForce()) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+    }
+
+    /** The amount times the rate's percent, rounded to cents as given (as the screen works it out). */
+    private static BigDecimal due(BigDecimal amount, Rate rate, RoundingMode rounding) {
+        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, rounding);
     }
 
     private static String text(BigDecimal amount) {

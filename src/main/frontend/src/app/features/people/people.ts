@@ -184,6 +184,7 @@ export class People {
     const out = new Map<number, { count: number; cents: number }>();
     const floor = this.settings.floorCents();
     const late = this.settings.late();
+    const halfUp = this.totals.halfUp();
     const terms = this.settings.terms();
     const today = this.sheets.today();
     for (const p of this.people.people()) {
@@ -193,7 +194,7 @@ export class People {
       const rateOn = (date: string) => this.rateOn(p, date);
       out.set(p.id, {
         count: behind.length,
-        cents: behind.reduce((sum, c) => sum + (claimDue(c, rateOn, floor, late) ?? 0), 0),
+        cents: behind.reduce((sum, c) => sum + (claimDue(c, rateOn, floor, late, halfUp) ?? 0), 0),
       });
     }
     return out;

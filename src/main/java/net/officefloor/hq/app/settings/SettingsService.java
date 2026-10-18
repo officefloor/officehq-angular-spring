@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -9,7 +10,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The sheet's settings (its clerk limit, floor, terms and late percent) and the roles it gives user names. */
+/** The sheet's settings (its clerk limit, floor, terms, late percent and policy date) and the roles it gives user names. */
 @Service
 public class SettingsService {
 
@@ -34,12 +35,13 @@ public class SettingsService {
     /**
      * Save the settings given: {@code setClerkLimit} the clerk limit (null: no limit), a non-null
      * {@code floor} the floor, a non-null {@code terms} the terms in days, a non-null {@code latePct} the
-     * late percent; each one saved is audited, even when its value is the same. A floor, terms or late
-     * percent that moves dues records the rollups that moved.
+     * late percent, {@code setPolicyDate} the policy date (null: the sheet's today); each one saved is
+     * audited, even when its value is the same. A floor, terms, late percent or policy date that moves
+     * dues records the rollups that moved.
      */
     @Transactional
     public Sheet save(String sheetId, String user, boolean setClerkLimit, BigDecimal clerkLimit, BigDecimal floor,
-            Integer terms, BigDecimal latePct) {
+            Integer terms, BigDecimal latePct, boolean setPolicyDate, LocalDate policyDate) {
         Sheet sheet = sheets.lock(sheetId, user);
         if (setClerkLimit) {
             sheet.setClerkLimit(clerkLimit);
@@ -65,6 +67,13 @@ public class SettingsService {
             sheet.setLatePct(latePct);
             audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                     + " key=late-pct value=" + latePct.toPlainString());
+            rollups.recordChanges(sheetId, user, before);
+        }
+        if (setPolicyDate) {
+            RollupService.Rollup before = rollups.snapshot(sheetId);
+            sheet.setPolicyDate(policyDate);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                    + " key=policy-date value=" + (policyDate == null ? "" : policyDate));
             rollups.recordChanges(sheetId, user, before);
         }
         return sheet;

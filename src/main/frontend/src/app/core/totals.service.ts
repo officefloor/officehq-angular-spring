@@ -1,5 +1,5 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { ClaimsService, claimDue, money } from './claims.service';
+import { Claim, ClaimsService, claimDue, money } from './claims.service';
 import { Grade, PeopleService, Person, gradeOn } from './people.service';
 import { PeriodsService } from './periods.service';
 import { RatesService } from './rates.service';
@@ -18,6 +18,16 @@ export class TotalsService {
   private readonly sheets = inject(SheetService);
 
   /**
+   * Whether a claim's live figures round half up: it rounds by a date before the policy date in force
+   * (the sheet's today when none is set); else they round half to even.
+   */
+  readonly halfUp = computed(() => {
+    const policy = this.settings.policyInForce();
+    const roundingDate = this.claims.roundingDate();
+    return (c: Claim) => policy !== null && roundingDate(c) < policy;
+  });
+
+  /**
    * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
    * absent when the grade in force on today has no rate in force then and none of those claims has a due.
    */
@@ -25,10 +35,11 @@ export class TotalsService {
     const out = new Map<number, number>();
     const floor = this.settings.floorCents();
     const late = this.settings.late();
+    const halfUp = this.halfUp();
     for (const p of this.people.people()) {
       const counted = (this.claims.byPerson().get(p.id) ?? []).filter(this.claims.live());
       const rateOn = (date: string) => this.rateOn(p, date);
-      const dues = counted.map((c) => claimDue(c, rateOn, floor, late));
+      const dues = counted.map((c) => claimDue(c, rateOn, floor, late, halfUp));
       const grade = this.gradeToday(p);
       if (!(grade && this.rates.byGrade().has(grade)) && dues.every((d) => d === undefined)) continue;
       out.set(p.id, dues.reduce<number>((sum, d) => sum + (d ?? 0), 0));
@@ -42,11 +53,12 @@ export class TotalsService {
     const out = new Map<number, number>();
     const floor = this.settings.floorCents();
     const late = this.settings.late();
+    const halfUp = this.halfUp();
     for (const c of this.claims.claims().filter(this.claims.live())) {
       const period = this.periods.periodOn(c.date);
       const p = people.get(c.personId);
       if (!period || !p) continue;
-      const d = claimDue(c, (date) => this.rateOn(p, date), floor, late);
+      const d = claimDue(c, (date) => this.rateOn(p, date), floor, late, halfUp);
       out.set(period.id, (out.get(period.id) ?? 0) + (d ?? 0));
     }
     return out;

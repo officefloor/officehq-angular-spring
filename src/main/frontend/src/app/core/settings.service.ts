@@ -23,6 +23,8 @@ interface SettingsView {
   terms: number;
   /** Two decimals: an overdue claim gains this percent of its figure for every full 30 days overdue. */
   latePct: string;
+  /** yyyy-MM-dd; null when none is set (the sheet's today is the policy date). */
+  policyDate: string | null;
 }
 
 /** The settings to save; one left out keeps its value. The clerk limit is '' for no limit. */
@@ -31,6 +33,7 @@ export interface SettingsChange {
   floor?: string;
   terms?: string;
   latePct?: string;
+  policyDate?: string;
 }
 
 /** The floor a sheet starts with. */
@@ -45,7 +48,8 @@ const DEFAULT_LATE_PCT = '0.00';
 // The active sheet's settings and the roles it gives user names. A name with no role is a clerk; a
 // clerk may settle a claim only when its due is at or below the clerk limit (none: no limit), a
 // steward any claim. A claim's live due is at least the floor; it is due by its date plus the terms;
-// an overdue one gains the late percent of its figure for every full 30 days overdue.
+// an overdue one gains the late percent of its figure for every full 30 days overdue. A claim dated
+// before the policy date (none: the sheet's today) rounds its live figures half up, else half to even.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -55,6 +59,7 @@ export class SettingsService {
   private readonly floorValue = signal<string>(DEFAULT_FLOOR);
   private readonly termsValue = signal<number>(DEFAULT_TERMS);
   private readonly latePctValue = signal<string>(DEFAULT_LATE_PCT);
+  private readonly policyDateValue = signal<string | null>(null);
   private readonly list = signal<RoleEntry[]>([]);
 
   readonly clerkLimit = this.limit.asReadonly();
@@ -66,6 +71,10 @@ export class SettingsService {
   readonly latePct = this.latePctValue.asReadonly();
   /** The late percent in hundredths of a percent. */
   readonly latePctHundredths = computed(() => cents(this.latePctValue()));
+  /** The policy date set (yyyy-MM-dd); null when none. */
+  readonly policyDate = this.policyDateValue.asReadonly();
+  /** The policy date in force: the one set, else the sheet's today (null: none loaded). */
+  readonly policyInForce = computed(() => this.policyDateValue() ?? this.sheets.today());
   readonly roles = this.list.asReadonly();
   /** What an overdue claim's late charge follows now. */
   readonly late = computed<LateTerms>(() => ({
@@ -80,6 +89,7 @@ export class SettingsService {
       this.floorValue.set(DEFAULT_FLOOR);
       this.termsValue.set(DEFAULT_TERMS);
       this.latePctValue.set(DEFAULT_LATE_PCT);
+      this.policyDateValue.set(null);
       this.list.set([]);
       return of(null);
     }
@@ -108,6 +118,7 @@ export class SettingsService {
     this.floorValue.set(settings.floor);
     this.termsValue.set(settings.terms);
     this.latePctValue.set(settings.latePct);
+    this.policyDateValue.set(settings.policyDate);
   }
 
   /** Give a user name a role, replacing the one it had; refused for any role but clerk or steward. */

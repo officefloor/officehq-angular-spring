@@ -5,7 +5,8 @@ import { ROLES, SettingsChange, SettingsService } from '../../core/settings.serv
 import { SheetService } from '../../core/sheet.service';
 
 // The sheet's settings (its clerk limit: blank for none; its floor, the least a claim's live due is; its terms,
-// the days after its date a claim is due by; its late percent, what an overdue claim gains per full 30 days) and the roles it gives user names (clerk,
+// the days after its date a claim is due by; its late percent, what an overdue claim gains per full 30 days; its
+// policy date, blank for the sheet's today: a claim dated before it rounds half up, else half to even) and the roles it gives user names (clerk,
 // the default for any name, or steward), each with a form that changes it.
 @Component({
   selector: 'app-settings',
@@ -23,6 +24,8 @@ import { SheetService } from '../../core/sheet.service';
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
+        <label for="setting-policy-date">Policy date (yyyy-mm-dd; empty: the sheet's today)</label>
+        <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -32,6 +35,7 @@ import { SheetService } from '../../core/sheet.service';
       <p>Floor now: <span data-testid="setting-floor-current">{{ settings.floor() }}</span></p>
       <p>Terms now: <span data-testid="setting-terms-current">{{ settings.terms() }}</span> days</p>
       <p>Late percent now: <span data-testid="setting-late-pct-current">{{ settings.latePct() }}</span></p>
+      <p>Policy date now: <span data-testid="setting-policy-date-current">{{ settings.policyDate() ?? '' }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -68,6 +72,7 @@ export class Settings {
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
+    policyDate: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -96,11 +101,12 @@ export class Settings {
   protected save(): void {
     if (this.savingSettings) return;
     this.settingsError.set('');
-    const { clerkLimit, floor, terms, latePct } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const least = floor.value.trim();
     const days = terms.value.trim();
     const late = latePct.value.trim();
+    const policy = policyDate.value.trim();
     if (limit !== '' && !/^\d{1,13}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it empty.');
       return;
@@ -117,12 +123,17 @@ export class Settings {
       this.settingsError.set('Enter a late percent of 0.00 or more with up to two decimals.');
       return;
     }
+    if (policy !== '' && !validDate(policy)) {
+      this.settingsError.set('Enter a policy date as yyyy-mm-dd, or leave it empty.');
+      return;
+    }
     // Only the settings the user changed or filled in are saved (and audited).
     const change: SettingsChange = {};
     if (clerkLimit.dirty || clerkLimit.touched) change.clerkLimit = limit;
     if (floor.dirty || floor.touched) change.floor = least;
     if (terms.dirty || terms.touched) change.terms = days;
     if (latePct.dirty || latePct.touched) change.latePct = late;
+    if (policyDate.dirty || policyDate.touched) change.policyDate = policy;
     this.savingSettings = true;
     this.settings.save(change).pipe(finalize(() => (this.savingSettings = false))).subscribe({
       next: () => this.resetSettings(),
@@ -133,7 +144,8 @@ export class Settings {
   private resetSettings(): void {
     this.settingsForm.reset(
       { clerkLimit: this.settings.clerkLimit() ?? '', floor: this.settings.floor(),
-        terms: String(this.settings.terms()), latePct: this.settings.latePct() },
+        terms: String(this.settings.terms()), latePct: this.settings.latePct(),
+        policyDate: this.settings.policyDate() ?? '' },
       { emitEvent: false },
     );
   }
@@ -158,4 +170,12 @@ export class Settings {
       error: () => this.roleError.set('Could not set that role.'),
     });
   }
+}
+
+/** A real calendar date written yyyy-mm-dd. */
+function validDate(text: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const [y, m, d] = text.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }

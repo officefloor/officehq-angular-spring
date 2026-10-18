@@ -9,6 +9,7 @@ import { RatesService } from '../../core/rates.service';
 import { SessionService } from '../../core/session.service';
 import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
+import { TotalsService } from '../../core/totals.service';
 
 // A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms), whether it is overdue (open and due before the sheet's today) and, for a correction (a negative amount), the number of the settled claim it corrects, and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
 @Component({
@@ -74,6 +75,7 @@ export class PersonClaims {
   private readonly session = inject(SessionService);
   private readonly settings = inject(SettingsService);
   private readonly sheets = inject(SheetService);
+  private readonly totals = inject(TotalsService);
   protected readonly periods = inject(PeriodsService);
   protected readonly claims = computed(() => this.service.byPerson().get(this.personId()) ?? []);
   protected readonly form = new FormGroup({
@@ -105,7 +107,7 @@ export class PersonClaims {
       return grade && this.rates.rateOn(grade, date);
     };
     const d = claimDue(c, rateOn, this.settings.floorCents(),
-      this.settings.late());
+      this.settings.late(), this.totals.halfUp());
     return d === undefined ? 'n/a' : money(d);
   }
 

@@ -46,6 +46,10 @@ public class Sheet {
     @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal latePct = new BigDecimal("0.00");
 
+    /** A claim dated before this rounds half up, one on or after it half to even; none: the sheet's today. */
+    @Column(name = "policy_date")
+    private LocalDate policyDate;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
@@ -80,6 +84,13 @@ public class Sheet {
     public BigDecimal getLatePct() { return latePct; }
 
     public void setLatePct(BigDecimal latePct) { this.latePct = latePct; }
+
+    public LocalDate getPolicyDate() { return policyDate; }
+
+    public void setPolicyDate(LocalDate policyDate) { this.policyDate = policyDate; }
+
+    /** The policy date in force: the one set, else the sheet's today. */
+    public LocalDate policyDateInForce() { return policyDate != null ? policyDate : today; }
 
     /** Give out the sheet's next claim number. */
     public int takeClaimNumber() { return ++lastClaimNumber; }
