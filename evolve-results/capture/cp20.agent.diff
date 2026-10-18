@@ -1,0 +1,94 @@
+diff --git a/src/main/frontend/src/app/features/people/person-claims.ts b/src/main/frontend/src/app/features/people/person-claims.ts
+index 4a83d888..95123464 100644
+--- a/src/main/frontend/src/app/features/people/person-claims.ts
++++ b/src/main/frontend/src/app/features/people/person-claims.ts
+@@ -7,7 +7,7 @@ import { Grade } from '../../core/people.service';
+ import { PeriodsService } from '../../core/periods.service';
+ import { RatesService } from '../../core/rates.service';
+ 
+-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), and a form that adds a claim or edits the one opened.
++// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one).
+ @Component({
+   selector: 'app-person-claims',
+   imports: [ReactiveFormsModule],
+@@ -111,6 +111,10 @@ export class PersonClaims {
+ 
+   protected open(c: Claim): void {
+     this.setClaimError(c.id, '');
++    if (c.status !== 'DRAFT') {
++      this.setClaimError(c.id, `A ${c.status} claim cannot be edited; void it and add a new one.`);
++      return;
++    }
+     this.error.set('');
+     this.editing.set(c.id);
+     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 9cd46580..5eca11d4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,7 +39,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** Given when the claim is opened; none while a draft, cleared when voided. */
++    /** Given when the claim is opened; none while a draft; a voided claim keeps it (never reused). */
+     @Column(name = "number")
+     private Integer number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 354b9126..bae78ed7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -87,7 +87,7 @@ public class ClaimController {
+         return service.statement(sheetId, user, personId).stream().map(ClaimView::of).toList();
+     }
+ 
+-    /** Change a claim's amount, date and note. */
++    /** Change a draft claim's amount, date and note; any other claim is refused (409). */
+     @PutMapping("/claims/{claimId}")
+     public ClaimView edit(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index cf26cdd2..0ab69f39 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -68,14 +68,19 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Change a claim's amount, date and note; without a date it is dated the sheet's today. A claim
+-     * dated in a closed period, or moved into one, is refused.
++     * Change a draft claim's amount, date and note; without a date it is dated the sheet's today. A
++     * claim that is no longer a draft is refused (an open one is voided and a new one added instead),
++     * as is one dated in a closed period, or moved into one.
+      */
+     @Transactional
+     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+         sheets.lock(sheetId, user);
+         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be edited");
++        }
+         LocalDate dated = dateOrToday(sheetId, date);
+         periods.requireOpenOn(sheetId, claim.getDate());
+         periods.requireOpenOn(sheetId, dated);
+@@ -113,7 +118,7 @@ public class ClaimService {
+         RollupService.Rollup before = rollups.snapshot(sheetId);
+         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
+         claim.setStatus(next);
+-        claim.setNumber(next == ClaimStatus.VOID ? null : number);
++        claim.setNumber(number);
+         if (next == ClaimStatus.OPEN) {
+             claim.setOpenedBy(user);
+         }
+@@ -179,7 +184,7 @@ public class ClaimService {
+ 
+     /**
+      * Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd; a claim
+-     * with a number (or, when voided, that had one) ends with it.
++     * with a number (a voided one keeps it) ends with it.
+      */
+     private void audit(String sheetId, String user, String event, Person person, Claim claim, Integer number) {
+         audit(sheetId, user, event, person, claim, number, "");
