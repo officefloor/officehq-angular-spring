@@ -88,11 +88,11 @@ public class RollupService {
     }
 
     /**
-     * Whether a claim counts in the live totals: open and settled claims do, except the open claims
-     * of a person on hold.
+     * Whether a claim counts in the live totals: open (pending ones among them) and settled claims do,
+     * except the open claims of a person on hold.
      */
     public static boolean counts(Person person, Claim claim) {
-        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus() == ClaimStatus.OPEN);
+        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus().isOpen());
     }
 
     /**
@@ -136,13 +136,13 @@ public class RollupService {
 
     /**
      * The figure a statement binds a live claim to, without any late charge: the figure its person's
-     * last statement bound it to, else its amount times the rate in force on its date for the grade
+     * last statement bound it to (a pending claim is not bound: its figure is live), else its amount times the rate in force on its date for the grade
      * in force on its date (rounded as {@link #rounding} says), raised to the sheet's floor (a
      * correction has no floor); null when none.
      */
     @Transactional(readOnly = true)
     public BigDecimal boundFigure(String sheetId, Person person, Claim claim) {
-        if (claim.isStated()) return claim.getStatedDue();
+        if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) return claim.getStatedDue();
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         BigDecimal floor = claim.isCorrection() ? null : sheet == null ? BigDecimal.ZERO : sheet.getFloor();
         RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN : rounding(sheet, claim);
@@ -158,7 +158,7 @@ public class RollupService {
      * rounded like due; zero when it is not overdue.
      */
     private static BigDecimal lateCharge(Sheet sheet, Claim claim, BigDecimal figure, RoundingMode rounding) {
-        if (claim.getStatus() != ClaimStatus.OPEN) return BigDecimal.ZERO;
+        if (!claim.getStatus().isOpen()) return BigDecimal.ZERO;
         long daysOver = ChronoUnit.DAYS.between(claim.getDate().plusDays(sheet.getTerms()), sheet.getToday());
         if (daysOver <= 0) return BigDecimal.ZERO;
         BigDecimal pct = sheet.getLatePct().multiply(BigDecimal.valueOf(daysOver / 30));

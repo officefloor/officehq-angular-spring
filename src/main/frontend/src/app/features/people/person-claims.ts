@@ -11,7 +11,7 @@ import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 import { TotalsService } from '../../core/totals.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms), whether it is overdue (open and due before the sheet's today) and, for a correction (a negative amount), the number of the settled claim it corrects, and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it; a clerk settling one whose due is above the sheet's clerk limit makes it pending, for a steward other than its opener to approve, or to reject with a reason), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms), whether it is overdue (open and due before the sheet's today) and, for a correction (a negative amount), the number of the settled claim it corrects, and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -37,9 +37,12 @@ import { TotalsService } from '../../core/totals.service';
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @for (a of actions; track a.action) {
-            <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="change(c, a.action)"
+            <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="change(c, a.action, reason.value)"
               [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date">{{ a.label }}</button>
           }
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input #reason [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason"
+            (input)="setClaimError(c.id, '')" />
           @if (claimErrors().get(c.id); as e) {
             <p role="alert" data-testid="claim-error">{{ e }}</p>
           }
@@ -97,6 +100,8 @@ export class PersonClaims {
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
     { action: 'void', label: 'Void' },
+    { action: 'approve', label: 'Approve' },
+    { action: 'reject', label: 'Reject' },
   ];
 
   constructor() {
@@ -122,19 +127,28 @@ export class PersonClaims {
     return overdue(c, this.settings.terms(), this.sheets.today());
   }
 
-  protected change(c: Claim, action: ClaimAction): void {
+  protected change(c: Claim, action: ClaimAction, reason: string): void {
     this.setClaimError(c.id, '');
-    this.service.changeStatus(c.id, action).subscribe({
-      error: (e: unknown) => this.setClaimError(c.id,
-        e instanceof HttpErrorResponse && e.status === 403
-          ? c.openedBy === this.session.user()
-            ? 'You opened this claim, so someone else must settle it.'
-            : 'A clerk cannot settle a claim whose due is above the clerk limit.'
-          : `A ${c.status} claim cannot be changed that way.`),
+    if (action === 'reject' && !reason.trim()) {
+      this.setClaimError(c.id, 'Give a reason to reject this claim.');
+      return;
+    }
+    this.service.changeStatus(c.id, action, reason.trim()).subscribe({
+      error: (e: unknown) => this.setClaimError(c.id, this.refusal(c, action, e)),
     });
   }
 
-  private setClaimError(claimId: number, message: string): void {
+  private refusal(c: Claim, action: ClaimAction, e: unknown): string {
+    if (!(e instanceof HttpErrorResponse && e.status === 403)) return `A ${c.status} claim cannot be changed that way.`;
+    if (action === 'approve' || action === 'reject') {
+      return action === 'approve' && c.openedBy === this.session.user()
+        ? 'You opened this claim, so someone else must approve it.'
+        : 'Only a steward can approve or reject a pending claim.';
+    }
+    return 'You opened this claim, so someone else must settle it.';
+  }
+
+  protected setClaimError(claimId: number, message: string): void {
     this.claimErrors.update((all) => {
       const out = new Map(all);
       if (message) out.set(claimId, message);

@@ -35,19 +35,29 @@ export interface BulkOpened {
   refused: number;
 }
 
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
-/** A change of status a claim's buttons ask for. */
-export type ClaimAction = 'open' | 'settle' | 'void';
+/** A change of status a claim's buttons ask for (a steward approves or rejects a pending one). */
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
 
-/** Only open and settled claims count toward claimed and due; drafts and voided claims do not. */
+/** A claim counts as open while it is open or pending a steward's approval. */
+export function isOpen(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'PENDING';
+}
+
+/** Only open (pending ones among them) and settled claims count toward claimed and due; drafts and voided claims do not. */
 export function counts(c: Claim): boolean {
-  return c.status === 'OPEN' || c.status === 'SETTLED';
+  return isOpen(c) || c.status === 'SETTLED';
+}
+
+/** Whether a statement binds the claim now: a pending one is not bound (its figure is live). */
+function bound(c: Claim): boolean {
+  return c.stated && c.status !== 'PENDING';
 }
 
 /** A claim keeps a figure that does not follow the rates: settled with a fixed due, or bound by a statement to one (not n/a). */
 export function fixed(c: Claim): boolean {
-  return c.due !== null || (c.stated && c.statedDue !== null);
+  return c.due !== null || (bound(c) && c.statedDue !== null);
 }
 
 /** What an overdue claim's late charge follows: the terms (days), the sheet's today (yyyy-MM-dd; null: none loaded) and the late percent (in hundredths of a percent). */
@@ -77,7 +87,7 @@ export function claimDue(
 function baseDue(
   c: Claim, rateOn: (date: string) => number | undefined, floor: number, halfUp: boolean,
 ): number | undefined {
-  if (c.stated) return c.statedDue === null ? undefined : cents(c.statedDue);
+  if (bound(c)) return c.statedDue === null ? undefined : cents(c.statedDue);
   const rate = rateOn(c.date);
   if (rate === undefined) return undefined;
   const d = due(cents(c.amount), rate, halfUp);
@@ -102,9 +112,9 @@ export function dueBy(c: Claim, terms: number): string {
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
-/** A claim is overdue when it is open and its due-by is before the sheet's today (yyyy-MM-dd; null: none loaded). */
+/** A claim is overdue when it is open (or pending) and its due-by is before the sheet's today (yyyy-MM-dd; null: none loaded). */
 export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return today !== null && c.status === 'OPEN' && dueBy(c, terms) < today;
+  return today !== null && isOpen(c) && dueBy(c, terms) < today;
 }
 
 export interface ClaimForm {
@@ -145,10 +155,10 @@ export class ClaimsService {
     () => new Set(this.people.people().filter((p) => p.held).map((p) => p.id)),
   );
 
-  /** Whether a claim counts in the live totals: open and settled ones do, except a held person's open ones. */
+  /** Whether a claim counts in the live totals: open (pending ones among them) and settled ones do, except a held person's open ones. */
   readonly live = computed(() => {
     const held = this.heldIds();
-    return (c: Claim) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId));
+    return (c: Claim) => counts(c) && !(isOpen(c) && held.has(c.personId));
   });
 
   /** Each person's claims, newest first. */
@@ -236,9 +246,11 @@ export class ClaimsService {
       .pipe(tap((c) => this.list.update((all) => all.map((o) => (o.id === c.id ? c : o)))));
   }
 
-  changeStatus(claimId: number, action: ClaimAction): Observable<Claim> {
+  /** Open, settle, void, approve or reject (with its reason) a claim. */
+  changeStatus(claimId: number, action: ClaimAction, reason?: string): Observable<Claim> {
+    const body = action === 'reject' ? { reason } : null;
     return this.http
-      .post<Claim>(`${this.url(this.sheet())}/${claimId}/${action}`, null, { headers: this.session.headers() })
+      .post<Claim>(`${this.url(this.sheet())}/${claimId}/${action}`, body, { headers: this.session.headers() })
       .pipe(tap((c) => this.list.update((all) => all.map((o) => (o.id === c.id ? c : o)))));
   }
 

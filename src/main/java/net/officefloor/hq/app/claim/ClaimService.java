@@ -132,10 +132,11 @@ public class ClaimService {
     }
 
     /**
-     * Move a claim to its next status; a change its current status does not allow is refused, as is
-     * settling it by the user who opened it, settling it by a clerk when its due is above the sheet's
-     * clerk limit (or it has none while there is a limit), and any change to a claim dated in a closed
-     * period.
+     * Move a claim to its next status; a change its current status does not allow is refused (a
+     * pending claim is approved or rejected instead), as is settling it by the user who opened it, and
+     * any change to a claim dated in a closed period. A clerk settling a claim whose due is above the
+     * sheet's clerk limit makes it PENDING instead: it waits
+     * for a steward to approve or reject it.
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -143,7 +144,7 @@ public class ClaimService {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         periods.requireOpenOn(sheetId, claim.getDate());
-        if (!claim.getStatus().canBecome(next)) {
+        if (claim.getStatus() == ClaimStatus.PENDING || !claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
@@ -152,8 +153,8 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        if (next == ClaimStatus.SETTLED) {
-            requireMaySettle(sheet, user, person, claim);
+        if (next == ClaimStatus.SETTLED && needsApproval(sheet, user, person, claim)) {
+            next = ClaimStatus.PENDING;
         }
         RollupService.Rollup before = rollups.snapshot(sheetId);
         String number = next == ClaimStatus.OPEN ? nextNumber(sheet, claim) : claim.getNumber();
@@ -170,15 +171,76 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
+            case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             default -> "CLAIM_VOIDED";
         };
-        String suffix = next == ClaimStatus.SETTLED
-                ? " due=" + (saved.getDue() == null ? "n/a" : saved.getDue().setScale(2).toPlainString())
-                : "";
+        String suffix = next == ClaimStatus.SETTLED ? dueField(saved) : "";
         audit(sheetId, user, event, person, saved, number, suffix);
         rollups.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * A steward approves a pending claim: it is settled, its due fixed at its (live) figure now. One
+     * that is not pending is refused, as is approval by anyone but a steward, by the user who opened
+     * it, or of a claim dated in a closed period.
+     */
+    @Transactional
+    public Claim approve(String sheetId, String user, long claimId) {
+        Sheet sheet = sheets.lock(sheetId, user);
+        Claim claim = pending(sheet, user, claimId);
+        if (user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot approve it");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Rollup before = rollups.snapshot(sheetId);
+        BigDecimal settledDue = figure(sheetId, person, claim);
+        claim.setStatus(ClaimStatus.SETTLED);
+        claim.setDue(settledDue);
+        Claim saved = claims.saveAndFlush(claim);
+        audit(sheetId, user, "CLAIM_APPROVED", person, saved, saved.getNumber(), dueField(saved));
+        rollups.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * A steward rejects a pending claim, giving a reason: it is open again (bound again by its
+     * person's last statement when that statement included it). One that is not pending is refused, as
+     * is a rejection by anyone but a steward, or of a claim dated in a closed period.
+     */
+    @Transactional
+    public Claim reject(String sheetId, String user, long claimId, String reason) {
+        Sheet sheet = sheets.lock(sheetId, user);
+        Claim claim = pending(sheet, user, claimId);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Rollup before = rollups.snapshot(sheetId);
+        claim.setStatus(ClaimStatus.OPEN);
+        Claim saved = claims.saveAndFlush(claim);
+        audit(sheetId, user, "CLAIM_REJECTED", person, saved, saved.getNumber(), " reason=" + reason);
+        rollups.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /** The pending claim a steward acts on; refused when it is not pending, not dated in an open period, or the user is no steward. */
+    private Claim pending(Sheet sheet, String user, long claimId) {
+        Claim claim = claims.findByIdAndSheetId(claimId, sheet.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        periods.requireOpenOn(sheet.getId(), claim.getDate());
+        if (claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A " + claim.getStatus() + " claim is not pending");
+        }
+        if (settings.roleOf(sheet.getId(), user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim");
+        }
+        return claim;
+    }
+
+    /** A settled claim's due field, for the end of its audit line. */
+    private static String dueField(Claim claim) {
+        return " due=" + (claim.getDue() == null ? "n/a" : claim.getDue().setScale(2).toPlainString());
     }
 
     /** How many of the claims asked for a bulk open were opened, and how many were refused. */
@@ -187,7 +249,7 @@ public class ClaimService {
 
     /**
      * Open each of these claims that can be opened, numbering them in list order (the people's order,
-     * then their claims in the order they were added); each that cannot is refused and left as it is.
+     * then their claims as listed, newest first); each that cannot is refused and left as it is.
      * Each is opened in a transaction of its own, so a refused one rolls back only itself.
      */
     public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> claimIds) {
@@ -198,7 +260,7 @@ public class ClaimService {
         List<Claim> chosen = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> wanted.contains(c.getId()))
                 .sorted(Comparator.<Claim>comparingInt(c -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
-                        .thenComparing(Claim::getId))
+                        .thenComparing(Claim::getId, Comparator.reverseOrder()))
                 .toList();
         int opened = 0;
         for (Claim c : chosen) {
@@ -288,17 +350,17 @@ public class ClaimService {
         return prefix + "-" + n;
     }
 
-    /** Refuse a clerk settling a claim whose due is above the sheet's clerk limit; a steward settles any. */
-    private void requireMaySettle(Sheet sheet, String user, Person person, Claim claim) {
+    /**
+     * Whether a settle needs a steward's approval: a clerk settling a claim whose due is above the
+     * sheet's clerk limit (one with no due, n/a, is not above it); a steward settles any.
+     */
+    private boolean needsApproval(Sheet sheet, String user, Person person, Claim claim) {
         BigDecimal limit = sheet.getClerkLimit();
         if (limit == null || settings.roleOf(sheet.getId(), user) == Role.STEWARD) {
-            return;
+            return false;
         }
         BigDecimal due = figure(sheet.getId(), person, claim);
-        if (due == null || due.compareTo(limit) > 0) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "A clerk cannot settle a claim whose due is above the clerk limit");
-        }
+        return due != null && due.compareTo(limit) > 0;
     }
 
     /**

@@ -127,7 +127,8 @@ public class ClaimController {
 
     /**
      * Open, settle or void a claim; a change its status does not allow is refused (409), as is
-     * settling it by the user who opened it (403).
+     * settling it by the user who opened it (403). A clerk's settle above the clerk limit makes it
+     * PENDING.
      */
     @PostMapping("/claims/{claimId}/{action:open|settle|void}")
     public ClaimView changeStatus(
@@ -141,5 +142,28 @@ public class ClaimController {
             default -> ClaimStatus.VOID;
         };
         return ClaimView.of(service.changeStatus(sheetId, user, claimId, next));
+    }
+
+    /** Approve a pending claim (a steward who did not open it): it is settled. */
+    @PostMapping("/claims/{claimId}/approve")
+    public ClaimView approve(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user) {
+        return ClaimView.of(service.approve(sheetId, user, claimId));
+    }
+
+    /** Why a pending claim is rejected. */
+    public record RejectForm(@NotBlank @Size(max = 500) String reason) {
+    }
+
+    /** Reject a pending claim with a reason (a steward): it is open again. */
+    @PostMapping("/claims/{claimId}/reject")
+    public ClaimView reject(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
+            @Valid @RequestBody RejectForm form) {
+        return ClaimView.of(service.reject(sheetId, user, claimId, form.reason().trim()));
     }
 }
