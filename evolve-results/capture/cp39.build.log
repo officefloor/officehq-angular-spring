@@ -1,0 +1,308 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610181730/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+ › statements scenario 1
+[1A[2K[47/144] [chromium] › cp15_statements.spec.ts:338:7 › statements › statements scenario 2
+[1A[2K[48/144] [chromium] › cp15_statements.spec.ts:512:7 › statements › statements scenario 3
+[1A[2K[49/144] [chromium] › cp16_rollup-audit.spec.ts:6:7 › rollup audit › rollup audit
+[1A[2K[50/144] [chromium] › cp16_rollup-audit.spec.ts:79:7 › rollup audit › rollup audit scenario 1
+[1A[2K[51/144] [chromium] › cp16_rollup-audit.spec.ts:261:7 › rollup audit › rollup audit scenario 2
+[1A[2K[52/144] [chromium] › cp16_rollup-audit.spec.ts:425:7 › rollup audit › rollup audit scenario 3
+[1A[2K[53/144] [chromium] › cp17_periods.spec.ts:6:7 › periods › periods
+[1A[2K[54/144] [chromium] › cp17_periods.spec.ts:52:7 › periods › periods scenario 1
+[1A[2K[55/144] [chromium] › cp17_periods.spec.ts:215:7 › periods › periods scenario 2
+[1A[2K[56/144] [chromium] › cp17_periods.spec.ts:378:7 › periods › periods scenario 3
+[1A[2K[57/144] [chromium] › cp18_close-period.spec.ts:6:7 › close period › close period
+[1A[2K[58/144] [chromium] › cp18_close-period.spec.ts:61:7 › close period › close period scenario 1
+[1A[2K[59/144] [chromium] › cp18_close-period.spec.ts:184:7 › close period › close period scenario 2
+[1A[2K[60/144] [chromium] › cp18_close-period.spec.ts:316:7 › close period › close period scenario 3
+[1A[2K[61/144] [chromium] › cp19_quick-add.spec.ts:6:7 › quick add › quick add
+[1A[2K[62/144] [chromium] › cp19_quick-add.spec.ts:48:7 › quick add › quick add scenario 1
+[1A[2K[63/144] [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2
+[1A[2K[64/144] [chromium] › cp19_quick-add.spec.ts:394:7 › quick add › quick add scenario 3
+[1A[2K[65/144] [chromium] › cp20_open-claims-immutable.spec.ts:6:7 › open claims immutable › open claims immutable
+[1A[2K[66/144] [chromium] › cp20_open-claims-immutable.spec.ts:45:7 › open claims immutable › open claims immutable scenario 1
+[1A[2K[67/144] [chromium] › cp20_open-claims-immutable.spec.ts:306:7 › open claims immutable › open claims immutable scenario 2
+[1A[2K[68/144] [chromium] › cp20_open-claims-immutable.spec.ts:465:7 › open claims immutable › open claims immutable scenario 3
+[1A[2K[69/144] [chromium] › cp21_retire.spec.ts:6:7 › retire › retire
+[1A[2K[70/144] [chromium] › cp21_retire.spec.ts:61:7 › retire › retire scenario 1
+[1A[2K[71/144] [chromium] › cp21_retire.spec.ts:178:7 › retire › retire scenario 2
+[1A[2K[72/144] [chromium] › cp21_retire.spec.ts:367:7 › retire › retire scenario 3
+[1A[2K[73/144] [chromium] › cp22_hold.spec.ts:6:7 › hold › hold
+[1A[2K[74/144] [chromium] › cp22_hold.spec.ts:65:7 › hold › hold scenario 1
+[1A[2K[75/144] [chromium] › cp22_hold.spec.ts:264:7 › hold › hold scenario 2
+[1A[2K[76/144] [chromium] › cp22_hold.spec.ts:399:7 › hold › hold scenario 3
+[1A[2K[77/144] [chromium] › cp23_roles-and-clerk-limit.spec.ts:6:7 › roles and clerk limit › roles and clerk limit
+[1A[2K[78/144] [chromium] › cp23_roles-and-clerk-limit.spec.ts:72:7 › roles and clerk limit › roles and clerk limit scenario 1
+[1A[2K[79/144] [chromium] › cp23_roles-and-clerk-limit.spec.ts:222:7 › roles and clerk limit › roles and clerk limit scenario 2
+[1A[2K[80/144] [chromium] › cp23_roles-and-clerk-limit.spec.ts:386:7 › roles and clerk limit › roles and clerk limit scenario 3
+[1A[2K[81/144] [chromium] › cp24_floor.spec.ts:6:7 › floor › floor
+[1A[2K[82/144] [chromium] › cp24_floor.spec.ts:98:7 › floor › floor scenario 1
+[1A[2K[83/144] [chromium] › cp24_floor.spec.ts:260:7 › floor › floor scenario 2
+[1A[2K[84/144] [chromium] › cp24_floor.spec.ts:408:7 › floor › floor scenario 3
+[1A[2K[85/144] [chromium] › cp25_due-by-and-overdue.spec.ts:6:7 › due by and overdue › due by and overdue
+[1A[2K[86/144] [chromium] › cp25_due-by-and-overdue.spec.ts:84:7 › due by and overdue › due by and overdue scenario 1
+[1A[2K[87/144] [chromium] › cp25_due-by-and-overdue.spec.ts:300:7 › due by and overdue › due by and overdue scenario 2
+[1A[2K[88/144] [chromium] › cp25_due-by-and-overdue.spec.ts:453:7 › due by and overdue › due by and overdue scenario 3
+[1A[2K[89/144] [chromium] › cp26_late-charge.spec.ts:6:7 › late charge › late charge
+[1A[2K[90/144] [chromium] › cp26_late-charge.spec.ts:88:7 › late charge › late charge scenario 1
+[1A[2K[91/144] [chromium] › cp26_late-charge.spec.ts:279:7 › late charge › late charge scenario 2
+[1A[2K[92/144] [chromium] › cp26_late-charge.spec.ts:441:7 › late charge › late charge scenario 3
+[1A[2K  1) [chromium] › cp26_late-charge.spec.ts:441:7 › late charge › late charge scenario 3 ────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      491 |     await expect(pg_wes.getByTestId("rollup-overdue-count")).toHaveText("1");
+      492 |     await expect(pg_wes.getByTestId("rollup-overdue-total")).toHaveText("3.42");
+    > 493 |     expect(await ui.claimAction(pg_wes, c_cam_0, "void")).toBe(true);
+          |                                                           ^
+      494 |     expect(await ui.addClaim(pg_wes, p_cam, {"amount": "12.50", "date": "2026-03-20"})).toBeNull();
+      495 |     const c_ben_1 = ui.must(await ui.quickAdd(pg_wes, {"name": "Ben", "amount": "0.04"}));
+      496 |     expect(await ui.addClaim(pg_wes, p_cam, {"amount": "10.25"})).toBeNull();
+
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp26_late-charge.spec.ts:493:59
+
+
+[1A[2K[93/144] [chromium] › cp27_patrons-and-backing.spec.ts:6:7 › patrons and backing › patrons and backing
+[1A[2K[94/144] [chromium] › cp27_patrons-and-backing.spec.ts:76:7 › patrons and backing › patrons and backing scenario 1
+[1A[2K[95/144] [chromium] › cp27_patrons-and-backing.spec.ts:243:7 › patrons and backing › patrons and backing scenario 2
+[1A[2K[96/144] [chromium] › cp27_patrons-and-backing.spec.ts:418:7 › patrons and backing › patrons and backing scenario 3
+[1A[2K[97/144] [chromium] › cp28_grade-dated.spec.ts:6:7 › grade dated › grade dated
+[1A[2K[98/144] [chromium] › cp28_grade-dated.spec.ts:66:7 › grade dated › grade dated scenario 1
+[1A[2K[99/144] [chromium] › cp28_grade-dated.spec.ts:225:7 › grade dated › grade dated scenario 2
+[1A[2K[100/144] [chromium] › cp28_grade-dated.spec.ts:422:7 › grade dated › grade dated scenario 3
+[1A[2K[101/144] [chromium] › cp29_reopen-period.spec.ts:6:7 › reopen period › reopen period
+[1A[2K[102/144] [chromium] › cp29_reopen-period.spec.ts:76:7 › reopen period › reopen period scenario 1
+[1A[2K  2) [chromium] › cp29_reopen-period.spec.ts:76:7 › reopen period › reopen period scenario 1 ───────
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:58
+
+      56 |   }
+      57 |   if (await done()) return true;
+    > 58 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+         |         ^
+      59 | }
+      60 |
+      61 | // ---- session ---------------------------------------------------------------------------------
+
+        at until (/home/daniel/ui-work/202610181730/just-solve-chain1/e2e/support/ui.ts:58:9)
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp29_reopen-period.spec.ts:90:12
+
+
+[1A[2K[103/144] [chromium] › cp29_reopen-period.spec.ts:241:7 › reopen period › reopen period scenario 2
+[1A[2K[104/144] [chromium] › cp29_reopen-period.spec.ts:388:7 › reopen period › reopen period scenario 3
+[1A[2K[105/144] [chromium] › cp30_corrections.spec.ts:6:7 › corrections › corrections
+[1A[2K[106/144] [chromium] › cp30_corrections.spec.ts:70:7 › corrections › corrections scenario 1
+[1A[2K[107/144] [chromium] › cp30_corrections.spec.ts:285:7 › corrections › corrections scenario 2
+[1A[2K  3) [chromium] › cp30_corrections.spec.ts:285:7 › corrections › corrections scenario 2 ────────────
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:58
+
+      56 |   }
+      57 |   if (await done()) return true;
+    > 58 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+         |         ^
+      59 | }
+      60 |
+      61 | // ---- session ---------------------------------------------------------------------------------
+
+        at until (/home/daniel/ui-work/202610181730/just-solve-chain1/e2e/support/ui.ts:58:9)
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp30_corrections.spec.ts:295:12
+
+
+[1A[2K[108/144] [chromium] › cp30_corrections.spec.ts:489:7 › corrections › corrections scenario 3
+[1A[2K[109/144] [chromium] › cp31_summary.spec.ts:6:7 › summary › summary
+[1A[2K[110/144] [chromium] › cp31_summary.spec.ts:51:7 › summary › summary scenario 1
+[1A[2K[111/144] [chromium] › cp31_summary.spec.ts:213:7 › summary › summary scenario 2
+[1A[2K[112/144] [chromium] › cp31_summary.spec.ts:399:7 › summary › summary scenario 3
+[1A[2K[113/144] [chromium] › cp32_rounding-policy-date.spec.ts:6:7 › rounding policy date › rounding policy date
+[1A[2K[114/144] [chromium] › cp32_rounding-policy-date.spec.ts:121:7 › rounding policy date › rounding policy date scenario 1
+[1A[2K[115/144] [chromium] › cp32_rounding-policy-date.spec.ts:405:7 › rounding policy date › rounding policy date scenario 2
+[1A[2K  4) [chromium] › cp32_rounding-policy-date.spec.ts:405:7 › rounding policy date › rounding policy date scenario 2 
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:58
+
+      56 |   }
+      57 |   if (await done()) return true;
+    > 58 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+         |         ^
+      59 | }
+      60 |
+      61 | // ---- session ---------------------------------------------------------------------------------
+
+        at until (/home/daniel/ui-work/202610181730/just-solve-chain1/e2e/support/ui.ts:58:9)
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp32_rounding-policy-date.spec.ts:422:12
+
+
+[1A[2K[116/144] [chromium] › cp32_rounding-policy-date.spec.ts:618:7 › rounding policy date › rounding policy date scenario 3
+[1A[2K[117/144] [chromium] › cp33_export-people.spec.ts:6:7 › export people › export people
+[1A[2K[118/144] [chromium] › cp33_export-people.spec.ts:22:7 › export people › export people scenario 1
+[1A[2K[119/144] [chromium] › cp33_export-people.spec.ts:248:7 › export people › export people scenario 2
+[1A[2K  5) [chromium] › cp33_export-people.spec.ts:248:7 › export people › export people scenario 2 ──────
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:58
+
+      56 |   }
+      57 |   if (await done()) return true;
+    > 58 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+         |         ^
+      59 | }
+      60 |
+      61 | // ---- session ---------------------------------------------------------------------------------
+
+        at until (/home/daniel/ui-work/202610181730/just-solve-chain1/e2e/support/ui.ts:58:9)
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp33_export-people.spec.ts:301:12
+
+
+[1A[2K[120/144] [chromium] › cp33_export-people.spec.ts:457:7 › export people › export people scenario 3
+[1A[2K[121/144] [chromium] › cp34_bulk-open.spec.ts:6:7 › bulk open › bulk open
+[1A[2K  6) [chromium] › cp34_bulk-open.spec.ts:6:7 › bulk open › bulk open ───────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('claim-row-532').getByTestId('claim-number')
+    Expected string: [32m"3"[39m
+    Received string: [31m"2"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-532').getByTestId('claim-number')[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+    [2m  -   locator resolved to <span data-testid="claim-number">2</span>[22m
+    [2m  -   unexpected value "2"[22m
+
+
+      21 |     expect(await ui.bulkOpen(pg_uma, [c_ada_0, c_ada_1, c_ben_0, c_ben_1])).toEqual({ opened: 2, refused: 2 });
+      22 |     await ui.refresh(pg_uma);
+    > 23 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-number")).toHaveText("3");
+         |                                                                                          ^
+      24 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-status")).toHaveText("OPEN");
+      25 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-number")).toHaveText("2");
+      26 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-status")).toHaveText("OPEN");
+
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp34_bulk-open.spec.ts:23:90
+
+
+[1A[2K[122/144] [chromium] › cp34_bulk-open.spec.ts:55:7 › bulk open › bulk open scenario 1
+[1A[2K[123/144] [chromium] › cp34_bulk-open.spec.ts:299:7 › bulk open › bulk open scenario 2
+[1A[2K  7) [chromium] › cp34_bulk-open.spec.ts:299:7 › bulk open › bulk open scenario 2 ──────────────────
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:58
+
+      56 |   }
+      57 |   if (await done()) return true;
+    > 58 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+         |         ^
+      59 | }
+      60 |
+      61 | // ---- session ---------------------------------------------------------------------------------
+
+        at until (/home/daniel/ui-work/202610181730/just-solve-chain1/e2e/support/ui.ts:58:9)
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp34_bulk-open.spec.ts:356:12
+
+
+[1A[2K[124/144] [chromium] › cp34_bulk-open.spec.ts:482:7 › bulk open › bulk open scenario 3
+[1A[2K[125/144] [chromium] › cp35_numbering-per-period.spec.ts:6:7 › numbering per period › numbering per period
+[1A[2K[126/144] [chromium] › cp35_numbering-per-period.spec.ts:77:7 › numbering per period › numbering per period scenario 1
+[1A[2K[127/144] [chromium] › cp35_numbering-per-period.spec.ts:378:7 › numbering per period › numbering per period scenario 2
+[1A[2K[128/144] [chromium] › cp35_numbering-per-period.spec.ts:647:7 › numbering per period › numbering per period scenario 3
+[1A[2K  8) [chromium] › cp35_numbering-per-period.spec.ts:647:7 › numbering per period › numbering per period scenario 3 
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:58
+
+      56 |   }
+      57 |   if (await done()) return true;
+    > 58 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+         |         ^
+      59 | }
+      60 |
+      61 | // ---- session ---------------------------------------------------------------------------------
+
+        at until (/home/daniel/ui-work/202610181730/just-solve-chain1/e2e/support/ui.ts:58:9)
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp35_numbering-per-period.spec.ts:683:12
+
+
+[1A[2K[129/144] [chromium] › cp36_approvals.spec.ts:6:7 › approvals › approvals
+[1A[2K[130/144] [chromium] › cp36_approvals.spec.ts:99:7 › approvals › approvals scenario 1
+[1A[2K[131/144] [chromium] › cp36_approvals.spec.ts:248:7 › approvals › approvals scenario 2
+[1A[2K[132/144] [chromium] › cp36_approvals.spec.ts:532:7 › approvals › approvals scenario 3
+[1A[2K[133/144] [chromium] › cp37_reassign-claim.spec.ts:6:7 › reassign claim › reassign claim
+[1A[2K[134/144] [chromium] › cp37_reassign-claim.spec.ts:76:7 › reassign claim › reassign claim scenario 1
+[1A[2K[135/144] [chromium] › cp37_reassign-claim.spec.ts:287:7 › reassign claim › reassign claim scenario 2
+[1A[2K[136/144] [chromium] › cp37_reassign-claim.spec.ts:506:7 › reassign claim › reassign claim scenario 3
+[1A[2K  9) [chromium] › cp37_reassign-claim.spec.ts:506:7 › reassign claim › reassign claim scenario 3 ───
+
+    Error: save person: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:58
+
+      56 |   }
+      57 |   if (await done()) return true;
+    > 58 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+         |         ^
+      59 | }
+      60 |
+      61 | // ---- session ---------------------------------------------------------------------------------
+
+        at until (/home/daniel/ui-work/202610181730/just-solve-chain1/e2e/support/ui.ts:58:9)
+        at /home/daniel/ui-work/202610181730/just-solve-chain1/e2e/specs/cp37_reassign-claim.spec.ts:523:12
+
+
+[1A[2K[137/144] [chromium] › cp38_terms-per-grade.spec.ts:6:7 › terms per grade › terms per grade
+[1A[2K[138/144] [chromium] › cp38_terms-per-grade.spec.ts:61:7 › terms per grade › terms per grade scenario 1
+[1A[2K[139/144] [chromium] › cp38_terms-per-grade.spec.ts:282:7 › terms per grade › terms per grade scenario 2
+[1A[2K[140/144] [chromium] › cp38_terms-per-grade.spec.ts:533:7 › terms per grade › terms per grade scenario 3
+[1A[2K[141/144] [chromium] › cp39_claim-log.spec.ts:6:7 › claim log › claim log
+[1A[2K[142/144] [chromium] › cp39_claim-log.spec.ts:31:7 › claim log › claim log scenario 1
+[1A[2K[143/144] [chromium] › cp39_claim-log.spec.ts:326:7 › claim log › claim log scenario 2
+[1A[2K[144/144] [chromium] › cp39_claim-log.spec.ts:515:7 › claim log › claim log scenario 3
+[1A[2K  Slow test file: [chromium] › cp35_numbering-per-period.spec.ts (26.1s)
+  Slow test file: [chromium] › cp37_reassign-claim.spec.ts (21.9s)
+  Slow test file: [chromium] › cp18_close-period.spec.ts (19.4s)
+  Slow test file: [chromium] › cp27_patrons-and-backing.spec.ts (19.3s)
+  Slow test file: [chromium] › cp36_approvals.spec.ts (19.2s)
+  Consider splitting slow test files to speed up parallel execution
+  9 failed
+    [chromium] › cp26_late-charge.spec.ts:441:7 › late charge › late charge scenario 3 ─────────────
+    [chromium] › cp29_reopen-period.spec.ts:76:7 › reopen period › reopen period scenario 1 ────────
+    [chromium] › cp30_corrections.spec.ts:285:7 › corrections › corrections scenario 2 ─────────────
+    [chromium] › cp32_rounding-policy-date.spec.ts:405:7 › rounding policy date › rounding policy date scenario 2 
+    [chromium] › cp33_export-people.spec.ts:248:7 › export people › export people scenario 2 ───────
+    [chromium] › cp34_bulk-open.spec.ts:6:7 › bulk open › bulk open ────────────────────────────────
+    [chromium] › cp34_bulk-open.spec.ts:299:7 › bulk open › bulk open scenario 2 ───────────────────
+    [chromium] › cp35_numbering-per-period.spec.ts:647:7 › numbering per period › numbering per period scenario 3 
+    [chromium] › cp37_reassign-claim.spec.ts:506:7 › reassign claim › reassign claim scenario 3 ────
+  135 passed (11.2m)
