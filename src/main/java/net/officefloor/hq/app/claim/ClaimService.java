@@ -60,6 +60,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate dated = dateOrToday(sheetId, date);
         periods.requireOpenOn(sheetId, dated);
+        requireNotRetired(person, dated);
         RollupService.Rollup before = rollups.snapshot(sheetId);
         Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
         audit(sheetId, user, "CLAIM_ADDED", person, saved, saved.getNumber());
@@ -84,6 +85,9 @@ public class ClaimService {
         LocalDate dated = dateOrToday(sheetId, date);
         periods.requireOpenOn(sheetId, claim.getDate());
         periods.requireOpenOn(sheetId, dated);
+        Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        requireNotRetired(owner, dated);
         RollupService.Rollup before = rollups.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(dated);
@@ -196,6 +200,13 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "") + suffix);
+    }
+
+    /** Refuse a claim dated after the person's retirement. */
+    private static void requireNotRetired(Person person, LocalDate date) {
+        if (person.retiredOn(date)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is dated after the person retired");
+        }
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {

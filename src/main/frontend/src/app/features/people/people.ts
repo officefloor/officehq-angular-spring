@@ -14,6 +14,8 @@ import { PersonClaims } from './person-claims';
 // settled or stated claim of theirs keeps a fixed figure. The sheet's due-total skips those with none.
 // Each person has a statement button: it records their due-total and binds their counting claims to
 // their figures then; the row shows how many statements were taken, and the last one's due-total and date.
+// A person can be retired from a date (the sheet's today when none is entered). Retired people are
+// left out of the list unless "show retired" is on; their claims keep counting in every total.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims],
@@ -47,16 +49,22 @@ import { PersonClaims } from './person-claims';
           <p role="alert" data-testid="quick-error">{{ quickError() }}</p>
         }
       </form>
+      <p>
+        <input type="checkbox" id="show-retired" data-testid="show-retired"
+          [checked]="people.showRetired()" (change)="people.showRetired.set($any($event.target).checked)" />
+        <label for="show-retired">Show retired</label>
+      </p>
       <table>
         <thead>
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
         <tbody>
-          @for (p of people.people(); track p.id) {
+          @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -65,11 +73,18 @@ import { PersonClaims } from './person-claims';
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              <td data-testid="person-retired">{{ p.retiredFrom ? 'yes' : 'no' }}</td>
+              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
                 <button type="button" data-testid="person-statement" (click)="statement(p)"
                   [attr.aria-label]="'Take a statement for ' + p.name">Statement</button>
+                <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                <input type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date"
+                  #retireDate (input)="setRowError(p.id, '')" />
+                <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
+                  [attr.aria-label]="'Retire ' + p.name">Retire</button>
                 @if (rowErrors().get(p.id); as e) {
                   <p role="alert" data-testid="person-error">{{ e }}</p>
                 }
@@ -111,6 +126,10 @@ export class People {
   protected readonly error = signal('');
   /** Each person's refused row action, by person id; cleared by the next action on that row. */
   protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
+  /** The people listed: retired ones only when "show retired" is on. */
+  protected readonly listed = computed(() => this.people.showRetired()
+    ? this.people.people()
+    : this.people.people().filter((p) => !p.retiredFrom));
   /**
    * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
    * absent when their grade has no rate in force today and no settled or stated claim of theirs keeps a figure.
@@ -153,7 +172,15 @@ export class People {
     });
   }
 
-  private setRowError(personId: number, message: string): void {
+  /** Retire the person from the date entered, or from the sheet's today when none is. */
+  protected retire(p: Person, from: string): void {
+    this.setRowError(p.id, '');
+    this.people.retire(p.id, from.trim() || null).subscribe({
+      error: () => this.setRowError(p.id, 'Could not retire ' + p.name + '.'),
+    });
+  }
+
+  protected setRowError(personId: number, message: string): void {
     this.rowErrors.update((all) => {
       const out = new Map(all);
       if (message) out.set(personId, message);

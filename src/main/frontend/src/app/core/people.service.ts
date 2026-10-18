@@ -20,6 +20,8 @@ export interface Person {
   statedTotal: string | null;
   /** The sheet's today (yyyy-MM-dd) when the last statement was taken; null before the first. */
   statementDate: string | null;
+  /** Retired from this date (yyyy-MM-dd): claims dated after it are refused; null when not retired. */
+  retiredFrom: string | null;
 }
 
 export interface PersonForm {
@@ -36,6 +38,8 @@ export class PeopleService {
   private readonly list = signal<Person[]>([]);
 
   readonly people = this.list.asReadonly();
+  /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
+  readonly showRetired = signal(false);
 
   /** Re-read the active sheet's people from the store. */
   reload(): Observable<unknown> {
@@ -61,6 +65,13 @@ export class PeopleService {
   edit(personId: number, version: number, form: PersonForm): Observable<Person> {
     return this.http
       .put<Person>(`${this.url(this.sheet())}/${personId}`, { ...form, version }, { headers: this.session.headers() })
+      .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
+  }
+
+  /** Retire the person from a date (yyyy-MM-dd); without one, from the sheet's today. */
+  retire(personId: number, from: string | null): Observable<Person> {
+    return this.http
+      .post<Person>(`${this.url(this.sheet())}/${personId}/retire`, { from }, { headers: this.session.headers() })
       .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
   }
 

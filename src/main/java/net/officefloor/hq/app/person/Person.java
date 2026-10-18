@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.time.LocalDate;
 
 /** A person on a sheet. */
 @Entity
@@ -28,6 +29,10 @@ public class Person {
     @Enumerated(EnumType.STRING)
     @Column(name = "grade", nullable = false)
     private Grade grade;
+
+    /** Retired from this date (claims dated after it are refused); null when not retired. */
+    @Column(name = "retired_from")
+    private LocalDate retiredFrom;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -54,4 +59,11 @@ public class Person {
     public Grade getGrade() { return grade; }
 
     public void setGrade(Grade grade) { this.grade = grade; }
+
+    public LocalDate getRetiredFrom() { return retiredFrom; }
+
+    public void setRetiredFrom(LocalDate retiredFrom) { this.retiredFrom = retiredFrom; }
+
+    /** Whether a claim dated {@code date} is after their retirement. */
+    public boolean retiredOn(LocalDate date) { return retiredFrom != null && date.isAfter(retiredFrom); }
 }
