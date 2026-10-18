@@ -3,39 +3,55 @@ package net.officefloor.hq.app.settings;
 import java.math.BigDecimal;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The sheet's settings (its clerk limit) and the roles it gives user names. */
+/** The sheet's settings (its clerk limit and floor) and the roles it gives user names. */
 @Service
 public class SettingsService {
 
     private final SheetRoleRepository roles;
     private final SheetService sheets;
+    private final RollupService rollups;
     private final Audit audit;
 
-    public SettingsService(SheetRoleRepository roles, SheetService sheets, Audit audit) {
+    public SettingsService(SheetRoleRepository roles, SheetService sheets, RollupService rollups, Audit audit) {
         this.roles = roles;
         this.sheets = sheets;
+        this.rollups = rollups;
         this.audit = audit;
     }
 
-    /** The sheet's clerk limit; null when there is none. */
+    /** The sheet's settings now. */
     @Transactional
-    public BigDecimal clerkLimit(String sheetId, String user) {
-        return sheets.load(sheetId, user).getClerkLimit();
+    public Sheet settings(String sheetId, String user) {
+        return sheets.load(sheetId, user);
     }
 
-    /** Set the sheet's clerk limit (null: no limit). */
+    /**
+     * Save the settings given: {@code setClerkLimit} the clerk limit (null: no limit), a non-null
+     * {@code floor} the floor; each one saved is audited, even when its value is the same. A floor
+     * that moves live dues records the rollups that moved.
+     */
     @Transactional
-    public BigDecimal setClerkLimit(String sheetId, String user, BigDecimal limit) {
+    public Sheet save(String sheetId, String user, boolean setClerkLimit, BigDecimal clerkLimit, BigDecimal floor) {
         Sheet sheet = sheets.lock(sheetId, user);
-        sheet.setClerkLimit(limit);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
-                + " key=clerk-limit value=" + (limit == null ? "" : limit.toPlainString()));
-        return limit;
+        if (setClerkLimit) {
+            sheet.setClerkLimit(clerkLimit);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                    + " key=clerk-limit value=" + (clerkLimit == null ? "" : clerkLimit.toPlainString()));
+        }
+        if (floor != null) {
+            RollupService.Rollup before = rollups.snapshot(sheetId);
+            sheet.setFloor(floor);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                    + " key=floor value=" + floor.toPlainString());
+            rollups.recordChanges(sheetId, user, before);
+        }
+        return sheet;
     }
 
     /** The roles the sheet gives user names, by name; a name not among them is a clerk. */

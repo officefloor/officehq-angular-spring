@@ -77,7 +77,7 @@ public class RollupService {
                 if (figure != null) due = due.add(figure);
             }
             boolean rated = rates.findInForce(sheetId, p.getGrade(), today).isPresent();
-            boolean anyFixed = counted.stream().anyMatch(c -> c.getDue() != null || c.isStated());
+            boolean anyFixed = counted.stream().anyMatch(Claim::keepsFigure);
             claimedTotal = claimedTotal.add(claimed);
             if (rated || anyFixed) dueTotal = dueTotal.add(due);
             out.put(p.getId(), new Figures(p.getName(), text(claimed), rated || anyFixed ? text(due) : "n/a"));
@@ -119,14 +119,16 @@ public class RollupService {
 
     /**
      * The figure a claim shows: a settled claim's fixed due, else the figure its person's last
-     * statement bound it to, else its amount times the rate in force on its date; null when none.
+     * statement bound it to, else its amount times the rate in force on its date, raised to the
+     * sheet's floor; null when none.
      */
     @Transactional(readOnly = true)
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getDue() != null) return claim.getDue();
         if (claim.isStated()) return claim.getStatedDue();
+        BigDecimal floor = sheets.findById(sheetId).map(Sheet::getFloor).orElse(BigDecimal.ZERO);
         return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
-                .map(rate -> due(claim.getAmount(), rate))
+                .map(rate -> due(claim.getAmount(), rate).max(floor).setScale(2))
                 .orElse(null);
     }
 

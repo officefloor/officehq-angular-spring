@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, forkJoin, of, tap } from 'rxjs';
+import { cents } from './claims.service';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
 
@@ -16,20 +17,35 @@ export interface RoleEntry {
 interface SettingsView {
   /** Two decimals; null when there is no limit. */
   clerkLimit: string | null;
+  /** Two decimals: a claim's live due is at least this. */
+  floor: string;
 }
+
+/** The settings to save; one left out keeps its value. The clerk limit is '' for no limit. */
+export interface SettingsChange {
+  clerkLimit?: string;
+  floor?: string;
+}
+
+/** The floor a sheet starts with. */
+const DEFAULT_FLOOR = '1.00';
 
 // The active sheet's settings and the roles it gives user names. A name with no role is a clerk; a
 // clerk may settle a claim only when its due is at or below the clerk limit (none: no limit), a
-// steward any claim.
+// steward any claim. A claim's live due is at least the floor.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(SessionService);
   private readonly sheets = inject(SheetService);
   private readonly limit = signal<string | null>(null);
+  private readonly floorValue = signal<string>(DEFAULT_FLOOR);
   private readonly list = signal<RoleEntry[]>([]);
 
   readonly clerkLimit = this.limit.asReadonly();
+  readonly floor = this.floorValue.asReadonly();
+  /** The floor in cents. */
+  readonly floorCents = computed(() => cents(this.floorValue()));
   readonly roles = this.list.asReadonly();
 
   /** Re-read the active sheet's settings and roles from the store. */
@@ -37,6 +53,7 @@ export class SettingsService {
     const id = this.sheets.sheetId();
     if (!id) {
       this.limit.set(null);
+      this.floorValue.set(DEFAULT_FLOOR);
       this.list.set([]);
       return of(null);
     }
@@ -46,18 +63,23 @@ export class SettingsService {
       this.http.get<RoleEntry[]>(`${this.url(id)}/roles`, { headers }),
     ]).pipe(tap(([settings, roles]) => {
       if (this.sheets.sheetId() !== id) return;
-      this.limit.set(settings.clerkLimit);
+      this.set(settings);
       this.list.set(roles);
     }));
   }
 
-  /** Save the clerk limit (null: no limit). */
-  saveClerkLimit(clerkLimit: string | null): Observable<SettingsView> {
+  /** Save the settings given (the others keep their values). */
+  save(change: SettingsChange): Observable<SettingsView> {
     const id = this.sheets.sheetId();
     if (!id) throw new Error('no sheet loaded');
     return this.http
-      .put<SettingsView>(`${this.url(id)}/settings`, { clerkLimit }, { headers: this.session.headers() })
-      .pipe(tap((s) => this.limit.set(s.clerkLimit)));
+      .put<SettingsView>(`${this.url(id)}/settings`, change, { headers: this.session.headers() })
+      .pipe(tap((s) => this.set(s)));
+  }
+
+  private set(settings: SettingsView): void {
+    this.limit.set(settings.clerkLimit);
+    this.floorValue.set(settings.floor);
   }
 
   /** Give a user name a role, replacing the one it had; refused for any role but clerk or steward. */

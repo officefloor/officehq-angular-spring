@@ -34,6 +34,10 @@ public class Sheet {
     @Column(name = "clerk_limit", precision = 15, scale = 2)
     private BigDecimal clerkLimit;
 
+    /** A claim's live due is at least this; a fixed, bound or closed-period figure is not changed by it. */
+    @Column(name = "floor", nullable = false, precision = 15, scale = 2)
+    private BigDecimal floor = new BigDecimal("1.00");
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
@@ -56,6 +60,10 @@ public class Sheet {
     public BigDecimal getClerkLimit() { return clerkLimit; }
 
     public void setClerkLimit(BigDecimal clerkLimit) { this.clerkLimit = clerkLimit; }
+
+    public BigDecimal getFloor() { return floor; }
+
+    public void setFloor(BigDecimal floor) { this.floor = floor; }
 
     /** Give out the sheet's next claim number. */
     public int takeClaimNumber() { return ++lastClaimNumber; }

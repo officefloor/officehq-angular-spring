@@ -5,6 +5,7 @@ import { GRADES, Grade, PeopleService, Person } from '../../core/people.service'
 import { SheetService } from '../../core/sheet.service';
 import { ClaimsService, claimDue, fixed, money } from '../../core/claims.service';
 import { RatesService } from '../../core/rates.service';
+import { SettingsService } from '../../core/settings.service';
 import { PersonClaims } from './person-claims';
 
 // The sheet's people: a form that adds a person or edits the one opened, and the list with each
@@ -109,6 +110,7 @@ export class People {
   protected readonly claims = inject(ClaimsService);
   private readonly rates = inject(RatesService);
   private readonly sheets = inject(SheetService);
+  private readonly settings = inject(SettingsService);
   protected readonly money = money;
   protected readonly grades = GRADES;
   protected readonly form = new FormGroup({
@@ -141,11 +143,12 @@ export class People {
    */
   protected readonly dueTotals = computed(() => {
     const out = new Map<number, number>();
+    const floor = this.settings.floorCents();
     for (const p of this.people.people()) {
       const counted = (this.claims.byPerson().get(p.id) ?? []).filter(this.claims.live());
       if (!this.rates.byGrade().has(p.grade) && !counted.some(fixed)) continue;
       const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
-      out.set(p.id, counted.reduce((sum, c) => sum + (claimDue(c, rateOn) ?? 0), 0));
+      out.set(p.id, counted.reduce((sum, c) => sum + (claimDue(c, rateOn, floor) ?? 0), 0));
     }
     return out;
   });

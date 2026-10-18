@@ -107,6 +107,11 @@ public class Claim {
 
     public BigDecimal getStatedDue() { return statedDue; }
 
+    /** Whether the claim keeps a figure that does not follow the rates: a settled due, or a bound one (not n/a). */
+    public boolean keepsFigure() {
+        return due != null || (stated && statedDue != null);
+    }
+
     /** Bind the claim to this figure (null: n/a). */
     public void bind(BigDecimal figure) {
         this.stated = true;

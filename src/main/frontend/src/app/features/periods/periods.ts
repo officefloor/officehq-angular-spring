@@ -5,6 +5,7 @@ import { ClaimsService, claimDue, money } from '../../core/claims.service';
 import { PeopleService } from '../../core/people.service';
 import { Period, PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
+import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 
 // The sheet's periods, each with its due-total: the sum of the dues (those with one) of the open and
@@ -61,6 +62,7 @@ export class Periods {
   private readonly people = inject(PeopleService);
   private readonly rates = inject(RatesService);
   private readonly sheets = inject(SheetService);
+  private readonly settings = inject(SettingsService);
   protected readonly money = money;
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
@@ -76,11 +78,12 @@ export class Periods {
   protected readonly dueTotals = computed(() => {
     const grades = new Map(this.people.people().map((p) => [p.id, p.grade]));
     const out = new Map<number, number>();
+    const floor = this.settings.floorCents();
     for (const c of this.claims.claims().filter(this.claims.live())) {
       const period = this.periods.periodOn(c.date);
       const grade = grades.get(c.personId);
       if (!period || !grade) continue;
-      const d = claimDue(c, (date) => this.rates.rateOn(grade, date));
+      const d = claimDue(c, (date) => this.rates.rateOn(grade, date), floor);
       out.set(period.id, (out.get(period.id) ?? 0) + (d ?? 0));
     }
     return out;

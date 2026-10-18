@@ -37,21 +37,21 @@ export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
-/** A claim's figure does not follow the rates: settled with a fixed due, or bound by a statement. */
+/** A claim keeps a figure that does not follow the rates: settled with a fixed due, or bound by a statement to one (not n/a). */
 export function fixed(c: Claim): boolean {
-  return c.due !== null || c.stated;
+  return c.due !== null || (c.stated && c.statedDue !== null);
 }
 
 /**
  * A claim's due in cents: a settled claim's fixed figure, else the figure its person's last statement
  * bound it to, otherwise its amount times the rate in force on its date (looked up by `rateOn`, in
- * hundredths of a percent); undefined when it has none.
+ * hundredths of a percent), raised to the sheet's floor (in cents); undefined when it has none.
  */
-export function claimDue(c: Claim, rateOn: (date: string) => number | undefined): number | undefined {
+export function claimDue(c: Claim, rateOn: (date: string) => number | undefined, floor: number): number | undefined {
   if (c.due !== null) return cents(c.due);
   if (c.stated) return c.statedDue === null ? undefined : cents(c.statedDue);
   const rate = rateOn(c.date);
-  return rate === undefined ? undefined : due(cents(c.amount), rate);
+  return rate === undefined ? undefined : Math.max(due(cents(c.amount), rate), floor);
 }
 
 export interface ClaimForm {

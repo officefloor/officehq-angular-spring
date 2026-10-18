@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
 import net.officefloor.hq.app.session.SessionController;
+import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,18 +23,32 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class SettingsController {
 
-    /** The sheet's settings; the clerk limit is text with two decimals, null when there is none. */
-    public record SettingsView(String clerkLimit) {
-        static SettingsView of(BigDecimal clerkLimit) {
-            return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString());
+    /**
+     * The sheet's settings, as text with two decimals: the clerk limit (null when there is none) and
+     * the floor.
+     */
+    public record SettingsView(String clerkLimit, String floor) {
+        static SettingsView of(Sheet sheet) {
+            BigDecimal limit = sheet.getClerkLimit();
+            return new SettingsView(limit == null ? null : limit.setScale(2).toPlainString(),
+                    sheet.getFloor().setScale(2).toPlainString());
         }
     }
 
-    /** The clerk limit is 0.00 or more with up to two decimals; blank or null means no limit. */
-    public record SettingsForm(@Pattern(regexp = "\\s*|\\d{1,13}(\\.\\d{1,2})?") String clerkLimit) {
+    /**
+     * The settings to save; a setting left out (null) is not changed. The clerk limit is 0.00 or more
+     * with up to two decimals, blank for no limit; the floor is 0.00 or more with up to two decimals.
+     */
+    public record SettingsForm(
+            @Pattern(regexp = "\\s*|\\d{1,13}(\\.\\d{1,2})?") String clerkLimit,
+            @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String floor) {
 
         BigDecimal clerkLimitValue() {
             return clerkLimit == null || clerkLimit.isBlank() ? null : new BigDecimal(clerkLimit).setScale(2);
+        }
+
+        BigDecimal floorValue() {
+            return floor == null ? null : new BigDecimal(floor).setScale(2);
         }
     }
 
@@ -63,16 +78,17 @@ public class SettingsController {
     public SettingsView settings(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user) {
-        return SettingsView.of(service.clerkLimit(sheetId, user));
+        return SettingsView.of(service.settings(sheetId, user));
     }
 
-    /** Save the sheet's settings. */
+    /** Save the sheet's settings given; one left out keeps its value. */
     @PutMapping("/settings")
     public SettingsView save(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody SettingsForm form) {
-        return SettingsView.of(service.setClerkLimit(sheetId, user, form.clerkLimitValue()));
+        return SettingsView.of(service.save(sheetId, user, form.clerkLimit() != null, form.clerkLimitValue(),
+                form.floorValue()));
     }
 
     /** The roles the sheet gives user names, by name. */

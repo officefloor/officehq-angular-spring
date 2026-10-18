@@ -7,6 +7,7 @@ import { Grade } from '../../core/people.service';
 import { PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 import { SessionService } from '../../core/session.service';
+import { SettingsService } from '../../core/settings.service';
 
 // A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one).
 @Component({
@@ -63,6 +64,7 @@ export class PersonClaims {
   private readonly service = inject(ClaimsService);
   private readonly rates = inject(RatesService);
   private readonly session = inject(SessionService);
+  private readonly settings = inject(SettingsService);
   protected readonly periods = inject(PeriodsService);
   protected readonly claims = computed(() => this.service.byPerson().get(this.personId()) ?? []);
   protected readonly form = new FormGroup({
@@ -86,9 +88,9 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
-  /** A settled claim shows the due fixed when it was settled, a stated one the figure it was bound to; any other (or one settled without a rate) follows the rate in force on its date. */
+  /** A settled claim shows the due fixed when it was settled, a stated one the figure it was bound to; any other (or one settled without a rate) follows the rate in force on its date, at least the floor. */
   protected dueOf(c: Claim): string {
-    const d = claimDue(c, (date) => this.rates.rateOn(this.grade(), date));
+    const d = claimDue(c, (date) => this.rates.rateOn(this.grade(), date), this.settings.floorCents());
     return d === undefined ? 'n/a' : money(d);
   }
 

@@ -1,10 +1,10 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { ROLES, SettingsService } from '../../core/settings.service';
+import { ROLES, SettingsChange, SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 
-// The sheet's settings (its clerk limit: blank for none) and the roles it gives user names (clerk,
+// The sheet's settings (its clerk limit: blank for none; its floor, the least a claim's live due is) and the roles it gives user names (clerk,
 // the default for any name, or steward), each with a form that changes it.
 @Component({
   selector: 'app-settings',
@@ -16,12 +16,15 @@ import { SheetService } from '../../core/sheet.service';
         <label for="setting-clerk-limit">Clerk limit (empty: none)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit"
           inputmode="decimal" />
+        <label for="setting-floor">Floor</label>
+        <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
         }
       </form>
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ settings.clerkLimit() ?? '' }}</span></p>
+      <p>Floor now: <span data-testid="setting-floor-current">{{ settings.floor() }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -55,6 +58,7 @@ export class Settings {
   protected readonly roles = ROLES;
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
+    floor: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -74,7 +78,7 @@ export class Settings {
       untracked(() => {
         this.settingsError.set('');
         this.roleError.set('');
-        this.settingsForm.reset({ clerkLimit: this.settings.clerkLimit() ?? '' }, { emitEvent: false });
+        this.resetSettings();
         this.roleForm.reset({ user: '', role: '' }, { emitEvent: false });
       });
     });
@@ -83,16 +87,33 @@ export class Settings {
   protected save(): void {
     if (this.savingSettings) return;
     this.settingsError.set('');
-    const limit = this.settingsForm.getRawValue().clerkLimit.trim();
+    const { clerkLimit, floor } = this.settingsForm.controls;
+    const limit = clerkLimit.value.trim();
+    const least = floor.value.trim();
     if (limit !== '' && !/^\d{1,13}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it empty.');
       return;
     }
+    if (!/^\d{1,13}(\.\d{1,2})?$/.test(least)) {
+      this.settingsError.set('Enter a floor of 0.00 or more with up to two decimals.');
+      return;
+    }
+    // Only the settings the user changed are saved (and audited).
+    const change: SettingsChange = {};
+    if (clerkLimit.dirty) change.clerkLimit = limit;
+    if (floor.dirty) change.floor = least;
     this.savingSettings = true;
-    this.settings.saveClerkLimit(limit || null).pipe(finalize(() => (this.savingSettings = false))).subscribe({
-      next: (s) => this.settingsForm.reset({ clerkLimit: s.clerkLimit ?? '' }, { emitEvent: false }),
+    this.settings.save(change).pipe(finalize(() => (this.savingSettings = false))).subscribe({
+      next: () => this.resetSettings(),
       error: () => this.settingsError.set('Could not save the settings.'),
     });
+  }
+
+  private resetSettings(): void {
+    this.settingsForm.reset(
+      { clerkLimit: this.settings.clerkLimit() ?? '', floor: this.settings.floor() },
+      { emitEvent: false },
+    );
   }
 
   protected setRole(): void {

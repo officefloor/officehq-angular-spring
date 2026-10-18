@@ -168,7 +168,7 @@ public class ClaimService {
                 .filter(c -> c.getPersonId().equals(personId))
                 .toList();
         List<Claim> counting = theirs.stream().filter(c -> RollupService.counts(person, c)).toList();
-        boolean anyFixed = counting.stream().anyMatch(c -> c.getDue() != null || c.isStated());
+        boolean anyFixed = counting.stream().anyMatch(Claim::keepsFigure);
         boolean rated = rates.findInForce(sheetId, person.getGrade(), sheet.getToday()).isPresent();
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim c : theirs) {
