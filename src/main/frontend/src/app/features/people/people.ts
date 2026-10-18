@@ -1,9 +1,9 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { finalize, switchMap } from 'rxjs';
+import { finalize, map, switchMap } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
-import { ClaimsService, claimDue, money, overdue } from '../../core/claims.service';
+import { BulkOpened, ClaimsService, claimDue, money, overdue } from '../../core/claims.service';
 import { SettingsService } from '../../core/settings.service';
 import { TotalsService } from '../../core/totals.service';
 import { PersonClaims } from './person-claims';
@@ -68,6 +68,16 @@ import { PersonClaims } from './person-claims';
         <input type="checkbox" id="show-retired" data-testid="show-retired"
           [checked]="people.showRetired()" (change)="people.showRetired.set($any($event.target).checked)" />
         <label for="show-retired">Show retired</label>
+      </p>
+      <p>
+        <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+        @if (bulkResult(); as r) {
+          <span role="status">Opened <span data-testid="bulk-opened">{{ r.opened }}</span>,
+            refused <span data-testid="bulk-refused">{{ r.refused }}</span></span>
+        }
+        @if (bulkError()) {
+          <span role="alert" data-testid="bulk-error">{{ bulkError() }}</span>
+        }
       </p>
       <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
@@ -163,6 +173,9 @@ export class People {
     amount: new FormControl('', { nonNullable: true }),
   });
   protected readonly quickError = signal('');
+  /** What the last bulk open did; cleared when another is asked for. */
+  protected readonly bulkResult = signal<BulkOpened | null>(null);
+  protected readonly bulkError = signal('');
   /** A quick add is waiting for its answer; another meanwhile is ignored. */
   private quickSaving = false;
   protected readonly editing = signal<number | null>(null);
@@ -404,6 +417,20 @@ export class People {
           { emitEvent: false });
         this.error.set(message);
       },
+    });
+  }
+
+  /** Open the chosen claims that can be opened; the people are re-read for their totals. */
+  protected bulkOpen(): void {
+    this.bulkResult.set(null);
+    this.bulkError.set('');
+    const ids = [...this.claims.selected()];
+    this.claims.bulkOpen(ids).pipe(switchMap((r) => this.people.reload().pipe(map(() => r)))).subscribe({
+      next: (r) => {
+        this.claims.selected.set(new Set());
+        this.bulkResult.set(r);
+      },
+      error: () => this.bulkError.set('Could not open the selected claims.'),
     });
   }
 }

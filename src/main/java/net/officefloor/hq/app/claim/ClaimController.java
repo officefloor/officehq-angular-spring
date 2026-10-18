@@ -106,6 +106,22 @@ public class ClaimController {
                 form.corrects()));
     }
 
+    /** The claims a bulk open asks for. */
+    public record BulkOpenForm(@NotNull @Size(max = 10000) List<@NotNull Long> claimIds) {
+    }
+
+    /**
+     * Open the chosen claims that can be opened, numbered in list order; the others are left as they
+     * are. How many were opened and how many refused.
+     */
+    @PostMapping("/claims/bulk-open")
+    public ClaimService.BulkOpened bulkOpen(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
+            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
+            @Valid @RequestBody BulkOpenForm form) {
+        return service.bulkOpen(sheetId, user, form.claimIds());
+    }
+
     /**
      * Open, settle or void a claim; a change its status does not allow is refused (409), as is
      * settling it by the user who opened it (403).

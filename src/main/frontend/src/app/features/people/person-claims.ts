@@ -19,6 +19,9 @@ import { TotalsService } from '../../core/totals.service';
     <ul [attr.aria-label]="'Claims of ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input type="checkbox" data-testid="claim-select" [checked]="service.selected().has(c.id)"
+            (change)="service.select(c.id, $any($event.target).checked)"
+            [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
@@ -70,7 +73,7 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** The person's grades, each from its date. */
   readonly grades = input.required<readonly GradeFrom[]>();
-  private readonly service = inject(ClaimsService);
+  protected readonly service = inject(ClaimsService);
   private readonly rates = inject(RatesService);
   private readonly session = inject(SessionService);
   private readonly settings = inject(SettingsService);

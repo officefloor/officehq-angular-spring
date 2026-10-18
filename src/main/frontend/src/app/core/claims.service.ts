@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, of, tap } from 'rxjs';
+import { Observable, map, of, switchMap, tap } from 'rxjs';
 import { PeopleService } from './people.service';
 import { due } from './rates.service';
 import { SessionService } from './session.service';
@@ -27,6 +27,12 @@ export interface Claim {
   statedDue: string | null;
   /** A correction's (negative amount) number of the settled claim of the same person it corrects; null otherwise. */
   corrects: number | null;
+}
+
+/** What a bulk open did: how many claims were opened and how many refused. */
+export interface BulkOpened {
+  opened: number;
+  refused: number;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -121,6 +127,19 @@ export class ClaimsService {
 
   readonly claims = this.list.asReadonly();
 
+  /** The ids of the claims chosen for a bulk open. */
+  readonly selected = signal<ReadonlySet<number>>(new Set());
+
+  /** Choose a claim for a bulk open, or leave it out. */
+  select(claimId: number, on: boolean): void {
+    this.selected.update((all) => {
+      const out = new Set(all);
+      if (on) out.add(claimId);
+      else out.delete(claimId);
+      return out;
+    });
+  }
+
   /** The ids of the people on hold. */
   private readonly heldIds = computed(
     () => new Set(this.people.people().filter((p) => p.held).map((p) => p.id)),
@@ -169,7 +188,10 @@ export class ClaimsService {
     return this.http
       .get<Claim[]>(this.url(id), { headers: this.session.headers() })
       .pipe(tap((claims) => {
-        if (this.sheets.sheetId() === id) this.list.set(claims);
+        if (this.sheets.sheetId() !== id) return;
+        this.list.set(claims);
+        const ids = new Set(claims.map((c) => c.id));
+        this.selected.update((all) => new Set([...all].filter((c) => ids.has(c))));
       }));
   }
 
@@ -218,6 +240,13 @@ export class ClaimsService {
     return this.http
       .post<Claim>(`${this.url(this.sheet())}/${claimId}/${action}`, null, { headers: this.session.headers() })
       .pipe(tap((c) => this.list.update((all) => all.map((o) => (o.id === c.id ? c : o)))));
+  }
+
+  /** Open the chosen claims that can be opened, numbered in list order; then re-read the claims. */
+  bulkOpen(claimIds: readonly number[]): Observable<BulkOpened> {
+    return this.http
+      .post<BulkOpened>(`${this.url(this.sheet())}/bulk-open`, { claimIds }, { headers: this.session.headers() })
+      .pipe(switchMap((r) => this.reload().pipe(map(() => r))));
   }
 
   private sheet(): string {

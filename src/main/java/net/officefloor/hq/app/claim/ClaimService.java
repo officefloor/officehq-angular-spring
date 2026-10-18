@@ -2,7 +2,13 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -17,7 +23,9 @@ import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -32,10 +40,12 @@ public class ClaimService {
     private final PeriodService periods;
     private final SettingsService settings;
     private final Audit audit;
+    private final TransactionTemplate transactions;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates,
             StatementRepository statements, SheetService sheets, RollupService rollups, PeriodService periods,
-            SettingsService settings, Audit audit) {
+            SettingsService settings, Audit audit, PlatformTransactionManager transactionManager) {
+        this.transactions = new TransactionTemplate(transactionManager);
         this.periods = periods;
         this.settings = settings;
         this.claims = claims;
@@ -163,6 +173,37 @@ public class ClaimService {
         audit(sheetId, user, event, person, saved, number, suffix);
         rollups.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** How many of the claims asked for a bulk open were opened, and how many were refused. */
+    public record BulkOpened(int opened, int refused) {
+    }
+
+    /**
+     * Open each of these claims that can be opened, numbering them in list order (the people's order,
+     * then their claims in the order they were added); each that cannot is refused and left as it is.
+     * Each is opened in a transaction of its own, so a refused one rolls back only itself.
+     */
+    public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> claimIds) {
+        Set<Long> wanted = new HashSet<>(claimIds);
+        Map<Long, Integer> personOrder = new HashMap<>();
+        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        for (int i = 0; i < listed.size(); i++) personOrder.put(listed.get(i).getId(), i);
+        List<Claim> chosen = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> wanted.contains(c.getId()))
+                .sorted(Comparator.<Claim>comparingInt(c -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
+                        .thenComparing(Claim::getId))
+                .toList();
+        int opened = 0;
+        for (Claim c : chosen) {
+            try {
+                transactions.executeWithoutResult(t -> changeStatus(sheetId, user, c.getId(), ClaimStatus.OPEN));
+                opened++;
+            } catch (ResponseStatusException refused) {
+                // Left as it is: every check comes before any change.
+            }
+        }
+        return new BulkOpened(opened, wanted.size() - opened);
     }
 
     /**
