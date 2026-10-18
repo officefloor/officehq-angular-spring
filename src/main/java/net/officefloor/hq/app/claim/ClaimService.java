@@ -55,18 +55,26 @@ public class ClaimService {
 
     /**
      * Add a claim for a person; without a date it is dated the sheet's today. One dated in a closed
-     * period is refused.
+     * period is refused, as is a correction (a negative amount) that does not name a settled claim of
+     * the same person.
      */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+        return add(sheetId, user, personId, amount, date, note, null);
+    }
+
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         sheets.lock(sheetId, user);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate dated = dateOrToday(sheetId, date);
         periods.requireOpenOn(sheetId, dated);
         requireNotRetired(person, dated);
+        Integer corrected = correctedNumber(sheetId, personId, amount, corrects);
         RollupService.Rollup before = rollups.snapshot(sheetId);
-        Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
+        Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note), corrected));
         audit(sheetId, user, "CLAIM_ADDED", person, saved, saved.getNumber());
         rollups.recordChanges(sheetId, user, before);
         return saved;
@@ -78,7 +86,8 @@ public class ClaimService {
      * as is one dated in a closed period, or moved into one.
      */
     @Transactional
-    public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+    public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         sheets.lock(sheetId, user);
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
@@ -92,8 +101,10 @@ public class ClaimService {
         Person owner = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         requireNotRetired(owner, dated);
+        Integer corrected = correctedNumber(sheetId, owner.getId(), amount, corrects);
         RollupService.Rollup before = rollups.snapshot(sheetId);
         claim.setAmount(amount);
+        claim.setCorrects(corrected);
         claim.setDate(dated);
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
@@ -225,6 +236,22 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "A clerk cannot settle a claim whose due is above the clerk limit");
         }
+    }
+
+    /**
+     * The number a claim of this amount corrects: none for one of 0.00 or more; a correction (a
+     * negative amount) must name a settled claim of the same person, else it is refused.
+     */
+    private Integer correctedNumber(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) return null;
+        boolean settled = corrects != null && claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .anyMatch(c -> c.getPersonId() == personId && corrects.equals(c.getNumber())
+                        && c.getStatus() == ClaimStatus.SETTLED);
+        if (!settled) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A correction must name a settled claim of the same person");
+        }
+        return corrects;
     }
 
     /** Refuse a claim dated after the person's retirement. */

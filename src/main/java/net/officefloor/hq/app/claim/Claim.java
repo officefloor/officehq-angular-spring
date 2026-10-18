@@ -59,9 +59,14 @@ public class Claim {
     @Column(name = "stated_due", precision = 15, scale = 2)
     private BigDecimal statedDue;
 
+    /** A correction's (negative amount) number of the settled claim of the same person it corrects; none otherwise. */
+    @Column(name = "corrects")
+    private Integer corrects;
+
     protected Claim() {}
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
+        this.corrects = corrects;
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -102,6 +107,15 @@ public class Claim {
     public BigDecimal getDue() { return due; }
 
     public void setDue(BigDecimal due) { this.due = due; }
+
+    public Integer getCorrects() { return corrects; }
+
+    public void setCorrects(Integer corrects) { this.corrects = corrects; }
+
+    /** A correction: a negative amount; its due has no floor and no late charge. */
+    public boolean isCorrection() {
+        return amount.signum() < 0;
+    }
 
     public boolean isStated() { return stated; }
 

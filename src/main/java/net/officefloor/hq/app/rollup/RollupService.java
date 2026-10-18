@@ -128,7 +128,7 @@ public class RollupService {
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getDue() != null) return claim.getDue();
         BigDecimal figure = boundFigure(sheetId, person, claim);
-        if (figure == null) return null;
+        if (figure == null || claim.isCorrection()) return figure;
         return sheets.findById(sheetId).map(sheet -> figure.add(lateCharge(sheet, claim, figure))).orElse(figure);
     }
 
@@ -136,14 +136,16 @@ public class RollupService {
      * The figure a statement binds a live claim to, without any late charge: the figure its person's
      * last statement bound it to, else its amount times the rate in force on its date for the grade
      * in force on its date, raised to the
-     * sheet's floor; null when none.
+     * sheet's floor (a correction has no floor); null when none.
      */
     @Transactional(readOnly = true)
     public BigDecimal boundFigure(String sheetId, Person person, Claim claim) {
         if (claim.isStated()) return claim.getStatedDue();
-        BigDecimal floor = sheets.findById(sheetId).map(Sheet::getFloor).orElse(BigDecimal.ZERO);
+        BigDecimal floor = claim.isCorrection() ? null
+                : sheets.findById(sheetId).map(Sheet::getFloor).orElse(BigDecimal.ZERO);
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
-                .map(rate -> due(claim.getAmount(), rate).max(floor).setScale(2))
+                .map(rate -> due(claim.getAmount(), rate))
+                .map(due -> (floor == null ? due : due.max(floor)).setScale(2))
                 .orElse(null);
     }
 

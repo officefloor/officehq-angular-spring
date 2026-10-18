@@ -25,6 +25,8 @@ export interface Claim {
   stated: boolean;
   /** The figure it had at that statement, as text with two decimals; null when it had none (n/a). */
   statedDue: string | null;
+  /** A correction's (negative amount) number of the settled claim of the same person it corrects; null otherwise. */
+  corrects: number | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -52,7 +54,7 @@ export interface LateTerms {
 /**
  * A claim's due in cents: a settled claim's fixed figure (any late charge frozen in), else the figure
  * its person's last statement bound it to, otherwise its amount times the rate in force on its date
- * (looked up by `rateOn`, in hundredths of a percent), raised to the sheet's floor (in cents);
+ * (looked up by `rateOn`, in hundredths of a percent), raised to the sheet's floor (in cents) unless a correction;
  * undefined when it has none. An overdue claim's figure gains its late charge on top (never bound).
  */
 export function claimDue(
@@ -60,13 +62,20 @@ export function claimDue(
 ): number | undefined {
   if (c.due !== null) return cents(c.due);
   const figure = baseDue(c, rateOn, floor);
-  return figure === undefined || !late ? figure : figure + lateCharge(c, figure, late);
+  return figure === undefined || !late || correction(c) ? figure : figure + lateCharge(c, figure, late);
 }
 
 function baseDue(c: Claim, rateOn: (date: string) => number | undefined, floor: number): number | undefined {
   if (c.stated) return c.statedDue === null ? undefined : cents(c.statedDue);
   const rate = rateOn(c.date);
-  return rate === undefined ? undefined : Math.max(due(cents(c.amount), rate), floor);
+  if (rate === undefined) return undefined;
+  const d = due(cents(c.amount), rate);
+  return correction(c) ? d : Math.max(d, floor);
+}
+
+/** A correction: a negative amount; its due has no floor and no late charge. */
+export function correction(c: Claim): boolean {
+  return c.amount.startsWith('-');
 }
 
 /** The late charge in cents on a figure: the late percent of it for every full 30 days the claim is overdue, rounded like due. */
@@ -92,6 +101,8 @@ export interface ClaimForm {
   /** null: the sheet's today. */
   date: string | null;
   note: string;
+  /** For a correction (a negative amount): the number of the settled claim it corrects. */
+  corrects: number | null;
 }
 
 // The active sheet's claims, newest first, and what they add up to (kept in cents so sums are exact).
@@ -207,11 +218,14 @@ export class ClaimsService {
 
 /** "12.34" as 1234. */
 export function cents(amount: string): number {
-  const [whole, frac = ''] = amount.split('.');
-  return Number(whole) * 100 + Number((frac + '00').slice(0, 2));
+  const negative = amount.startsWith('-');
+  const [whole, frac = ''] = (negative ? amount.slice(1) : amount).split('.');
+  const out = Number(whole) * 100 + Number((frac + '00').slice(0, 2));
+  return negative ? -out : out;
 }
 
 /** 1234 as "12.34". */
 export function money(cents: number): string {
-  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+  const abs = Math.abs(cents);
+  return `${cents < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }

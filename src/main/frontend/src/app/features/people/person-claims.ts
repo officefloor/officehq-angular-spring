@@ -10,7 +10,7 @@ import { SessionService } from '../../core/session.service';
 import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms) and whether it is overdue (open and due before the sheet's today), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms), whether it is overdue (open and due before the sheet's today) and, for a correction (a negative amount), the number of the settled claim it corrects, and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -29,6 +29,7 @@ import { SheetService } from '../../core/sheet.service';
           <span>Period <span data-testid="claim-period">{{ periods.periodOn(c.date)?.name ?? '' }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
+          <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @for (a of actions; track a.action) {
@@ -50,6 +51,9 @@ import { SheetService } from '../../core/sheet.service';
       <input [id]="'claim-form-date-' + personId()" type="date" data-testid="claim-form-date" formControlName="date" />
       <label [for]="'claim-form-note-' + personId()">Note</label>
       <input [id]="'claim-form-note-' + personId()" data-testid="claim-form-note" formControlName="note" />
+      <label [for]="'claim-form-corrects-' + personId()">Corrects claim no. (negative amount only)</label>
+      <input [id]="'claim-form-corrects-' + personId()" data-testid="claim-form-corrects" formControlName="corrects"
+        inputmode="numeric" />
       <button type="submit" data-testid="claim-form-submit">{{ editing() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (editing() !== null) {
         <button type="button" data-testid="claim-form-cancel" (click)="reset()">Cancel</button>
@@ -76,6 +80,7 @@ export class PersonClaims {
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
+    corrects: new FormControl('', { nonNullable: true }),
   });
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
@@ -145,25 +150,31 @@ export class PersonClaims {
     }
     this.error.set('');
     this.editing.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects?.toString() ?? '' },
+      { emitEvent: false });
   }
 
   protected reset(): void {
     this.error.set('');
     this.editing.set(null);
-    this.form.reset({ amount: '', date: '', note: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
   }
 
   protected submit(): void {
     if (this.saving) return;
     this.error.set('');
-    const { amount, date, note } = this.form.getRawValue();
+    const { amount, date, note, corrects } = this.form.getRawValue();
     const a = amount.trim();
-    if (!/^\d{1,13}(\.\d{1,2})?$/.test(a)) {
-      this.error.set('Enter an amount of 0.00 or more, with up to two decimals.');
+    if (!/^-?\d{1,13}(\.\d{1,2})?$/.test(a)) {
+      this.error.set('Enter an amount with up to two decimals.');
       return;
     }
-    const form = { amount: a, date: date.trim() || null, note: note.trim() };
+    const k = corrects.trim();
+    if (a.startsWith('-') && !/^[1-9]\d{0,8}$/.test(k)) {
+      this.error.set('A negative amount is a correction: give the number of the settled claim it corrects.');
+      return;
+    }
+    const form = { amount: a, date: date.trim() || null, note: note.trim(), corrects: k && a.startsWith('-') ? Number(k) : null };
     const id = this.editing();
     const saved = id === null ? this.service.add(this.personId(), form) : this.service.edit(id, form);
     this.saving = true;

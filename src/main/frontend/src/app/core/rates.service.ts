@@ -106,6 +106,7 @@ function hundredths(pct: string): number {
  * half goes to the even cent). Worked in BigInt so it is exact for any amount.
  */
 export function due(cents: number, rate: number): number {
+  if (cents < 0) return -due(-cents, rate);
   const product = BigInt(cents) * BigInt(rate);
   const q = product / 10000n;
   const r = product % 10000n;
