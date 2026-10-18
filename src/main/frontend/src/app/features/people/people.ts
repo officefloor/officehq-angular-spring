@@ -92,7 +92,12 @@ export class People {
     const saved = id === null ? this.people.add({ name, grade }) : this.people.edit(id, { name, grade });
     saved.subscribe({
       next: () => this.reset(),
-      error: () => this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.'),
+      error: (e: { status?: number }) =>
+        this.error.set(
+          e.status === 409
+            ? 'That name is already in use.'
+            : id === null ? 'Could not add that person.' : 'Could not save that person.',
+        ),
     });
   }
 }
