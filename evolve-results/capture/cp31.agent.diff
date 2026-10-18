@@ -1,0 +1,348 @@
+diff --git a/src/main/frontend/src/app/core/totals.service.ts b/src/main/frontend/src/app/core/totals.service.ts
+new file mode 100644
+index 00000000..475797e9
+--- /dev/null
++++ b/src/main/frontend/src/app/core/totals.service.ts
+@@ -0,0 +1,75 @@
++import { Injectable, computed, inject } from '@angular/core';
++import { ClaimsService, claimDue, money } from './claims.service';
++import { Grade, PeopleService, Person, gradeOn } from './people.service';
++import { PeriodsService } from './periods.service';
++import { RatesService } from './rates.service';
++import { SettingsService } from './settings.service';
++import { SheetService } from './sheet.service';
++
++// The due-totals the screen shows, worked out once so the people list, the periods list and the
++// summary all agree.
++@Injectable({ providedIn: 'root' })
++export class TotalsService {
++  private readonly people = inject(PeopleService);
++  private readonly claims = inject(ClaimsService);
++  private readonly periods = inject(PeriodsService);
++  private readonly rates = inject(RatesService);
++  private readonly settings = inject(SettingsService);
++  private readonly sheets = inject(SheetService);
++
++  /**
++   * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
++   * absent when the grade in force on today has no rate in force then and none of those claims has a due.
++   */
++  readonly personDueTotals = computed(() => {
++    const out = new Map<number, number>();
++    const floor = this.settings.floorCents();
++    const late = this.settings.late();
++    for (const p of this.people.people()) {
++      const counted = (this.claims.byPerson().get(p.id) ?? []).filter(this.claims.live());
++      const rateOn = (date: string) => this.rateOn(p, date);
++      const dues = counted.map((c) => claimDue(c, rateOn, floor, late));
++      const grade = this.gradeToday(p);
++      if (!(grade && this.rates.byGrade().has(grade)) && dues.every((d) => d === undefined)) continue;
++      out.set(p.id, dues.reduce<number>((sum, d) => sum + (d ?? 0), 0));
++    }
++    return out;
++  });
++
++  /** Each open period's live due-total in cents, by period id: the dues of the counting claims dated in it. */
++  private readonly livePeriodTotals = computed(() => {
++    const people = new Map(this.people.people().map((p) => [p.id, p]));
++    const out = new Map<number, number>();
++    const floor = this.settings.floorCents();
++    const late = this.settings.late();
++    for (const c of this.claims.claims().filter(this.claims.live())) {
++      const period = this.periods.periodOn(c.date);
++      const p = people.get(c.personId);
++      if (!period || !p) continue;
++      const d = claimDue(c, (date) => this.rateOn(p, date), floor, late);
++      out.set(period.id, (out.get(period.id) ?? 0) + (d ?? 0));
++    }
++    return out;
++  });
++
++  /** Each period's due-total as shown, by period id: the one fixed when it closed, else the live one. */
++  readonly periodDueTotals = computed(() => {
++    const live = this.livePeriodTotals();
++    return new Map(this.periods.periods().map((p) => [
++      p.id,
++      p.closed ? (p.closedTotal ?? '') : money(live.get(p.id) ?? 0),
++    ]));
++  });
++
++  /** The grade in force on the sheet's today. */
++  gradeToday(p: Person): Grade | undefined {
++    const today = this.sheets.today();
++    return today === null ? p.grade : gradeOn(p.grades, today);
++  }
++
++  /** The rate in force on a date for the person's grade in force then, in hundredths of a percent. */
++  rateOn(p: Person, date: string): number | undefined {
++    const grade = gradeOn(p.grades, date);
++    return grade && this.rates.rateOn(grade, date);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e784ecb8..a7abb47b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,11 +1,11 @@
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { finalize, switchMap } from 'rxjs';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { GRADES, Grade, PeopleService, Person, gradeOn } from '../../core/people.service';
++import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
+ import { SheetService } from '../../core/sheet.service';
+ import { ClaimsService, claimDue, money, overdue } from '../../core/claims.service';
+-import { RatesService } from '../../core/rates.service';
+ import { SettingsService } from '../../core/settings.service';
++import { TotalsService } from '../../core/totals.service';
+ import { PersonClaims } from './person-claims';
+ 
+ // The sheet's people: a form that adds a person or edits the one opened, and the list with each
+@@ -141,9 +141,9 @@ import { PersonClaims } from './person-claims';
+ export class People {
+   protected readonly people = inject(PeopleService);
+   protected readonly claims = inject(ClaimsService);
+-  private readonly rates = inject(RatesService);
+   private readonly sheets = inject(SheetService);
+   private readonly settings = inject(SettingsService);
++  private readonly totals = inject(TotalsService);
+   protected readonly money = money;
+   protected readonly grades = GRADES;
+   protected readonly form = new FormGroup({
+@@ -174,24 +174,8 @@ export class People {
+   protected readonly listed = computed(() => this.people.showRetired()
+     ? this.people.people()
+     : this.people.people().filter((p) => !p.retiredFrom));
+-  /**
+-   * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
+-   * absent when the grade in force on today has no rate in force then and none of those claims has a due.
+-   */
+-  protected readonly dueTotals = computed(() => {
+-    const out = new Map<number, number>();
+-    const floor = this.settings.floorCents();
+-    const late = this.settings.late();
+-    for (const p of this.people.people()) {
+-      const counted = (this.claims.byPerson().get(p.id) ?? []).filter(this.claims.live());
+-      const rateOn = (date: string) => this.rateOn(p, date);
+-      const dues = counted.map((c) => claimDue(c, rateOn, floor, late));
+-      const grade = this.gradeToday(p);
+-      if (!(grade && this.rates.byGrade().has(grade)) && dues.every((d) => d === undefined)) continue;
+-      out.set(p.id, dues.reduce<number>((sum, d) => sum + (d ?? 0), 0));
+-    }
+-    return out;
+-  });
++  /** Each person's due-total in cents; absent when they have none (n/a). */
++  protected readonly dueTotals = this.totals.personDueTotals;
+   /** Everyone's due-total added up, in cents, skipping those with none. */
+   protected readonly dueTotal = computed(() => [...this.dueTotals().values()].reduce((sum, d) => sum + d, 0));
+ 
+@@ -237,14 +221,12 @@ export class People {
+ 
+   /** The grade in force on the sheet's today. */
+   protected gradeToday(p: Person): Grade | undefined {
+-    const today = this.sheets.today();
+-    return today === null ? p.grade : gradeOn(p.grades, today);
++    return this.totals.gradeToday(p);
+   }
+ 
+   /** The rate in force on a date for the person's grade in force then, in hundredths of a percent. */
+   private rateOn(p: Person, date: string): number | undefined {
+-    const grade = gradeOn(p.grades, date);
+-    return grade && this.rates.rateOn(grade, date);
++    return this.totals.rateOn(p, date);
+   }
+ 
+   protected overdueOf(personId: number): { count: number; cents: number } {
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 0ef69b74..2db6e4ae 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -1,12 +1,9 @@
+-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
++import { Component, effect, inject, signal, untracked } from '@angular/core';
+ import { finalize } from 'rxjs';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { ClaimsService, claimDue, money } from '../../core/claims.service';
+-import { PeopleService, gradeOn } from '../../core/people.service';
+ import { Period, PeriodsService } from '../../core/periods.service';
+-import { RatesService } from '../../core/rates.service';
+-import { SettingsService } from '../../core/settings.service';
+ import { SheetService } from '../../core/sheet.service';
++import { TotalsService } from '../../core/totals.service';
+ 
+ // The sheet's periods, each with its due-total: the sum of the dues (those with one) of the open and
+ // settled claims dated in it; once the period is closed, the due-total fixed when it closed (live again if a steward reopens it). A form adds a period: a name unique on the sheet and a from and to date,
+@@ -39,7 +36,7 @@ import { SheetService } from '../../core/sheet.service';
+               <th scope="row" data-testid="period-name">{{ p.name }}</th>
+               <td data-testid="period-from">{{ p.from }}</td>
+               <td data-testid="period-to">{{ p.to }}</td>
+-              <td data-testid="period-due-total">{{ p.closed ? p.closedTotal : money(dueTotals().get(p.id) ?? 0) }}</td>
++              <td data-testid="period-due-total">{{ dueTotals().get(p.id) }}</td>
+               <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+               <td>
+                 @if (!p.closed) {
+@@ -59,12 +56,8 @@ import { SheetService } from '../../core/sheet.service';
+ })
+ export class Periods {
+   protected readonly periods = inject(PeriodsService);
+-  private readonly claims = inject(ClaimsService);
+-  private readonly people = inject(PeopleService);
+-  private readonly rates = inject(RatesService);
+   private readonly sheets = inject(SheetService);
+-  private readonly settings = inject(SettingsService);
+-  protected readonly money = money;
++  private readonly totals = inject(TotalsService);
+   protected readonly form = new FormGroup({
+     name: new FormControl('', { nonNullable: true }),
+     from: new FormControl('', { nonNullable: true }),
+@@ -75,24 +68,8 @@ export class Periods {
+   protected readonly rowErrors = signal<Record<number, string>>({});
+   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+   private saving = false;
+-  /** Each period's due-total in cents, by period id: the dues of the counting claims dated in it. */
+-  protected readonly dueTotals = computed(() => {
+-    const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
+-    const out = new Map<number, number>();
+-    const floor = this.settings.floorCents();
+-    const late = this.settings.late();
+-    for (const c of this.claims.claims().filter(this.claims.live())) {
+-      const period = this.periods.periodOn(c.date);
+-      const given = grades.get(c.personId);
+-      if (!period || !given) continue;
+-      const d = claimDue(c, (date) => {
+-        const grade = gradeOn(given, date);
+-        return grade && this.rates.rateOn(grade, date);
+-      }, floor, late);
+-      out.set(period.id, (out.get(period.id) ?? 0) + (d ?? 0));
+-    }
+-    return out;
+-  });
++  /** Each period's due-total as shown, by period id. */
++  protected readonly dueTotals = this.totals.periodDueTotals;
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+diff --git a/src/main/frontend/src/app/features/session/sheet-picker.ts b/src/main/frontend/src/app/features/session/sheet-picker.ts
+index 1ce53619..dfd83cb5 100644
+--- a/src/main/frontend/src/app/features/session/sheet-picker.ts
++++ b/src/main/frontend/src/app/features/session/sheet-picker.ts
+@@ -8,6 +8,7 @@ import { RatesService } from '../../core/rates.service';
+ import { SettingsService } from '../../core/settings.service';
+ import { SheetService } from '../../core/sheet.service';
+ import { People } from '../people/people';
++import { Summary } from '../summary/summary';
+ import { Periods } from '../periods/periods';
+ import { Rates } from '../rates/rates';
+ import { Settings } from '../settings/settings';
+@@ -17,7 +18,7 @@ import { SheetToday } from './sheet-today';
+ // everything kept under it (people, claims, settings, roles, rates, periods) have been re-read, so nothing is shown stale.
+ @Component({
+   selector: 'app-sheet-picker',
+-  imports: [ReactiveFormsModule, SheetToday, Settings, Rates, Periods, People],
++  imports: [ReactiveFormsModule, SheetToday, Settings, Rates, Periods, People, Summary],
+   template: `
+     <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Load sheet">
+       <label for="sheet-id-input">Sheet id</label>
+@@ -36,6 +37,7 @@ import { SheetToday } from './sheet-today';
+       <app-rates />
+       <app-periods />
+       <app-people />
++      <app-summary />
+     }
+   `,
+ })
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+new file mode 100644
+index 00000000..5fb6587a
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -0,0 +1,90 @@
++import { Component, computed, inject } from '@angular/core';
++import { ClaimsService, money } from '../../core/claims.service';
++import { GRADES, PeopleService } from '../../core/people.service';
++import { PeriodsService } from '../../core/periods.service';
++import { TotalsService } from '../../core/totals.service';
++
++/** Every status the summary counts claims under, in the order shown. */
++const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
++
++// The sheet's summary, built from the same figures the lists show. Per grade: how many people (retired
++// ones left out) are on it on the sheet's today, and their due-totals added up (skipping n/a). Per
++// period: its due-total. Per status: how many claims have it.
++@Component({
++  selector: 'app-summary',
++  template: `
++    <section aria-labelledby="summary-heading">
++      <h2 id="summary-heading">Summary</h2>
++      <table>
++        <caption>By grade</caption>
++        <thead>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (g of byGrade(); track g.grade) {
++            <tr>
++              <th scope="row">{{ g.grade }}</th>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ money(g.cents) }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>By period</caption>
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (p of periods.periods(); track p.id) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ totals.periodDueTotals().get(p.id) }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>By status</caption>
++        <thead>
++          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
++        </thead>
++        <tbody>
++          @for (s of byStatus(); track s.status) {
++            <tr>
++              <th scope="row">{{ s.status }}</th>
++              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Summary {
++  protected readonly periods = inject(PeriodsService);
++  protected readonly totals = inject(TotalsService);
++  private readonly people = inject(PeopleService);
++  private readonly claims = inject(ClaimsService);
++  protected readonly money = money;
++
++  /** Each grade: the people on it today who are not retired, and their due-totals added up in cents. */
++  protected readonly byGrade = computed(() => {
++    const dueTotals = this.totals.personDueTotals();
++    const current = this.people.people().filter((p) => !p.retiredFrom);
++    return GRADES.map((grade) => {
++      const on = current.filter((p) => this.totals.gradeToday(p) === grade);
++      return {
++        grade,
++        count: on.length,
++        cents: on.reduce((sum, p) => sum + (dueTotals.get(p.id) ?? 0), 0),
++      };
++    });
++  });
++
++  /** Each status: how many of the sheet's claims have it. */
++  protected readonly byStatus = computed(() => {
++    const all = this.claims.claims();
++    return STATUSES.map((status) => ({ status, count: all.filter((c) => c.status === status).length }));
++  });
++}
