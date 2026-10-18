@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, of, tap } from 'rxjs';
 import { Grade } from './people.service';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
@@ -28,17 +28,18 @@ export class RatesService {
     return out;
   });
 
-  reload(): void {
+  /** Re-read the active sheet's rates from the store. */
+  reload(): Observable<unknown> {
     const id = this.sheets.sheetId();
     if (!id) {
       this.list.set([]);
-      return;
+      return of(null);
     }
-    this.http
+    return this.http
       .get<Rate[]>(this.url(id), { headers: this.session.headers() })
-      .subscribe((rates) => {
+      .pipe(tap((rates) => {
         if (this.sheets.sheetId() === id) this.list.set(rates);
-      });
+      }));
   }
 
   set(grade: Grade, pct: string): Observable<Rate> {

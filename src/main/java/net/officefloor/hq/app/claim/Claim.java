@@ -39,6 +39,10 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
+    /** Given when the claim is opened; none while a draft, cleared when voided. */
+    @Column(name = "number")
+    private Integer number;
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
@@ -70,4 +74,8 @@ public class Claim {
     public ClaimStatus getStatus() { return status; }
 
     public void setStatus(ClaimStatus status) { this.status = status; }
+
+    public Integer getNumber() { return number; }
+
+    public void setNumber(Integer number) { this.number = number; }
 }

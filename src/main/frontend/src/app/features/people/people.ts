@@ -91,8 +91,6 @@ export class People {
       this.sheets.loads();
       untracked(() => {
         this.reset();
-        this.people.reload();
-        this.claims.reload();
       });
     });
   }

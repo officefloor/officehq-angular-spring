@@ -63,7 +63,6 @@ export class Rates {
       this.sheets.loads();
       untracked(() => {
         this.reset();
-        this.rates.reload();
       });
     });
   }

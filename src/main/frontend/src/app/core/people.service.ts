@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, of, tap } from 'rxjs';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
 
@@ -29,17 +29,18 @@ export class PeopleService {
 
   readonly people = this.list.asReadonly();
 
-  reload(): void {
+  /** Re-read the active sheet's people from the store. */
+  reload(): Observable<unknown> {
     const id = this.sheets.sheetId();
     if (!id) {
       this.list.set([]);
-      return;
+      return of(null);
     }
-    this.http
+    return this.http
       .get<Person[]>(this.url(id), { headers: this.session.headers() })
-      .subscribe((people) => {
+      .pipe(tap((people) => {
         if (this.sheets.sheetId() === id) this.list.set(people);
-      });
+      }));
   }
 
   add(form: PersonForm): Observable<Person> {

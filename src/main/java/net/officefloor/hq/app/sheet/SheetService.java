@@ -43,4 +43,16 @@ public class SheetService {
         sheet.setToday(today);
         return sheet;
     }
+
+    /**
+     * Lock the sheet until the current transaction ends, so its claims' statuses change one at a
+     * time (the sheet is started when it was never loaded before).
+     */
+    @Transactional
+    public Sheet lock(String id, String user) {
+        return sheets.findByIdForUpdate(id).orElseGet(() -> {
+            load(id, user);
+            return sheets.findByIdForUpdate(id).orElseThrow();
+        });
+    }
 }

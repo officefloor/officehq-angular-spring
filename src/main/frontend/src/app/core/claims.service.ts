@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, of, tap } from 'rxjs';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
 
@@ -13,6 +13,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** Given when opened; null while a draft and once voided. */
+  number: number | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -59,17 +61,18 @@ export class ClaimsService {
   /** Everyone's claimed (open and settled claims) added up, in cents. */
   readonly totalCents = computed(() => this.list().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0));
 
-  reload(): void {
+  /** Re-read the active sheet's claims from the store. */
+  reload(): Observable<unknown> {
     const id = this.sheets.sheetId();
     if (!id) {
       this.list.set([]);
-      return;
+      return of(null);
     }
-    this.http
+    return this.http
       .get<Claim[]>(this.url(id), { headers: this.session.headers() })
-      .subscribe((claims) => {
+      .pipe(tap((claims) => {
         if (this.sheets.sheetId() === id) this.list.set(claims);
-      });
+      }));
   }
 
   add(personId: number, form: ClaimForm): Observable<Claim> {

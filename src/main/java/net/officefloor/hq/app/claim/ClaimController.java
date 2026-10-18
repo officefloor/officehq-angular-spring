@@ -26,10 +26,10 @@ public class ClaimController {
 
     /** A claim; the amount is sent as text with two decimals so it is never rounded on the way. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status) {
+            ClaimStatus status, Integer number) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
         }
     }
 

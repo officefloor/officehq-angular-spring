@@ -6,6 +6,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), noteOf(note)));
-        audit(sheetId, user, "CLAIM_ADDED", person, saved);
+        audit(sheetId, user, "CLAIM_ADDED", person, saved, saved.getNumber());
         return saved;
     }
 
@@ -54,20 +55,23 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        audit(sheetId, user, "CLAIM_EDITED", person, saved);
+        audit(sheetId, user, "CLAIM_EDITED", person, saved, saved.getNumber());
         return saved;
     }
 
     /** Move a claim to its next status; a change its current status does not allow is refused. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
+        Sheet sheet = sheets.lock(sheetId, user);
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next);
         }
+        Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         claim.setStatus(next);
+        claim.setNumber(next == ClaimStatus.VOID ? null : number);
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -76,14 +80,18 @@ public class ClaimService {
             case SETTLED -> "CLAIM_SETTLED";
             default -> "CLAIM_VOIDED";
         };
-        audit(sheetId, user, event, person, saved);
+        audit(sheetId, user, event, person, saved, number);
         return saved;
     }
 
-    /** Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd. */
-    private void audit(String sheetId, String user, String event, Person person, Claim claim) {
+    /**
+     * Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd; a claim
+     * with a number (or, when voided, that had one) ends with it.
+     */
+    private void audit(String sheetId, String user, String event, Person person, Claim claim, Integer number) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
-                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate());
+                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
+                + (number != null ? " number=" + number : ""));
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
