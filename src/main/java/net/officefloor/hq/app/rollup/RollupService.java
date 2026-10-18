@@ -1,0 +1,130 @@
+package net.officefloor.hq.app.rollup;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * The sheet's figures as the screen shows them: each person's claimed and due-total, and the sheet's
+ * claimed-total and due-total. A change takes a snapshot before it and, once its own audit lines are
+ * written, records a ROLLUP line per person whose figures moved and a TOTALS line when the totals did.
+ */
+@Service
+public class RollupService {
+
+    /** A person's figures, as text with two decimals; the due-total is "n/a" when they have none. */
+    public record Figures(String name, String claimed, String dueTotal) {}
+
+    /** Each person's figures by id, in the order they were added, and the sheet's totals. */
+    public record Rollup(Map<Long, Figures> people, String claimedTotal, String dueTotal) {}
+
+    private final PersonRepository people;
+    private final ClaimRepository claims;
+    private final RateRepository rates;
+    private final SheetRepository sheets;
+    private final Audit audit;
+
+    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
+            SheetRepository sheets, Audit audit) {
+        this.people = people;
+        this.claims = claims;
+        this.rates = rates;
+        this.sheets = sheets;
+        this.audit = audit;
+    }
+
+    /**
+     * The sheet's figures now. Only open and settled claims count; a person's due-total is the sum of
+     * their figures (those with one), n/a when their grade has no rate in force on the sheet's today
+     * and no counting claim of theirs keeps a fixed (settled or stated) figure.
+     */
+    @Transactional(readOnly = true)
+    public Rollup snapshot(String sheetId) {
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElseGet(LocalDate::now);
+        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> c.getStatus().counts())
+                .collect(Collectors.groupingBy(Claim::getPersonId));
+        Map<Long, Figures> out = new LinkedHashMap<>();
+        BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
+        BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
+        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            List<Claim> counted = byPerson.getOrDefault(p.getId(), List.of());
+            BigDecimal claimed = BigDecimal.ZERO.setScale(2);
+            BigDecimal due = BigDecimal.ZERO.setScale(2);
+            for (Claim c : counted) {
+                claimed = claimed.add(c.getAmount());
+                BigDecimal figure = figure(sheetId, p, c);
+                if (figure != null) due = due.add(figure);
+            }
+            boolean rated = rates.findInForce(sheetId, p.getGrade(), today).isPresent();
+            boolean anyFixed = counted.stream().anyMatch(c -> c.getDue() != null || c.isStated());
+            claimedTotal = claimedTotal.add(claimed);
+            if (rated || anyFixed) dueTotal = dueTotal.add(due);
+            out.put(p.getId(), new Figures(p.getName(), text(claimed), rated || anyFixed ? text(due) : "n/a"));
+        }
+        return new Rollup(out, text(claimedTotal), text(dueTotal));
+    }
+
+    /**
+     * Record, once the change commits, a ROLLUP line for each person whose figures moved since
+     * {@code before} (a person who did not exist then counts as moved), then a TOTALS line when the
+     * sheet's totals moved.
+     */
+    @Transactional(readOnly = true)
+    public void recordChanges(String sheetId, String user, Rollup before) {
+        Rollup after = snapshot(sheetId);
+        List<String> lines = new ArrayList<>();
+        after.people().forEach((id, now) -> {
+            Figures was = before.people().get(id);
+            if (was == null || !was.claimed().equals(now.claimed()) || !was.dueTotal().equals(now.dueTotal())) {
+                lines.add("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + now.name()
+                        + " claimed=" + now.claimed() + " due-total=" + now.dueTotal());
+            }
+        });
+        if (!Objects.equals(before.claimedTotal(), after.claimedTotal())
+                || !Objects.equals(before.dueTotal(), after.dueTotal())) {
+            lines.add("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total=" + after.claimedTotal()
+                    + " due-total=" + after.dueTotal());
+        }
+        lines.forEach(audit::recordOnCommit);
+    }
+
+    /**
+     * The figure a claim shows: a settled claim's fixed due, else the figure its person's last
+     * statement bound it to, else its amount times the rate in force on its date; null when none.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal figure(String sheetId, Person person, Claim claim) {
+        if (claim.getDue() != null) return claim.getDue();
+        if (claim.isStated()) return claim.getStatedDue();
+        return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
+                .map(rate -> due(claim.getAmount(), rate))
+                .orElse(null);
+    }
+
+    /** The amount times the rate's percent, rounded half to even to cents (as the screen works it out). */
+    private static BigDecimal due(BigDecimal amount, Rate rate) {
+        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    private static String text(BigDecimal amount) {
+        return amount.setScale(2).toPlainString();
+    }
+}

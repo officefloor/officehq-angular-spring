@@ -1,7 +1,6 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
@@ -9,8 +8,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.Statement;
 import net.officefloor.hq.app.person.StatementRepository;
-import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -26,15 +25,17 @@ public class ClaimService {
     private final RateRepository rates;
     private final StatementRepository statements;
     private final SheetService sheets;
+    private final RollupService rollups;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates,
-            StatementRepository statements, SheetService sheets, Audit audit) {
+            StatementRepository statements, SheetService sheets, RollupService rollups, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.statements = statements;
         this.sheets = sheets;
+        this.rollups = rollups;
         this.audit = audit;
     }
 
@@ -49,8 +50,10 @@ public class ClaimService {
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Rollup before = rollups.snapshot(sheetId);
         Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), noteOf(note)));
         audit(sheetId, user, "CLAIM_ADDED", person, saved, saved.getNumber());
+        rollups.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -59,6 +62,7 @@ public class ClaimService {
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        RollupService.Rollup before = rollups.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(dateOrToday(sheetId, date));
         claim.setNote(noteOf(note));
@@ -66,6 +70,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         audit(sheetId, user, "CLAIM_EDITED", person, saved, saved.getNumber());
+        rollups.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -87,6 +92,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Rollup before = rollups.snapshot(sheetId);
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         claim.setStatus(next);
         claim.setNumber(next == ClaimStatus.VOID ? null : number);
@@ -106,6 +112,7 @@ public class ClaimService {
                 ? " due=" + (saved.getDue() == null ? "n/a" : saved.getDue().setScale(2).toPlainString())
                 : "";
         audit(sheetId, user, event, person, saved, number, suffix);
+        rollups.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -120,6 +127,7 @@ public class ClaimService {
         Sheet sheet = sheets.lock(sheetId, user);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Rollup before = rollups.snapshot(sheetId);
         List<Claim> theirs = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> c.getPersonId().equals(personId))
                 .toList();
@@ -142,24 +150,13 @@ public class ClaimService {
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString())
                 + " claims=" + counting.size());
+        rollups.recordChanges(sheetId, user, before);
         return theirs;
     }
 
-    /**
-     * The figure a claim shows: a settled claim's fixed due, else the figure its person's last
-     * statement bound it to, else its amount times the rate in force on its date; null when none.
-     */
+    /** The figure a claim shows (see {@link RollupService#figure}); null when none. */
     private BigDecimal figure(String sheetId, Person person, Claim claim) {
-        if (claim.getDue() != null) return claim.getDue();
-        if (claim.isStated()) return claim.getStatedDue();
-        return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
-                .map(rate -> due(claim.getAmount(), rate))
-                .orElse(null);
-    }
-
-    /** The amount times the rate's percent, rounded half to even to cents (as the screen works it out). */
-    private static BigDecimal due(BigDecimal amount, Rate rate) {
-        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        return rollups.figure(sheetId, person, claim);
     }
 
     /**

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Locale;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -24,12 +25,15 @@ public class PersonService {
     private final PersonRepository people;
     private final StatementRepository statements;
     private final SheetService sheets;
+    private final RollupService rollups;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, StatementRepository statements, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, StatementRepository statements, SheetService sheets,
+            RollupService rollups, Audit audit) {
         this.people = people;
         this.statements = statements;
         this.sheets = sheets;
+        this.rollups = rollups;
         this.audit = audit;
     }
 
@@ -55,6 +59,7 @@ public class PersonService {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         requireUnusedName(sheetId, null, trimmed);
+        RollupService.Rollup before = rollups.snapshot(sheetId);
         Person saved;
         try {
             saved = people.saveAndFlush(new Person(sheetId, trimmed, grade));
@@ -62,6 +67,7 @@ public class PersonService {
             throw nameInUse();
         }
         audit(sheetId, user, "PERSON_ADDED", saved);
+        rollups.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -76,6 +82,7 @@ public class PersonService {
         if (person.getVersion() != version) throw editedMeanwhile();
         String trimmed = name.trim();
         requireUnusedName(sheetId, personId, trimmed);
+        RollupService.Rollup before = rollups.snapshot(sheetId);
         person.setName(trimmed);
         person.setGrade(grade);
         Person saved;
@@ -87,6 +94,7 @@ public class PersonService {
             throw nameInUse();
         }
         audit(sheetId, user, "PERSON_EDITED", saved);
+        rollups.recordChanges(sheetId, user, before);
         return saved;
     }
 

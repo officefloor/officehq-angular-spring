@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Grade;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,11 +15,13 @@ public class RateService {
 
     private final RateRepository rates;
     private final SheetService sheets;
+    private final RollupService rollups;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, RollupService rollups, Audit audit) {
         this.rates = rates;
         this.sheets = sheets;
+        this.rollups = rollups;
         this.audit = audit;
     }
 
@@ -36,6 +39,7 @@ public class RateService {
     @Transactional
     public Rate set(String sheetId, String user, Grade grade, LocalDate from, BigDecimal pct) {
         sheets.lock(sheetId, user);
+        RollupService.Rollup before = rollups.snapshot(sheetId);
         Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from)
                 .orElseGet(() -> new Rate(sheetId, grade, from, pct));
         rate.setPct(pct);
@@ -43,6 +47,7 @@ public class RateService {
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + saved.getGrade() + " rate=" + saved.getPct().setScale(2).toPlainString()
                 + (from != null ? " from=" + from : ""));
+        rollups.recordChanges(sheetId, user, before);
         return saved;
     }
 }
