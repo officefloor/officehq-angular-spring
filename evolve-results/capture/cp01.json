@@ -1,0 +1,82 @@
+{
+  "checkpoint": 1,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp01_signin-and-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Anyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAnyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "938e6e77778adbd87be414e2d02ca26686e249c8",
+  "reset_sha": "",
+  "preagent_sha": "a6954c127fb24a610d784de60ce4c6bfc74743d8",
+  "prev_sha": "a6954c127fb24a610d784de60ce4c6bfc74743d8",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.46868859999999996,
+    "input_tokens": 18,
+    "output_tokens": 7335,
+    "cache_read_tokens": 286023,
+    "cache_creation_tokens": 33089,
+    "num_turns": 9,
+    "duration_ms": 168594,
+    "duration_api_ms": 85984,
+    "model": "claude-opus-5-5",
+    "session_id": "eb7696d0-2679-4c80-b4d9-66a11a1fde0d",
+    "stop_reason": "success",
+    "result_text": "Sign-in and sheet loading now work on the single screen at `/`, and `bin/e2e` passes.\n\n**How it behaves**\n- You sign in by typing a name (no password). The name then shows as `current-user`, and the browser sends it as an `X-User` header on every request after that.\n- You load a sheet by typing its id. The active id shows as `sheet-current-id`. An id that's never been used starts a new empty sheet; loading an id again reads it fresh from the store. Two users loading the same id get the same sheet.\n- If a form is refused (a blank name, or a sheet id with characters other than letters, digits, `-` or `_`), it shows `signin-error` or `sheet-error`. The error goes away as soon as you edit the form or submit it again.\n\n**What changed**\n- **Stored data:** a new database migration, `src/main/resources/db/migration/V1__sheet.sql`, adds a `sheet` table (id, who created it, when).\n- **Server:**\n  - `POST /api/session` handles sign-in by name.\n  - `POST /api/sheets/{id}/load` returns the sheet, or creates it if it doesn't exist yet. If two users create the same new sheet at the same moment, both get that one sheet.\n  - The code is in the new `session/` and `sheet/` packages.\n- **Front end:** two services in `core/` hold the signed-in user and the active sheet, plus two small form components, `features/session/signin.ts` and `sheet-picker.ts`. The home page shows the sign-in form until someone signs in, then the sheet picker.\n\n**Decisions for you**\n- **Sign-in only lasts for the page.** The name isn't saved anywhere, so reloading the browser signs you out. The test doesn't need more, but you may want it kept.\n- **The server doesn't check who's signed in.** It accepts whatever name arrives in the `X-User` header. With no passwords that's arguably fine, but anyone calling the API directly can claim any name.\n- **No audit records are written.** The spec doesn't expect any for this change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.46868859999999996,
+        "num_turns": 9,
+        "duration_ms": 168594,
+        "duration_api_ms": 85984,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": "cp01.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 1,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1145,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
