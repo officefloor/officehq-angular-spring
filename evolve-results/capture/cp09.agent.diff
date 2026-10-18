@@ -1,0 +1,408 @@
+diff --git a/src/main/frontend/src/app/core/claims.service.ts b/src/main/frontend/src/app/core/claims.service.ts
+index 5f1eecb9..02fa1de0 100644
+--- a/src/main/frontend/src/app/core/claims.service.ts
++++ b/src/main/frontend/src/app/core/claims.service.ts
+@@ -1,6 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+-import { Observable, tap } from 'rxjs';
++import { Observable, of, tap } from 'rxjs';
+ import { SessionService } from './session.service';
+ import { SheetService } from './sheet.service';
+ 
+@@ -13,6 +13,8 @@ export interface Claim {
+   date: string;
+   note: string;
+   status: ClaimStatus;
++  /** Given when opened; null while a draft and once voided. */
++  number: number | null;
+ }
+ 
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+@@ -59,17 +61,18 @@ export class ClaimsService {
+   /** Everyone's claimed (open and settled claims) added up, in cents. */
+   readonly totalCents = computed(() => this.list().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0));
+ 
+-  reload(): void {
++  /** Re-read the active sheet's claims from the store. */
++  reload(): Observable<unknown> {
+     const id = this.sheets.sheetId();
+     if (!id) {
+       this.list.set([]);
+-      return;
++      return of(null);
+     }
+-    this.http
++    return this.http
+       .get<Claim[]>(this.url(id), { headers: this.session.headers() })
+-      .subscribe((claims) => {
++      .pipe(tap((claims) => {
+         if (this.sheets.sheetId() === id) this.list.set(claims);
+-      });
++      }));
+   }
+ 
+   add(personId: number, form: ClaimForm): Observable<Claim> {
+diff --git a/src/main/frontend/src/app/core/people.service.ts b/src/main/frontend/src/app/core/people.service.ts
+index 548d570e..8172ebe4 100644
+--- a/src/main/frontend/src/app/core/people.service.ts
++++ b/src/main/frontend/src/app/core/people.service.ts
+@@ -1,6 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject, signal } from '@angular/core';
+-import { Observable, tap } from 'rxjs';
++import { Observable, of, tap } from 'rxjs';
+ import { SessionService } from './session.service';
+ import { SheetService } from './sheet.service';
+ 
+@@ -29,17 +29,18 @@ export class PeopleService {
+ 
+   readonly people = this.list.asReadonly();
+ 
+-  reload(): void {
++  /** Re-read the active sheet's people from the store. */
++  reload(): Observable<unknown> {
+     const id = this.sheets.sheetId();
+     if (!id) {
+       this.list.set([]);
+-      return;
++      return of(null);
+     }
+-    this.http
++    return this.http
+       .get<Person[]>(this.url(id), { headers: this.session.headers() })
+-      .subscribe((people) => {
++      .pipe(tap((people) => {
+         if (this.sheets.sheetId() === id) this.list.set(people);
+-      });
++      }));
+   }
+ 
+   add(form: PersonForm): Observable<Person> {
+diff --git a/src/main/frontend/src/app/core/rates.service.ts b/src/main/frontend/src/app/core/rates.service.ts
+index 104f38b3..e5dbfc51 100644
+--- a/src/main/frontend/src/app/core/rates.service.ts
++++ b/src/main/frontend/src/app/core/rates.service.ts
+@@ -1,6 +1,6 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+-import { Observable, tap } from 'rxjs';
++import { Observable, of, tap } from 'rxjs';
+ import { Grade } from './people.service';
+ import { SessionService } from './session.service';
+ import { SheetService } from './sheet.service';
+@@ -28,17 +28,18 @@ export class RatesService {
+     return out;
+   });
+ 
+-  reload(): void {
++  /** Re-read the active sheet's rates from the store. */
++  reload(): Observable<unknown> {
+     const id = this.sheets.sheetId();
+     if (!id) {
+       this.list.set([]);
+-      return;
++      return of(null);
+     }
+-    this.http
++    return this.http
+       .get<Rate[]>(this.url(id), { headers: this.session.headers() })
+-      .subscribe((rates) => {
++      .pipe(tap((rates) => {
+         if (this.sheets.sheetId() === id) this.list.set(rates);
+-      });
++      }));
+   }
+ 
+   set(grade: Grade, pct: string): Observable<Rate> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 273b81c4..22cc12a3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -91,8 +91,6 @@ export class People {
+       this.sheets.loads();
+       untracked(() => {
+         this.reset();
+-        this.people.reload();
+-        this.claims.reload();
+       });
+     });
+   }
+diff --git a/src/main/frontend/src/app/features/people/person-claims.ts b/src/main/frontend/src/app/features/people/person-claims.ts
+index c237f8b7..e2b2a50a 100644
+--- a/src/main/frontend/src/app/features/people/person-claims.ts
++++ b/src/main/frontend/src/app/features/people/person-claims.ts
+@@ -16,6 +16,7 @@ import { RatesService, due } from '../../core/rates.service';
+           <span data-testid="claim-date">{{ c.date }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
++          <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+           <button type="button" data-testid="claim-edit" (click)="open(c)"
+             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index df2061d6..1c6dfcd0 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -63,7 +63,6 @@ export class Rates {
+       this.sheets.loads();
+       untracked(() => {
+         this.reset();
+-        this.rates.reload();
+       });
+     });
+   }
+diff --git a/src/main/frontend/src/app/features/session/sheet-picker.ts b/src/main/frontend/src/app/features/session/sheet-picker.ts
+index 1a81a5dc..d967c41c 100644
+--- a/src/main/frontend/src/app/features/session/sheet-picker.ts
++++ b/src/main/frontend/src/app/features/session/sheet-picker.ts
+@@ -1,11 +1,16 @@
+-import { Component, inject, signal } from '@angular/core';
++import { ChangeDetectorRef, Component, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { forkJoin, finalize, switchMap } from 'rxjs';
++import { ClaimsService } from '../../core/claims.service';
++import { PeopleService } from '../../core/people.service';
++import { RatesService } from '../../core/rates.service';
+ import { SheetService } from '../../core/sheet.service';
+ import { People } from '../people/people';
+ import { Rates } from '../rates/rates';
+ import { SheetToday } from './sheet-today';
+ 
+-// Choose the active sheet by typing its id and loading it.
++// Choose the active sheet by typing its id and loading it. The sheet is off the screen until it and
++// everything kept under it (people, claims, rates) have been re-read, so nothing is shown stale.
+ @Component({
+   selector: 'app-sheet-picker',
+   imports: [ReactiveFormsModule, SheetToday, Rates, People],
+@@ -18,7 +23,9 @@ import { SheetToday } from './sheet-today';
+         <p role="alert" data-testid="sheet-error">{{ error() }}</p>
+       }
+     </form>
+-    @if (sheets.sheetId(); as current) {
++    @if (loading()) {
++      <p role="status">Loading sheet…</p>
++    } @else if (sheets.sheetId(); as current) {
+       <p>Sheet: <span data-testid="sheet-current-id">{{ current }}</span></p>
+       <app-sheet-today />
+       <app-rates />
+@@ -30,6 +37,11 @@ export class SheetPicker {
+   protected readonly sheets = inject(SheetService);
+   protected readonly form = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
+   protected readonly error = signal('');
++  protected readonly loading = signal(false);
++  private readonly people = inject(PeopleService);
++  private readonly claims = inject(ClaimsService);
++  private readonly rates = inject(RatesService);
++  private readonly changes = inject(ChangeDetectorRef);
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+@@ -42,6 +54,15 @@ export class SheetPicker {
+       this.error.set('Enter a sheet id (letters, digits, - or _).');
+       return;
+     }
+-    this.sheets.load(id).subscribe({ error: () => this.error.set('Could not load that sheet.') });
++    this.loading.set(true);
++    this.sheets
++      .load(id)
++      .pipe(
++        switchMap(() => forkJoin([this.people.reload(), this.claims.reload(), this.rates.reload()])),
++        finalize(() => this.loading.set(false)),
++      )
++      .subscribe({ error: () => this.error.set('Could not load that sheet.') });
++    // Take the sheet off the screen at once, so nothing shown before the load reads as re-read.
++    this.changes.detectChanges();
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index b8643116..77a8660d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,6 +39,10 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
++    /** Given when the claim is opened; none while a draft, cleared when voided. */
++    @Column(name = "number")
++    private Integer number;
++
+     protected Claim() {}
+ 
+     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+@@ -70,4 +74,8 @@ public class Claim {
+     public ClaimStatus getStatus() { return status; }
+ 
+     public void setStatus(ClaimStatus status) { this.status = status; }
++
++    public Integer getNumber() { return number; }
++
++    public void setNumber(Integer number) { this.number = number; }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 49729545..97f7f790 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -26,10 +26,10 @@ public class ClaimController {
+ 
+     /** A claim; the amount is sent as text with two decimals so it is never rounded on the way. */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+-            ClaimStatus status) {
++            ClaimStatus status, Integer number) {
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+-                    claim.getDate(), claim.getNote(), claim.getStatus());
++                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 61afc3d4..c1cd3ebd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -6,6 +6,7 @@ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -39,7 +40,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), noteOf(note)));
+-        audit(sheetId, user, "CLAIM_ADDED", person, saved);
++        audit(sheetId, user, "CLAIM_ADDED", person, saved, saved.getNumber());
+         return saved;
+     }
+ 
+@@ -54,20 +55,23 @@ public class ClaimService {
+         Claim saved = claims.saveAndFlush(claim);
+         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+-        audit(sheetId, user, "CLAIM_EDITED", person, saved);
++        audit(sheetId, user, "CLAIM_EDITED", person, saved, saved.getNumber());
+         return saved;
+     }
+ 
+     /** Move a claim to its next status; a change its current status does not allow is refused. */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
++        Sheet sheet = sheets.lock(sheetId, user);
+         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+         if (!claim.getStatus().canBecome(next)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next);
+         }
++        Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
+         claim.setStatus(next);
++        claim.setNumber(next == ClaimStatus.VOID ? null : number);
+         Claim saved = claims.saveAndFlush(claim);
+         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+@@ -76,14 +80,18 @@ public class ClaimService {
+             case SETTLED -> "CLAIM_SETTLED";
+             default -> "CLAIM_VOIDED";
+         };
+-        audit(sheetId, user, event, person, saved);
++        audit(sheetId, user, event, person, saved, number);
+         return saved;
+     }
+ 
+-    /** Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd. */
+-    private void audit(String sheetId, String user, String event, Person person, Claim claim) {
++    /**
++     * Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd; a claim
++     * with a number (or, when voided, that had one) ends with it.
++     */
++    private void audit(String sheetId, String user, String event, Person person, Claim claim, Integer number) {
+         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
+-                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate());
++                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
++                + (number != null ? " number=" + number : ""));
+     }
+ 
+     private LocalDate dateOrToday(String sheetId, LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 3bb0d764..abd48cf1 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -25,6 +25,10 @@ public class Sheet {
+     @Column(name = "today", nullable = false)
+     private LocalDate today;
+ 
++    /** The last claim number the sheet gave out; the next opened claim gets one more. */
++    @Column(name = "last_claim_number", nullable = false)
++    private int lastClaimNumber;
++
+     protected Sheet() {}
+ 
+     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
+@@ -43,4 +47,7 @@ public class Sheet {
+     public LocalDate getToday() { return today; }
+ 
+     public void setToday(LocalDate today) { this.today = today; }
++
++    /** Give out the sheet's next claim number. */
++    public int takeClaimNumber() { return ++lastClaimNumber; }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index c246214c..66959a77 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,5 +1,15 @@
+ package net.officefloor.hq.app.sheet;
+ 
++import jakarta.persistence.LockModeType;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Query;
+ 
+-public interface SheetRepository extends JpaRepository<Sheet, String> {}
++public interface SheetRepository extends JpaRepository<Sheet, String> {
++
++    /** The sheet, locked until the transaction ends so changes to it are made one at a time. */
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select s from Sheet s where s.id = :id")
++    Optional<Sheet> findByIdForUpdate(String id);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 3cc4c960..bb25cb93 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -43,4 +43,16 @@ public class SheetService {
+         sheet.setToday(today);
+         return sheet;
+     }
++
++    /**
++     * Lock the sheet until the current transaction ends, so its claims' statuses change one at a
++     * time (the sheet is started when it was never loaded before).
++     */
++    @Transactional
++    public Sheet lock(String id, String user) {
++        return sheets.findByIdForUpdate(id).orElseGet(() -> {
++            load(id, user);
++            return sheets.findByIdForUpdate(id).orElseThrow();
++        });
++    }
+ }
+diff --git a/src/main/resources/db/migration/V8__claim_number.sql b/src/main/resources/db/migration/V8__claim_number.sql
+new file mode 100644
+index 00000000..3f73de9b
+--- /dev/null
++++ b/src/main/resources/db/migration/V8__claim_number.sql
+@@ -0,0 +1,10 @@
++-- A claim's number: given when it is opened, the next on its sheet (1, 2, ...), never reused. A
++-- draft has none, and voiding clears it. The sheet keeps the last number it gave out.
++ALTER TABLE claim ADD COLUMN number INT;
++ALTER TABLE sheet ADD COLUMN last_claim_number INT DEFAULT 0 NOT NULL;
++UPDATE claim c SET number = (
++    SELECT COUNT(*) FROM claim o
++    WHERE o.sheet_id = c.sheet_id AND o.status IN ('OPEN', 'SETTLED') AND o.id <= c.id)
++WHERE c.status IN ('OPEN', 'SETTLED');
++UPDATE sheet s SET last_claim_number = COALESCE((SELECT MAX(number) FROM claim c WHERE c.sheet_id = s.id), 0);
++CREATE UNIQUE INDEX claim_sheet_number ON claim (sheet_id, number);

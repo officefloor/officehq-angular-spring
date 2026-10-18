@@ -1,0 +1,266 @@
+{
+  "checkpoint": 9,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp09_numbering",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "When a claim is opened it receives the next number on the sheet: 1 for the first claim ever\nopened on the sheet, then 2, and so on, with no gaps and never reused, even when two users open\nclaims at the same moment. A draft has no number, and voiding a claim clears its number (the\nnumber is not given to anyone else). Show the number on the claim. Every audit line about a\nclaim that has a number gains number=<number> at its end (so CLAIM_OPENED and CLAIM_SETTLED\ncarry it; a CLAIM_VOIDED line carries the number the claim had).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a claim is opened it receives the next number on the sheet: 1 for the first claim ever\nopened on the sheet, then 2, and so on, with no gaps and never reused, even when two users open\nclaims at the same moment. A draft has no number, and voiding a claim clears its number (the\nnumber is not given to anyone else). Show the number on the claim. Every audit line about a\nclaim that has a number gains number=<number> at its end (so CLAIM_OPENED and CLAIM_SETTLED\ncarry it; a CLAIM_VOIDED line carries the number the claim had).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2499f531931d8cc858b4a09fa09b3f843e146199",
+  "reset_sha": "",
+  "preagent_sha": "9f1c40e7b77e1c9f9a3cb6c5239c60143812c416",
+  "prev_sha": "9f1c40e7b77e1c9f9a3cb6c5239c60143812c416",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3841122000000003,
+    "input_tokens": 74,
+    "output_tokens": 21070,
+    "cache_read_tokens": 2033121,
+    "cache_creation_tokens": 69474,
+    "num_turns": 38,
+    "duration_ms": 1349187,
+    "duration_api_ms": 271305,
+    "model": "claude-opus-5-5",
+    "session_id": "59b551ae-914a-4905-9436-d9b055a847c2",
+    "stop_reason": "success",
+    "result_text": "Claim numbering is in place, and `bin/e2e` passes all 4 tests in the spec, 10 runs in a row with no failures.\n\n**How numbering works**\n- **Stored data:** a new migration, `V8__claim_number.sql`, adds a `number` column to claims (empty for drafts) and a counter on each sheet (`last_claim_number`). A unique index on (sheet, number) makes it impossible for two claims on a sheet to share a number. Claims that are already open or settled are numbered in the order they were created.\n- **Server:** every status change on a claim first locks that sheet's row in the database, so two opens at the same moment are handled one after the other. Opening takes the next number from the counter. Settling keeps the number, and voiding clears it. The counter only ever goes up, so a number is never given out twice and never reused.\n- **Audit:** a line about a numbered claim ends in ` number=<n>`. That covers `CLAIM_OPENED`, `CLAIM_SETTLED`, `CLAIM_EDITED` on an open claim, and `CLAIM_VOIDED`, which carries the number the claim had. Drafts get no number field.\n- **Front end:** each claim row shows the number in `claim-number`, empty when the claim has none.\n\n**A second fix I had to make.** When a user re-loaded the sheet they already had open, the page kept showing the old claims until the new data arrived. The test reads straight after a reload, so it saw stale numbers. My first fix (clearing the lists during a reload) caused another intermittent failure: a person's row could appear before their claims, and the test then took an existing claim for the new one. So now:\n- The sheet picker hides the sheet (\"Loading sheet\u2026\") from the moment Load is clicked.\n- It shows the sheet again only once the sheet, its people, its claims and its rates have all been re-read together.\n- The people and rates screens no longer fetch their own data when a sheet loads.\n\nThis changes how every screen behaves on load, not just claims. The test suite now takes about 20s instead of 16s, but I didn't look into where the extra time goes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3841122000000003,
+        "num_turns": 38,
+        "duration_ms": 1349187,
+        "duration_api_ms": 271305,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp09.agent.jsonl",
+  "agent_diff_file": "cp09.agent.diff",
+  "build_log_file": "cp09.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 24,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp05_claims.spec.ts::claims scenario 1": true,
+      "cp05_claims.spec.ts::claims scenario 2": true,
+      "cp05_claims.spec.ts::claims scenario 3": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp06_audit.spec.ts::audit scenario 1": true,
+      "cp06_audit.spec.ts::audit scenario 2": true,
+      "cp06_audit.spec.ts::audit scenario 3": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 1": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 2": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 3": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp08_workflow.spec.ts::workflow scenario 1": true,
+      "cp08_workflow.spec.ts::workflow scenario 2": true,
+      "cp08_workflow.spec.ts::workflow scenario 3": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp09_numbering.spec.ts::numbering scenario 1": true,
+      "cp09_numbering.spec.ts::numbering scenario 2": true,
+      "cp09_numbering.spec.ts::numbering scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1548,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 958,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1442,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1667,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1984,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4034,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3894,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4392,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1459,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4029,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4561,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4363,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2719,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4387,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4504,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5059,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2331,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4668,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4339,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2216,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4230,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4455,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
