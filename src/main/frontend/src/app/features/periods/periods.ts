@@ -1,12 +1,9 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { ClaimsService, claimDue, money } from '../../core/claims.service';
-import { PeopleService, gradeOn } from '../../core/people.service';
 import { Period, PeriodsService } from '../../core/periods.service';
-import { RatesService } from '../../core/rates.service';
-import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
+import { TotalsService } from '../../core/totals.service';
 
 // The sheet's periods, each with its due-total: the sum of the dues (those with one) of the open and
 // settled claims dated in it; once the period is closed, the due-total fixed when it closed (live again if a steward reopens it). A form adds a period: a name unique on the sheet and a from and to date,
@@ -39,7 +36,7 @@ import { SheetService } from '../../core/sheet.service';
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ p.closed ? p.closedTotal : money(dueTotals().get(p.id) ?? 0) }}</td>
+              <td data-testid="period-due-total">{{ dueTotals().get(p.id) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
               <td>
                 @if (!p.closed) {
@@ -59,12 +56,8 @@ import { SheetService } from '../../core/sheet.service';
 })
 export class Periods {
   protected readonly periods = inject(PeriodsService);
-  private readonly claims = inject(ClaimsService);
-  private readonly people = inject(PeopleService);
-  private readonly rates = inject(RatesService);
   private readonly sheets = inject(SheetService);
-  private readonly settings = inject(SettingsService);
-  protected readonly money = money;
+  private readonly totals = inject(TotalsService);
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
@@ -75,24 +68,8 @@ export class Periods {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private saving = false;
-  /** Each period's due-total in cents, by period id: the dues of the counting claims dated in it. */
-  protected readonly dueTotals = computed(() => {
-    const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
-    const out = new Map<number, number>();
-    const floor = this.settings.floorCents();
-    const late = this.settings.late();
-    for (const c of this.claims.claims().filter(this.claims.live())) {
-      const period = this.periods.periodOn(c.date);
-      const given = grades.get(c.personId);
-      if (!period || !given) continue;
-      const d = claimDue(c, (date) => {
-        const grade = gradeOn(given, date);
-        return grade && this.rates.rateOn(grade, date);
-      }, floor, late);
-      out.set(period.id, (out.get(period.id) ?? 0) + (d ?? 0));
-    }
-    return out;
-  });
+  /** Each period's due-total as shown, by period id. */
+  protected readonly dueTotals = this.totals.periodDueTotals;
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));

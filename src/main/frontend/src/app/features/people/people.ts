@@ -1,11 +1,11 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { finalize, switchMap } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { GRADES, Grade, PeopleService, Person, gradeOn } from '../../core/people.service';
+import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
 import { ClaimsService, claimDue, money, overdue } from '../../core/claims.service';
-import { RatesService } from '../../core/rates.service';
 import { SettingsService } from '../../core/settings.service';
+import { TotalsService } from '../../core/totals.service';
 import { PersonClaims } from './person-claims';
 
 // The sheet's people: a form that adds a person or edits the one opened, and the list with each
@@ -141,9 +141,9 @@ import { PersonClaims } from './person-claims';
 export class People {
   protected readonly people = inject(PeopleService);
   protected readonly claims = inject(ClaimsService);
-  private readonly rates = inject(RatesService);
   private readonly sheets = inject(SheetService);
   private readonly settings = inject(SettingsService);
+  private readonly totals = inject(TotalsService);
   protected readonly money = money;
   protected readonly grades = GRADES;
   protected readonly form = new FormGroup({
@@ -174,24 +174,8 @@ export class People {
   protected readonly listed = computed(() => this.people.showRetired()
     ? this.people.people()
     : this.people.people().filter((p) => !p.retiredFrom));
-  /**
-   * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
-   * absent when the grade in force on today has no rate in force then and none of those claims has a due.
-   */
-  protected readonly dueTotals = computed(() => {
-    const out = new Map<number, number>();
-    const floor = this.settings.floorCents();
-    const late = this.settings.late();
-    for (const p of this.people.people()) {
-      const counted = (this.claims.byPerson().get(p.id) ?? []).filter(this.claims.live());
-      const rateOn = (date: string) => this.rateOn(p, date);
-      const dues = counted.map((c) => claimDue(c, rateOn, floor, late));
-      const grade = this.gradeToday(p);
-      if (!(grade && this.rates.byGrade().has(grade)) && dues.every((d) => d === undefined)) continue;
-      out.set(p.id, dues.reduce<number>((sum, d) => sum + (d ?? 0), 0));
-    }
-    return out;
-  });
+  /** Each person's due-total in cents; absent when they have none (n/a). */
+  protected readonly dueTotals = this.totals.personDueTotals;
   /** Everyone's due-total added up, in cents, skipping those with none. */
   protected readonly dueTotal = computed(() => [...this.dueTotals().values()].reduce((sum, d) => sum + d, 0));
 
@@ -237,14 +221,12 @@ export class People {
 
   /** The grade in force on the sheet's today. */
   protected gradeToday(p: Person): Grade | undefined {
-    const today = this.sheets.today();
-    return today === null ? p.grade : gradeOn(p.grades, today);
+    return this.totals.gradeToday(p);
   }
 
   /** The rate in force on a date for the person's grade in force then, in hundredths of a percent. */
   private rateOn(p: Person, date: string): number | undefined {
-    const grade = gradeOn(p.grades, date);
-    return grade && this.rates.rateOn(grade, date);
+    return this.totals.rateOn(p, date);
   }
 
   protected overdueOf(personId: number): { count: number; cents: number } {

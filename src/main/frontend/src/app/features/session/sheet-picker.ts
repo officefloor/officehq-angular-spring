@@ -8,6 +8,7 @@ import { RatesService } from '../../core/rates.service';
 import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 import { People } from '../people/people';
+import { Summary } from '../summary/summary';
 import { Periods } from '../periods/periods';
 import { Rates } from '../rates/rates';
 import { Settings } from '../settings/settings';
@@ -17,7 +18,7 @@ import { SheetToday } from './sheet-today';
 // everything kept under it (people, claims, settings, roles, rates, periods) have been re-read, so nothing is shown stale.
 @Component({
   selector: 'app-sheet-picker',
-  imports: [ReactiveFormsModule, SheetToday, Settings, Rates, Periods, People],
+  imports: [ReactiveFormsModule, SheetToday, Settings, Rates, Periods, People, Summary],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Load sheet">
       <label for="sheet-id-input">Sheet id</label>
@@ -36,6 +37,7 @@ import { SheetToday } from './sheet-today';
       <app-rates />
       <app-periods />
       <app-people />
+      <app-summary />
     }
   `,
 })
