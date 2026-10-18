@@ -21,6 +21,8 @@ import { PersonClaims } from './person-claims';
 // live total (settled ones still do).
 // Each person, and the sheet, shows how many of their counting claims are overdue (open, due by
 // before the sheet's today) and those claims' dues added up (a claim with none adds nothing).
+// A person can name other people on the sheet as patrons, one at a time from their row; the row shows
+// their patrons' names (sorted) and their backing: the patrons' due-totals added up, skipping n/a.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims],
@@ -66,6 +68,7 @@ import { PersonClaims } from './person-claims';
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue due</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -84,6 +87,8 @@ import { PersonClaims } from './person-claims';
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</td>
               <td data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</td>
+              <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+              <td data-testid="person-backing">{{ money(backing(p)) }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
@@ -96,6 +101,21 @@ import { PersonClaims } from './person-claims';
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
                 <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)"
                   [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
+                <label [for]="'person-patron-select-' + p.id">Patron</label>
+                <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patron
+                  (change)="setRowError(p.id, '')">
+                  <option value="">Choose a patron</option>
+                  @for (o of people.people(); track o.id) {
+                    @if (o.id !== p.id) {
+                      <option [value]="o.id">{{ o.name }}</option>
+                    }
+                  }
+                </select>
+                <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patron.value)"
+                  [attr.aria-label]="'Add a patron for ' + p.name">Add patron</button>
+                @if (patronErrors().get(p.id); as e) {
+                  <p role="alert" data-testid="person-patron-error">{{ e }}</p>
+                }
                 @if (rowErrors().get(p.id); as e) {
                   <p role="alert" data-testid="person-error">{{ e }}</p>
                 }
@@ -140,6 +160,8 @@ export class People {
   protected readonly error = signal('');
   /** Each person's refused row action, by person id; cleared by the next action on that row. */
   protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
+  /** Each person's refused patron, by person id; cleared by the next action on that row. */
+  protected readonly patronErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** The people listed: retired ones only when "show retired" is on. */
   protected readonly listed = computed(() => this.people.showRetired()
     ? this.people.people()
@@ -203,6 +225,30 @@ export class People {
     return this.overdue().get(personId) ?? { count: 0, cents: 0 };
   }
 
+  protected patronNames(p: Person): string {
+    return p.patrons.map((o) => o.name).join(', ');
+  }
+
+  /** The person's patrons' due-totals added up, in cents, skipping those with none. */
+  protected backing(p: Person): number {
+    const totals = this.dueTotals();
+    return p.patrons.reduce((sum, o) => sum + (totals.get(o.id) ?? 0), 0);
+  }
+
+  /** Name the chosen person as the person's patron. */
+  protected addPatron(p: Person, patronId: string): void {
+    this.setRowError(p.id, '');
+    if (!patronId) {
+      this.setPatronError(p.id, 'Choose a patron for ' + p.name + '.');
+      return;
+    }
+    this.people.addPatron(p.id, Number(patronId)).subscribe({
+      error: (e: { status?: number }) => this.setPatronError(p.id, e.status === 409
+        ? 'That patron cannot be added for ' + p.name + ': not themselves, and not twice.'
+        : 'Could not add that patron for ' + p.name + '.'),
+    });
+  }
+
   protected amountOrNa(cents: number | undefined): string {
     return cents === undefined ? 'n/a' : money(cents);
   }
@@ -232,7 +278,17 @@ export class People {
   }
 
   protected setRowError(personId: number, message: string): void {
+    if (!message) this.setPatronError(personId, '');
     this.rowErrors.update((all) => {
+      const out = new Map(all);
+      if (message) out.set(personId, message);
+      else out.delete(personId);
+      return out;
+    });
+  }
+
+  private setPatronError(personId: number, message: string): void {
+    this.patronErrors.update((all) => {
       const out = new Map(all);
       if (message) out.set(personId, message);
       else out.delete(personId);

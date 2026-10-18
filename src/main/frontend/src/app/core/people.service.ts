@@ -24,6 +24,13 @@ export interface Person {
   retiredFrom: string | null;
   /** On hold: their open claims count in no live total (settled ones still do). */
   held: boolean;
+  /** The other people on the sheet they have named as patrons, sorted by name. */
+  patrons: Patron[];
+}
+
+export interface Patron {
+  id: number;
+  name: string;
 }
 
 export interface PersonForm {
@@ -81,6 +88,13 @@ export class PeopleService {
   toggleHold(personId: number): Observable<Person> {
     return this.http
       .post<Person>(`${this.url(this.sheet())}/${personId}/hold`, null, { headers: this.session.headers() })
+      .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
+  }
+
+  /** Name another person on the sheet as the person's patron; refused (409) for one already named. */
+  addPatron(personId: number, patronId: number): Observable<Person> {
+    return this.http
+      .post<Person>(`${this.url(this.sheet())}/${personId}/patrons`, { patronId }, { headers: this.session.headers() })
       .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
   }
 

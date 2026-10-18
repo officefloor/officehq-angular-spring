@@ -1,10 +1,14 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -23,16 +27,21 @@ public class PersonService {
         public static final Statements NONE = new Statements(0, null);
     }
 
+    /** A patron as a person's row shows them: their id and name. */
+    public record PatronOf(long id, String name) {}
+
     private final PersonRepository people;
     private final StatementRepository statements;
+    private final PatronRepository patrons;
     private final SheetService sheets;
     private final RollupService rollups;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, StatementRepository statements, SheetService sheets,
-            RollupService rollups, Audit audit) {
+    public PersonService(PersonRepository people, StatementRepository statements, PatronRepository patrons,
+            SheetService sheets, RollupService rollups, Audit audit) {
         this.people = people;
         this.statements = statements;
+        this.patrons = patrons;
         this.sheets = sheets;
         this.rollups = rollups;
         this.audit = audit;
@@ -52,6 +61,47 @@ public class PersonService {
             out.merge(s.getPersonId(), new Statements(1, s), (was, now) -> new Statements(was.count() + 1, s));
         }
         return out;
+    }
+
+    /** Each person's patrons on the sheet, sorted by name, by person id; a person with none is absent. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<PatronOf>> patrons(String sheetId) {
+        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, List<PatronOf>> out = new HashMap<>();
+        for (Patron link : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
+            Person patron = byId.get(link.getPatronId());
+            if (patron == null) continue;
+            out.computeIfAbsent(link.getPersonId(), id -> new ArrayList<>())
+                    .add(new PatronOf(patron.getId(), patron.getName()));
+        }
+        out.values().forEach(list -> list.sort(Comparator.comparing(PatronOf::name)));
+        return out;
+    }
+
+    /**
+     * Name another person on the sheet as a person's patron: refused for the person themselves and for
+     * one already named.
+     */
+    @Transactional
+    public Person addPatron(String sheetId, String user, long personId, long patronId) {
+        sheets.lock(sheetId, user);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Person patron = people.findByIdAndSheetId(patronId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such patron"));
+        if (person.getId().equals(patron.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A person cannot be their own patron");
+        }
+        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) throw patronNamed();
+        try {
+            patrons.saveAndFlush(new Patron(sheetId, person.getId(), patron.getId()));
+        } catch (DataIntegrityViolationException e) {
+            throw patronNamed();
+        }
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " patron=" + patron.getName());
+        return person;
     }
 
     /** Add a person (the sheet is started when it was never loaded before). */
@@ -146,6 +196,10 @@ public class PersonService {
 
     private static ResponseStatusException editedMeanwhile() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Someone else has saved this person since");
+    }
+
+    private static ResponseStatusException patronNamed() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That patron is already named");
     }
 
     private static ResponseStatusException nameInUse() {
