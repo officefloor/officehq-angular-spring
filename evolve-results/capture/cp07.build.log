@@ -1,0 +1,27 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610181730/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 16 tests using 1 worker
+
+[1A[2K[1/16] [chromium] › cp01_signin-and-sheet.spec.ts:6:7 › signin and sheet › signin and sheet
+[1A[2K[2/16] [chromium] › cp02_sheet-today.spec.ts:6:7 › sheet today › sheet today
+[1A[2K[3/16] [chromium] › cp03_people.spec.ts:6:7 › people › people
+[1A[2K[4/16] [chromium] › cp04_name-uniqueness.spec.ts:6:7 › name uniqueness › name uniqueness
+[1A[2K[5/16] [chromium] › cp05_claims.spec.ts:6:7 › claims › claims
+[1A[2K[6/16] [chromium] › cp05_claims.spec.ts:32:7 › claims › claims scenario 1
+[1A[2K[7/16] [chromium] › cp05_claims.spec.ts:101:7 › claims › claims scenario 2
+[1A[2K[8/16] [chromium] › cp05_claims.spec.ts:170:7 › claims › claims scenario 3
+[1A[2K[9/16] [chromium] › cp06_audit.spec.ts:6:7 › audit › audit
+[1A[2K[10/16] [chromium] › cp06_audit.spec.ts:28:7 › audit › audit scenario 1
+[1A[2K[11/16] [chromium] › cp06_audit.spec.ts:125:7 › audit › audit scenario 2
+[1A[2K[12/16] [chromium] › cp06_audit.spec.ts:216:7 › audit › audit scenario 3
+[1A[2K[13/16] [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due
+[1A[2K[14/16] [chromium] › cp07_rates-and-due.spec.ts:59:7 › rates and due › rates and due scenario 1
+[1A[2K[15/16] [chromium] › cp07_rates-and-due.spec.ts:205:7 › rates and due › rates and due scenario 2
+[1A[2K[16/16] [chromium] › cp07_rates-and-due.spec.ts:328:7 › rates and due › rates and due scenario 3
+[1A[2K  16 passed (45.1s)
