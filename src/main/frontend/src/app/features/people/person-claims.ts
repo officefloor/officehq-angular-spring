@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, ClaimAction, ClaimsService, claimDue, dueBy, money, overdue } from '../../core/claims.service';
-import { GradeFrom, gradeOn } from '../../core/people.service';
+import { GradeFrom, PeopleService, gradeOn } from '../../core/people.service';
 import { PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 import { SessionService } from '../../core/session.service';
@@ -11,7 +11,7 @@ import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 import { TotalsService } from '../../core/totals.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it; a clerk settling one whose due is above the sheet's clerk limit makes it pending, for a steward other than its opener to approve, or to reject with a reason), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms), whether it is overdue (open and due before the sheet's today) and, for a correction (a negative amount), the number of the settled claim it corrects, and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it; a clerk settling one whose due is above the sheet's clerk limit makes it pending, for a steward other than its opener to approve, or to reject with a reason), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms), whether it is overdue (open and due before the sheet's today) and, for a correction (a negative amount), the number of the settled claim it corrects, a picker and button that move it to another person (a steward only; a draft, open or pending one: it is live again until their next statement), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -40,6 +40,15 @@ import { TotalsService } from '../../core/totals.service';
             <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="change(c, a.action, reason.value)"
               [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date">{{ a.label }}</button>
           }
+          <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+          <select #moveTo [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to"
+            (change)="setClaimError(c.id, '')">
+            @for (p of others(); track p.id) {
+              <option [value]="p.id">{{ p.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" (click)="reassign(c, moveTo.value)"
+            [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date">Move</button>
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
           <input #reason [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason"
             (input)="setClaimError(c.id, '')" />
@@ -83,6 +92,9 @@ export class PersonClaims {
   private readonly sheets = inject(SheetService);
   private readonly totals = inject(TotalsService);
   protected readonly periods = inject(PeriodsService);
+  private readonly people = inject(PeopleService);
+  /** The other people on the sheet (retired ones too) a claim can move to. */
+  protected readonly others = computed(() => this.people.people().filter((p) => p.id !== this.personId()));
   protected readonly claims = computed(() => this.service.byPerson().get(this.personId()) ?? []);
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
@@ -135,6 +147,19 @@ export class PersonClaims {
     }
     this.service.changeStatus(c.id, action, reason.trim()).subscribe({
       error: (e: unknown) => this.setClaimError(c.id, this.refusal(c, action, e)),
+    });
+  }
+
+  protected reassign(c: Claim, personId: string): void {
+    this.setClaimError(c.id, '');
+    if (!personId) {
+      this.setClaimError(c.id, 'Choose the person to move this claim to.');
+      return;
+    }
+    this.service.reassign(c.id, Number(personId)).subscribe({
+      error: (e: unknown) => this.setClaimError(c.id, e instanceof HttpErrorResponse && e.status === 403
+        ? 'Only a steward can move a claim.'
+        : `This ${c.status} claim cannot be moved to that person.`),
     });
   }
 

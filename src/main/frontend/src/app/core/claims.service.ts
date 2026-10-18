@@ -254,6 +254,13 @@ export class ClaimsService {
       .pipe(tap((c) => this.list.update((all) => all.map((o) => (o.id === c.id ? c : o)))));
   }
 
+  /** Move a claim to another person (a steward); it is live again until their next statement. */
+  reassign(claimId: number, personId: number): Observable<Claim> {
+    return this.http
+      .post<Claim>(`${this.url(this.sheet())}/${claimId}/reassign`, { personId }, { headers: this.session.headers() })
+      .pipe(tap((c) => this.list.update((all) => all.map((o) => (o.id === c.id ? c : o)))));
+  }
+
   /** Open the chosen claims that can be opened, numbered in list order; then re-read the claims. */
   bulkOpen(claimIds: readonly number[]): Observable<BulkOpened> {
     return this.http

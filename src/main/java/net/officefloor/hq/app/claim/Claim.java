@@ -80,6 +80,8 @@ public class Claim {
 
     public Long getPersonId() { return personId; }
 
+    public void setPersonId(Long personId) { this.personId = personId; }
+
     public BigDecimal getAmount() { return amount; }
 
     public void setAmount(BigDecimal amount) { this.amount = amount; }
