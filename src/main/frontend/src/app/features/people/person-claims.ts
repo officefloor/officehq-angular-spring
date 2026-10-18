@@ -3,14 +3,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, ClaimAction, ClaimsService, claimDue, dueBy, money, overdue } from '../../core/claims.service';
-import { Grade } from '../../core/people.service';
+import { GradeFrom, gradeOn } from '../../core/people.service';
 import { PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 import { SessionService } from '../../core/session.service';
 import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms) and whether it is overdue (open and due before the sheet's today), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms) and whether it is overdue (open and due before the sheet's today), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -63,7 +63,8 @@ import { SheetService } from '../../core/sheet.service';
 export class PersonClaims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
-  readonly grade = input.required<Grade>();
+  /** The person's grades, each from its date. */
+  readonly grades = input.required<readonly GradeFrom[]>();
   private readonly service = inject(ClaimsService);
   private readonly rates = inject(RatesService);
   private readonly session = inject(SessionService);
@@ -94,7 +95,11 @@ export class PersonClaims {
 
   /** A settled claim shows the due fixed when it was settled, a stated one the figure it was bound to; any other (or one settled without a rate) follows the rate in force on its date, at least the floor. */
   protected dueOf(c: Claim): string {
-    const d = claimDue(c, (date) => this.rates.rateOn(this.grade(), date), this.settings.floorCents(),
+    const rateOn = (date: string) => {
+      const grade = gradeOn(this.grades(), date);
+      return grade && this.rates.rateOn(grade, date);
+    };
+    const d = claimDue(c, rateOn, this.settings.floorCents(),
       this.settings.late());
     return d === undefined ? 'n/a' : money(d);
   }

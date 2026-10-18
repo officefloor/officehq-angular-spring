@@ -117,17 +117,19 @@ public class PersonService {
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
-        audit(sheetId, user, "PERSON_ADDED", saved);
+        audit(sheetId, user, "PERSON_ADDED", saved, grade);
         rollups.recordChanges(sheetId, user, before);
         return saved;
     }
 
     /**
-     * Change a person's name and grade, from the version of them the editor loaded: refused when
+     * Change a person's name, and give them a grade from a date (the sheet's today when none is given),
+     * keeping the grades already recorded; from the version of them the editor loaded: refused when
      * someone else has saved them since.
      */
     @Transactional
-    public Person edit(String sheetId, String user, long personId, long version, String name, Grade grade) {
+    public Person edit(String sheetId, String user, long personId, long version, String name, Grade grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (person.getVersion() != version) throw editedMeanwhile();
@@ -135,7 +137,7 @@ public class PersonService {
         requireUnusedName(sheetId, personId, trimmed);
         RollupService.Rollup before = rollups.snapshot(sheetId);
         person.setName(trimmed);
-        person.setGrade(grade);
+        person.setGradeFrom(grade, gradeFrom != null ? gradeFrom : sheets.today(sheetId));
         Person saved;
         try {
             saved = people.saveAndFlush(person);
@@ -144,7 +146,7 @@ public class PersonService {
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
-        audit(sheetId, user, "PERSON_EDITED", saved);
+        audit(sheetId, user, "PERSON_EDITED", saved, grade);
         rollups.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -181,9 +183,9 @@ public class PersonService {
         return saved;
     }
 
-    private void audit(String sheetId, String user, String event, Person person) {
+    private void audit(String sheetId, String user, String event, Person person, Grade grade) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.getGrade());
+                + " name=" + person.getName() + " grade=" + grade);
     }
 
     /** Refuse a name another person on the sheet already has, ignoring case. */

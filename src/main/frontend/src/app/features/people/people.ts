@@ -1,9 +1,9 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { finalize, switchMap } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
+import { GRADES, Grade, PeopleService, Person, gradeOn } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
-import { ClaimsService, claimDue, fixed, money, overdue } from '../../core/claims.service';
+import { ClaimsService, claimDue, money, overdue } from '../../core/claims.service';
 import { RatesService } from '../../core/rates.service';
 import { SettingsService } from '../../core/settings.service';
 import { PersonClaims } from './person-claims';
@@ -11,8 +11,12 @@ import { PersonClaims } from './person-claims';
 // The sheet's people: a form that adds a person or edits the one opened, and the list with each
 // person's claims, claimed and due-total, and the sheet's claimed total and due-total. A due-total
 // is the sum of the person's open and settled claims' (already rounded) dues, 0.00 with none; a
-// person whose grade has no rate in force on the sheet's today has no due-total (n/a) unless a
-// settled or stated claim of theirs keeps a fixed figure. The sheet's due-total skips those with none.
+// person whose grade in force on the sheet's today has no rate in force then has no due-total (n/a)
+// unless one of those claims has a due. The sheet's due-total skips those with none.
+// A person's grade is dated: an edit gives the grade from the form's grade-from date (the sheet's
+// today unless another is entered), keeping the grades already given; the first grade applies from the
+// beginning of time. A claim's due uses the grade in force on its date; the list shows the one in
+// force on the sheet's today.
 // Each person has a statement button: it records their due-total and binds their counting claims to
 // their figures then; the row shows how many statements were taken, and the last one's due-total and date.
 // A person can be retired from a date (the sheet's today when none is entered). Retired people are
@@ -38,6 +42,8 @@ import { PersonClaims } from './person-claims';
             <option [value]="g">{{ g }}</option>
           }
         </select>
+        <label for="person-form-grade-from">Grade from</label>
+        <input type="date" id="person-form-grade-from" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         <button type="submit" data-testid="person-form-submit">{{ editing() === null ? 'Add' : 'Save' }}</button>
         @if (editing() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="reset()">Cancel</button>
@@ -76,7 +82,7 @@ import { PersonClaims } from './person-claims';
           @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ money(claims.claimedCents().get(p.id) ?? 0) }}</td>
               <td data-testid="person-due-total">{{ amountOrNa(dueTotals().get(p.id)) }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
@@ -120,7 +126,7 @@ import { PersonClaims } from './person-claims';
                   <p role="alert" data-testid="person-error">{{ e }}</p>
                 }
               </td>
-              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grade]="p.grade" /></td>
+              <td><app-person-claims [personId]="p.id" [personName]="p.name" [grades]="p.grades" /></td>
             </tr>
           }
         </tbody>
@@ -143,6 +149,8 @@ export class People {
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
+    /** The date an edit gives the grade from: the sheet's today unless another is entered. */
+    gradeFrom: new FormControl('', { nonNullable: true }),
   });
   /** The quick-add bar: a draft claim for a named person, added with grade A when not on the sheet. */
   protected readonly quick = new FormGroup({
@@ -168,7 +176,7 @@ export class People {
     : this.people.people().filter((p) => !p.retiredFrom));
   /**
    * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
-   * absent when their grade has no rate in force today and no settled or stated claim of theirs keeps a figure.
+   * absent when the grade in force on today has no rate in force then and none of those claims has a due.
    */
   protected readonly dueTotals = computed(() => {
     const out = new Map<number, number>();
@@ -176,9 +184,11 @@ export class People {
     const late = this.settings.late();
     for (const p of this.people.people()) {
       const counted = (this.claims.byPerson().get(p.id) ?? []).filter(this.claims.live());
-      if (!this.rates.byGrade().has(p.grade) && !counted.some(fixed)) continue;
-      const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
-      out.set(p.id, counted.reduce((sum, c) => sum + (claimDue(c, rateOn, floor, late) ?? 0), 0));
+      const rateOn = (date: string) => this.rateOn(p, date);
+      const dues = counted.map((c) => claimDue(c, rateOn, floor, late));
+      const grade = this.gradeToday(p);
+      if (!(grade && this.rates.byGrade().has(grade)) && dues.every((d) => d === undefined)) continue;
+      out.set(p.id, dues.reduce<number>((sum, d) => sum + (d ?? 0), 0));
     }
     return out;
   });
@@ -196,7 +206,7 @@ export class People {
       const behind = (this.claims.byPerson().get(p.id) ?? [])
         .filter(this.claims.live())
         .filter((c) => overdue(c, terms, today));
-      const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
+      const rateOn = (date: string) => this.rateOn(p, date);
       out.set(p.id, {
         count: behind.length,
         cents: behind.reduce((sum, c) => sum + (claimDue(c, rateOn, floor, late) ?? 0), 0),
@@ -212,6 +222,10 @@ export class People {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.quick.valueChanges.subscribe(() => this.quickError.set(''));
     effect(() => {
+      const today = this.sheets.today();
+      untracked(() => this.form.controls.gradeFrom.setValue(today ?? '', { emitEvent: false }));
+    });
+    effect(() => {
       this.sheets.loads();
       untracked(() => {
         this.reset();
@@ -219,6 +233,18 @@ export class People {
         this.quick.reset({ name: '', amount: '' }, { emitEvent: false });
       });
     });
+  }
+
+  /** The grade in force on the sheet's today. */
+  protected gradeToday(p: Person): Grade | undefined {
+    const today = this.sheets.today();
+    return today === null ? p.grade : gradeOn(p.grades, today);
+  }
+
+  /** The rate in force on a date for the person's grade in force then, in hundredths of a percent. */
+  private rateOn(p: Person, date: string): number | undefined {
+    const grade = gradeOn(p.grades, date);
+    return grade && this.rates.rateOn(grade, date);
   }
 
   protected overdueOf(personId: number): { count: number; cents: number } {
@@ -323,27 +349,29 @@ export class People {
     this.error.set('');
     this.editing.set(p.id);
     this.loadedVersion = p.version;
-    this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeToday(p) ?? p.grade, gradeFrom: this.sheets.today() ?? '' },
+      { emitEvent: false });
   }
 
   protected reset(): void {
     this.error.set('');
     this.editing.set(null);
-    this.form.reset({ name: '', grade: 'A' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: this.sheets.today() ?? '' }, { emitEvent: false });
   }
 
   protected submit(): void {
     if (this.saving) return;
     this.error.set('');
-    const { name, grade } = this.form.getRawValue();
+    const { name, grade, gradeFrom } = this.form.getRawValue();
     if (!name.trim()) {
       this.error.set('Enter a name.');
       return;
     }
     const id = this.editing();
+    const from = gradeFrom.trim() || this.sheets.today() || undefined;
     const saved = id === null
       ? this.people.add({ name, grade })
-      : this.people.edit(id, this.loadedVersion, { name, grade });
+      : this.people.edit(id, this.loadedVersion, { name, grade, gradeFrom: from });
     this.saving = true;
     saved.pipe(finalize(() => (this.saving = false))).subscribe({
       next: () => this.reset(),
@@ -370,7 +398,8 @@ export class People {
         const p = this.people.people().find((o) => o.id === id);
         if (this.editing() !== id || !p) return;
         this.loadedVersion = p.version;
-        this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });
+        this.form.setValue({ name: p.name, grade: this.gradeToday(p) ?? p.grade, gradeFrom: this.sheets.today() ?? '' },
+          { emitEvent: false });
         this.error.set(message);
       },
     });

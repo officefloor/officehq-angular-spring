@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ClaimsService, claimDue, money } from '../../core/claims.service';
-import { PeopleService } from '../../core/people.service';
+import { PeopleService, gradeOn } from '../../core/people.service';
 import { Period, PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 import { SettingsService } from '../../core/settings.service';
@@ -76,15 +76,18 @@ export class Periods {
   private saving = false;
   /** Each period's due-total in cents, by period id: the dues of the counting claims dated in it. */
   protected readonly dueTotals = computed(() => {
-    const grades = new Map(this.people.people().map((p) => [p.id, p.grade]));
+    const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
     const out = new Map<number, number>();
     const floor = this.settings.floorCents();
     const late = this.settings.late();
     for (const c of this.claims.claims().filter(this.claims.live())) {
       const period = this.periods.periodOn(c.date);
-      const grade = grades.get(c.personId);
-      if (!period || !grade) continue;
-      const d = claimDue(c, (date) => this.rates.rateOn(grade, date), floor, late);
+      const given = grades.get(c.personId);
+      if (!period || !given) continue;
+      const d = claimDue(c, (date) => {
+        const grade = gradeOn(given, date);
+        return grade && this.rates.rateOn(grade, date);
+      }, floor, late);
       out.set(period.id, (out.get(period.id) ?? 0) + (d ?? 0));
     }
     return out;

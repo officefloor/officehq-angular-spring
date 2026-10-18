@@ -8,10 +8,19 @@ export type Grade = 'A' | 'B' | 'C';
 
 export const GRADES: readonly Grade[] = ['A', 'B', 'C'];
 
+/** A grade a person was given, from a date (yyyy-MM-dd; null: from the beginning of time). */
+export interface GradeFrom {
+  grade: Grade;
+  from: string | null;
+}
+
 export interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today. */
   grade: Grade;
+  /** Every grade they were given, by from-date; the first one from the beginning of time. */
+  grades: GradeFrom[];
   /** Moved on by every save; an edit names the version it was made from. */
   version: number;
   /** How many statements were taken for them. */
@@ -36,6 +45,18 @@ export interface Patron {
 export interface PersonForm {
   name: string;
   grade: Grade;
+  /** An edit gives the grade from this date (yyyy-MM-dd); the first grade applies from the beginning of time. */
+  gradeFrom?: string;
+}
+
+/** The grade in force on a date (yyyy-MM-dd): the one given with the latest from-date on or before it. */
+export function gradeOn(grades: readonly GradeFrom[], date: string): Grade | undefined {
+  let best: GradeFrom | undefined;
+  for (const g of grades) {
+    if (g.from !== null && g.from > date) continue;
+    if (best === undefined || (best.from ?? '') < (g.from ?? '')) best = g;
+  }
+  return best?.grade;
 }
 
 // The active sheet's people, in the order they were added.

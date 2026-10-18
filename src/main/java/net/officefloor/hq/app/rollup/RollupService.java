@@ -54,8 +54,8 @@ public class RollupService {
 
     /**
      * The sheet's figures now. Only open and settled claims count (a held person's open ones do not); a person's due-total is the sum of
-     * their figures (those with one), n/a when their grade has no rate in force on the sheet's today
-     * and no counting claim of theirs keeps a fixed (settled or stated) figure.
+     * their figures (those with one), n/a when the grade in force on the sheet's today has no rate in
+     * force then and no counting claim of theirs has a figure.
      */
     @Transactional(readOnly = true)
     public Rollup snapshot(String sheetId) {
@@ -72,16 +72,17 @@ public class RollupService {
                     .toList();
             BigDecimal claimed = BigDecimal.ZERO.setScale(2);
             BigDecimal due = BigDecimal.ZERO.setScale(2);
+            boolean anyFigure = false;
             for (Claim c : counted) {
                 claimed = claimed.add(c.getAmount());
                 BigDecimal figure = figure(sheetId, p, c);
                 if (figure != null) due = due.add(figure);
+                anyFigure |= figure != null;
             }
-            boolean rated = rates.findInForce(sheetId, p.getGrade(), today).isPresent();
-            boolean anyFixed = counted.stream().anyMatch(Claim::keepsFigure);
+            boolean rated = rates.findInForce(sheetId, p.gradeOn(today), today).isPresent();
             claimedTotal = claimedTotal.add(claimed);
-            if (rated || anyFixed) dueTotal = dueTotal.add(due);
-            out.put(p.getId(), new Figures(p.getName(), text(claimed), rated || anyFixed ? text(due) : "n/a"));
+            if (rated || anyFigure) dueTotal = dueTotal.add(due);
+            out.put(p.getId(), new Figures(p.getName(), text(claimed), rated || anyFigure ? text(due) : "n/a"));
         }
         return new Rollup(out, text(claimedTotal), text(dueTotal));
     }
@@ -133,14 +134,15 @@ public class RollupService {
 
     /**
      * The figure a statement binds a live claim to, without any late charge: the figure its person's
-     * last statement bound it to, else its amount times the rate in force on its date, raised to the
+     * last statement bound it to, else its amount times the rate in force on its date for the grade
+     * in force on its date, raised to the
      * sheet's floor; null when none.
      */
     @Transactional(readOnly = true)
     public BigDecimal boundFigure(String sheetId, Person person, Claim claim) {
         if (claim.isStated()) return claim.getStatedDue();
         BigDecimal floor = sheets.findById(sheetId).map(Sheet::getFloor).orElse(BigDecimal.ZERO);
-        return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
+        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(rate -> due(claim.getAmount(), rate).max(floor).setScale(2))
                 .orElse(null);
     }

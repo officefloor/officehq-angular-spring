@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.session.SessionController;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,23 +29,33 @@ public class PersonController {
 
     /**
      * A person, with how many statements were taken for them and the last one's due-total (text with
-     * two decimals, "n/a" when it had none) and date; both null before their first statement.
+     * two decimals, "n/a" when it had none) and date; both null before their first statement. The grade
+     * is the one in force on the sheet's today; the grades are all they were given, by from-date.
      */
     public record PersonView(long id, String name, Grade grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
-            List<PersonService.PatronOf> patrons) {
+            List<PersonService.PatronOf> patrons, List<GradeView> grades) {
         static PersonView of(Person person, PersonService.Statements statements,
-                List<PersonService.PatronOf> patrons) {
+                List<PersonService.PatronOf> patrons, LocalDate today) {
             Statement last = statements.last();
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+            return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getVersion(),
                     statements.count(), last == null ? null
                             : last.getDueTotal() == null ? "n/a" : last.getDueTotal().setScale(2).toPlainString(),
-                    last == null ? null : last.getTakenOn(), person.getRetiredFrom(), person.isHeld(), patrons);
+                    last == null ? null : last.getTakenOn(), person.getRetiredFrom(), person.isHeld(), patrons,
+                    person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList());
         }
     }
 
-    /** The version is the one the editor loaded; required to edit, ignored when adding. */
-    public record PersonForm(@NotBlank @Size(max = 200) String name, @NotNull Grade grade, Long version) {}
+    /** A grade a person was given, from a date (null: from the beginning of time). */
+    public record GradeView(Grade grade, LocalDate from) {}
+
+    /**
+     * The version is the one the editor loaded; required to edit, ignored when adding. An edit gives the
+     * grade from the grade-from date (the sheet's today when none); the first grade, when adding, applies
+     * from the beginning of time.
+     */
+    public record PersonForm(@NotBlank @Size(max = 200) String name, @NotNull Grade grade, Long version,
+            LocalDate gradeFrom) {}
 
     /** The date a person is retired from; without one, the sheet's today. */
     public record RetireForm(LocalDate from) {}
@@ -53,9 +64,11 @@ public class PersonController {
     public record PatronForm(@NotNull Long patronId) {}
 
     private final PersonService service;
+    private final SheetService sheets;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, SheetService sheets) {
         this.service = service;
+        this.sheets = sheets;
     }
 
     /** The sheet's people, in the order they were added. */
@@ -65,9 +78,10 @@ public class PersonController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user) {
         Map<Long, PersonService.Statements> statements = service.statements(sheetId);
         Map<Long, List<PersonService.PatronOf>> patrons = service.patrons(sheetId);
+        LocalDate today = sheets.today(sheetId);
         return service.list(sheetId).stream()
                 .map(p -> PersonView.of(p, statements.getOrDefault(p.getId(), PersonService.Statements.NONE),
-                        patrons.getOrDefault(p.getId(), List.of())))
+                        patrons.getOrDefault(p.getId(), List.of()), today))
                 .toList();
     }
 
@@ -90,7 +104,8 @@ public class PersonController {
         if (form.version() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version being edited is required");
         }
-        return view(sheetId, service.edit(sheetId, user, personId, form.version(), form.name(), form.grade()));
+        return view(sheetId, service.edit(sheetId, user, personId, form.version(), form.name(), form.grade(),
+                form.gradeFrom()));
     }
 
     /** Retire a person from a date. */
@@ -125,6 +140,6 @@ public class PersonController {
     private PersonView view(String sheetId, Person person) {
         return PersonView.of(person,
                 service.statements(sheetId).getOrDefault(person.getId(), PersonService.Statements.NONE),
-                service.patrons(sheetId).getOrDefault(person.getId(), List.of()));
+                service.patrons(sheetId).getOrDefault(person.getId(), List.of()), sheets.today(sheetId));
     }
 }

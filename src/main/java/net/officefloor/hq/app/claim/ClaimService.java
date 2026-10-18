@@ -156,8 +156,8 @@ public class ClaimService {
 
     /**
      * Take a statement for a person on the sheet's today: their due-total then (the sum of the figures
-     * of their claims that count, a held person's open ones not among them; n/a when their grade has
-     * no rate in force today and none of those claims has a fixed or bound figure; late charges in) is recorded, and each claim that counts is bound to its
+     * of their claims that count, a held person's open ones not among them; n/a when the grade in force
+     * today has no rate in force then and none of those claims has a figure; late charges in) is recorded, and each claim that counts is bound to its
      * figure then (its late charge not bound: it keeps following the sheet's today), the others left unbound. Their claims, newest first.
      */
     @Transactional
@@ -170,20 +170,21 @@ public class ClaimService {
                 .filter(c -> c.getPersonId().equals(personId))
                 .toList();
         List<Claim> counting = theirs.stream().filter(c -> RollupService.counts(person, c)).toList();
-        boolean anyFixed = counting.stream().anyMatch(Claim::keepsFigure);
-        boolean rated = rates.findInForce(sheetId, person.getGrade(), sheet.getToday()).isPresent();
+        boolean rated = rates.findInForce(sheetId, person.gradeOn(sheet.getToday()), sheet.getToday()).isPresent();
+        boolean anyFigure = false;
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim c : theirs) {
             if (RollupService.counts(person, c)) {
                 BigDecimal figure = figure(sheetId, person, c);
                 if (figure != null) total = total.add(figure);
+                anyFigure |= figure != null;
                 c.bind(rollups.boundFigure(sheetId, person, c));
             } else {
                 c.unbind();
             }
         }
         claims.saveAllAndFlush(theirs);
-        BigDecimal dueTotal = rated || anyFixed ? total : null;
+        BigDecimal dueTotal = rated || anyFigure ? total : null;
         statements.saveAndFlush(new Statement(sheetId, personId, sheet.getToday(), dueTotal, counting.size(), user));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString())
