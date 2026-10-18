@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, map, of, switchMap, tap } from 'rxjs';
-import { PeopleService } from './people.service';
+import { PeopleService, holdCovers } from './people.service';
 import { due } from './rates.service';
 import { SessionService } from './session.service';
 import { SheetService } from './sheet.service';
@@ -155,15 +155,19 @@ export class ClaimsService {
     });
   }
 
-  /** The ids of the people on hold. */
-  private readonly heldIds = computed(
-    () => new Set(this.people.people().filter((p) => p.held).map((p) => p.id)),
+  /** Each held person's holds, by person id. */
+  private readonly holds = computed(
+    () => new Map(this.people.people().filter((p) => p.holds.length > 0).map((p) => [p.id, p.holds])),
   );
 
-  /** Whether a claim counts in the live totals: open (pending ones among them) and settled ones do, except a held person's open ones. */
+  /**
+   * Whether a claim counts in the live totals: open (pending ones among them) and settled ones do,
+   * except a person's open ones dated within a hold of theirs; one bound by a statement counts whatever its date.
+   */
   readonly live = computed(() => {
-    const held = this.heldIds();
-    return (c: Claim) => counts(c) && !(isOpen(c) && held.has(c.personId));
+    const holds = this.holds();
+    return (c: Claim) => counts(c)
+      && !(isOpen(c) && !bound(c) && (holds.get(c.personId) ?? []).some((h) => holdCovers(h, c.date)));
   });
 
   /** Each person's claims, newest first. */

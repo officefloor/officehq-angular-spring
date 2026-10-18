@@ -53,7 +53,7 @@ public class RollupService {
     }
 
     /**
-     * The sheet's figures now. Only open and settled claims count (a held person's open ones do not); a person's due-total is the sum of
+     * The sheet's figures now. Only open and settled claims count (a held person's open ones dated within a hold do not); a person's due-total is the sum of
      * their figures (those with one), n/a when the grade in force on the sheet's today has no rate in
      * force then and no counting claim of theirs has a figure.
      */
@@ -89,10 +89,13 @@ public class RollupService {
 
     /**
      * Whether a claim counts in the live totals: open (pending ones among them) and settled claims do,
-     * except the open claims of a person on hold.
+     * except a person's open claims dated within one of their holds; a claim bound by a statement (a
+     * pending one is not bound) counts whatever its date.
      */
     public static boolean counts(Person person, Claim claim) {
-        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus().isOpen());
+        if (!claim.getStatus().counts()) return false;
+        boolean bound = claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+        return !(claim.getStatus().isOpen() && !bound && person.heldOn(claim.getDate()));
     }
 
     /**

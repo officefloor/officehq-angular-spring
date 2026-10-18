@@ -82,7 +82,7 @@ public class PeriodService {
 
     /**
      * Close a period, fixing its due-total now: the sum of the figures (those with one) of the open and
-     * settled claims dated in it (not a held person's open ones). A period already closed is refused.
+     * settled claims dated in it (not a person's open ones dated within a hold of theirs and not bound by a statement). A period already closed is refused.
      */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {

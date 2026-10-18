@@ -21,8 +21,10 @@ import { PersonClaims } from './person-claims';
 // their figures then; the row shows how many statements were taken, and the last one's due-total and date.
 // A person can be retired from a date (the sheet's today when none is entered). Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in every total.
-// A person can be put on hold and taken off it again: while held, their open claims count in no
-// live total (settled ones still do).
+// A person can be put on hold from a date (the sheet's today unless another is entered) to an
+// optional to-date, and may have several holds over time; each is listed on their row. Their open
+// claims dated within a hold count in no live total, unless bound by a statement (settled ones and
+// the others still do). "On hold" shows whether they have any hold.
 // Each person, and the sheet, shows how many of their counting claims are overdue (open, due by
 // before the sheet's today) and those claims' dues added up (a claim with none adds nothing).
 // A person can name other people on the sheet as patrons, one at a time from their row; the row shows
@@ -105,7 +107,16 @@ import { PersonClaims } from './person-claims';
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retiredFrom ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td>
+                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                @if (p.holds.length > 0) {
+                  <ul>
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">{{ h.from ?? 'always' }} to {{ h.to ?? 'open' }}</li>
+                    }
+                  </ul>
+                }
+              </td>
               <td data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</td>
               <td data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</td>
               <td data-testid="person-patrons">{{ patronNames(p) }}</td>
@@ -120,8 +131,14 @@ import { PersonClaims } from './person-claims';
                   #retireDate (input)="setRowError(p.id, '')" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
-                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)"
-                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
+                <label [for]="'person-hold-from-' + p.id">Hold from</label>
+                <input type="date" [id]="'person-hold-from-' + p.id" data-testid="person-hold-from"
+                  #holdFrom [value]="sheets.today() ?? ''" (input)="setRowError(p.id, '')" />
+                <label [for]="'person-hold-to-' + p.id">Hold to</label>
+                <input type="date" [id]="'person-hold-to-' + p.id" data-testid="person-hold-to"
+                  #holdTo (input)="setRowError(p.id, '')" />
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
+                  [attr.aria-label]="'Hold ' + p.name">Hold</button>
                 <label [for]="'person-patron-select-' + p.id">Patron</label>
                 <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patron
                   (change)="setRowError(p.id, '')">
@@ -156,7 +173,7 @@ import { PersonClaims } from './person-claims';
 export class People {
   protected readonly people = inject(PeopleService);
   protected readonly claims = inject(ClaimsService);
-  private readonly sheets = inject(SheetService);
+  protected readonly sheets = inject(SheetService);
   private readonly settings = inject(SettingsService);
   private readonly totals = inject(TotalsService);
   protected readonly money = money;
@@ -309,11 +326,11 @@ export class People {
     });
   }
 
-  /** Put the person on hold, or take them off it. */
-  protected toggleHold(p: Person): void {
+  /** Put the person on hold over the dates entered: from the sheet's today when none is, open-ended without a to-date. */
+  protected hold(p: Person, from: string, to: string): void {
     this.setRowError(p.id, '');
-    this.people.toggleHold(p.id).subscribe({
-      error: () => this.setRowError(p.id, 'Could not change the hold on ' + p.name + '.'),
+    this.people.hold(p.id, from.trim() || null, to.trim() || null).subscribe({
+      error: () => this.setRowError(p.id, 'Could not put ' + p.name + ' on hold over those dates.'),
     });
   }
 

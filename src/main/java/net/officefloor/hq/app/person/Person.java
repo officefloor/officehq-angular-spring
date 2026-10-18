@@ -41,9 +41,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** On hold: their open claims count in no live total (settled ones still do). */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** Their holds: their open claims dated within one, not bound by a statement, count in no live total. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private List<Hold> holds = new ArrayList<>();
 
     @Version
     @Column(name = "version", nullable = false)
@@ -93,9 +94,20 @@ public class Person {
 
     public void setRetiredFrom(LocalDate retiredFrom) { this.retiredFrom = retiredFrom; }
 
-    public boolean isHeld() { return held; }
+    /** Their holds, by from-date (one from the beginning of time first). */
+    public List<Hold> getHolds() {
+        return holds.stream()
+                .sorted(Comparator.comparing(Hold::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .toList();
+    }
 
-    public void setHeld(boolean held) { this.held = held; }
+    /** Whether they have any hold, whatever its dates. */
+    public boolean isHeld() { return !holds.isEmpty(); }
+
+    /** Whether a hold of theirs covers {@code date}. */
+    public boolean heldOn(LocalDate date) { return holds.stream().anyMatch(h -> h.covers(date)); }
+
+    public void addHold(LocalDate from, LocalDate to) { holds.add(new Hold(from, to)); }
 
     /** Whether a claim dated {@code date} is after their retirement. */
     public boolean retiredOn(LocalDate date) { return retiredFrom != null && date.isAfter(retiredFrom); }

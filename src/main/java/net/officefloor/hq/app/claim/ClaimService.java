@@ -321,7 +321,7 @@ public class ClaimService {
 
     /**
      * Take a statement for a person on the sheet's today: their due-total then (the sum of the figures
-     * of their claims that count, a held person's open ones not among them; n/a when the grade in force
+     * of their claims that count, their unbound open ones dated within a hold of theirs not among them; n/a when the grade in force
      * today has no rate in force then and none of those claims has a figure; late charges in) is recorded, and each claim that counts is bound to its
      * figure then (its late charge not bound: it keeps following the sheet's today), the others left unbound. Their claims, newest first.
      */

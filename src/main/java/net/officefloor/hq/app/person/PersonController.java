@@ -34,7 +34,7 @@ public class PersonController {
      */
     public record PersonView(long id, String name, Grade grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
-            List<PersonService.PatronOf> patrons, List<GradeView> grades) {
+            List<PersonService.PatronOf> patrons, List<GradeView> grades, List<HoldView> holds) {
         static PersonView of(Person person, PersonService.Statements statements,
                 List<PersonService.PatronOf> patrons, LocalDate today) {
             Statement last = statements.last();
@@ -42,12 +42,16 @@ public class PersonController {
                     statements.count(), last == null ? null
                             : last.getDueTotal() == null ? "n/a" : last.getDueTotal().setScale(2).toPlainString(),
                     last == null ? null : last.getTakenOn(), person.getRetiredFrom(), person.isHeld(), patrons,
-                    person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList());
+                    person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
+                    person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList());
         }
     }
 
     /** A grade a person was given, from a date (null: from the beginning of time). */
     public record GradeView(Grade grade, LocalDate from) {}
+
+    /** A hold on a person, from a date (null: the beginning of time) to a date (null: open-ended). */
+    public record HoldView(LocalDate from, LocalDate to) {}
 
     /**
      * The version is the one the editor loaded; required to edit, ignored when adding. An edit gives the
@@ -59,6 +63,9 @@ public class PersonController {
 
     /** The date a person is retired from; without one, the sheet's today. */
     public record RetireForm(LocalDate from) {}
+
+    /** A hold's dates: from the sheet's today when none is given; open-ended without a to-date. */
+    public record HoldForm(LocalDate from, LocalDate to) {}
 
     /** The person to name as a patron. */
     public record PatronForm(@NotNull Long patronId) {}
@@ -118,13 +125,15 @@ public class PersonController {
         return view(sheetId, service.retire(sheetId, user, personId, form == null ? null : form.from()));
     }
 
-    /** Put a person on hold, or take them off hold when they are held. */
+    /** Put a person on hold over the dates given. */
     @PostMapping("/{personId}/hold")
     public PersonView hold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
             @PathVariable long personId,
-            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user) {
-        return view(sheetId, service.toggleHold(sheetId, user, personId));
+            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
+            @RequestBody(required = false) HoldForm form) {
+        return view(sheetId, service.hold(sheetId, user, personId, form == null ? null : form.from(),
+                form == null ? null : form.to()));
     }
 
     /** Name another person on the sheet as the person's patron. */

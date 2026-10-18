@@ -8,6 +8,17 @@ export type Grade = 'A' | 'B' | 'C';
 
 export const GRADES: readonly Grade[] = ['A', 'B', 'C'];
 
+/** A hold on a person, from a date to a date (yyyy-MM-dd; null from: the beginning of time; null to: open-ended), both days in. */
+export interface Hold {
+  from: string | null;
+  to: string | null;
+}
+
+/** Whether a hold covers a date (yyyy-MM-dd). */
+export function holdCovers(h: Hold, date: string): boolean {
+  return (h.from === null || h.from <= date) && (h.to === null || date <= h.to);
+}
+
 /** A grade a person was given, from a date (yyyy-MM-dd; null: from the beginning of time). */
 export interface GradeFrom {
   grade: Grade;
@@ -31,8 +42,10 @@ export interface Person {
   statementDate: string | null;
   /** Retired from this date (yyyy-MM-dd): claims dated after it are refused; null when not retired. */
   retiredFrom: string | null;
-  /** On hold: their open claims count in no live total (settled ones still do). */
+  /** Has any hold, whatever its dates. */
   held: boolean;
+  /** Their holds, by from-date: their open claims dated within one, not bound by a statement, count in no live total. */
+  holds: Hold[];
   /** The other people on the sheet they have named as patrons, sorted by name. */
   patrons: Patron[];
 }
@@ -105,10 +118,10 @@ export class PeopleService {
       .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
   }
 
-  /** Put the person on hold, or take them off hold when they are held. */
-  toggleHold(personId: number): Observable<Person> {
+  /** Put the person on hold from a date (yyyy-MM-dd; without one, the sheet's today) to a date (none: open-ended). */
+  hold(personId: number, from: string | null, to: string | null): Observable<Person> {
     return this.http
-      .post<Person>(`${this.url(this.sheet())}/${personId}/hold`, null, { headers: this.session.headers() })
+      .post<Person>(`${this.url(this.sheet())}/${personId}/hold`, { from, to }, { headers: this.session.headers() })
       .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
   }
 
