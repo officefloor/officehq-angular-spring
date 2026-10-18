@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610181730/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 84 tests using 1 worker
+
+[1A[2K[1/84] [chromium] › cp01_signin-and-sheet.spec.ts:6:7 › signin and sheet › signin and sheet
+[1A[2K[2/84] [chromium] › cp02_sheet-today.spec.ts:6:7 › sheet today › sheet today
+[1A[2K[3/84] [chromium] › cp03_people.spec.ts:6:7 › people › people
+[1A[2K[4/84] [chromium] › cp04_name-uniqueness.spec.ts:6:7 › name uniqueness › name uniqueness
+[1A[2K[5/84] [chromium] › cp05_claims.spec.ts:6:7 › claims › claims
+[1A[2K[6/84] [chromium] › cp05_claims.spec.ts:34:7 › claims › claims scenario 1
+[1A[2K[7/84] [chromium] › cp05_claims.spec.ts:103:7 › claims › claims scenario 2
+[1A[2K[8/84] [chromium] › cp05_claims.spec.ts:172:7 › claims › claims scenario 3
+[1A[2K[9/84] [chromium] › cp06_audit.spec.ts:6:7 › audit › audit
+[1A[2K[10/84] [chromium] › cp06_audit.spec.ts:29:7 › audit › audit scenario 1
+[1A[2K[11/84] [chromium] › cp06_audit.spec.ts:128:7 › audit › audit scenario 2
+[1A[2K[12/84] [chromium] › cp06_audit.spec.ts:222:7 › audit › audit scenario 3
+[1A[2K[13/84] [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due
+[1A[2K[14/84] [chromium] › cp07_rates-and-due.spec.ts:76:7 › rates and due › rates and due scenario 1
+[1A[2K[15/84] [chromium] › cp07_rates-and-due.spec.ts:225:7 › rates and due › rates and due scenario 2
+[1A[2K[16/84] [chromium] › cp07_rates-and-due.spec.ts:350:7 › rates and due › rates and due scenario 3
+[1A[2K[17/84] [chromium] › cp08_workflow.spec.ts:6:7 › workflow › workflow
+[1A[2K[18/84] [chromium] › cp08_workflow.spec.ts:57:7 › workflow › workflow scenario 1
+[1A[2K[19/84] [chromium] › cp08_workflow.spec.ts:228:7 › workflow › workflow scenario 2
+[1A[2K[20/84] [chromium] › cp08_workflow.spec.ts:372:7 › workflow › workflow scenario 3
+[1A[2K[21/84] [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering
+[1A[2K[22/84] [chromium] › cp09_numbering.spec.ts:34:7 › numbering › numbering scenario 1
+[1A[2K[23/84] [chromium] › cp09_numbering.spec.ts:180:7 › numbering › numbering scenario 2
+[1A[2K[24/84] [chromium] › cp09_numbering.spec.ts:326:7 › numbering › numbering scenario 3
+[1A[2K[25/84] [chromium] › cp10_settle-freezes-due.spec.ts:6:7 › settle freezes due › settle freezes due
+[1A[2K[26/84] [chromium] › cp10_settle-freezes-due.spec.ts:43:7 › settle freezes due › settle freezes due scenario 1
+[1A[2K[27/84] [chromium] › cp10_settle-freezes-due.spec.ts:167:7 › settle freezes due › settle freezes due scenario 2
+[1A[2K[28/84] [chromium] › cp10_settle-freezes-due.spec.ts:276:7 › settle freezes due › settle freezes due scenario 3
+[1A[2K[29/84] [chromium] › cp11_rates-effective-dated.spec.ts:6:7 › rates effective dated › rates effective dated
+[1A[2K[30/84] [chromium] › cp11_rates-effective-dated.spec.ts:70:7 › rates effective dated › rates effective dated scenario 1
+[1A[2K[31/84] [chromium] › cp11_rates-effective-dated.spec.ts:236:7 › rates effective dated › rates effective dated scenario 2
+[1A[2K[32/84] [chromium] › cp11_rates-effective-dated.spec.ts:410:7 › rates effective dated › rates effective dated scenario 3
+[1A[2K[33/84] [chromium] › cp12_half-even.spec.ts:6:7 › half even › half even
+[1A[2K[34/84] [chromium] › cp12_half-even.spec.ts:26:7 › half even › half even scenario 1
+[1A[2K[35/84] [chromium] › cp12_half-even.spec.ts:150:7 › half even › half even scenario 2
+[1A[2K[36/84] [chromium] › cp12_half-even.spec.ts:330:7 › half even › half even scenario 3
+[1A[2K[37/84] [chromium] › cp13_four-eyes.spec.ts:6:7 › four eyes › four eyes
+[1A[2K[38/84] [chromium] › cp13_four-eyes.spec.ts:43:7 › four eyes › four eyes scenario 1
+[1A[2K[39/84] [chromium] › cp13_four-eyes.spec.ts:181:7 › four eyes › four eyes scenario 2
+[1A[2K[40/84] [chromium] › cp13_four-eyes.spec.ts:343:7 › four eyes › four eyes scenario 3
+[1A[2K[41/84] [chromium] › cp14_edit-conflict.spec.ts:6:7 › edit conflict › edit conflict
+[1A[2K[42/84] [chromium] › cp14_edit-conflict.spec.ts:34:7 › edit conflict › edit conflict scenario 1
+[1A[2K[43/84] [chromium] › cp14_edit-conflict.spec.ts:184:7 › edit conflict › edit conflict scenario 2
+[1A[2K[44/84] [chromium] › cp14_edit-conflict.spec.ts:355:7 › edit conflict › edit conflict scenario 3
+[1A[2K[45/84] [chromium] › cp15_statements.spec.ts:6:7 › statements › statements
+[1A[2K[46/84] [chromium] › cp15_statements.spec.ts:104:7 › statements › statements scenario 1
+[1A[2K[47/84] [chromium] › cp15_statements.spec.ts:338:7 › statements › statements scenario 2
+[1A[2K[48/84] [chromium] › cp15_statements.spec.ts:512:7 › statements › statements scenario 3
+[1A[2K[49/84] [chromium] › cp16_rollup-audit.spec.ts:6:7 › rollup audit › rollup audit
+[1A[2K[50/84] [chromium] › cp16_rollup-audit.spec.ts:79:7 › rollup audit › rollup audit scenario 1
+[1A[2K[51/84] [chromium] › cp16_rollup-audit.spec.ts:261:7 › rollup audit › rollup audit scenario 2
+[1A[2K[52/84] [chromium] › cp16_rollup-audit.spec.ts:425:7 › rollup audit › rollup audit scenario 3
+[1A[2K[53/84] [chromium] › cp17_periods.spec.ts:6:7 › periods › periods
+[1A[2K[54/84] [chromium] › cp17_periods.spec.ts:52:7 › periods › periods scenario 1
+[1A[2K[55/84] [chromium] › cp17_periods.spec.ts:215:7 › periods › periods scenario 2
+[1A[2K[56/84] [chromium] › cp17_periods.spec.ts:378:7 › periods › periods scenario 3
+[1A[2K[57/84] [chromium] › cp18_close-period.spec.ts:6:7 › close period › close period
+[1A[2K[58/84] [chromium] › cp18_close-period.spec.ts:61:7 › close period › close period scenario 1
+[1A[2K[59/84] [chromium] › cp18_close-period.spec.ts:184:7 › close period › close period scenario 2
+[1A[2K[60/84] [chromium] › cp18_close-period.spec.ts:316:7 › close period › close period scenario 3
+[1A[2K[61/84] [chromium] › cp19_quick-add.spec.ts:6:7 › quick add › quick add
+[1A[2K[62/84] [chromium] › cp19_quick-add.spec.ts:48:7 › quick add › quick add scenario 1
+[1A[2K[63/84] [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2
+[1A[2K[64/84] [chromium] › cp19_quick-add.spec.ts:394:7 › quick add › quick add scenario 3
+[1A[2K[65/84] [chromium] › cp20_open-claims-immutable.spec.ts:6:7 › open claims immutable › open claims immutable
+[1A[2K[66/84] [chromium] › cp20_open-claims-immutable.spec.ts:45:7 › open claims immutable › open claims immutable scenario 1
+[1A[2K[67/84] [chromium] › cp20_open-claims-immutable.spec.ts:306:7 › open claims immutable › open claims immutable scenario 2
+[1A[2K[68/84] [chromium] › cp20_open-claims-immutable.spec.ts:465:7 › open claims immutable › open claims immutable scenario 3
+[1A[2K[69/84] [chromium] › cp21_retire.spec.ts:6:7 › retire › retire
+[1A[2K[70/84] [chromium] › cp21_retire.spec.ts:61:7 › retire › retire scenario 1
+[1A[2K[71/84] [chromium] › cp21_retire.spec.ts:178:7 › retire › retire scenario 2
+[1A[2K[72/84] [chromium] › cp21_retire.spec.ts:367:7 › retire › retire scenario 3
+[1A[2K[73/84] [chromium] › cp22_hold.spec.ts:6:7 › hold › hold
+[1A[2K[74/84] [chromium] › cp22_hold.spec.ts:65:7 › hold › hold scenario 1
+[1A[2K[75/84] [chromium] › cp22_hold.spec.ts:264:7 › hold › hold scenario 2
+[1A[2K[76/84] [chromium] › cp22_hold.spec.ts:399:7 › hold › hold scenario 3
+[1A[2K[77/84] [chromium] › cp23_roles-and-clerk-limit.spec.ts:6:7 › roles and clerk limit › roles and clerk limit
+[1A[2K[78/84] [chromium] › cp23_roles-and-clerk-limit.spec.ts:70:7 › roles and clerk limit › roles and clerk limit scenario 1
+[1A[2K[79/84] [chromium] › cp23_roles-and-clerk-limit.spec.ts:220:7 › roles and clerk limit › roles and clerk limit scenario 2
+[1A[2K[80/84] [chromium] › cp23_roles-and-clerk-limit.spec.ts:384:7 › roles and clerk limit › roles and clerk limit scenario 3
+[1A[2K[81/84] [chromium] › cp24_floor.spec.ts:6:7 › floor › floor
+[1A[2K[82/84] [chromium] › cp24_floor.spec.ts:98:7 › floor › floor scenario 1
+[1A[2K[83/84] [chromium] › cp24_floor.spec.ts:260:7 › floor › floor scenario 2
+[1A[2K[84/84] [chromium] › cp24_floor.spec.ts:408:7 › floor › floor scenario 3
+[1A[2K  Slow test file: [chromium] › cp08_workflow.spec.ts (19.4s)
+  Slow test file: [chromium] › cp18_close-period.spec.ts (18.8s)
+  Slow test file: [chromium] › cp11_rates-effective-dated.spec.ts (18.1s)
+  Slow test file: [chromium] › cp16_rollup-audit.spec.ts (18.1s)
+  Slow test file: [chromium] › cp09_numbering.spec.ts (18.0s)
+  Consider splitting slow test files to speed up parallel execution
+  84 passed (5.8m)

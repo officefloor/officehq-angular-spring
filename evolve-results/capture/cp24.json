@@ -1,0 +1,823 @@
+{
+  "checkpoint": 24,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp24_floor",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 3",
+    "cp08_workflow.spec.ts::workflow scenario 1",
+    "cp08_workflow.spec.ts::workflow scenario 2",
+    "cp08_workflow.spec.ts::workflow scenario 3",
+    "cp09_numbering.spec.ts::numbering scenario 1",
+    "cp09_numbering.spec.ts::numbering scenario 2",
+    "cp09_numbering.spec.ts::numbering scenario 3",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 2",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3",
+    "cp12_half-even.spec.ts::half even scenario 1",
+    "cp12_half-even.spec.ts::half even scenario 2",
+    "cp12_half-even.spec.ts::half even scenario 3",
+    "cp13_four-eyes.spec.ts::four eyes scenario 1",
+    "cp13_four-eyes.spec.ts::four eyes scenario 2",
+    "cp13_four-eyes.spec.ts::four eyes scenario 3",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 1",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 2",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 3",
+    "cp15_statements.spec.ts::statements",
+    "cp15_statements.spec.ts::statements scenario 1",
+    "cp15_statements.spec.ts::statements scenario 2",
+    "cp15_statements.spec.ts::statements scenario 3",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 1",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 3",
+    "cp17_periods.spec.ts::periods scenario 1",
+    "cp17_periods.spec.ts::periods scenario 2",
+    "cp17_periods.spec.ts::periods scenario 3",
+    "cp18_close-period.spec.ts::close period scenario 1",
+    "cp18_close-period.spec.ts::close period scenario 2",
+    "cp18_close-period.spec.ts::close period scenario 3",
+    "cp19_quick-add.spec.ts::quick add scenario 1",
+    "cp19_quick-add.spec.ts::quick add scenario 3",
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 2",
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 3",
+    "cp21_retire.spec.ts::retire scenario 1",
+    "cp21_retire.spec.ts::retire scenario 2",
+    "cp21_retire.spec.ts::retire scenario 3",
+    "cp22_hold.spec.ts::hold scenario 1",
+    "cp22_hold.spec.ts::hold scenario 2",
+    "cp22_hold.spec.ts::hold scenario 3",
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 1",
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 3"
+  ],
+  "request": {
+    "spec": "The sheet has a floor (two decimals, settings; SETTING_CHANGED key=floor value=<floor>). It starts\nat 1.00. A claim's live due is at least the floor. A settled claim's frozen figure, a claim's\nfigure bound by a statement, and a closed period's fixed total are unchanged by the floor; a\nstatement taken while a floor applies binds the floored figure. The floored figure shows wherever\ndue appears, and every total adds up the floored figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a floor (two decimals, settings; SETTING_CHANGED key=floor value=<floor>). It starts\nat 1.00. A claim's live due is at least the floor. A settled claim's frozen figure, a claim's\nfigure bound by a statement, and a closed period's fixed total are unchanged by the floor; a\nstatement taken while a floor applies binds the floored figure. The floored figure shows wherever\ndue appears, and every total adds up the floored figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "90c4c67573013877ecb40bdcc1b90a44c7846190",
+  "reset_sha": "",
+  "preagent_sha": "38ab35e2187a2d3f4cdc005bf925a9fbf298bca7",
+  "prev_sha": "38ab35e2187a2d3f4cdc005bf925a9fbf298bca7",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2985012,
+    "input_tokens": 42,
+    "output_tokens": 15056,
+    "cache_read_tokens": 1329826,
+    "cache_creation_tokens": 91406,
+    "num_turns": 22,
+    "duration_ms": 270788,
+    "duration_api_ms": 185037,
+    "model": "claude-opus-5-5",
+    "session_id": "261a71b3-0675-4d38-94d5-5604f0acd5a8",
+    "stop_reason": "success",
+    "result_text": "The floor is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does**\n- Each sheet stores a floor with two decimals. It starts at 1.00 and is set from a new \"Floor\" field in the Settings form. Saving it writes `SETTING_CHANGED \u2026 key=floor value=<floor>` to the audit file, followed by `ROLLUP`/`TOTALS` lines when live dues move.\n- A claim's live due (amount \u00d7 rate) is now at least the floor. That one rule covers everything the request lists:\n  - Settling a claim freezes the floored figure, and a statement binds it.\n  - Closing a period fixes a total built from floored figures.\n  - The clerk-limit check also uses the floored figure.\n- Settled, statement-bound and closed-period figures are stored, so a later floor change doesn't touch them. A claim with no rate stays \"n/a\".\n- The due is worked out in two places, the server (`RollupService.figure`) and the browser (`claimDue` in `claims.service.ts`). Both apply the floor, so claim dues, person totals, the sheet total and period totals all add up the floored figures.\n\n**Change to how Settings saves:** the form now sends only the fields the user actually edited, and the server leaves any field that isn't sent unchanged. Without this, saving the floor would also have logged a clerk-limit change. Because of it, \"no clerk limit\" is now sent as an empty string rather than null. The new database migration is `V19__sheet_floor.sql`.\n\n**A bug outside the floor that scenario 2 hit:** when a statement bound a claim whose figure was \"n/a\", the person's due-total showed 0.00 instead of n/a. The code treated any bound claim as having a fixed figure, even one bound to \"n/a\". I fixed it on both sides (`Claim.keepsFigure()` on the server, `fixed()` in the browser), so only a real settled or bound figure counts.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2985012,
+        "num_turns": 22,
+        "duration_ms": 270788,
+        "duration_api_ms": 185037,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp24.agent.jsonl",
+  "agent_diff_file": "cp24.agent.diff",
+  "build_log_file": "cp24.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 84,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp05_claims.spec.ts::claims scenario 1": true,
+      "cp05_claims.spec.ts::claims scenario 2": true,
+      "cp05_claims.spec.ts::claims scenario 3": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp06_audit.spec.ts::audit scenario 1": true,
+      "cp06_audit.spec.ts::audit scenario 2": true,
+      "cp06_audit.spec.ts::audit scenario 3": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 1": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 2": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 3": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp08_workflow.spec.ts::workflow scenario 1": true,
+      "cp08_workflow.spec.ts::workflow scenario 2": true,
+      "cp08_workflow.spec.ts::workflow scenario 3": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp09_numbering.spec.ts::numbering scenario 1": true,
+      "cp09_numbering.spec.ts::numbering scenario 2": true,
+      "cp09_numbering.spec.ts::numbering scenario 3": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 2": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3": true,
+      "cp12_half-even.spec.ts::half even": true,
+      "cp12_half-even.spec.ts::half even scenario 1": true,
+      "cp12_half-even.spec.ts::half even scenario 2": true,
+      "cp12_half-even.spec.ts::half even scenario 3": true,
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 1": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 2": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 3": true,
+      "cp14_edit-conflict.spec.ts::edit conflict": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 1": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 2": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 3": true,
+      "cp15_statements.spec.ts::statements": true,
+      "cp15_statements.spec.ts::statements scenario 1": true,
+      "cp15_statements.spec.ts::statements scenario 2": true,
+      "cp15_statements.spec.ts::statements scenario 3": true,
+      "cp16_rollup-audit.spec.ts::rollup audit": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 1": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 2": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 3": true,
+      "cp17_periods.spec.ts::periods": true,
+      "cp17_periods.spec.ts::periods scenario 1": true,
+      "cp17_periods.spec.ts::periods scenario 2": true,
+      "cp17_periods.spec.ts::periods scenario 3": true,
+      "cp18_close-period.spec.ts::close period": true,
+      "cp18_close-period.spec.ts::close period scenario 1": true,
+      "cp18_close-period.spec.ts::close period scenario 2": true,
+      "cp18_close-period.spec.ts::close period scenario 3": true,
+      "cp19_quick-add.spec.ts::quick add": true,
+      "cp19_quick-add.spec.ts::quick add scenario 1": true,
+      "cp19_quick-add.spec.ts::quick add scenario 2": true,
+      "cp19_quick-add.spec.ts::quick add scenario 3": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 2": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 3": true,
+      "cp21_retire.spec.ts::retire": true,
+      "cp21_retire.spec.ts::retire scenario 1": true,
+      "cp21_retire.spec.ts::retire scenario 2": true,
+      "cp21_retire.spec.ts::retire scenario 3": true,
+      "cp22_hold.spec.ts::hold": true,
+      "cp22_hold.spec.ts::hold scenario 1": true,
+      "cp22_hold.spec.ts::hold scenario 2": true,
+      "cp22_hold.spec.ts::hold scenario 3": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 1": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 3": true,
+      "cp24_floor.spec.ts::floor": true,
+      "cp24_floor.spec.ts::floor scenario 1": true,
+      "cp24_floor.spec.ts::floor scenario 2": true,
+      "cp24_floor.spec.ts::floor scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1578,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1088,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1560,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1821,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1969,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4046,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4256,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4662,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1576,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3961,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5286,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4645,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2609,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4539,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4937,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5399,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2481,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5662,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5120,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6097,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2484,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5333,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4827,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5374,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1868,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4260,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3871,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5399,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2752,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4679,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5389,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5327,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1493,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3789,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5088,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4688,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2085,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4747,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5196,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3974,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1975,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5765,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4682,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5556,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3253,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5781,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4324,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3704,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3219,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5320,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4668,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4872,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2053,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4870,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5123,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2697,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4800,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4944,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6334,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1538,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4720,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4852,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4458,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1567,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5544,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4722,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5282,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1919,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4618,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4847,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4727,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2455,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5271,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3722,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6309,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3844,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4567,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3936,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3237,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3862,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4149,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4630,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": {
+    "probe_cost_usd": 0.706696,
+    "probe_input_tokens": 18,
+    "probe_cache_read_tokens": 390520,
+    "probe_recall": 0.6538461538461539,
+    "probe_text": "I didn't change any files. There is no import feature in the code. The closest thing is **quick-add** (`QuickAddService`), which I've covered below.\n\n## 1. Figures and the rules behind them\n\n### Figures shown for a person (`people.ts`)\n| testid | Value | Computed by |\n|---|---|---|\n| `person-claimed` | Sum of the person's counting claims' `amount` | Client: `ClaimsService.claimedCents` |\n| `person-due-total` | Sum of their counting claims' figures, or `n/a` | Client: `People.dueTotals` |\n| `person-statement-count` | How many statements were taken for them | Server: `PersonService.statements` |\n| `person-stated-total` / `person-statement-date` | The last statement's `dueTotal` (or `n/a`) and its `takenOn` date | Server: `PersonView` |\n| `person-retired` / `person-retired-from` | Their `retiredFrom` date | Server |\n| `person-hold` | Their `held` flag | Server |\n| `rollup-claimed-total` / `rollup-due-total` | Sheet totals | Client: `totalCents`, `dueTotal` |\n\n### Figures shown for a claim (`person-claims.ts`)\n`claim-amount`, `claim-date`, `claim-note`, `claim-status`, `claim-number`, `claim-opened-by`, `claim-stated` (yes/no), `claim-period` (the first period whose dates contain the claim's date) and `claim-due` (from `claimDue`, or `n/a`).\n\n### Figures shown for a period\n`period-due-total`: while the period is open, the client sums the figures of counting claims dated in it (`Periods.dueTotals`). Once closed, it shows the stored `closedTotal`. `period-closed` shows whether it is closed.\n\n### Rules\n\n**Which claims count**\n- `ClaimStatus.counts()`: only `OPEN` and `SETTLED` claims count. `DRAFT` and `VOID` claims don't.\n- `RollupService.counts(person, claim)` adds one exception: a **held** person's `OPEN` claims don't count. Their `SETTLED` claims still do. The client has its own copy of this rule (`ClaimsService.live`).\n- Retired people's claims keep counting in every total. Retired people are only hidden from the list unless `show-retired` is on.\n\n**How a claim's figure (\"due\") is worked out** (`RollupService.figure`, copied on the client as `claimDue`)\n1. If the claim has a settled `due`, that is its figure.\n2. Otherwise, if it is `stated`, its figure is `statedDue`, which may be null (shown as n/a).\n3. Otherwise it uses the rate in force on the **claim's date** for the person's **current grade**. That is the rate with the latest `fromDate` on or before the date; a rate with no `fromDate` applies from the beginning of time (`RateRepository.findInForce`, `Rate.appliesOn`).\n4. The figure is `amount \u00d7 pct / 100`, rounded to the cent **HALF_EVEN**, then raised to at least the sheet's `floor` (default 1.00). The client does the same rounding in BigInt cents (`rates.service.ts due()`).\n5. With no rate in force, the figure is null and shows as n/a.\n\n**A person's due-total** (`RollupService.snapshot`, `People.dueTotals`)\n- It is the sum of the figures of their counting claims; claims with no figure are skipped.\n- It shows **n/a** when their grade has no rate in force on the **sheet's `today`** and none of their counting claims `keepsFigure()` (a settled due, or a stated figure that isn't null).\n- The sheet's due-total leaves out people whose due-total is n/a.\n\n**Dates**\n- Every decision and default date uses `Sheet.today`, never the real clock. The one exception: a new sheet starts with `today` set to `LocalDate.now()`.\n- Changing `today` moves which people are n/a, and that change is written to the audit file as ROLLUP/TOTALS lines.\n- A claim's own date decides which rate it uses and which period it falls in.\n\n**Claim lifecycle** (`ClaimStatus.canBecome`)\n- DRAFT \u2192 OPEN \u2192 SETTLED, and DRAFT or OPEN \u2192 VOID. Nothing goes back to DRAFT.\n- Only a DRAFT can be edited (409 otherwise).\n- Opening a claim gives it `number = Sheet.takeClaimNumber()`, a per-sheet counter that is never reused, and sets `openedBy`. A voided claim keeps its number, although the client-side comment wrongly says it is null.\n\n**Frozen figures**\n- **Settling** a claim freezes `due = figure(...)` at that moment. If it was stated, that is its stated figure. If there was no rate, `due` stays null and the claim keeps following the rates.\n- **A statement** (`ClaimService.statement`):\n  - records `Statement(dueTotal, claims count, takenOn = today)`;\n  - calls `bind(figure)` on each counting claim and `unbind()` on the person's other claims;\n  - leaves bound figures unaffected by rates, the floor or grade changes until the next statement.\n- **Closing a period** freezes `closedTotal`: the sum of the figures of counting claims dated in it. Claims inside the period still show live figures afterwards. Only the period's total is frozen.\n- The floor never changes settled or bound figures.\n\n**Who may do what**\n- The user who opened a claim may not settle it (403). This applies even to a steward.\n- A user's `Role` is `CLERK` by default, or `STEWARD` (`SettingsService.roleOf`).\n- If the sheet has a `clerkLimit`, a clerk can't settle a claim whose figure is above it, or whose figure is null (`requireMaySettle`). A steward can settle any claim, and with no limit set anyone can.\n- Editing a person needs the version they loaded; otherwise it is refused with 412 (optimistic locking). Names must be unique, ignoring case, for people and for periods.\n\n**Closed periods** (`PeriodService.requireOpenOn`)\n- Adding a claim dated in a closed period is refused.\n- Editing a claim is refused if its old **or** new date is in one.\n- Any status change to a claim dated in one is refused.\n- Not blocked: statements, holds, rate changes, grade changes and floor changes. These can still move the live figures of claims inside a closed period.\n- Periods may not overlap, and the to-date can't be before the from-date. Closing an already-closed period is refused.\n\n**Retirement**\n- A claim dated strictly **after** `retiredFrom` is refused when added or edited (`Person.retiredOn`). Claims dated on that day are allowed.\n- Retiring someone writes no ROLLUP lines.\n\n**Hold**\n- Toggling hold makes the person's OPEN claims leave or rejoin every live total, the period totals and statements, and it writes ROLLUP lines.\n\n**Quick-add**\n- Finds the person by name, ignoring case, or adds them with grade A.\n- Adds a DRAFT claim dated `today` with an empty note.\n- All in one transaction: if the claim is refused, the new person isn't kept.\n\n**Audit**\n- Every figure-moving change takes a `snapshot` before and calls `recordChanges` after. That writes a ROLLUP line per person whose figures moved and a TOTALS line if the sheet totals moved.\n- Records are written only after the change commits (`recordOnCommit`).\n\n## 2. How hard it was to follow\n\nIt was moderately hard. The server keeps the core rules fairly well in one place: `RollupService` has `counts`, `figure` and `snapshot`, and `ClaimService` has the guards. But every figure on screen is actually **recomputed a second time in the Angular client**: `claimDue`, `live`, `dueTotals` and `Periods.dueTotals`, plus a separate rounding routine. The rules for freezing, hold, n/a and closed periods are spread across `ClaimService`, `PeriodService`, `PersonService`, the entities and three front-end files, so a new developer has to read both copies and keep them in sync by hand."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
