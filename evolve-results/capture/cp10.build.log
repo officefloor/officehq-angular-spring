@@ -1,0 +1,43 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610181730/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 28 tests using 1 worker
+
+[1A[2K[1/28] [chromium] › cp01_signin-and-sheet.spec.ts:6:7 › signin and sheet › signin and sheet
+[1A[2K[2/28] [chromium] › cp02_sheet-today.spec.ts:6:7 › sheet today › sheet today
+[1A[2K[3/28] [chromium] › cp03_people.spec.ts:6:7 › people › people
+[1A[2K[4/28] [chromium] › cp04_name-uniqueness.spec.ts:6:7 › name uniqueness › name uniqueness
+[1A[2K[5/28] [chromium] › cp05_claims.spec.ts:6:7 › claims › claims
+[1A[2K[6/28] [chromium] › cp05_claims.spec.ts:34:7 › claims › claims scenario 1
+[1A[2K[7/28] [chromium] › cp05_claims.spec.ts:103:7 › claims › claims scenario 2
+[1A[2K[8/28] [chromium] › cp05_claims.spec.ts:172:7 › claims › claims scenario 3
+[1A[2K[9/28] [chromium] › cp06_audit.spec.ts:6:7 › audit › audit
+[1A[2K[10/28] [chromium] › cp06_audit.spec.ts:28:7 › audit › audit scenario 1
+[1A[2K[11/28] [chromium] › cp06_audit.spec.ts:125:7 › audit › audit scenario 2
+[1A[2K[12/28] [chromium] › cp06_audit.spec.ts:216:7 › audit › audit scenario 3
+[1A[2K[13/28] [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due
+[1A[2K[14/28] [chromium] › cp07_rates-and-due.spec.ts:65:7 › rates and due › rates and due scenario 1
+[1A[2K[15/28] [chromium] › cp07_rates-and-due.spec.ts:211:7 › rates and due › rates and due scenario 2
+[1A[2K[16/28] [chromium] › cp07_rates-and-due.spec.ts:334:7 › rates and due › rates and due scenario 3
+[1A[2K[17/28] [chromium] › cp08_workflow.spec.ts:6:7 › workflow › workflow
+[1A[2K[18/28] [chromium] › cp08_workflow.spec.ts:53:7 › workflow › workflow scenario 1
+[1A[2K[19/28] [chromium] › cp08_workflow.spec.ts:210:7 › workflow › workflow scenario 2
+[1A[2K[20/28] [chromium] › cp08_workflow.spec.ts:342:7 › workflow › workflow scenario 3
+[1A[2K[21/28] [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering
+[1A[2K[22/28] [chromium] › cp09_numbering.spec.ts:34:7 › numbering › numbering scenario 1
+[1A[2K[23/28] [chromium] › cp09_numbering.spec.ts:172:7 › numbering › numbering scenario 2
+[1A[2K[24/28] [chromium] › cp09_numbering.spec.ts:309:7 › numbering › numbering scenario 3
+[1A[2K[25/28] [chromium] › cp10_settle-freezes-due.spec.ts:6:7 › settle freezes due › settle freezes due
+[1A[2K[26/28] [chromium] › cp10_settle-freezes-due.spec.ts:38:7 › settle freezes due › settle freezes due scenario 1
+[1A[2K[27/28] [chromium] › cp10_settle-freezes-due.spec.ts:156:7 › settle freezes due › settle freezes due scenario 2
+[1A[2K[28/28] [chromium] › cp10_settle-freezes-due.spec.ts:257:7 › settle freezes due › settle freezes due scenario 3
+[1A[2K  Slow test file: [chromium] › cp08_workflow.spec.ts (16.9s)
+  Slow test file: [chromium] › cp07_rates-and-due.spec.ts (15.7s)
+  Slow test file: [chromium] › cp09_numbering.spec.ts (15.5s)
+  Consider splitting slow test files to speed up parallel execution
+  28 passed (1.6m)
