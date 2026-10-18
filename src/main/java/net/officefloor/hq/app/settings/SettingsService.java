@@ -9,7 +9,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The sheet's settings (its clerk limit and floor) and the roles it gives user names. */
+/** The sheet's settings (its clerk limit, floor and terms) and the roles it gives user names. */
 @Service
 public class SettingsService {
 
@@ -33,11 +33,12 @@ public class SettingsService {
 
     /**
      * Save the settings given: {@code setClerkLimit} the clerk limit (null: no limit), a non-null
-     * {@code floor} the floor; each one saved is audited, even when its value is the same. A floor
+     * {@code floor} the floor, a non-null {@code terms} the terms in days; each one saved is audited, even when its value is the same. A floor
      * that moves live dues records the rollups that moved.
      */
     @Transactional
-    public Sheet save(String sheetId, String user, boolean setClerkLimit, BigDecimal clerkLimit, BigDecimal floor) {
+    public Sheet save(String sheetId, String user, boolean setClerkLimit, BigDecimal clerkLimit, BigDecimal floor,
+            Integer terms) {
         Sheet sheet = sheets.lock(sheetId, user);
         if (setClerkLimit) {
             sheet.setClerkLimit(clerkLimit);
@@ -50,6 +51,11 @@ public class SettingsService {
             audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                     + " key=floor value=" + floor.toPlainString());
             rollups.recordChanges(sheetId, user, before);
+        }
+        if (terms != null) {
+            sheet.setTerms(terms);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                    + " key=terms value=" + terms);
         }
         return sheet;
     }

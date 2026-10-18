@@ -4,7 +4,8 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ROLES, SettingsChange, SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 
-// The sheet's settings (its clerk limit: blank for none; its floor, the least a claim's live due is) and the roles it gives user names (clerk,
+// The sheet's settings (its clerk limit: blank for none; its floor, the least a claim's live due is; its terms,
+// the days after its date a claim is due by) and the roles it gives user names (clerk,
 // the default for any name, or steward), each with a form that changes it.
 @Component({
   selector: 'app-settings',
@@ -18,6 +19,8 @@ import { SheetService } from '../../core/sheet.service';
           inputmode="decimal" />
         <label for="setting-floor">Floor</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
+        <label for="setting-terms">Terms (days)</label>
+        <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -25,6 +28,7 @@ import { SheetService } from '../../core/sheet.service';
       </form>
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ settings.clerkLimit() ?? '' }}</span></p>
       <p>Floor now: <span data-testid="setting-floor-current">{{ settings.floor() }}</span></p>
+      <p>Terms now: <span data-testid="setting-terms-current">{{ settings.terms() }}</span> days</p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -59,6 +63,7 @@ export class Settings {
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
+    terms: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -87,9 +92,10 @@ export class Settings {
   protected save(): void {
     if (this.savingSettings) return;
     this.settingsError.set('');
-    const { clerkLimit, floor } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms } = this.settingsForm.controls;
     const limit = clerkLimit.value.trim();
     const least = floor.value.trim();
+    const days = terms.value.trim();
     if (limit !== '' && !/^\d{1,13}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it empty.');
       return;
@@ -98,10 +104,15 @@ export class Settings {
       this.settingsError.set('Enter a floor of 0.00 or more with up to two decimals.');
       return;
     }
+    if (!/^\d{1,4}$/.test(days)) {
+      this.settingsError.set('Enter terms of 0 or more whole days.');
+      return;
+    }
     // Only the settings the user changed are saved (and audited).
     const change: SettingsChange = {};
     if (clerkLimit.dirty) change.clerkLimit = limit;
     if (floor.dirty) change.floor = least;
+    if (terms.dirty) change.terms = days;
     this.savingSettings = true;
     this.settings.save(change).pipe(finalize(() => (this.savingSettings = false))).subscribe({
       next: () => this.resetSettings(),
@@ -111,7 +122,8 @@ export class Settings {
 
   private resetSettings(): void {
     this.settingsForm.reset(
-      { clerkLimit: this.settings.clerkLimit() ?? '', floor: this.settings.floor() },
+      { clerkLimit: this.settings.clerkLimit() ?? '', floor: this.settings.floor(),
+        terms: String(this.settings.terms()) },
       { emitEvent: false },
     );
   }

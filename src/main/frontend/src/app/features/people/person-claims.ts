@@ -2,14 +2,15 @@ import { Component, computed, inject, input, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, ClaimAction, ClaimsService, claimDue, money } from '../../core/claims.service';
+import { Claim, ClaimAction, ClaimsService, claimDue, dueBy, money, overdue } from '../../core/claims.service';
 import { Grade } from '../../core/people.service';
 import { PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 import { SessionService } from '../../core/session.service';
 import { SettingsService } from '../../core/settings.service';
+import { SheetService } from '../../core/sheet.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one).
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it, nor may a clerk one whose due is above the sheet's clerk limit), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (its date plus the sheet's terms) and whether it is overdue (open and due before the sheet's today), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -26,6 +27,8 @@ import { SettingsService } from '../../core/settings.service';
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periods.periodOn(c.date)?.name ?? '' }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+          <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @for (a of actions; track a.action) {
@@ -65,6 +68,7 @@ export class PersonClaims {
   private readonly rates = inject(RatesService);
   private readonly session = inject(SessionService);
   private readonly settings = inject(SettingsService);
+  private readonly sheets = inject(SheetService);
   protected readonly periods = inject(PeriodsService);
   protected readonly claims = computed(() => this.service.byPerson().get(this.personId()) ?? []);
   protected readonly form = new FormGroup({
@@ -94,6 +98,14 @@ export class PersonClaims {
     return d === undefined ? 'n/a' : money(d);
   }
 
+  protected dueByOf(c: Claim): string {
+    return dueBy(c, this.settings.terms());
+  }
+
+  protected overdueOf(c: Claim): boolean {
+    return overdue(c, this.settings.terms(), this.sheets.today());
+  }
+
   protected change(c: Claim, action: ClaimAction): void {
     this.setClaimError(c.id, '');
     this.service.changeStatus(c.id, action).subscribe({
@@ -119,6 +131,10 @@ export class PersonClaims {
     this.setClaimError(c.id, '');
     if (c.status !== 'DRAFT') {
       this.setClaimError(c.id, `A ${c.status} claim cannot be edited; void it and add a new one.`);
+      return;
+    }
+    if (this.periods.periodOn(c.date)?.closed) {
+      this.setClaimError(c.id, 'A claim dated in a closed period cannot be edited.');
       return;
     }
     this.error.set('');

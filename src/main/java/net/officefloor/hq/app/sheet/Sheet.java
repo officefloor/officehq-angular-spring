@@ -38,6 +38,10 @@ public class Sheet {
     @Column(name = "floor", nullable = false, precision = 15, scale = 2)
     private BigDecimal floor = new BigDecimal("1.00");
 
+    /** A claim is due by its date plus this many days. */
+    @Column(name = "terms", nullable = false)
+    private int terms = 14;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
@@ -64,6 +68,10 @@ public class Sheet {
     public BigDecimal getFloor() { return floor; }
 
     public void setFloor(BigDecimal floor) { this.floor = floor; }
+
+    public int getTerms() { return terms; }
+
+    public void setTerms(int terms) { this.terms = terms; }
 
     /** Give out the sheet's next claim number. */
     public int takeClaimNumber() { return ++lastClaimNumber; }

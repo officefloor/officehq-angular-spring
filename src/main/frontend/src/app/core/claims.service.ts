@@ -54,6 +54,17 @@ export function claimDue(c: Claim, rateOn: (date: string) => number | undefined,
   return rate === undefined ? undefined : Math.max(due(cents(c.amount), rate), floor);
 }
 
+/** The date (yyyy-MM-dd) a claim is due by: its date plus the terms (days). */
+export function dueBy(c: Claim, terms: number): string {
+  const [y, m, d] = c.date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+}
+
+/** A claim is overdue when it is open and its due-by is before the sheet's today (yyyy-MM-dd; null: none loaded). */
+export function overdue(c: Claim, terms: number, today: string | null): boolean {
+  return today !== null && c.status === 'OPEN' && dueBy(c, terms) < today;
+}
+
 export interface ClaimForm {
   amount: string;
   /** null: the sheet's today. */

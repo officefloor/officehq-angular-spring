@@ -19,20 +19,26 @@ interface SettingsView {
   clerkLimit: string | null;
   /** Two decimals: a claim's live due is at least this. */
   floor: string;
+  /** Days: a claim is due by its date plus these. */
+  terms: number;
 }
 
 /** The settings to save; one left out keeps its value. The clerk limit is '' for no limit. */
 export interface SettingsChange {
   clerkLimit?: string;
   floor?: string;
+  terms?: string;
 }
 
 /** The floor a sheet starts with. */
 const DEFAULT_FLOOR = '1.00';
 
+/** The terms (days) a sheet starts with. */
+const DEFAULT_TERMS = 14;
+
 // The active sheet's settings and the roles it gives user names. A name with no role is a clerk; a
 // clerk may settle a claim only when its due is at or below the clerk limit (none: no limit), a
-// steward any claim. A claim's live due is at least the floor.
+// steward any claim. A claim's live due is at least the floor; it is due by its date plus the terms.
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
   private readonly http = inject(HttpClient);
@@ -40,12 +46,15 @@ export class SettingsService {
   private readonly sheets = inject(SheetService);
   private readonly limit = signal<string | null>(null);
   private readonly floorValue = signal<string>(DEFAULT_FLOOR);
+  private readonly termsValue = signal<number>(DEFAULT_TERMS);
   private readonly list = signal<RoleEntry[]>([]);
 
   readonly clerkLimit = this.limit.asReadonly();
   readonly floor = this.floorValue.asReadonly();
   /** The floor in cents. */
   readonly floorCents = computed(() => cents(this.floorValue()));
+  /** The terms in days. */
+  readonly terms = this.termsValue.asReadonly();
   readonly roles = this.list.asReadonly();
 
   /** Re-read the active sheet's settings and roles from the store. */
@@ -54,6 +63,7 @@ export class SettingsService {
     if (!id) {
       this.limit.set(null);
       this.floorValue.set(DEFAULT_FLOOR);
+      this.termsValue.set(DEFAULT_TERMS);
       this.list.set([]);
       return of(null);
     }
@@ -80,6 +90,7 @@ export class SettingsService {
   private set(settings: SettingsView): void {
     this.limit.set(settings.clerkLimit);
     this.floorValue.set(settings.floor);
+    this.termsValue.set(settings.terms);
   }
 
   /** Give a user name a role, replacing the one it had; refused for any role but clerk or steward. */

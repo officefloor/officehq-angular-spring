@@ -3,7 +3,7 @@ import { finalize, switchMap } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
-import { ClaimsService, claimDue, fixed, money } from '../../core/claims.service';
+import { ClaimsService, claimDue, fixed, money, overdue } from '../../core/claims.service';
 import { RatesService } from '../../core/rates.service';
 import { SettingsService } from '../../core/settings.service';
 import { PersonClaims } from './person-claims';
@@ -19,6 +19,8 @@ import { PersonClaims } from './person-claims';
 // left out of the list unless "show retired" is on; their claims keep counting in every total.
 // A person can be put on hold and taken off it again: while held, their open claims count in no
 // live total (settled ones still do).
+// Each person, and the sheet, shows how many of their counting claims are overdue (open, due by
+// before the sheet's today) and those claims' dues added up (a claim with none adds nothing).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, PersonClaims],
@@ -63,6 +65,7 @@ import { PersonClaims } from './person-claims';
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+            <th scope="col">Overdue</th><th scope="col">Overdue due</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -79,6 +82,8 @@ import { PersonClaims } from './person-claims';
               <td data-testid="person-retired">{{ p.retiredFrom ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</td>
+              <td data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
@@ -102,6 +107,8 @@ import { PersonClaims } from './person-claims';
       </table>
       <p>Claimed in total: <span data-testid="rollup-claimed-total">{{ money(claims.totalCents()) }}</span></p>
       <p>Due in total: <span data-testid="rollup-due-total">{{ money(dueTotal()) }}</span></p>
+      <p>Overdue claims: <span data-testid="rollup-overdue-count">{{ overdueTotal().count }}</span></p>
+      <p>Overdue in total: <span data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</span></p>
     </section>
   `,
 })
@@ -155,6 +162,28 @@ export class People {
   /** Everyone's due-total added up, in cents, skipping those with none. */
   protected readonly dueTotal = computed(() => [...this.dueTotals().values()].reduce((sum, d) => sum + d, 0));
 
+  /** Each person's overdue claims that count: how many, and their dues added up in cents. */
+  protected readonly overdue = computed(() => {
+    const out = new Map<number, { count: number; cents: number }>();
+    const floor = this.settings.floorCents();
+    const terms = this.settings.terms();
+    const today = this.sheets.today();
+    for (const p of this.people.people()) {
+      const late = (this.claims.byPerson().get(p.id) ?? [])
+        .filter(this.claims.live())
+        .filter((c) => overdue(c, terms, today));
+      const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
+      out.set(p.id, {
+        count: late.length,
+        cents: late.reduce((sum, c) => sum + (claimDue(c, rateOn, floor) ?? 0), 0),
+      });
+    }
+    return out;
+  });
+  /** Everyone's overdue claims that count: how many, and their dues added up in cents. */
+  protected readonly overdueTotal = computed(() => [...this.overdue().values()].reduce(
+    (sum, o) => ({ count: sum.count + o.count, cents: sum.cents + o.cents }), { count: 0, cents: 0 }));
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.quick.valueChanges.subscribe(() => this.quickError.set(''));
@@ -166,6 +195,10 @@ export class People {
         this.quick.reset({ name: '', amount: '' }, { emitEvent: false });
       });
     });
+  }
+
+  protected overdueOf(personId: number): { count: number; cents: number } {
+    return this.overdue().get(personId) ?? { count: 0, cents: 0 };
   }
 
   protected amountOrNa(cents: number | undefined): string {
