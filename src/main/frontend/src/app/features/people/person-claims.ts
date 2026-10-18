@@ -11,7 +11,7 @@ import { SettingsService } from '../../core/settings.service';
 import { SheetService } from '../../core/sheet.service';
 import { TotalsService } from '../../core/totals.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it; a clerk settling one whose due is above the sheet's clerk limit makes it pending, for a steward other than its opener to approve, or to reject with a reason), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (fixed when it was added: its date plus the terms of its person's grade in force on it, the sheet's terms for a grade without its own), whether it is overdue (open and due before the sheet's today) and, for a correction (a negative amount), the number of the settled claim it corrects, a picker and button that move it to another person (a steward only; a draft, open or pending one: it is live again until their next statement), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it; a clerk settling one whose due is above the sheet's clerk limit makes it pending, for a steward other than its opener to approve, or to reject with a reason), its due (n/a when the person's grade in force on the claim's date has no rate in force then), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), the date it is due by (fixed when it was added: its date plus the terms of its person's grade in force on it, the sheet's terms for a grade without its own), whether it is overdue (open and due before the sheet's today) and, for a correction (a negative amount), the number of the settled claim it corrects, its status log (one line per status it has had, oldest first, with who gave it, the sheet's today then and its due then), a picker and button that move it to another person (a steward only; a draft, open or pending one: it is live again until their next statement), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one; so is one dated in a closed period).
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -52,6 +52,11 @@ import { TotalsService } from '../../core/totals.service';
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
           <input #reason [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason"
             (input)="setClaimError(c.id, '')" />
+          <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+            @for (l of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
+            }
+          </ol>
           @if (claimErrors().get(c.id); as e) {
             <p role="alert" data-testid="claim-error">{{ e }}</p>
           }

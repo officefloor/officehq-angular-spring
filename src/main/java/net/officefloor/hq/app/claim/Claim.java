@@ -1,15 +1,22 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 /** A claim a person on a sheet makes. */
 @Entity
@@ -66,6 +73,12 @@ public class Claim {
     /** A correction's (negative amount) number of the settled claim of the same person it corrects; none otherwise. */
     @Column(name = "corrects")
     private String corrects;
+
+    /** One entry per status the claim has had, oldest first (its DRAFT one written when it was added). */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimLogEntry> log = new ArrayList<>();
 
     protected Claim() {}
 
@@ -146,5 +159,12 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+    }
+
+    public List<ClaimLogEntry> getLog() { return List.copyOf(log); }
+
+    /** Log the status the claim has now, given by this user on this date with this due (null: n/a). */
+    public void logStatus(String user, LocalDate on, BigDecimal due) {
+        log.add(new ClaimLogEntry(status, user, on, due));
     }
 }

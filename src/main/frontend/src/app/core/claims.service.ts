@@ -29,6 +29,16 @@ export interface Claim {
   statedDue: string | null;
   /** A correction's (negative amount) number of the settled claim of the same person it corrects; null otherwise. */
   corrects: string | null;
+  /** One line per status it has had, oldest first (its DRAFT one written when it was added). */
+  log: ClaimLogLine[];
+}
+
+/** A status a claim took, who gave it, the sheet's today then (yyyy-MM-dd) and its due then (text with two decimals; null: n/a). */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  on: string;
+  due: string | null;
 }
 
 /** What a bulk open did: how many claims were opened and how many refused. */

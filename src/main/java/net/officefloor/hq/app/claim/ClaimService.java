@@ -93,6 +93,8 @@ public class ClaimService {
         RollupService.Rollup before = rollups.snapshot(sheetId);
         Claim saved = claims.saveAndFlush(
                 new Claim(sheetId, personId, amount, dated, dueBy, noteOf(note), corrected));
+        saved.logStatus(user, sheet.getToday(), figure(sheetId, person, saved));
+        saved = claims.saveAndFlush(saved);
         audit(sheetId, user, "CLAIM_ADDED", person, saved, saved.getNumber());
         rollups.recordChanges(sheetId, user, before);
         return saved;
@@ -170,6 +172,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             claim.setDue(settledDue);
         }
+        claim.logStatus(user, sheet.getToday(), figure(sheetId, person, claim));
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
@@ -201,6 +204,7 @@ public class ClaimService {
         BigDecimal settledDue = figure(sheetId, person, claim);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setDue(settledDue);
+        claim.logStatus(user, sheet.getToday(), figure(sheetId, person, claim));
         Claim saved = claims.saveAndFlush(claim);
         audit(sheetId, user, "CLAIM_APPROVED", person, saved, saved.getNumber(), dueField(saved));
         rollups.recordChanges(sheetId, user, before);
@@ -220,6 +224,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         RollupService.Rollup before = rollups.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
+        claim.logStatus(user, sheet.getToday(), figure(sheetId, person, claim));
         Claim saved = claims.saveAndFlush(claim);
         audit(sheetId, user, "CLAIM_REJECTED", person, saved, saved.getNumber(), " reason=" + reason);
         rollups.recordChanges(sheetId, user, before);

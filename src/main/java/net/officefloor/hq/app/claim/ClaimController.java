@@ -31,14 +31,22 @@ public class ClaimController {
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note,
             ClaimStatus status, String number, String due, String openedBy, boolean stated, String statedDue,
-            String corrects) {
+            String corrects, List<LogLine> log) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getDueBy(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getDue() == null ? null : claim.getDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
-                    claim.getCorrects());
+                    claim.getCorrects(), claim.getLog().stream().map(LogLine::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log; its due as text with two decimals (null: n/a). */
+    public record LogLine(ClaimStatus status, String by, LocalDate on, String due) {
+        static LogLine of(ClaimLogEntry entry) {
+            return new LogLine(entry.getStatus(), entry.getBy(), entry.getOn(),
+                    entry.getDue() == null ? null : entry.getDue().setScale(2).toPlainString());
         }
     }
 
