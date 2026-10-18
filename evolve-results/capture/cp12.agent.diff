@@ -1,0 +1,137 @@
+diff --git a/src/main/frontend/src/app/core/claims.service.ts b/src/main/frontend/src/app/core/claims.service.ts
+index b43da9a2..4ef05bb3 100644
+--- a/src/main/frontend/src/app/core/claims.service.ts
++++ b/src/main/frontend/src/app/core/claims.service.ts
+@@ -1,6 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { Observable, of, tap } from 'rxjs';
++import { due } from './rates.service';
+ import { SessionService } from './session.service';
+ import { SheetService } from './sheet.service';
+ 
+@@ -29,6 +30,16 @@ export function counts(c: Claim): boolean {
+   return c.status === 'OPEN' || c.status === 'SETTLED';
+ }
+ 
++/**
++ * A claim's due in cents: a settled claim's fixed figure, otherwise its amount times the rate in force
++ * on its date (looked up by `rateOn`, in hundredths of a percent); undefined when it has none.
++ */
++export function claimDue(c: Claim, rateOn: (date: string) => number | undefined): number | undefined {
++  if (c.due !== null) return cents(c.due);
++  const rate = rateOn(c.date);
++  return rate === undefined ? undefined : due(cents(c.amount), rate);
++}
++
+ export interface ClaimForm {
+   amount: string;
+   /** null: the sheet's today. */
+diff --git a/src/main/frontend/src/app/core/rates.service.ts b/src/main/frontend/src/app/core/rates.service.ts
+index ecb7cc67..5d02c5dc 100644
+--- a/src/main/frontend/src/app/core/rates.service.ts
++++ b/src/main/frontend/src/app/core/rates.service.ts
+@@ -102,9 +102,12 @@ function hundredths(pct: string): number {
+ }
+ 
+ /**
+- * Cents times a rate (in hundredths of a percent) divided by 100, in cents, rounded half up (a half
+- * rounds away from zero). Worked in BigInt so it is exact for any amount.
++ * Cents times a rate (in hundredths of a percent) divided by 100, in cents, rounded half to even (a
++ * half goes to the even cent). Worked in BigInt so it is exact for any amount.
+  */
+ export function due(cents: number, rate: number): number {
+-  return Number((BigInt(cents) * BigInt(rate) + 5000n) / 10000n);
++  const product = BigInt(cents) * BigInt(rate);
++  const q = product / 10000n;
++  const r = product % 10000n;
++  return Number(r > 5000n || (r === 5000n && q % 2n === 1n) ? q + 1n : q);
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e9acf1ae..f9e83656 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,14 +2,15 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
+ import { SheetService } from '../../core/sheet.service';
+-import { ClaimsService, money } from '../../core/claims.service';
+-import { RatesService, due } from '../../core/rates.service';
++import { ClaimsService, claimDue, counts, money } from '../../core/claims.service';
++import { RatesService } from '../../core/rates.service';
+ import { PersonClaims } from './person-claims';
+ 
+ // The sheet's people: a form that adds a person or edits the one opened, and the list with each
+ // person's claims, claimed and due-total, and the sheet's claimed total and due-total. A due-total
+-// uses the grade's rate in force on the sheet's today; a person whose grade has none then has no
+-// due-total (n/a), and the sheet's due-total skips them.
++// is the sum of the person's open and settled claims' (already rounded) dues, 0.00 with none; a
++// person whose grade has no rate in force on the sheet's today has no due-total (n/a) unless a
++// settled claim of theirs keeps a fixed due. The sheet's due-total skips those with none.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule, PersonClaims],
+@@ -74,12 +75,17 @@ export class People {
+   });
+   protected readonly editing = signal<number | null>(null);
+   protected readonly error = signal('');
+-  /** Each person's due-total in cents: their claimed times their grade's rate in force today; absent when it has none. */
++  /**
++   * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
++   * absent when their grade has no rate in force today and no settled claim of theirs keeps a due.
++   */
+   protected readonly dueTotals = computed(() => {
+     const out = new Map<number, number>();
+     for (const p of this.people.people()) {
+-      const rate = this.rates.byGrade().get(p.grade);
+-      if (rate !== undefined) out.set(p.id, due(this.claims.claimedCents().get(p.id) ?? 0, rate));
++      const counted = (this.claims.byPerson().get(p.id) ?? []).filter(counts);
++      if (!this.rates.byGrade().has(p.grade) && !counted.some((c) => c.due !== null)) continue;
++      const rateOn = (date: string) => this.rates.rateOn(p.grade, date);
++      out.set(p.id, counted.reduce((sum, c) => sum + (claimDue(c, rateOn) ?? 0), 0));
+     }
+     return out;
+   });
+diff --git a/src/main/frontend/src/app/features/people/person-claims.ts b/src/main/frontend/src/app/features/people/person-claims.ts
+index f8498ac4..b21f6b3e 100644
+--- a/src/main/frontend/src/app/features/people/person-claims.ts
++++ b/src/main/frontend/src/app/features/people/person-claims.ts
+@@ -1,8 +1,8 @@
+ import { Component, computed, inject, input, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { Claim, ClaimAction, ClaimsService, cents, money } from '../../core/claims.service';
++import { Claim, ClaimAction, ClaimsService, claimDue, money } from '../../core/claims.service';
+ import { Grade } from '../../core/people.service';
+-import { RatesService, due } from '../../core/rates.service';
++import { RatesService } from '../../core/rates.service';
+ 
+ // A person's claims, newest first, each with its status and buttons to open, settle or void it, its due (n/a when the person's grade has no rate in force on the claim's date), and a form that adds a claim or edits the one opened.
+ @Component({
+@@ -77,9 +77,8 @@ export class PersonClaims {
+ 
+   /** A settled claim shows the due fixed when it was settled; any other (or one settled without a rate) follows the rate in force on its date. */
+   protected dueOf(c: Claim): string {
+-    if (c.due !== null) return c.due;
+-    const rate = this.rates.rateOn(this.grade(), c.date);
+-    return rate === undefined ? 'n/a' : money(due(cents(c.amount), rate));
++    const d = claimDue(c, (date) => this.rates.rateOn(this.grade(), date));
++    return d === undefined ? 'n/a' : money(d);
+   }
+ 
+   protected change(c: Claim, action: ClaimAction): void {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 6bee0779..acae10af 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -98,9 +98,9 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** The amount times the rate's percent, rounded half up to cents (as the screen works it out). */
++    /** The amount times the rate's percent, rounded half to even to cents (as the screen works it out). */
+     private static BigDecimal due(BigDecimal amount, Rate rate) {
+-        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
++        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+     }
+ 
+     /**
