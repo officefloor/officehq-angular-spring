@@ -2,6 +2,8 @@ package net.officefloor.hq.app.claim;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -33,6 +35,10 @@ public class Claim {
     @Column(name = "note", nullable = false)
     private String note;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private ClaimStatus status = ClaimStatus.DRAFT;
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
@@ -60,4 +66,8 @@ public class Claim {
     public String getNote() { return note; }
 
     public void setNote(String note) { this.note = note; }
+
+    public ClaimStatus getStatus() { return status; }
+
+    public void setStatus(ClaimStatus status) { this.status = status; }
 }

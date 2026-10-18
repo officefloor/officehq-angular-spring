@@ -12,6 +12,17 @@ export interface Claim {
   /** yyyy-MM-dd */
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** A change of status a claim's buttons ask for. */
+export type ClaimAction = 'open' | 'settle' | 'void';
+
+/** Only open and settled claims count toward claimed and due; drafts and voided claims do not. */
+export function counts(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
 export interface ClaimForm {
@@ -38,15 +49,15 @@ export class ClaimsService {
     return out;
   });
 
-  /** Each person's claimed, in cents. */
+  /** Each person's claimed (open and settled claims), in cents. */
   readonly claimedCents = computed(() => {
     const out = new Map<number, number>();
-    for (const c of this.list()) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
+    for (const c of this.list().filter(counts)) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
     return out;
   });
 
-  /** Everyone's claimed added up, in cents. */
-  readonly totalCents = computed(() => this.list().reduce((sum, c) => sum + cents(c.amount), 0));
+  /** Everyone's claimed (open and settled claims) added up, in cents. */
+  readonly totalCents = computed(() => this.list().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0));
 
   reload(): void {
     const id = this.sheets.sheetId();
@@ -73,6 +84,12 @@ export class ClaimsService {
   edit(claimId: number, form: ClaimForm): Observable<Claim> {
     return this.http
       .put<Claim>(`${this.url(this.sheet())}/${claimId}`, form, { headers: this.session.headers() })
+      .pipe(tap((c) => this.list.update((all) => all.map((o) => (o.id === c.id ? c : o)))));
+  }
+
+  changeStatus(claimId: number, action: ClaimAction): Observable<Claim> {
+    return this.http
+      .post<Claim>(`${this.url(this.sheet())}/${claimId}/${action}`, null, { headers: this.session.headers() })
       .pipe(tap((c) => this.list.update((all) => all.map((o) => (o.id === c.id ? c : o)))));
   }
 

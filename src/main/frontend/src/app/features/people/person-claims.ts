@@ -1,10 +1,10 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, ClaimsService, cents, money } from '../../core/claims.service';
+import { Claim, ClaimAction, ClaimsService, cents, money } from '../../core/claims.service';
 import { Grade } from '../../core/people.service';
 import { RatesService, due } from '../../core/rates.service';
 
-// A person's claims, newest first, each with its due (n/a when the person's grade has no rate), and a form that adds a claim or edits the one opened.
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, its due (n/a when the person's grade has no rate), and a form that adds a claim or edits the one opened.
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -16,8 +16,16 @@ import { RatesService, due } from '../../core/rates.service';
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+          @for (a of actions; track a.action) {
+            <button type="button" [attr.data-testid]="'claim-' + a.action" (click)="change(c, a.action)"
+              [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date">{{ a.label }}</button>
+          }
+          @if (claimErrors().get(c.id); as e) {
+            <p role="alert" data-testid="claim-error">{{ e }}</p>
+          }
         </li>
       }
     </ul>
@@ -55,6 +63,13 @@ export class PersonClaims {
   });
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
+  /** Each claim's refused status change, by claim id; cleared by the next action on that claim. */
+  protected readonly claimErrors = signal<ReadonlyMap<number, string>>(new Map());
+  protected readonly actions: readonly { action: ClaimAction; label: string }[] = [
+    { action: 'open', label: 'Open' },
+    { action: 'settle', label: 'Settle' },
+    { action: 'void', label: 'Void' },
+  ];
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
@@ -65,7 +80,24 @@ export class PersonClaims {
     return rate === undefined ? 'n/a' : money(due(cents(c.amount), rate));
   }
 
+  protected change(c: Claim, action: ClaimAction): void {
+    this.setClaimError(c.id, '');
+    this.service.changeStatus(c.id, action).subscribe({
+      error: () => this.setClaimError(c.id, `A ${c.status} claim cannot be changed that way.`),
+    });
+  }
+
+  private setClaimError(claimId: number, message: string): void {
+    this.claimErrors.update((all) => {
+      const out = new Map(all);
+      if (message) out.set(claimId, message);
+      else out.delete(claimId);
+      return out;
+    });
+  }
+
   protected open(c: Claim): void {
+    this.setClaimError(c.id, '');
     this.error.set('');
     this.editing.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });

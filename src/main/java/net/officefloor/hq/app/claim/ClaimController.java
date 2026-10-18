@@ -25,10 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim; the amount is sent as text with two decimals so it is never rounded on the way. */
-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+            ClaimStatus status) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote());
+                    claim.getDate(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -75,5 +76,20 @@ public class ClaimController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.edit(sheetId, user, claimId, form.amountValue(), form.date(), form.note()));
+    }
+
+    /** Open, settle or void a claim; a change its status does not allow is refused (409). */
+    @PostMapping("/claims/{claimId}/{action:open|settle|void}")
+    public ClaimView changeStatus(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
+            @PathVariable long claimId,
+            @PathVariable String action,
+            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user) {
+        ClaimStatus next = switch (action) {
+            case "open" -> ClaimStatus.OPEN;
+            case "settle" -> ClaimStatus.SETTLED;
+            default -> ClaimStatus.VOID;
+        };
+        return ClaimView.of(service.changeStatus(sheetId, user, claimId, next));
     }
 }
