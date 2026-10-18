@@ -3,17 +3,19 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, finalize, switchMap } from 'rxjs';
 import { ClaimsService } from '../../core/claims.service';
 import { PeopleService } from '../../core/people.service';
+import { PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 import { SheetService } from '../../core/sheet.service';
 import { People } from '../people/people';
+import { Periods } from '../periods/periods';
 import { Rates } from '../rates/rates';
 import { SheetToday } from './sheet-today';
 
 // Choose the active sheet by typing its id and loading it. The sheet is off the screen until it and
-// everything kept under it (people, claims, rates) have been re-read, so nothing is shown stale.
+// everything kept under it (people, claims, rates, periods) have been re-read, so nothing is shown stale.
 @Component({
   selector: 'app-sheet-picker',
-  imports: [ReactiveFormsModule, SheetToday, Rates, People],
+  imports: [ReactiveFormsModule, SheetToday, Rates, Periods, People],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Load sheet">
       <label for="sheet-id-input">Sheet id</label>
@@ -29,6 +31,7 @@ import { SheetToday } from './sheet-today';
       <p>Sheet: <span data-testid="sheet-current-id">{{ current }}</span></p>
       <app-sheet-today />
       <app-rates />
+      <app-periods />
       <app-people />
     }
   `,
@@ -41,6 +44,7 @@ export class SheetPicker {
   private readonly people = inject(PeopleService);
   private readonly claims = inject(ClaimsService);
   private readonly rates = inject(RatesService);
+  private readonly periods = inject(PeriodsService);
   private readonly changes = inject(ChangeDetectorRef);
 
   constructor() {
@@ -58,7 +62,7 @@ export class SheetPicker {
     this.sheets
       .load(id)
       .pipe(
-        switchMap(() => forkJoin([this.people.reload(), this.claims.reload(), this.rates.reload()])),
+        switchMap(() => forkJoin([this.people.reload(), this.claims.reload(), this.rates.reload(), this.periods.reload()])),
         finalize(() => this.loading.set(false)),
       )
       .subscribe({ error: () => this.error.set('Could not load that sheet.') });

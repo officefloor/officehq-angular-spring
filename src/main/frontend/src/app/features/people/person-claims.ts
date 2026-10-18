@@ -4,9 +4,10 @@ import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, ClaimAction, ClaimsService, claimDue, money } from '../../core/claims.service';
 import { Grade } from '../../core/people.service';
+import { PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), and a form that adds a claim or edits the one opened.
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), and a form that adds a claim or edits the one opened.
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -22,6 +23,7 @@ import { RatesService } from '../../core/rates.service';
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+          <span>Period <span data-testid="claim-period">{{ periods.periodOn(c.date)?.name ?? '' }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @for (a of actions; track a.action) {
@@ -59,6 +61,7 @@ export class PersonClaims {
   readonly grade = input.required<Grade>();
   private readonly service = inject(ClaimsService);
   private readonly rates = inject(RatesService);
+  protected readonly periods = inject(PeriodsService);
   protected readonly claims = computed(() => this.service.byPerson().get(this.personId()) ?? []);
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
