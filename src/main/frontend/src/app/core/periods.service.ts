@@ -12,6 +12,10 @@ export interface Period {
   from: string;
   /** The last date (yyyy-MM-dd) in the period. */
   to: string;
+  /** Closed: its due-total is fixed and no claim dated in it can change. */
+  closed: boolean;
+  /** The due-total fixed when it closed (two decimals); null while open. */
+  closedTotal: string | null;
 }
 
 export interface PeriodForm {
@@ -57,6 +61,15 @@ export class PeriodsService {
     return this.http
       .post<Period>(this.url(id), form, { headers: this.session.headers() })
       .pipe(tap((p) => this.list.update((all) => [...all, p].sort((a, b) => a.from.localeCompare(b.from)))));
+  }
+
+  /** Close a period, fixing its due-total; refused when it is already closed. */
+  close(periodId: number): Observable<Period> {
+    const id = this.sheets.sheetId();
+    if (!id) throw new Error('no sheet loaded');
+    return this.http
+      .post<Period>(`${this.url(id)}/${periodId}/close`, null, { headers: this.session.headers() })
+      .pipe(tap((p) => this.list.update((all) => all.map((q) => (q.id === p.id ? p : q)))));
   }
 
   private url(sheetId: string): string {

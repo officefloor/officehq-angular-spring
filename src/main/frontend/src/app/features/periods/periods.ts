@@ -3,12 +3,12 @@ import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ClaimsService, claimDue, counts, money } from '../../core/claims.service';
 import { PeopleService } from '../../core/people.service';
-import { PeriodsService } from '../../core/periods.service';
+import { Period, PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 import { SheetService } from '../../core/sheet.service';
 
 // The sheet's periods, each with its due-total: the sum of the dues (those with one) of the open and
-// settled claims dated in it. A form adds a period: a name unique on the sheet and a from and to date,
+// settled claims dated in it; once the period is closed, the due-total fixed when it closed. A form adds a period: a name unique on the sheet and a from and to date,
 // both inclusive, overlapping no other period.
 @Component({
   selector: 'app-periods',
@@ -30,7 +30,7 @@ import { SheetService } from '../../core/sheet.service';
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Period</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Actions</th></tr>
         </thead>
         <tbody>
           @for (p of periods.periods(); track p.id) {
@@ -38,7 +38,16 @@ import { SheetService } from '../../core/sheet.service';
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ money(dueTotals().get(p.id) ?? 0) }}</td>
+              <td data-testid="period-due-total">{{ p.closed ? p.closedTotal : money(dueTotals().get(p.id) ?? 0) }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                @if (!p.closed) {
+                  <button type="button" data-testid="period-close" (click)="close(p)">Close</button>
+                }
+                @if (rowErrors()[p.id]) {
+                  <p role="alert" data-testid="period-error">{{ rowErrors()[p.id] }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -59,6 +68,8 @@ export class Periods {
     to: new FormControl('', { nonNullable: true }),
   });
   protected readonly error = signal('');
+  /** Each period's refused-action message, by period id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   /** A submit is waiting for its answer; another submit meanwhile is ignored. */
   private saving = false;
   /** Each period's due-total in cents, by period id: the dues of the counting claims dated in it. */
@@ -85,8 +96,16 @@ export class Periods {
     });
   }
 
+  protected close(p: Period): void {
+    this.rowErrors.update((all) => ({ ...all, [p.id]: '' }));
+    this.periods.close(p.id).subscribe({
+      error: () => this.rowErrors.update((all) => ({ ...all, [p.id]: 'Could not close that period.' })),
+    });
+  }
+
   private reset(): void {
     this.error.set('');
+    this.rowErrors.set({});
     this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
   }
 

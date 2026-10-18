@@ -22,10 +22,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/periods")
 public class PeriodController {
 
-    /** A period: its name and from and to dates, both inclusive. */
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to) {
+    /**
+     * A period: its name and from and to dates, both inclusive, whether it is closed and, when it is,
+     * its due-total fixed then (two decimals; null while open).
+     */
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+            String closedTotal) {
         static PeriodView of(Period period) {
-            return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate());
+            return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                    period.isClosed(),
+                    period.getClosedTotal() == null ? null : period.getClosedTotal().setScale(2).toPlainString());
         }
     }
 
@@ -56,5 +62,14 @@ public class PeriodController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody PeriodForm form) {
         return PeriodView.of(service.add(sheetId, user, form.name(), form.from(), form.to()));
+    }
+
+    /** Close a period, fixing its due-total; one already closed is refused. */
+    @PostMapping("/{periodId}/close")
+    public PeriodView close(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
+            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
+            @PathVariable long periodId) {
+        return PeriodView.of(service.close(sheetId, user, periodId));
     }
 }

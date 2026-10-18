@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A period of the sheet: a name and a from and to date, both inclusive. */
@@ -29,6 +30,12 @@ public class Period {
     @Column(name = "to_date", nullable = false)
     private LocalDate toDate;
 
+    @Column(name = "closed", nullable = false)
+    private boolean closed;
+
+    @Column(name = "closed_total")
+    private BigDecimal closedTotal;
+
     protected Period() {}
 
     public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate) {
@@ -47,6 +54,22 @@ public class Period {
     public LocalDate getFromDate() { return fromDate; }
 
     public LocalDate getToDate() { return toDate; }
+
+    public boolean isClosed() { return closed; }
+
+    /** The due-total fixed when the period closed; null while it is open. */
+    public BigDecimal getClosedTotal() { return closedTotal; }
+
+    /** Close the period, fixing its due-total at {@code total}. */
+    public void close(BigDecimal total) {
+        this.closed = true;
+        this.closedTotal = total;
+    }
+
+    /** Whether the date falls inside this period. */
+    public boolean contains(LocalDate date) {
+        return !date.isBefore(fromDate) && !date.isAfter(toDate);
+    }
 
     /** Whether this period shares a date with the one from {@code from} to {@code to}. */
     public boolean overlaps(LocalDate from, LocalDate to) {
