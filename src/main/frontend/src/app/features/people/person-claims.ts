@@ -1,8 +1,10 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, ClaimsService } from '../../core/claims.service';
+import { Claim, ClaimsService, cents, money } from '../../core/claims.service';
+import { Grade } from '../../core/people.service';
+import { RatesService, due } from '../../core/rates.service';
 
-// A person's claims, newest first, and a form that adds a claim or edits the one opened.
+// A person's claims, newest first, each with its due (n/a when the person's grade has no rate), and a form that adds a claim or edits the one opened.
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -13,6 +15,7 @@ import { Claim, ClaimsService } from '../../core/claims.service';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
         </li>
@@ -40,7 +43,10 @@ import { Claim, ClaimsService } from '../../core/claims.service';
 export class PersonClaims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
+  readonly grade = input.required<Grade>();
   private readonly service = inject(ClaimsService);
+  private readonly rates = inject(RatesService);
+  private readonly rate = computed(() => this.rates.byGrade().get(this.grade()));
   protected readonly claims = computed(() => this.service.byPerson().get(this.personId()) ?? []);
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
@@ -52,6 +58,11 @@ export class PersonClaims {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  protected dueOf(c: Claim): string {
+    const rate = this.rate();
+    return rate === undefined ? 'n/a' : money(due(cents(c.amount), rate));
   }
 
   protected open(c: Claim): void {
