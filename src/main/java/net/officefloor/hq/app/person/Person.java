@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 /** A person on a sheet. */
 @Entity
@@ -28,6 +29,10 @@ public class Person {
     @Column(name = "grade", nullable = false)
     private Grade grade;
 
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
+
     protected Person() {}
 
     public Person(String sheetId, String name, Grade grade) {
@@ -37,6 +42,8 @@ public class Person {
     }
 
     public Long getId() { return id; }
+
+    public long getVersion() { return version; }
 
     public String getSheetId() { return sheetId; }
 

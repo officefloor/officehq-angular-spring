@@ -1,5 +1,6 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
+import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, ClaimAction, ClaimsService, claimDue, money } from '../../core/claims.service';
 import { Grade } from '../../core/people.service';
@@ -65,6 +66,8 @@ export class PersonClaims {
   });
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
+  /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+  private saving = false;
   /** Each claim's refused status change, by claim id; cleared by the next action on that claim. */
   protected readonly claimErrors = signal<ReadonlyMap<number, string>>(new Map());
   protected readonly actions: readonly { action: ClaimAction; label: string }[] = [
@@ -116,6 +119,7 @@ export class PersonClaims {
   }
 
   protected submit(): void {
+    if (this.saving) return;
     this.error.set('');
     const { amount, date, note } = this.form.getRawValue();
     const a = amount.trim();
@@ -126,7 +130,8 @@ export class PersonClaims {
     const form = { amount: a, date: date.trim() || null, note: note.trim() };
     const id = this.editing();
     const saved = id === null ? this.service.add(this.personId(), form) : this.service.edit(id, form);
-    saved.subscribe({
+    this.saving = true;
+    saved.pipe(finalize(() => (this.saving = false))).subscribe({
       next: () => this.reset(),
       error: () => this.error.set(id === null ? 'Could not add that claim.' : 'Could not save that claim.'),
     });

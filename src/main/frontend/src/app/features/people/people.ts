@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
@@ -74,6 +75,10 @@ export class People {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
   });
   protected readonly editing = signal<number | null>(null);
+  /** The version of the person being edited that the form loaded. */
+  private loadedVersion = 0;
+  /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+  private saving = false;
   protected readonly error = signal('');
   /**
    * Each person's due-total in cents: the sum of their open and settled claims' dues (those with one);
@@ -109,6 +114,7 @@ export class People {
   protected open(p: Person): void {
     this.error.set('');
     this.editing.set(p.id);
+    this.loadedVersion = p.version;
     this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });
   }
 
@@ -119,6 +125,7 @@ export class People {
   }
 
   protected submit(): void {
+    if (this.saving) return;
     this.error.set('');
     const { name, grade } = this.form.getRawValue();
     if (!name.trim()) {
@@ -126,15 +133,38 @@ export class People {
       return;
     }
     const id = this.editing();
-    const saved = id === null ? this.people.add({ name, grade }) : this.people.edit(id, { name, grade });
-    saved.subscribe({
+    const saved = id === null
+      ? this.people.add({ name, grade })
+      : this.people.edit(id, this.loadedVersion, { name, grade });
+    this.saving = true;
+    saved.pipe(finalize(() => (this.saving = false))).subscribe({
       next: () => this.reset(),
-      error: (e: { status?: number }) =>
+      error: (e: { status?: number }) => {
+        if (id !== null && e.status === 412) {
+          this.showCurrent(id);
+          return;
+        }
         this.error.set(
           e.status === 409
             ? 'That name is already in use.'
             : id === null ? 'Could not add that person.' : 'Could not save that person.',
-        ),
+        );
+      },
+    });
+  }
+
+  /** Someone else saved the person being edited: refuse, and show what the store holds now. */
+  private showCurrent(id: number): void {
+    const message = 'Someone else has saved this person since you opened it. Their values are shown now.';
+    this.error.set(message);
+    this.people.reload().subscribe({
+      next: () => {
+        const p = this.people.people().find((o) => o.id === id);
+        if (this.editing() !== id || !p) return;
+        this.loadedVersion = p.version;
+        this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });
+        this.error.set(message);
+      },
     });
   }
 }

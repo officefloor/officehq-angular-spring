@@ -1,4 +1,5 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { finalize } from 'rxjs';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { GRADES, Grade } from '../../core/people.service';
 import { RatesService } from '../../core/rates.service';
@@ -70,6 +71,8 @@ export class Rates {
     from: new FormControl('', { nonNullable: true }),
   });
   protected readonly error = signal('');
+  /** A submit is waiting for its answer; another submit meanwhile is ignored. */
+  private saving = false;
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
@@ -87,6 +90,7 @@ export class Rates {
   }
 
   protected submit(): void {
+    if (this.saving) return;
     this.error.set('');
     const { grade, pct, from } = this.form.getRawValue();
     const p = pct.trim();
@@ -94,7 +98,8 @@ export class Rates {
       this.error.set('Enter a rate of 0.00 or more, up to 999.99, with up to two decimals.');
       return;
     }
-    this.rates.set(grade, p, from.trim() || null).subscribe({
+    this.saving = true;
+    this.rates.set(grade, p, from.trim() || null).pipe(finalize(() => (this.saving = false))).subscribe({
       next: () => this.reset(),
       error: () => this.error.set('Could not set that rate.'),
     });

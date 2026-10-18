@@ -6,6 +6,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -45,11 +46,15 @@ public class PersonService {
         return saved;
     }
 
-    /** Change a person's name and grade. */
+    /**
+     * Change a person's name and grade, from the version of them the editor loaded: refused when
+     * someone else has saved them since.
+     */
     @Transactional
-    public Person edit(String sheetId, String user, long personId, String name, Grade grade) {
+    public Person edit(String sheetId, String user, long personId, long version, String name, Grade grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (person.getVersion() != version) throw editedMeanwhile();
         String trimmed = name.trim();
         requireUnusedName(sheetId, personId, trimmed);
         person.setName(trimmed);
@@ -57,6 +62,8 @@ public class PersonService {
         Person saved;
         try {
             saved = people.saveAndFlush(person);
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw editedMeanwhile();
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
@@ -75,6 +82,10 @@ public class PersonService {
         boolean used = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .anyMatch(p -> !p.getId().equals(personId) && p.getName().toLowerCase(Locale.ROOT).equals(key));
         if (used) throw nameInUse();
+    }
+
+    private static ResponseStatusException editedMeanwhile() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Someone else has saved this person since");
     }
 
     private static ResponseStatusException nameInUse() {

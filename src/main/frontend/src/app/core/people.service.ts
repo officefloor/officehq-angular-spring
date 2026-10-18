@@ -12,6 +12,8 @@ export interface Person {
   id: number;
   name: string;
   grade: Grade;
+  /** Moved on by every save; an edit names the version it was made from. */
+  version: number;
 }
 
 export interface PersonForm {
@@ -49,9 +51,10 @@ export class PeopleService {
       .pipe(tap((p) => this.list.update((all) => [...all, p])));
   }
 
-  edit(personId: number, form: PersonForm): Observable<Person> {
+  /** Save the person from the version the editor loaded; refused (412) when someone saved them since. */
+  edit(personId: number, version: number, form: PersonForm): Observable<Person> {
     return this.http
-      .put<Person>(`${this.url(this.sheet())}/${personId}`, form, { headers: this.session.headers() })
+      .put<Person>(`${this.url(this.sheet())}/${personId}`, { ...form, version }, { headers: this.session.headers() })
       .pipe(tap((p) => this.list.update((all) => all.map((o) => (o.id === p.id ? p : o)))));
   }
 
