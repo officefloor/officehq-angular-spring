@@ -51,6 +51,14 @@ public class Claim {
     @Column(name = "due", precision = 15, scale = 2)
     private BigDecimal due;
 
+    /** Bound by its person's last statement: it shows and totals {@code statedDue} until the next one. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The figure the claim had at its person's last statement, when bound; none when it was n/a. */
+    @Column(name = "stated_due", precision = 15, scale = 2)
+    private BigDecimal statedDue;
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
@@ -94,4 +102,20 @@ public class Claim {
     public BigDecimal getDue() { return due; }
 
     public void setDue(BigDecimal due) { this.due = due; }
+
+    public boolean isStated() { return stated; }
+
+    public BigDecimal getStatedDue() { return statedDue; }
+
+    /** Bind the claim to this figure (null: n/a). */
+    public void bind(BigDecimal figure) {
+        this.stated = true;
+        this.statedDue = figure;
+    }
+
+    /** Leave the claim unbound: its figure is live again. */
+    public void unbind() {
+        this.stated = false;
+        this.statedDue = null;
+    }
 }

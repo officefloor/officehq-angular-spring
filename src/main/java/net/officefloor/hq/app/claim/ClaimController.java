@@ -26,15 +26,17 @@ public class ClaimController {
 
     /**
      * A claim; the amount (and a settled claim's fixed due, null otherwise) is sent as text with two
-     * decimals so it is never rounded on the way.
+     * decimals so it is never rounded on the way. A claim bound by its person's last statement is
+     * stated, with the figure it had then (null: n/a).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String due, String openedBy) {
+            ClaimStatus status, Integer number, String due, String openedBy, boolean stated, String statedDue) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getDue() == null ? null : claim.getDue().setScale(2).toPlainString(),
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.isStated(),
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString());
         }
     }
 
@@ -71,6 +73,18 @@ public class ClaimController {
             @RequestHeader(SessionController.USER_HEADER) @NotBlank String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.add(sheetId, user, personId, form.amountValue(), form.date(), form.note()));
+    }
+
+    /**
+     * Take a statement for a person: record their due-total and bind each claim of theirs that counts
+     * to its figure now (the others are left unbound). Their claims, newest first.
+     */
+    @PostMapping("/people/{personId}/statement")
+    public List<ClaimView> statement(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SessionController.USER_HEADER) @NotBlank String user) {
+        return service.statement(sheetId, user, personId).stream().map(ClaimView::of).toList();
     }
 
     /** Change a claim's amount, date and note. */

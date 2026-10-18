@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -14,12 +16,19 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PersonService {
 
+    /** A person's statements: how many were taken, and the last one (null: none). */
+    public record Statements(int count, Statement last) {
+        public static final Statements NONE = new Statements(0, null);
+    }
+
     private final PersonRepository people;
+    private final StatementRepository statements;
     private final SheetService sheets;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, StatementRepository statements, SheetService sheets, Audit audit) {
         this.people = people;
+        this.statements = statements;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -28,6 +37,16 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** Each person's statements on the sheet, by person id; a person with none is absent. */
+    @Transactional(readOnly = true)
+    public Map<Long, Statements> statements(String sheetId) {
+        Map<Long, Statements> out = new HashMap<>();
+        for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
+            out.merge(s.getPersonId(), new Statements(1, s), (was, now) -> new Statements(was.count() + 1, s));
+        }
+        return out;
     }
 
     /** Add a person (the sheet is started when it was never loaded before). */

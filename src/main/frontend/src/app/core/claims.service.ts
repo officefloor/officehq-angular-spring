@@ -20,6 +20,10 @@ export interface Claim {
   due: string | null;
   /** The user who opened it; null while a draft. They may not settle it. */
   openedBy: string | null;
+  /** Bound by its person's last statement: it shows and totals `statedDue` until the next one. */
+  stated: boolean;
+  /** The figure it had at that statement, as text with two decimals; null when it had none (n/a). */
+  statedDue: string | null;
 }
 
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -32,12 +36,19 @@ export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
+/** A claim's figure does not follow the rates: settled with a fixed due, or bound by a statement. */
+export function fixed(c: Claim): boolean {
+  return c.due !== null || c.stated;
+}
+
 /**
- * A claim's due in cents: a settled claim's fixed figure, otherwise its amount times the rate in force
- * on its date (looked up by `rateOn`, in hundredths of a percent); undefined when it has none.
+ * A claim's due in cents: a settled claim's fixed figure, else the figure its person's last statement
+ * bound it to, otherwise its amount times the rate in force on its date (looked up by `rateOn`, in
+ * hundredths of a percent); undefined when it has none.
  */
 export function claimDue(c: Claim, rateOn: (date: string) => number | undefined): number | undefined {
   if (c.due !== null) return cents(c.due);
+  if (c.stated) return c.statedDue === null ? undefined : cents(c.statedDue);
   const rate = rateOn(c.date);
   return rate === undefined ? undefined : due(cents(c.amount), rate);
 }
@@ -97,6 +108,19 @@ export class ClaimsService {
         headers: this.session.headers(),
       })
       .pipe(tap((c) => this.list.update((all) => [c, ...all])));
+  }
+
+  /** Take a statement for a person, binding their counting claims; the caller re-reads the people. */
+  statement(personId: number): Observable<Claim[]> {
+    const sheet = this.sheet();
+    return this.http
+      .post<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/people/${personId}/statement`, null, {
+        headers: this.session.headers(),
+      })
+      .pipe(tap((theirs) => {
+        const byId = new Map(theirs.map((c) => [c.id, c]));
+        this.list.update((all) => all.map((o) => byId.get(o.id) ?? o));
+      }));
   }
 
   edit(claimId: number, form: ClaimForm): Observable<Claim> {

@@ -6,7 +6,7 @@ import { Claim, ClaimAction, ClaimsService, claimDue, money } from '../../core/c
 import { Grade } from '../../core/people.service';
 import { RatesService } from '../../core/rates.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), and a form that adds a claim or edits the one opened.
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), and a form that adds a claim or edits the one opened.
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -21,6 +21,7 @@ import { RatesService } from '../../core/rates.service';
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+          <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @for (a of actions; track a.action) {
@@ -80,7 +81,7 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
-  /** A settled claim shows the due fixed when it was settled; any other (or one settled without a rate) follows the rate in force on its date. */
+  /** A settled claim shows the due fixed when it was settled, a stated one the figure it was bound to; any other (or one settled without a rate) follows the rate in force on its date. */
   protected dueOf(c: Claim): string {
     const d = claimDue(c, (date) => this.rates.rateOn(this.grade(), date));
     return d === undefined ? 'n/a' : money(d);

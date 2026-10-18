@@ -14,6 +14,12 @@ export interface Person {
   grade: Grade;
   /** Moved on by every save; an edit names the version it was made from. */
   version: number;
+  /** How many statements were taken for them. */
+  statementCount: number;
+  /** The last statement's due-total, as text with two decimals ("n/a" when it had none); null before the first. */
+  statedTotal: string | null;
+  /** The sheet's today (yyyy-MM-dd) when the last statement was taken; null before the first. */
+  statementDate: string | null;
 }
 
 export interface PersonForm {

@@ -7,6 +7,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.Statement;
+import net.officefloor.hq.app.person.StatementRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -22,14 +24,16 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final RateRepository rates;
+    private final StatementRepository statements;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates,
+            StatementRepository statements, SheetService sheets, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
+        this.statements = statements;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -90,9 +94,7 @@ public class ClaimService {
             claim.setOpenedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
-            claim.setDue(rates.findInForce(sheetId, person.getGrade(), claim.getDate())
-                    .map(rate -> due(claim.getAmount(), rate))
-                    .orElse(null));
+            claim.setDue(figure(sheetId, person, claim));
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
@@ -105,6 +107,54 @@ public class ClaimService {
                 : "";
         audit(sheetId, user, event, person, saved, number, suffix);
         return saved;
+    }
+
+    /**
+     * Take a statement for a person on the sheet's today: their due-total then (the sum of the figures
+     * of their claims that count; n/a when their grade has no rate in force today and none of those
+     * claims has a fixed or bound figure) is recorded, and each claim that counts is bound to its
+     * figure then, the others left unbound. Their claims, newest first.
+     */
+    @Transactional
+    public List<Claim> statement(String sheetId, String user, long personId) {
+        Sheet sheet = sheets.lock(sheetId, user);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        List<Claim> theirs = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> c.getPersonId().equals(personId))
+                .toList();
+        List<Claim> counting = theirs.stream().filter(c -> c.getStatus().counts()).toList();
+        boolean anyFixed = counting.stream().anyMatch(c -> c.getDue() != null || c.isStated());
+        boolean rated = rates.findInForce(sheetId, person.getGrade(), sheet.getToday()).isPresent();
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        for (Claim c : theirs) {
+            if (c.getStatus().counts()) {
+                BigDecimal figure = figure(sheetId, person, c);
+                if (figure != null) total = total.add(figure);
+                c.bind(figure);
+            } else {
+                c.unbind();
+            }
+        }
+        claims.saveAllAndFlush(theirs);
+        BigDecimal dueTotal = rated || anyFixed ? total : null;
+        statements.saveAndFlush(new Statement(sheetId, personId, sheet.getToday(), dueTotal, counting.size(), user));
+        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString())
+                + " claims=" + counting.size());
+        return theirs;
+    }
+
+    /**
+     * The figure a claim shows: a settled claim's fixed due, else the figure its person's last
+     * statement bound it to, else its amount times the rate in force on its date; null when none.
+     */
+    private BigDecimal figure(String sheetId, Person person, Claim claim) {
+        if (claim.getDue() != null) return claim.getDue();
+        if (claim.isStated()) return claim.getStatedDue();
+        return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
+                .map(rate -> due(claim.getAmount(), rate))
+                .orElse(null);
     }
 
     /** The amount times the rate's percent, rounded half to even to cents (as the screen works it out). */
