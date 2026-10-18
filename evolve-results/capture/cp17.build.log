@@ -1,0 +1,73 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610181730/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 0)
+
+Running 56 tests using 1 worker
+
+[1A[2K[1/56] [chromium] › cp01_signin-and-sheet.spec.ts:6:7 › signin and sheet › signin and sheet
+[1A[2K[2/56] [chromium] › cp02_sheet-today.spec.ts:6:7 › sheet today › sheet today
+[1A[2K[3/56] [chromium] › cp03_people.spec.ts:6:7 › people › people
+[1A[2K[4/56] [chromium] › cp04_name-uniqueness.spec.ts:6:7 › name uniqueness › name uniqueness
+[1A[2K[5/56] [chromium] › cp05_claims.spec.ts:6:7 › claims › claims
+[1A[2K[6/56] [chromium] › cp05_claims.spec.ts:34:7 › claims › claims scenario 1
+[1A[2K[7/56] [chromium] › cp05_claims.spec.ts:103:7 › claims › claims scenario 2
+[1A[2K[8/56] [chromium] › cp05_claims.spec.ts:172:7 › claims › claims scenario 3
+[1A[2K[9/56] [chromium] › cp06_audit.spec.ts:6:7 › audit › audit
+[1A[2K[10/56] [chromium] › cp06_audit.spec.ts:29:7 › audit › audit scenario 1
+[1A[2K[11/56] [chromium] › cp06_audit.spec.ts:128:7 › audit › audit scenario 2
+[1A[2K[12/56] [chromium] › cp06_audit.spec.ts:222:7 › audit › audit scenario 3
+[1A[2K[13/56] [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due
+[1A[2K[14/56] [chromium] › cp07_rates-and-due.spec.ts:76:7 › rates and due › rates and due scenario 1
+[1A[2K[15/56] [chromium] › cp07_rates-and-due.spec.ts:225:7 › rates and due › rates and due scenario 2
+[1A[2K[16/56] [chromium] › cp07_rates-and-due.spec.ts:350:7 › rates and due › rates and due scenario 3
+[1A[2K[17/56] [chromium] › cp08_workflow.spec.ts:6:7 › workflow › workflow
+[1A[2K[18/56] [chromium] › cp08_workflow.spec.ts:60:7 › workflow › workflow scenario 1
+[1A[2K[19/56] [chromium] › cp08_workflow.spec.ts:231:7 › workflow › workflow scenario 2
+[1A[2K[20/56] [chromium] › cp08_workflow.spec.ts:375:7 › workflow › workflow scenario 3
+[1A[2K[21/56] [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering
+[1A[2K[22/56] [chromium] › cp09_numbering.spec.ts:34:7 › numbering › numbering scenario 1
+[1A[2K[23/56] [chromium] › cp09_numbering.spec.ts:180:7 › numbering › numbering scenario 2
+[1A[2K[24/56] [chromium] › cp09_numbering.spec.ts:326:7 › numbering › numbering scenario 3
+[1A[2K[25/56] [chromium] › cp10_settle-freezes-due.spec.ts:6:7 › settle freezes due › settle freezes due
+[1A[2K[26/56] [chromium] › cp10_settle-freezes-due.spec.ts:45:7 › settle freezes due › settle freezes due scenario 1
+[1A[2K[27/56] [chromium] › cp10_settle-freezes-due.spec.ts:169:7 › settle freezes due › settle freezes due scenario 2
+[1A[2K[28/56] [chromium] › cp10_settle-freezes-due.spec.ts:278:7 › settle freezes due › settle freezes due scenario 3
+[1A[2K[29/56] [chromium] › cp11_rates-effective-dated.spec.ts:6:7 › rates effective dated › rates effective dated
+[1A[2K[30/56] [chromium] › cp11_rates-effective-dated.spec.ts:70:7 › rates effective dated › rates effective dated scenario 1
+[1A[2K[31/56] [chromium] › cp11_rates-effective-dated.spec.ts:238:7 › rates effective dated › rates effective dated scenario 2
+[1A[2K[32/56] [chromium] › cp11_rates-effective-dated.spec.ts:412:7 › rates effective dated › rates effective dated scenario 3
+[1A[2K[33/56] [chromium] › cp12_half-even.spec.ts:6:7 › half even › half even
+[1A[2K[34/56] [chromium] › cp12_half-even.spec.ts:26:7 › half even › half even scenario 1
+[1A[2K[35/56] [chromium] › cp12_half-even.spec.ts:150:7 › half even › half even scenario 2
+[1A[2K[36/56] [chromium] › cp12_half-even.spec.ts:332:7 › half even › half even scenario 3
+[1A[2K[37/56] [chromium] › cp13_four-eyes.spec.ts:6:7 › four eyes › four eyes
+[1A[2K[38/56] [chromium] › cp13_four-eyes.spec.ts:43:7 › four eyes › four eyes scenario 1
+[1A[2K[39/56] [chromium] › cp13_four-eyes.spec.ts:181:7 › four eyes › four eyes scenario 2
+[1A[2K[40/56] [chromium] › cp13_four-eyes.spec.ts:345:7 › four eyes › four eyes scenario 3
+[1A[2K[41/56] [chromium] › cp14_edit-conflict.spec.ts:6:7 › edit conflict › edit conflict
+[1A[2K[42/56] [chromium] › cp14_edit-conflict.spec.ts:34:7 › edit conflict › edit conflict scenario 1
+[1A[2K[43/56] [chromium] › cp14_edit-conflict.spec.ts:184:7 › edit conflict › edit conflict scenario 2
+[1A[2K[44/56] [chromium] › cp14_edit-conflict.spec.ts:355:7 › edit conflict › edit conflict scenario 3
+[1A[2K[45/56] [chromium] › cp15_statements.spec.ts:6:7 › statements › statements
+[1A[2K[46/56] [chromium] › cp15_statements.spec.ts:104:7 › statements › statements scenario 1
+[1A[2K[47/56] [chromium] › cp15_statements.spec.ts:338:7 › statements › statements scenario 2
+[1A[2K[48/56] [chromium] › cp15_statements.spec.ts:512:7 › statements › statements scenario 3
+[1A[2K[49/56] [chromium] › cp16_rollup-audit.spec.ts:6:7 › rollup audit › rollup audit
+[1A[2K[50/56] [chromium] › cp16_rollup-audit.spec.ts:79:7 › rollup audit › rollup audit scenario 1
+[1A[2K[51/56] [chromium] › cp16_rollup-audit.spec.ts:261:7 › rollup audit › rollup audit scenario 2
+[1A[2K[52/56] [chromium] › cp16_rollup-audit.spec.ts:425:7 › rollup audit › rollup audit scenario 3
+[1A[2K[53/56] [chromium] › cp17_periods.spec.ts:6:7 › periods › periods
+[1A[2K[54/56] [chromium] › cp17_periods.spec.ts:52:7 › periods › periods scenario 1
+[1A[2K[55/56] [chromium] › cp17_periods.spec.ts:215:7 › periods › periods scenario 2
+[1A[2K[56/56] [chromium] › cp17_periods.spec.ts:378:7 › periods › periods scenario 3
+[1A[2K  Slow test file: [chromium] › cp08_workflow.spec.ts (17.1s)
+  Slow test file: [chromium] › cp16_rollup-audit.spec.ts (17.0s)
+  Slow test file: [chromium] › cp07_rates-and-due.spec.ts (16.9s)
+  Slow test file: [chromium] › cp14_edit-conflict.spec.ts (16.9s)
+  Slow test file: [chromium] › cp11_rates-effective-dated.spec.ts (16.7s)
+  Consider splitting slow test files to speed up parallel execution
+  56 passed (3.6m)
