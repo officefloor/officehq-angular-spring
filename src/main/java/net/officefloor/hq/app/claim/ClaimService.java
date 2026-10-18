@@ -11,6 +11,8 @@ import net.officefloor.hq.app.person.StatementRepository;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -28,12 +30,14 @@ public class ClaimService {
     private final SheetService sheets;
     private final RollupService rollups;
     private final PeriodService periods;
+    private final SettingsService settings;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates,
             StatementRepository statements, SheetService sheets, RollupService rollups, PeriodService periods,
-            Audit audit) {
+            SettingsService settings, Audit audit) {
         this.periods = periods;
+        this.settings = settings;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -102,7 +106,9 @@ public class ClaimService {
 
     /**
      * Move a claim to its next status; a change its current status does not allow is refused, as is
-     * settling it by the user who opened it, and any change to a claim dated in a closed period.
+     * settling it by the user who opened it, settling it by a clerk when its due is above the sheet's
+     * clerk limit (or it has none while there is a limit), and any change to a claim dated in a closed
+     * period.
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -119,6 +125,9 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (next == ClaimStatus.SETTLED) {
+            requireMaySettle(sheet, user, person, claim);
+        }
         RollupService.Rollup before = rollups.snapshot(sheetId);
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         claim.setStatus(next);
@@ -200,6 +209,19 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "") + suffix);
+    }
+
+    /** Refuse a clerk settling a claim whose due is above the sheet's clerk limit; a steward settles any. */
+    private void requireMaySettle(Sheet sheet, String user, Person person, Claim claim) {
+        BigDecimal limit = sheet.getClerkLimit();
+        if (limit == null || settings.roleOf(sheet.getId(), user) == Role.STEWARD) {
+            return;
+        }
+        BigDecimal due = figure(sheet.getId(), person, claim);
+        if (due == null || due.compareTo(limit) > 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "A clerk cannot settle a claim whose due is above the clerk limit");
+        }
     }
 
     /** Refuse a claim dated after the person's retirement. */
