@@ -110,6 +110,19 @@ export class ClaimsService {
       .pipe(tap((c) => this.list.update((all) => [c, ...all])));
   }
 
+  /**
+   * Add a draft claim of this amount, dated the sheet's today, for the person with this name; one
+   * not on the sheet is added first with grade A. The caller re-reads the people.
+   */
+  quickAdd(name: string, amount: string): Observable<Claim> {
+    const sheet = this.sheet();
+    return this.http
+      .post<Claim>(`/api/sheets/${encodeURIComponent(sheet)}/quick-add`, { name, amount }, {
+        headers: this.session.headers(),
+      })
+      .pipe(tap((c) => this.list.update((all) => [c, ...all])));
+  }
+
   /** Take a statement for a person, binding their counting claims; the caller re-reads the people. */
   statement(personId: number): Observable<Claim[]> {
     const sheet = this.sheet();

@@ -31,7 +31,7 @@ public class ClaimController {
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String due, String openedBy, boolean stated, String statedDue) {
-        static ClaimView of(Claim claim) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getDue() == null ? null : claim.getDue().setScale(2).toPlainString(),

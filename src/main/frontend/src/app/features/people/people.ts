@@ -37,6 +37,16 @@ import { PersonClaims } from './person-claims';
           <p role="alert" data-testid="person-form-error">{{ error() }}</p>
         }
       </form>
+      <form [formGroup]="quick" (ngSubmit)="quickAdd()" aria-label="Quick add a draft claim">
+        <label for="quick-name">Name</label>
+        <input id="quick-name" data-testid="quick-name" formControlName="name" />
+        <label for="quick-amount">Amount</label>
+        <input id="quick-amount" data-testid="quick-amount" formControlName="amount" inputmode="decimal" />
+        <button type="submit" data-testid="quick-submit">Quick add</button>
+        @if (quickError()) {
+          <p role="alert" data-testid="quick-error">{{ quickError() }}</p>
+        }
+      </form>
       <table>
         <thead>
           <tr>
@@ -85,6 +95,14 @@ export class People {
     name: new FormControl('', { nonNullable: true }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
   });
+  /** The quick-add bar: a draft claim for a named person, added with grade A when not on the sheet. */
+  protected readonly quick = new FormGroup({
+    name: new FormControl('', { nonNullable: true }),
+    amount: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly quickError = signal('');
+  /** A quick add is waiting for its answer; another meanwhile is ignored. */
+  private quickSaving = false;
   protected readonly editing = signal<number | null>(null);
   /** The version of the person being edited that the form loaded. */
   private loadedVersion = 0;
@@ -112,10 +130,13 @@ export class People {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.quick.valueChanges.subscribe(() => this.quickError.set(''));
     effect(() => {
       this.sheets.loads();
       untracked(() => {
         this.reset();
+        this.quickError.set('');
+        this.quick.reset({ name: '', amount: '' }, { emitEvent: false });
       });
     });
   }
@@ -138,6 +159,29 @@ export class People {
       if (message) out.set(personId, message);
       else out.delete(personId);
       return out;
+    });
+  }
+
+  /** Add the draft claim, then re-read the people to show one added for it. */
+  protected quickAdd(): void {
+    if (this.quickSaving) return;
+    this.quickError.set('');
+    const { name, amount } = this.quick.getRawValue();
+    if (!name.trim()) {
+      this.quickError.set('Enter a name.');
+      return;
+    }
+    this.quickSaving = true;
+    this.claims.quickAdd(name, amount.trim()).pipe(
+      switchMap(() => this.people.reload()),
+      finalize(() => (this.quickSaving = false)),
+    ).subscribe({
+      next: () => this.quick.reset({ name: '', amount: '' }, { emitEvent: false }),
+      error: (e: { status?: number }) => this.quickError.set(
+        e.status === 400 ? 'Enter a name and an amount of 0.00 or more with up to two decimals.'
+          : e.status === 409 ? 'That claim could not be added: its date or name is not allowed.'
+          : 'Could not add that claim.',
+      ),
     });
   }
 
