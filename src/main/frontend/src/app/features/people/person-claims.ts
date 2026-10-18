@@ -7,7 +7,7 @@ import { Grade } from '../../core/people.service';
 import { PeriodsService } from '../../core/periods.service';
 import { RatesService } from '../../core/rates.service';
 
-// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), and a form that adds a claim or edits the one opened.
+// A person's claims, newest first, each with its status and buttons to open, settle or void it, who opened it (they may not settle it), its due (n/a when the person's grade has no rate in force on the claim's date), whether their last statement bound it (it then shows the figure it had then), the period its date falls in (none: empty), and a form that adds a claim or edits the draft opened (any other claim is refused: void it and add a new one).
 @Component({
   selector: 'app-person-claims',
   imports: [ReactiveFormsModule],
@@ -111,6 +111,10 @@ export class PersonClaims {
 
   protected open(c: Claim): void {
     this.setClaimError(c.id, '');
+    if (c.status !== 'DRAFT') {
+      this.setClaimError(c.id, `A ${c.status} claim cannot be edited; void it and add a new one.`);
+      return;
+    }
     this.error.set('');
     this.editing.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });

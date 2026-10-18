@@ -39,7 +39,7 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** Given when the claim is opened; none while a draft, cleared when voided. */
+    /** Given when the claim is opened; none while a draft; a voided claim keeps it (never reused). */
     @Column(name = "number")
     private Integer number;
 

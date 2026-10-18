@@ -87,7 +87,7 @@ public class ClaimController {
         return service.statement(sheetId, user, personId).stream().map(ClaimView::of).toList();
     }
 
-    /** Change a claim's amount, date and note. */
+    /** Change a draft claim's amount, date and note; any other claim is refused (409). */
     @PutMapping("/claims/{claimId}")
     public ClaimView edit(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9_-]+") String sheetId,

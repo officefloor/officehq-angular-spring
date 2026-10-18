@@ -68,14 +68,19 @@ public class ClaimService {
     }
 
     /**
-     * Change a claim's amount, date and note; without a date it is dated the sheet's today. A claim
-     * dated in a closed period, or moved into one, is refused.
+     * Change a draft claim's amount, date and note; without a date it is dated the sheet's today. A
+     * claim that is no longer a draft is refused (an open one is voided and a new one added instead),
+     * as is one dated in a closed period, or moved into one.
      */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         sheets.lock(sheetId, user);
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited");
+        }
         LocalDate dated = dateOrToday(sheetId, date);
         periods.requireOpenOn(sheetId, claim.getDate());
         periods.requireOpenOn(sheetId, dated);
@@ -113,7 +118,7 @@ public class ClaimService {
         RollupService.Rollup before = rollups.snapshot(sheetId);
         Integer number = next == ClaimStatus.OPEN ? Integer.valueOf(sheet.takeClaimNumber()) : claim.getNumber();
         claim.setStatus(next);
-        claim.setNumber(next == ClaimStatus.VOID ? null : number);
+        claim.setNumber(number);
         if (next == ClaimStatus.OPEN) {
             claim.setOpenedBy(user);
         }
@@ -179,7 +184,7 @@ public class ClaimService {
 
     /**
      * Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd; a claim
-     * with a number (or, when voided, that had one) ends with it.
+     * with a number (a voided one keeps it) ends with it.
      */
     private void audit(String sheetId, String user, String event, Person person, Claim claim, Integer number) {
         audit(sheetId, user, event, person, claim, number, "");
