@@ -1,0 +1,110 @@
+{
+  "checkpoint": 4,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp04_name-uniqueness",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    3
+  ],
+  "replaced_tests": [
+    "cp03_people.spec.ts::people"
+  ],
+  "request": {
+    "spec": "A person's name must be unique on the sheet, comparing without regard to case and ignoring\nspaces before and after the name. Names are stored with those surrounding spaces removed and\nshown that way. Adding or editing a person to a name already in use is refused with an error on\nthe form, and nothing is saved.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's name must be unique on the sheet, comparing without regard to case and ignoring\nspaces before and after the name. Names are stored with those surrounding spaces removed and\nshown that way. Adding or editing a person to a name already in use is refused with an error on\nthe form, and nothing is saved.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "61bb87ad851d1917bf8f0f91a11cb776e0b02fe8",
+  "reset_sha": "",
+  "preagent_sha": "55f9af43c2bfa4bf8c48b8302c8fc752577a40f5",
+  "prev_sha": "55f9af43c2bfa4bf8c48b8302c8fc752577a40f5",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.229268,
+    "input_tokens": 10,
+    "output_tokens": 2615,
+    "cache_read_tokens": 104960,
+    "cache_creation_tokens": 19492,
+    "num_turns": 5,
+    "duration_ms": 52742,
+    "duration_api_ms": 29011,
+    "model": "claude-opus-5-5",
+    "session_id": "48074172-0035-4c4f-adf1-cbd527fcb883",
+    "stop_reason": "success",
+    "result_text": "A person's name must now be unique on its sheet, ignoring case and any spaces before or after it. `bin/e2e` passes.\n\n- **Server** (`person/PersonService.java`): adding or editing a person checks the sheet for a name that matches once case is ignored. The check skips the person being edited, so someone can still change the case of their own name (e.g. \"ada\" \u2192 \"Ada\"). If the name is taken, the request is refused with a 409 \"That name is already in use\" and nothing is saved. Names were already trimmed before saving, so they are stored and shown without the surrounding spaces.\n- **Database** (new `db/migration/V4__person_unique_name.sql`): a unique index on each sheet's lowercased names, so the database also blocks duplicates, for example if two users add the same name at the same moment. The server reports that case as the same \"already in use\" refusal. The migration also trims any names already stored. On a sheet that already has case-only duplicates, such as \"Ada\" and \"ada\", it would fail. The current in-memory database starts empty on every run, so that can't happen today.\n- **Front end** (`features/people/people.ts`): when a name is refused, the form shows \"That name is already in use.\" in `person-form-error`. Other failures still show the old \"Could not add/save that person.\" messages.\n\nThe server lowercases names with Java and the database index uses H2's `LOWER`. They could disagree on a few unusual non-English letters, but the server check runs first and both give the same refusal.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.229268,
+        "num_turns": 5,
+        "duration_ms": 52742,
+        "duration_api_ms": 29011,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp04.agent.jsonl",
+  "agent_diff_file": "cp04.agent.diff",
+  "build_log_file": "cp04.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1037,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 750,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1447,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1632,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

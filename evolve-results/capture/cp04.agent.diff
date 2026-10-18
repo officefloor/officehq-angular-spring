@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index deed692f..973867a8 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -92,7 +92,12 @@ export class People {
+     const saved = id === null ? this.people.add({ name, grade }) : this.people.edit(id, { name, grade });
+     saved.subscribe({
+       next: () => this.reset(),
+-      error: () => this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.'),
++      error: (e: { status?: number }) =>
++        this.error.set(
++          e.status === 409
++            ? 'That name is already in use.'
++            : id === null ? 'Could not add that person.' : 'Could not save that person.',
++        ),
+     });
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 7831fb36..8a298c2f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,7 +1,9 @@
+ package net.officefloor.hq.app.person;
+ 
+ import java.util.List;
++import java.util.Locale;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -28,7 +30,13 @@ public class PersonService {
+     @Transactional
+     public Person add(String sheetId, String user, String name, Grade grade) {
+         sheets.load(sheetId, user);
+-        return people.save(new Person(sheetId, name.trim(), grade));
++        String trimmed = name.trim();
++        requireUnusedName(sheetId, null, trimmed);
++        try {
++            return people.saveAndFlush(new Person(sheetId, trimmed, grade));
++        } catch (DataIntegrityViolationException e) {
++            throw nameInUse();
++        }
+     }
+ 
+     /** Change a person's name and grade. */
+@@ -36,8 +44,26 @@ public class PersonService {
+     public Person edit(String sheetId, long personId, String name, Grade grade) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+-        person.setName(name.trim());
++        String trimmed = name.trim();
++        requireUnusedName(sheetId, personId, trimmed);
++        person.setName(trimmed);
+         person.setGrade(grade);
+-        return person;
++        try {
++            return people.saveAndFlush(person);
++        } catch (DataIntegrityViolationException e) {
++            throw nameInUse();
++        }
++    }
++
++    /** Refuse a name another person on the sheet already has, ignoring case. */
++    private void requireUnusedName(String sheetId, Long personId, String name) {
++        String key = name.toLowerCase(Locale.ROOT);
++        boolean used = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .anyMatch(p -> !p.getId().equals(personId) && p.getName().toLowerCase(Locale.ROOT).equals(key));
++        if (used) throw nameInUse();
++    }
++
++    private static ResponseStatusException nameInUse() {
++        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use");
+     }
+ }
+diff --git a/src/main/resources/db/migration/V4__person_unique_name.sql b/src/main/resources/db/migration/V4__person_unique_name.sql
+new file mode 100644
+index 00000000..899ab212
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__person_unique_name.sql
+@@ -0,0 +1,5 @@
++-- A person's name is unique on the sheet, compared without regard to case. Names are stored with
++-- surrounding spaces removed.
++UPDATE person SET name = TRIM(name);
++ALTER TABLE person ADD COLUMN name_key VARCHAR(200) GENERATED ALWAYS AS (LOWER(name));
++CREATE UNIQUE INDEX person_sheet_name ON person (sheet_id, name_key);
