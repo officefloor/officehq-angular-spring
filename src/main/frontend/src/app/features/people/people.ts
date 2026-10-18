@@ -2,11 +2,14 @@ import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { GRADES, Grade, PeopleService, Person } from '../../core/people.service';
 import { SheetService } from '../../core/sheet.service';
+import { ClaimsService, money } from '../../core/claims.service';
+import { PersonClaims } from './person-claims';
 
-// The sheet's people: a form that adds a person or edits the one opened, and the list.
+// The sheet's people: a form that adds a person or edits the one opened, and the list with each
+// person's claims and claimed, and the sheet's claimed total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, PersonClaims],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -29,27 +32,35 @@ import { SheetService } from '../../core/sheet.service';
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+          </tr>
         </thead>
         <tbody>
           @for (p of people.people(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ money(claims.claimedCents().get(p.id) ?? 0) }}</td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
               </td>
+              <td><app-person-claims [personId]="p.id" [personName]="p.name" /></td>
             </tr>
           }
         </tbody>
       </table>
+      <p>Claimed in total: <span data-testid="rollup-claimed-total">{{ money(claims.totalCents()) }}</span></p>
     </section>
   `,
 })
 export class People {
   protected readonly people = inject(PeopleService);
+  protected readonly claims = inject(ClaimsService);
   private readonly sheets = inject(SheetService);
+  protected readonly money = money;
   protected readonly grades = GRADES;
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
@@ -65,6 +76,7 @@ export class People {
       untracked(() => {
         this.reset();
         this.people.reload();
+        this.claims.reload();
       });
     });
   }
