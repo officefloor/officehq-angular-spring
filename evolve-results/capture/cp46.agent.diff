@@ -1,0 +1,170 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index f9fc9b5d..cfc6e6f8 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -200,6 +200,12 @@ export class ClaimsApi {
+     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reject`, { reason }, { headers: this.headers() });
+   }
+ 
++  /** A steward re-settles a SETTLED claim at the figure it would have today as an open claim bound by no
++   * statement. */
++  resettle(sheetId: string, id: number): Observable<Claim> {
++    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/resettle`, {}, { headers: this.headers() });
++  }
++
+   /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet; it is live again until their next
+    * statement. */
+   reassign(sheetId: string, id: number, personId: number): Observable<Claim> {
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 56ab1605..d6c790bb 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -137,6 +137,14 @@ const NUMBER = /^\S{1,255}$/;
+                 >
+                   Reject
+                 </button>
++                <button
++                  type="button"
++                  data-testid="claim-resettle"
++                  [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date"
++                  (click)="resettle(c)"
++                >
++                  Re-settle
++                </button>
+                 <label class="visually-hidden" [for]="'claim-reassign-to-' + c.id">Move to</label>
+                 <select
+                   [id]="'claim-reassign-to-' + c.id"
+@@ -283,6 +291,32 @@ export class Claims {
+     });
+   }
+ 
++  /** Re-settle a SETTLED claim at the figure it would have today as an open claim bound by no statement. */
++  protected resettle(claim: Claim): void {
++    this.claimError.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    this.api.resettle(sheetId, claim.id).subscribe({
++      next: (c) => {
++        if (this.session.sheetId() === sheetId) this.saved.emit(c);
++      },
++      error: (e: HttpErrorResponse) =>
++        this.claimError.set({
++          id: claim.id,
++          message:
++            e.status === 422
++              ? 'Only a steward can re-settle a claim.'
++              : e.status === 423
++              ? 'That claim is dated in a closed period.'
++              : e.status === 409
++              ? 'Only a settled claim can be re-settled.'
++              : e.status === 404
++                ? 'That claim is no longer on this sheet.'
++                : 'Could not re-settle that claim.',
++        }),
++    });
++  }
++
+   protected reassignChange(id: number, personId: string): void {
+     if (this.claimError()?.id === id) this.claimError.set(null);
+     this.reassignTo.update((m) => {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index fa1e1b41..6e2cc2ba 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -131,6 +131,12 @@ public class ClaimController {
+         return ClaimView.of(service.approve(user, sheetId, id));
+     }
+ 
++    @PostMapping("/claims/{id}/resettle")
++    public ClaimView resettle(@RequestHeader("X-User") String user, @PathVariable String sheetId,
++            @PathVariable Long id) {
++        return ClaimView.of(service.resettle(user, sheetId, id));
++    }
++
+     @PostMapping("/claims/{id}/reject")
+     public ClaimView reject(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
+             @Valid @RequestBody RejectForm form) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 9ec2240a..8f97c9bf 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -177,6 +177,37 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** A steward re-settles a SETTLED claim: it is frozen again at the figure it would have today as an OPEN
++     * claim bound by no statement, at today's rates, grades, floor and late charge. Refused for anyone else, a
++     * claim of any other status, or one dated in a closed period. */
++    @Transactional
++    public Claim resettle(String user, String sheetId, Long id) {
++        sheets.today(sheetId); // the sheet must exist
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
++        requireOpenPeriod(sheetId, claim.getDate());
++        if (claim.getStatus() != ClaimStatus.SETTLED) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a SETTLED claim can be re-settled.");
++        }
++        settings.requireSteward(sheetId, user);
++        Person person = requirePerson(sheetId, claim.getPersonId());
++        Snapshot before = rollup.snapshot(sheetId);
++        BigDecimal old = rollup.dueOf(claim, person);
++        BigDecimal now = rollup.openDueOf(claim, person);
++        claim.setSettledDue(now);
++        logStatus(user, sheets.today(sheetId), claim, person);
++        claims.flush();
++        audit.recordOnCommit(entry("CLAIM_RESETTLED", user, person, claim) + " old=" + figure(old) + " new="
++                + figure(now));
++        rollup.recordChanges(user, sheetId, before);
++        return claim;
++    }
++
++    /** A figure with two decimals, or n/a. */
++    private static String figure(BigDecimal due) {
++        return due != null ? due.setScale(2).toPlainString() : "n/a";
++    }
++
+     /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by its person's last
+      * statement if that statement included it. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 8032c382..9392b3d3 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -207,6 +207,16 @@ public class RollupService {
+                 roundsBy(claim));
+     }
+ 
++    /** What would be due on a claim today as an OPEN claim bound by no statement: its live figure at the rate its
++     * grade has on its date, raised to the sheet's floor, plus the late charge it would have; none when that is
++     * n/a. Re-settling freezes a claim at this. */
++    public BigDecimal openDueOf(Claim claim, Person person) {
++        Lateness late = latenessOf(claim.getSheetId());
++        RoundingMode rounding = late.rounding(roundsBy(claim));
++        BigDecimal figure = liveDueOf(claim, gradeRates(claim, person), floorOf(claim.getSheetId()), rounding);
++        return figure == null ? null : figure.add(lateCharge(claim, true, figure, late, rounding));
++    }
++
+     /** The date a claim's rounding goes by: a correction's is the date of the claim it corrects, any other's its
+      * own. */
+     private LocalDate roundsBy(Claim claim) {
+@@ -275,7 +285,7 @@ public class RollupService {
+             LocalDate roundsBy) {
+         RoundingMode rounding = late.rounding(roundsBy);
+         BigDecimal figure = figureOf(claim, gradeRates, floor, rounding);
+-        return figure == null ? null : figure.add(lateCharge(claim, figure, late, rounding));
++        return figure == null ? null : figure.add(lateCharge(claim, claim.getStatus().isOpen(), figure, late, rounding));
+     }
+ 
+     /**
+@@ -283,8 +293,9 @@ public class RollupService {
+      * PENDING, and its due-by, fixed when it was added, before the sheet's today), rounded to two decimals as the claim rounds.
+      * A statement never binds it: it follows the sheet's today. A correction has none.
+      */
+-    private static BigDecimal lateCharge(Claim claim, BigDecimal figure, Lateness late, RoundingMode rounding) {
+-        if (!claim.getStatus().isOpen() || late.today() == null || claim.isCorrection()) {
++    private static BigDecimal lateCharge(Claim claim, boolean open, BigDecimal figure, Lateness late,
++            RoundingMode rounding) {
++        if (!open || late.today() == null || claim.isCorrection()) {
+             return BigDecimal.ZERO.setScale(2);
+         }
+         long overdueDays = ChronoUnit.DAYS.between(claim.getDueBy(), late.today());
