@@ -1,0 +1,100 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f1ce6311..2f5c84b7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,3 +1,4 @@
++import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, signal } from '@angular/core';
+ import { toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+@@ -117,7 +118,7 @@ export class People {
+           if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, p]);
+           this.reset();
+         },
+-        error: () => this.formError.set('Could not add that person.'),
++        error: (e: HttpErrorResponse) => this.formError.set(this.refusal(e, 'Could not add that person.')),
+       });
+     } else {
+       this.api.update(sheetId, id, value).subscribe({
+@@ -125,8 +126,12 @@ export class People {
+           if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
+           this.reset();
+         },
+-        error: () => this.formError.set('Could not save that person.'),
++        error: (e: HttpErrorResponse) => this.formError.set(this.refusal(e, 'Could not save that person.')),
+       });
+     }
+   }
++
++  private refusal(e: HttpErrorResponse, fallback: string): string {
++    return e.status === 409 ? 'That name is already in use on this sheet.' : fallback;
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 0cccf6e8..cd9cec4c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface PersonRepository extends JpaRepository<Person, Long> {
+ 
+@@ -10,4 +11,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
++
++    /** Whether another person on the sheet already has this name, compared without regard to case. */
++    @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)"
++            + " and (:exceptId is null or p.id <> :exceptId)")
++    boolean nameInUse(String sheetId, String name, Long exceptId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index c9151536..d18e0f5d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -28,18 +28,28 @@ public class PersonService {
+     @Transactional
+     public Person add(String sheetId, String name, String grade) {
+         requireSheet(sheetId);
+-        return people.save(new Person(sheetId, name.trim(), grade));
++        String trimmed = name.trim();
++        requireNameFree(sheetId, trimmed, null);
++        return people.save(new Person(sheetId, trimmed, grade));
+     }
+ 
+     @Transactional
+     public Person update(String sheetId, Long id, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+-        person.setName(name.trim());
++        String trimmed = name.trim();
++        requireNameFree(sheetId, trimmed, id);
++        person.setName(trimmed);
+         person.setGrade(grade);
+         return person;
+     }
+ 
++    private void requireNameFree(String sheetId, String name, Long exceptId) {
++        if (people.nameInUse(sheetId, name, exceptId)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet.");
++        }
++    }
++
+     private void requireSheet(String sheetId) {
+         if (!sheets.existsById(sheetId)) {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet.");
+diff --git a/src/main/resources/db/migration/V4__person_unique_name.sql b/src/main/resources/db/migration/V4__person_unique_name.sql
+new file mode 100644
+index 00000000..8e48aced
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__person_unique_name.sql
+@@ -0,0 +1,5 @@
++-- A person's name is unique on the sheet, compared without regard to case. Names are kept with
++-- surrounding spaces removed.
++UPDATE person SET name = TRIM(name);
++ALTER TABLE person ADD COLUMN name_key VARCHAR(200) GENERATED ALWAYS AS (LOWER(name));
++CREATE UNIQUE INDEX person_sheet_name ON person (sheet_id, name_key);
