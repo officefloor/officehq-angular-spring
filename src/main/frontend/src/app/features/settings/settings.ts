@@ -5,14 +5,16 @@ import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
 import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
+import { DEFAULT_TERMS, SheetTerms } from './sheet-terms';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
-const NO_SETTINGS: SheetSettings = { clerkLimit: null, floor: DEFAULT_FLOOR };
+const DAYS = /^\d{1,5}$/;
+const NO_SETTINGS: SheetSettings = { clerkLimit: null, floor: DEFAULT_FLOOR, terms: DEFAULT_TERMS };
 
 // The sheet's settings: the role each user name has (clerk unless given another) with the form that
 // gives one, the clerk limit, the highest due a clerk may settle (blank for no limit), and the floor, the
-// least a claim's live due comes to. Saving sends only the settings changed in the form (the clerk limit
-// when neither was).
+// least a claim's live due comes to, and the terms, the days after its date a claim is due by. Saving sends
+// only the settings changed in the form (the clerk limit when none was).
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -29,6 +31,8 @@ const NO_SETTINGS: SheetSettings = { clerkLimit: null, floor: DEFAULT_FLOOR };
         />
         <label for="setting-floor">Floor</label>
         <input id="setting-floor" data-testid="setting-floor" inputmode="decimal" formControlName="floor" />
+        <label for="setting-terms">Terms (days)</label>
+        <input id="setting-terms" data-testid="setting-terms" inputmode="numeric" formControlName="terms" />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as e) {
@@ -41,6 +45,10 @@ const NO_SETTINGS: SheetSettings = { clerkLimit: null, floor: DEFAULT_FLOOR };
       <p>
         Floor in force:
         <span data-testid="setting-floor-current">{{ settings().floor }}</span>
+      </p>
+      <p>
+        Terms in force:
+        <span data-testid="setting-terms-current">{{ settings().terms }}</span>
       </p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" data-testid="role-form">
         <label for="role-form-user">User</label>
@@ -76,6 +84,7 @@ export class Settings {
   private readonly session = inject(Session);
   private readonly api = inject(SettingsApi);
   private readonly floor = inject(SheetFloor);
+  private readonly terms = inject(SheetTerms);
 
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly roles = signal<RoleGiven[]>([]);
@@ -90,6 +99,7 @@ export class Settings {
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl(DEFAULT_FLOOR, { nonNullable: true }),
+    terms: new FormControl(String(DEFAULT_TERMS), { nonNullable: true }),
   });
 
   constructor() {
@@ -160,8 +170,10 @@ export class Settings {
     const controls = this.settingsForm.controls;
     const clerkLimit = controls.clerkLimit.value.trim();
     const floor = controls.floor.value.trim();
+    const terms = controls.terms.value.trim();
     const sendFloor = controls.floor.dirty;
-    const sendLimit = controls.clerkLimit.dirty || !sendFloor;
+    const sendTerms = controls.terms.dirty;
+    const sendLimit = controls.clerkLimit.dirty || (!sendFloor && !sendTerms);
     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -170,7 +182,15 @@ export class Settings {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
       return;
     }
-    const changed = { ...(sendLimit ? { clerkLimit } : {}), ...(sendFloor ? { floor } : {}) };
+    if (sendTerms && !DAYS.test(terms)) {
+      this.settingsError.set('Type terms of 0 or more whole days.');
+      return;
+    }
+    const changed = {
+      ...(sendLimit ? { clerkLimit } : {}),
+      ...(sendFloor ? { floor } : {}),
+      ...(sendTerms ? { terms } : {}),
+    };
     this.busy.set(true);
     this.api.save(sheetId, changed).subscribe({
       next: (s) => {
@@ -189,6 +209,10 @@ export class Settings {
   private showSettings(s: SheetSettings): void {
     this.settings.set(s);
     this.floor.set(s.floor);
-    this.settingsForm.reset({ clerkLimit: s.clerkLimit ?? '', floor: s.floor }, { emitEvent: false });
+    this.terms.set(s.terms);
+    this.settingsForm.reset(
+      { clerkLimit: s.clerkLimit ?? '', floor: s.floor, terms: String(s.terms) },
+      { emitEvent: false },
+    );
   }
 }

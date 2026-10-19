@@ -17,9 +17,11 @@ export interface Settings {
   clerkLimit: string | null;
   /** The least a claim's live due comes to, with two decimals. */
   floor: string;
+  /** The days after its date a claim is due by. */
+  terms: number;
 }
 
-// A sheet's settings: the role each user name has, its clerk limit and its floor, read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit, its floor and its terms, read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -39,7 +41,7 @@ export class SettingsApi {
   }
 
   /** Save the settings given; one left out is left as it is. */
-  save(sheetId: string, settings: { clerkLimit?: string; floor?: string }): Observable<Settings> {
+  save(sheetId: string, settings: { clerkLimit?: string; floor?: string; terms?: string }): Observable<Settings> {
     return this.http.put<Settings>(`${this.url(sheetId)}/settings`, settings, { headers: this.headers() });
   }
 

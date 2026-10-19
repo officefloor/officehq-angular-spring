@@ -53,6 +53,17 @@ export function keepsFigure(claim: Claim): boolean {
   return claim.due !== null || claim.statedDue !== null;
 }
 
+/** The date a claim is due by: its date plus the sheet's terms in days (yyyy-mm-dd). */
+export function dueBy(claim: Claim, terms: number): string {
+  const [y, m, d] = claim.date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+}
+
+/** Whether a claim is overdue: it is OPEN and its due-by is before the sheet's today. */
+export function isOverdue(claim: Claim, terms: number, today: string | null): boolean {
+  return claim.status === 'OPEN' && today !== null && dueBy(claim, terms) < today;
+}
+
 export interface ClaimForm {
   amount: string;
   /** Null for the sheet's today. */

@@ -6,7 +6,8 @@ import { Rate } from '../rates/rates-api';
 import { Grade } from '../people/people-api';
 import { Period, periodOf } from '../periods/periods-api';
 import { SheetFloor } from '../settings/sheet-floor';
-import { Claim, ClaimAction, ClaimsApi, claimDue } from './claims-api';
+import { SheetTerms } from '../settings/sheet-terms';
+import { Claim, ClaimAction, ClaimsApi, claimDue, dueBy, isOverdue } from './claims-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -49,6 +50,8 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <th scope="col">Note</th>
             <th scope="col">Period</th>
             <th scope="col">Due</th>
+            <th scope="col">Due by</th>
+            <th scope="col">Overdue</th>
             <th scope="col">Stated</th>
             <th scope="col">Status</th>
             <th scope="col">Opened by</th>
@@ -64,6 +67,8 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-period">{{ periodName(c) }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
+              <td data-testid="claim-due-by">{{ dueBy(c) }}</td>
+              <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
@@ -101,6 +106,7 @@ export class Claims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
   private readonly floor = inject(SheetFloor);
+  private readonly terms = inject(SheetTerms);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -150,6 +156,16 @@ export class Claims {
     return claimDue(claim, this.rates(), this.grade(), this.floor.value());
   }
 
+  /** The claim's date plus the sheet's terms. */
+  protected dueBy(claim: Claim): string {
+    return dueBy(claim, this.terms.value());
+  }
+
+  /** Whether the claim is OPEN and its due-by is before the sheet's today. */
+  protected overdue(claim: Claim): boolean {
+    return isOverdue(claim, this.terms.value(), this.session.today());
+  }
+
   /** The name of the period the claim's date falls in; empty when it falls in none. */
   protected periodName(claim: Claim): string {
     return periodOf(this.periods(), claim.date)?.name ?? '';
@@ -189,6 +205,10 @@ export class Claims {
         id: claim.id,
         message: 'Only a draft claim can be edited. To change it, void it and add a new one.',
       });
+      return;
+    }
+    if (periodOf(this.periods(), claim.date)?.closed) {
+      this.claimError.set({ id: claim.id, message: 'That claim is dated in a closed period.' });
       return;
     }
     this.editingId.set(claim.id);

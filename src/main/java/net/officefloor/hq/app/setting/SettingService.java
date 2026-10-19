@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has on it, its clerk limit and its floor. */
+/** A sheet's settings: the role each user name has on it, its clerk limit, its floor and its terms. */
 @Service
 public class SettingService {
 
@@ -61,15 +61,19 @@ public class SettingService {
         return given;
     }
 
-    /** Save the settings given, the clerk limit then the floor, together; a setting not given (null) is left as
-     * it is, and an empty clerk limit removes it. */
+    /** Save the settings given, the clerk limit, the floor then the terms, together; a setting not given (null)
+     * is left as it is, and an empty clerk limit removes it. */
     @Transactional
-    public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor) {
+    public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
+            Integer terms) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null));
         }
         if (floor != null) {
             setFloor(user, sheetId, floor);
+        }
+        if (terms != null) {
+            setTerms(user, sheetId, terms);
         }
     }
 
@@ -111,6 +115,23 @@ public class SettingService {
                 + value.toPlainString());
         rollup.recordChanges(user, sheetId, before);
         return value;
+    }
+
+    /** The sheet's terms: the days after its date a claim is due by. */
+    @Transactional(readOnly = true)
+    public int terms(String sheetId) {
+        return find(sheetId).getTerms();
+    }
+
+    /** Set the sheet's terms. */
+    @Transactional
+    public int setTerms(String user, String sheetId, int terms) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        sheet.setTerms(terms);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=terms value=" + terms);
+        return terms;
     }
 
     /** Refuse a settle by a clerk of a claim whose due is above the clerk limit; a due of n/a is within any

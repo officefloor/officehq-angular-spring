@@ -5,11 +5,12 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
-import { Claim, ClaimsApi, claimDue, counts, keepsFigure, sumAmounts } from '../claims/claims-api';
+import { Claim, ClaimsApi, claimDue, counts, isOverdue, keepsFigure, sumAmounts } from '../claims/claims-api';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { SheetFloor } from '../settings/sheet-floor';
+import { SheetTerms } from '../settings/sheet-terms';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
 
@@ -18,7 +19,8 @@ import { Grade, PeopleApi, Person } from './people-api';
 // claims, what they have claimed (its OPEN and SETTLED claims, though a held person's OPEN ones count in
 // no total) and what is due on it: the sum of those
 // claims' rounded dues; the sheet's
-// claimed-total and due-total add everyone's up (a due-total of n/a is skipped).
+// claimed-total and due-total add everyone's up (a due-total of n/a is skipped). Each person, and the sheet,
+// also shows how many of the claims that count are overdue and the sum of their dues (n/a ones skipped).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, Claims, Periods, Rates],
@@ -62,6 +64,8 @@ import { Grade, PeopleApi, Person } from './people-api';
       </label>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+      <p>Overdue total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <table data-testid="people-list">
         <thead>
           <tr>
@@ -75,6 +79,8 @@ import { Grade, PeopleApi, Person } from './people-api';
             <th scope="col">Retired</th>
             <th scope="col">Retired from</th>
             <th scope="col">On hold</th>
+            <th scope="col">Overdue</th>
+            <th scope="col">Overdue total</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -92,6 +98,8 @@ import { Grade, PeopleApi, Person } from './people-api';
               <td data-testid="person-retired">{{ p.retiredFrom ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
+              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -162,6 +170,7 @@ export class People {
   private readonly ratesApi = inject(RatesApi);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly floor = inject(SheetFloor);
+  private readonly terms = inject(SheetTerms);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -217,6 +226,11 @@ export class People {
   protected readonly dueTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
   );
+  /** How many of the sheet's claims that count are overdue, and the sum of their dues (n/a ones skipped). */
+  protected readonly overdueCount = computed(() =>
+    this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
+  );
+  protected readonly overdueTotal = computed(() => sumAmounts(this.people().map((p) => this.overdueTotalOf(p))));
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion: number | null = null;
@@ -281,6 +295,21 @@ export class People {
     if (!this.rateByGrade().has(person.grade) && !frozen) return NO_RATE;
     return sumAmounts(
       counted.map((c) => claimDue(c, this.rates(), person.grade, this.floor.value())).filter((d) => d !== NO_RATE),
+    );
+  }
+
+  /** The person's claims that count and are overdue. */
+  protected overdueOf(person: Person): Claim[] {
+    const today = this.session.today();
+    return this.claimsOf(person.id).filter((c) => this.countsLive(c) && isOverdue(c, this.terms.value(), today));
+  }
+
+  /** The sum of the dues of the person's overdue claims that count (n/a ones skipped), 0.00 with none. */
+  protected overdueTotalOf(person: Person): string {
+    return sumAmounts(
+      this.overdueOf(person)
+        .map((c) => claimDue(c, this.rates(), person.grade, this.floor.value()))
+        .filter((d) => d !== NO_RATE),
     );
   }
 
