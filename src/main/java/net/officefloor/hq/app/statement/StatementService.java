@@ -10,7 +10,6 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
-import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -59,7 +58,7 @@ public class StatementService {
 
     /**
      * Take a statement for a person: record their due-total now, late charges included, and bind each of their
-     * claims that counts (a held person's OPEN and PENDING ones do not) to the figure it has now (never its late charge, which keeps following the sheet's
+     * claims that counts (OPEN and PENDING ones within a hold, unbound, do not) to the figure it has now (never its late charge, which keeps following the sheet's
      * today); a claim of theirs that does not count is left unbound.
      */
     @Transactional
@@ -72,7 +71,7 @@ public class StatementService {
         boolean fixed = false;
         List<Claim> counted = new ArrayList<>();
         for (Claim claim : claims.findBySheetIdAndPersonId(sheetId, personId)) {
-            if (!counts(claim, person)) {
+            if (!RollupService.counts(claim, person)) {
                 claim.unbind();
                 continue;
             }
@@ -95,12 +94,5 @@ public class StatementService {
                 + " claims=" + counted.size());
         rollup.recordChanges(user, sheetId, before);
         return person;
-    }
-
-    /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; a held person's OPEN and
-     * PENDING ones do not. */
-    private static boolean counts(Claim claim, Person person) {
-        return (claim.getStatus().isOpen() && !person.isHeld())
-                || claim.getStatus() == ClaimStatus.SETTLED;
     }
 }

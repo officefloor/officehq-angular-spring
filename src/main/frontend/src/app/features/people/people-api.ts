@@ -23,6 +23,17 @@ export function gradeOn(grades: readonly GradeFrom[], date: string): Grade | und
   return best?.grade;
 }
 
+/** A hold from a date to a date (yyyy-mm-dd), inclusive; open-ended when it has no to-date. */
+export interface Hold {
+  from: string;
+  to: string | null;
+}
+
+/** Whether a date (yyyy-mm-dd) is within one of the holds. */
+export function heldOn(holds: readonly Hold[], date: string): boolean {
+  return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
+}
+
 export interface Person {
   id: number;
   name: string;
@@ -40,8 +51,11 @@ export interface Person {
   statementDate: string | null;
   /** The date the person is retired from; null while not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: while held, their OPEN and PENDING claims count in no live total. */
+  /** Whether the person has any hold. */
   held: boolean;
+  /** The person's holds by from-date: their OPEN and PENDING claims dated within one, unless bound by a statement,
+   * count in no live total. */
+  holds: Hold[];
   /** The ids of the people named as the person's patrons, in the order they were named. */
   patronIds: number[];
 }
@@ -96,9 +110,9 @@ export class PeopleApi {
     return this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from }, { headers: this.headers() });
   }
 
-  /** Put the person on hold, or take them off it when held. */
-  hold(sheetId: string, id: number): Observable<Person> {
-    return this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, null, { headers: this.headers() });
+  /** Put the person on hold from a date, the sheet's today when none is given, to a date or open-ended. */
+  hold(sheetId: string, id: number, from: string | null, to: string | null): Observable<Person> {
+    return this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { from, to }, { headers: this.headers() });
   }
 
   /** Name another person on the sheet as the person's patron. */

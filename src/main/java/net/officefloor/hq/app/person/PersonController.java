@@ -35,12 +35,15 @@ public class PersonController {
     /** A grade the person has from a from-date (none: from the beginning of time). */
     public record GradeView(String grade, LocalDate from) {}
 
+    /** A hold on the person from a from-date to a to-date (none: open-ended). */
+    public record HoldView(LocalDate from, LocalDate to) {}
+
     /** A person shows how many statements were taken for them and the last one's due-total (n/a when it was)
      * and date; none of those before the first; and the ids of their patrons, in the order they were named. Its
      * grade is the one in force on the sheet's today, and its grades every one recorded, by from-date. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
-            List<Long> patronIds) {
+            List<HoldView> holds, List<Long> patronIds) {
 
         public static PersonView of(Person person, LocalDate today, Map<Long, Summary> statements,
                 Map<Long, List<Long>> patrons) {
@@ -52,6 +55,7 @@ public class PersonController {
                     summary != null ? summary.count() : 0,
                     last == null ? null : last.getDueTotal() != null ? last.getDueTotal().toPlainString() : "n/a",
                     last != null ? last.getTakenOn() : null, person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(),
                     patrons.getOrDefault(person.getId(), List.of()));
         }
     }
@@ -97,11 +101,13 @@ public class PersonController {
         return view(sheetId, service.retire(user, sheetId, id, form.from()));
     }
 
-    /** Put the person on hold, or take them off it when held. */
+    public record HoldForm(LocalDate from, LocalDate to) {}
+
+    /** Put the person on hold from a date, the sheet's today when none is given, to a to-date or open-ended. */
     @PostMapping("/{id}/hold")
     public PersonView hold(@RequestHeader("X-User") String user, @PathVariable String sheetId,
-            @PathVariable Long id) {
-        return view(sheetId, service.toggleHold(user, sheetId, id));
+            @PathVariable Long id, @RequestBody HoldForm form) {
+        return view(sheetId, service.hold(user, sheetId, id, form.from(), form.to()));
     }
 
     public record PatronForm(@NotNull Long patronId) {}

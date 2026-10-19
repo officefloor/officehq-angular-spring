@@ -66,7 +66,7 @@ export function counts(claim: Claim): boolean {
 
 /** Whether a claim goes by the figure its person's last statement bound it to: a PENDING claim is not bound, but
  * shows its live figure. */
-function bound(claim: Claim): boolean {
+export function bound(claim: Claim): boolean {
   return claim.stated && claim.status !== 'PENDING';
 }
 

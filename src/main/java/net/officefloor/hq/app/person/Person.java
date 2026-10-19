@@ -40,9 +40,11 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: while held, their OPEN and PENDING claims count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** The person's holds: their OPEN and PENDING claims dated within one, unless bound by a statement, count in no
+     * live total. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private List<Hold> holds = new ArrayList<>();
 
     /** Raised each time the person is saved. */
     @Version
@@ -105,12 +107,23 @@ public class Person {
         this.retiredFrom = retiredFrom;
     }
 
-    public boolean isHeld() {
-        return held;
+    /** The person's holds by from-date. */
+    public List<Hold> getHolds() {
+        return holds.stream().sorted(Hold.BY_FROM).toList();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** Whether the person has any hold. */
+    public boolean isHeld() {
+        return !holds.isEmpty();
+    }
+
+    /** Whether a date is within one of the person's holds. */
+    public boolean heldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    public void addHold(LocalDate from, LocalDate to) {
+        holds.add(new Hold(from, to));
     }
 
     /** Whether a claim dated {@code date} is after the person's retirement. */

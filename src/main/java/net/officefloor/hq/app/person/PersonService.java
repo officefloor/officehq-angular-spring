@@ -97,17 +97,22 @@ public class PersonService {
         return person;
     }
 
-    /** Put the person on hold, or take them off it when held; while held their OPEN and PENDING claims count in no live
-     * total. */
+    /** Put the person on hold from a date, the sheet's today when none is given, to a to-date or open-ended; their
+     * OPEN and PENDING claims dated within it, unless bound by a statement, count in no live total. A to-date before
+     * the from-date is refused. */
     @Transactional
-    public Person toggleHold(String user, String sheetId, Long id) {
+    public Person hold(String user, String sheetId, Long id, LocalDate from, LocalDate to) {
+        LocalDate date = from != null ? from : sheetService.today(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (to != null && to.isBefore(date)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A hold cannot end before it starts.");
+        }
         Snapshot before = rollup.snapshot(sheetId);
-        person.setHeld(!person.isHeld());
+        person.addHold(date, to);
         people.flush();
-        audit.recordOnCommit((person.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
-                + " by=" + user + " name=" + person.getName());
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " from=" + date);
         rollup.recordChanges(user, sheetId, before);
         return person;
     }

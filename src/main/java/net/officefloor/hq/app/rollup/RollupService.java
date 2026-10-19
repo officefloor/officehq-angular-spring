@@ -119,7 +119,7 @@ public class RollupService {
         return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString());
     }
 
-    /** The due-total of the sheet's claims that count (a held person's OPEN and PENDING ones do not) dated from and to, inclusive: the sum of their dues,
+    /** The due-total of the sheet's claims that count (OPEN and PENDING ones within a hold, unbound, do not) dated from and to, inclusive: the sum of their dues,
      * late charges included, n/a ones skipped. */
     public BigDecimal dueTotal(String sheetId, LocalDate from, LocalDate to) {
         BigDecimal floor = floorOf(sheetId);
@@ -312,10 +312,10 @@ public class RollupService {
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
     }
 
-    /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; a held person's OPEN and
-     * PENDING ones do not. */
-    private static boolean counts(Claim claim, Person person) {
-        return (claim.getStatus().isOpen() && !person.isHeld())
+    /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; an OPEN or PENDING one dated
+     * within one of its person's holds does not, unless it is bound by a statement. */
+    public static boolean counts(Claim claim, Person person) {
+        return (claim.getStatus().isOpen() && (bound(claim) || !person.heldOn(claim.getDate())))
                 || claim.getStatus() == ClaimStatus.SETTLED;
     }
 }

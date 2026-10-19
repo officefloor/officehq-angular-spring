@@ -10,6 +10,7 @@ import {
   Claim,
   ClaimsApi,
   Lateness,
+  bound,
   claimDue,
   counts,
   isOpen,
@@ -26,12 +27,12 @@ import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
-import { Grade, PeopleApi, Person, gradeOn } from './people-api';
+import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
-// claims, what they have claimed (its OPEN, PENDING and SETTLED claims, though a held person's OPEN and PENDING ones count in
-// no total) and what is due on it: the sum of those
+// claims, what they have claimed (its OPEN, PENDING and SETTLED claims, though OPEN and PENDING ones dated within one of
+// their holds and not bound by a statement count in no total) and what is due on it: the sum of those
 // claims' rounded dues; the sheet's
 // claimed-total and due-total add everyone's up (a due-total of n/a is skipped). Each person, and the sheet,
 // also shows how many of the claims that count are overdue and the sum of their dues (n/a ones skipped).
@@ -134,7 +135,16 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retiredFrom ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td>
+                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                @if (p.holds.length) {
+                  <ul>
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
+                    }
+                  </ul>
+                }
+              </td>
               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td data-testid="person-patrons">{{ patronNames(p) }}</td>
@@ -186,13 +196,29 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
                 >
                   Retire
                 </button>
+                <label [for]="'person-hold-from-' + p.id">Hold from</label>
+                <input
+                  type="date"
+                  [id]="'person-hold-from-' + p.id"
+                  data-testid="person-hold-from"
+                  #holdFrom
+                  (input)="personError.set(null)"
+                />
+                <label [for]="'person-hold-to-' + p.id">Hold to</label>
+                <input
+                  type="date"
+                  [id]="'person-hold-to-' + p.id"
+                  data-testid="person-hold-to"
+                  #holdTo
+                  (input)="personError.set(null)"
+                />
                 <button
                   type="button"
                   data-testid="person-hold-toggle"
-                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
-                  (click)="hold(p)"
+                  [attr.aria-label]="'Hold ' + p.name"
+                  (click)="hold(p, holdFrom.value, holdTo.value)"
                 >
-                  {{ p.held ? 'Release' : 'Hold' }}
+                  Hold
                 </button>
                 <label [for]="'person-patron-select-' + p.id">Patron</label>
                 <select
@@ -262,8 +288,8 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  /** The ids of the people on hold, whose OPEN and PENDING claims count in no total. */
-  private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
+  /** Each person's holds, by id: their OPEN and PENDING claims dated within one, unless bound, count in no total. */
+  private readonly holdsById = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
   protected readonly claimedTotal = computed(() =>
     sumAmounts(this.claims().filter((c) => this.countsLive(c)).map((c) => c.amount)),
   );
@@ -484,10 +510,13 @@ export class People {
     });
   }
 
-  /** Whether a claim counts in the live totals: it counts, and is not an OPEN or PENDING claim of a held
-   * person. */
+  /** Whether a claim counts in the live totals: it counts, and is not an OPEN or PENDING claim dated within one of
+   * its person's holds and not bound by a statement. */
   private countsLive(claim: Claim): boolean {
-    return counts(claim) && !(isOpen(claim) && this.heldIds().has(claim.personId));
+    return (
+      counts(claim) &&
+      !(isOpen(claim) && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
+    );
   }
 
   protected rateSaved(rate: Rate): void {
@@ -609,13 +638,13 @@ export class People {
     });
   }
 
-  /** Put the person on hold, or take them off it when held. */
-  protected hold(person: Person): void {
+  /** Put the person on hold from the date given, the sheet's today when none is, to the date given or open-ended. */
+  protected hold(person: Person, from: string, to: string): void {
     this.personError.set(null);
     this.patronError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    this.api.hold(sheetId, person.id).subscribe({
+    this.api.hold(sheetId, person.id, from || null, to || null).subscribe({
       next: (p) => {
         if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
       },
