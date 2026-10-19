@@ -1,0 +1,90 @@
+{
+  "checkpoint": 2,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp02_sheet-today",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each sheet has a \"today\" date, shown on the screen and changeable there. It starts as the real\ndate. Every decision in the app that depends on the date, and every default date, uses the\nsheet's today and never the real clock.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach sheet has a \"today\" date, shown on the screen and changeable there. It starts as the real\ndate. Every decision in the app that depends on the date, and every default date, uses the\nsheet's today and never the real clock.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4ef63e6f6c9240624221d48591c509d16b86ad5f",
+  "reset_sha": "",
+  "preagent_sha": "f2ee6d8e4d0b38c03b8c287acd57910b7cc458de",
+  "prev_sha": "f2ee6d8e4d0b38c03b8c287acd57910b7cc458de",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.33516500000000005,
+    "input_tokens": 16,
+    "output_tokens": 5385,
+    "cache_read_tokens": 183685,
+    "cache_creation_tokens": 23833,
+    "num_turns": 8,
+    "duration_ms": 84300,
+    "duration_api_ms": 62506,
+    "model": "claude-opus-5-5",
+    "session_id": "f30afc44-94dc-4f72-a941-9acf583bd03d",
+    "stop_reason": "success",
+    "result_text": "Each sheet now has its own \"today\", shown on the screen and changeable there, and `bin/e2e` passes.\n\n**What changed:**\n- **Stored data:** a new migration, `V2__sheet_today.sql`, adds a required `today` date to each sheet. A new sheet's today starts as the real date on the day it is first loaded.\n- **Server:**\n  - Loading a sheet now returns its today along with its id.\n  - A new endpoint, `PUT /api/sheets/{id}/today`, changes it. An impossible date such as 2023-02-29 is turned away, and so is an id that was never loaded.\n  - `SheetService.today(id)` gives the sheet's today; it's there for future date-based features to use instead of the real clock.\n- **Front end:** the session bar shows `sheet-today` with a date field (`sheet-today-input`) and a save button (`sheet-today-save`). The app keeps the active sheet's today, and reloading a sheet reads it again from the store, so another user's change shows up. A refused change shows `sheet-error`, which clears when you edit the field or save again.\n\n**Worth knowing:**\n- Nothing else in the app uses dates yet, so the rule that \"every date-dependent decision and default date uses the sheet's today\" has nothing else to change today. Later features will need to read `SheetService.today(...)` on the server and `Session.today()` in the browser.\n- Changing a sheet's today writes no audit record, because the spec doesn't ask for one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.33516500000000005,
+        "num_turns": 8,
+        "duration_ms": 84300,
+        "duration_api_ms": 62506,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp02.agent.jsonl",
+  "agent_diff_file": "cp02.agent.diff",
+  "build_log_file": "cp02.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 2,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1576,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1112,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
