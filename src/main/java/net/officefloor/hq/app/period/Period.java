@@ -1,13 +1,20 @@
 package net.officefloor.hq.app.period;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 
 /** A period of a sheet: a name and a from and to date, both inclusive. */
 @Entity
@@ -37,6 +44,13 @@ public class Period {
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
 
+    /** Each person's due-total for the period, by person id, fixed when it closed; none while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_total", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "total", nullable = false)
+    private Map<Long, BigDecimal> personTotals = new HashMap<>();
+
     protected Period() {}
 
     public Period(String sheetId, String name, LocalDate from, LocalDate to) {
@@ -56,16 +70,19 @@ public class Period {
         return !date.isBefore(from) && !date.isAfter(to);
     }
 
-    /** Close the period, fixing its due-total. */
-    public void close(BigDecimal total) {
+    /** Close the period, fixing each person's due-total for it, by person id, and its own: their sum. */
+    public void close(Map<Long, BigDecimal> personTotals) {
         this.closed = true;
-        this.closedTotal = total;
+        this.personTotals.clear();
+        this.personTotals.putAll(personTotals);
+        this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;
         this.closedTotal = null;
+        this.personTotals.clear();
     }
 
     public boolean isClosed() {
@@ -74,6 +91,10 @@ public class Period {
 
     public BigDecimal getClosedTotal() {
         return closedTotal;
+    }
+
+    public Map<Long, BigDecimal> getPersonTotals() {
+        return personTotals;
     }
 
     public Long getId() {

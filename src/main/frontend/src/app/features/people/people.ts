@@ -126,6 +126,9 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            @for (pd of periods(); track pd.id) {
+              <th scope="col">Due in {{ pd.name }}</th>
+            }
             <th scope="col">Excess</th>
             <th scope="col">Statements</th>
             <th scope="col">Last stated</th>
@@ -148,6 +151,11 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
+              @for (pd of periods(); track pd.id) {
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
+                  {{ personPeriodDueTotals().get(pd.id)?.get(p.id) ?? '0.00' }}
+                </td>
+              }
               <td data-testid="person-excess">{{ excess(p) }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
@@ -328,20 +336,40 @@ export class People {
 
   /** The sheet's periods by from-date. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each period's due-total, by id: the sum of the dues of the claims that count dated in it (n/a ones
-   * skipped), 0.00 with none; a closed period's is the one fixed when it closed. */
-  protected readonly periodDueTotals = computed(() => {
+  /** Each period's due-total for each person, by period id then person id: the sum of the dues of the
+   * person's claims that count dated in it (n/a ones skipped), 0.00 with none; a closed period's are the ones
+   * fixed when it closed, 0.00 for a person who had none then. */
+  protected readonly personPeriodDueTotals = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
-    const dues = new Map<number, string[]>();
+    const dues = new Map<number, Map<number, string[]>>();
     for (const c of this.claims().filter((c) => this.countsLive(c))) {
       const period = periodOf(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (!period || !person) continue;
+      if (!period || period.closed || !person) continue;
       const due = this.claimDue(c, person);
-      if (due !== NO_RATE) dues.set(period.id, [...(dues.get(period.id) ?? []), due]);
+      if (due === NO_RATE) continue;
+      const byPerson = dues.get(period.id) ?? new Map<number, string[]>();
+      byPerson.set(person.id, [...(byPerson.get(person.id) ?? []), due]);
+      dues.set(period.id, byPerson);
     }
-    return new Map(this.periods().map((p) => [p.id, p.closedTotal ?? sumAmounts(dues.get(p.id) ?? [])]));
+    return new Map(
+      this.periods().map((pd) => [
+        pd.id,
+        new Map(
+          this.people().map((p) => [
+            p.id,
+            pd.closed
+              ? (pd.personTotals?.[p.id] ?? '0.00')
+              : sumAmounts(dues.get(pd.id)?.get(p.id) ?? []),
+          ]),
+        ),
+      ]),
+    );
   });
+  /** Each period's due-total, by id: the sum of the people's due-totals for it. */
+  protected readonly periodDueTotals = computed(
+    () => new Map([...this.personPeriodDueTotals()].map(([id, byPerson]) => [id, sumAmounts([...byPerson.values()])])),
+  );
 
   protected readonly dueTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),

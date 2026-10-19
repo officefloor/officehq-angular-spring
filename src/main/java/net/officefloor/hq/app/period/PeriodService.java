@@ -3,7 +3,6 @@ package net.officefloor.hq.app.period;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.setting.Role;
@@ -67,7 +66,7 @@ public class PeriodService {
         return period;
     }
 
-    /** Close a period, fixing its due-total as it is now; closing one already closed is refused. */
+    /** Close a period, fixing each person's due-total for it, and so its own, as they are now; closing one already closed is refused. */
     @Transactional
     public Period close(String user, String sheetId, Long id) {
         // Locking the sheet keeps claims from changing while the total is taken.
@@ -77,11 +76,10 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
         }
-        BigDecimal total = rollup.dueTotal(sheetId, period.getFrom(), period.getTo());
-        period.close(total);
+        period.close(rollup.dueTotals(sheetId, period.getFrom(), period.getTo()));
         periods.flush();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + period.getName()
-                + " total=" + total.toPlainString());
+                + " total=" + period.getClosedTotal().toPlainString());
         return period;
     }
 

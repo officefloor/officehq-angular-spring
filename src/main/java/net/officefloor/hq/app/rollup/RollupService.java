@@ -137,9 +137,10 @@ public class RollupService {
         return sheets.findById(sheetId).map(s -> s.capped(dueTotal)).orElse(dueTotal);
     }
 
-    /** The due-total of the sheet's claims that count (OPEN and PENDING ones within a hold, unbound, do not) dated from and to, inclusive: the sum of their dues,
-     * late charges included, n/a ones skipped. */
-    public BigDecimal dueTotal(String sheetId, LocalDate from, LocalDate to) {
+    /** Each person's due-total of their claims that count (OPEN and PENDING ones within a hold, unbound, do not)
+     * dated from and to, inclusive, by person id: the sum of their dues, late charges included, n/a ones skipped;
+     * a person with no such due has none. */
+    public Map<Long, BigDecimal> dueTotals(String sheetId, LocalDate from, LocalDate to) {
         BigDecimal floor = floorOf(sheetId);
         Lateness late = latenessOf(sheetId);
         Map<String, List<Rate>> byGrade = ratesByGrade(sheetId);
@@ -147,7 +148,7 @@ public class RollupService {
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             byId.put(person.getId(), person);
         }
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
         List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<String, LocalDate> datesByNumber = datesByNumber(all);
         for (Claim claim : all) {
@@ -159,10 +160,10 @@ public class RollupService {
             BigDecimal figure = dueOf(claim, ratesOn(person, claim.getDate(), byGrade), floor, late,
                     roundsBy(claim, datesByNumber));
             if (figure != null) {
-                total = total.add(figure.setScale(2));
+                totals.merge(person.getId(), figure.setScale(2), BigDecimal::add);
             }
         }
-        return total;
+        return totals;
     }
 
     /**

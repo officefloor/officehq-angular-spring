@@ -13,6 +13,9 @@ export interface Period {
   closed: boolean;
   /** The due-total fixed when it closed; null while open. */
   closedTotal: string | null;
+  /** Each person's due-total for it, by person id, fixed when it closed (a person with none has 0.00); null
+   * while open. */
+  personTotals: Record<string, string> | null;
 }
 
 export interface PeriodForm {
