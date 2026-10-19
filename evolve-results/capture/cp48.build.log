@@ -1,0 +1,281 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+it › rollup audit scenario 1
+[1A[2K[51/180] [chromium] › cp16_rollup-audit.spec.ts:263:7 › rollup audit › rollup audit scenario 2
+[1A[2K[52/180] [chromium] › cp16_rollup-audit.spec.ts:427:7 › rollup audit › rollup audit scenario 3
+[1A[2K[53/180] [chromium] › cp17_periods.spec.ts:6:7 › periods › periods
+[1A[2K[54/180] [chromium] › cp17_periods.spec.ts:52:7 › periods › periods scenario 1
+[1A[2K[55/180] [chromium] › cp17_periods.spec.ts:215:7 › periods › periods scenario 2
+[1A[2K[56/180] [chromium] › cp17_periods.spec.ts:378:7 › periods › periods scenario 3
+[1A[2K[57/180] [chromium] › cp18_close-period.spec.ts:6:7 › close period › close period
+[1A[2K[58/180] [chromium] › cp18_close-period.spec.ts:61:7 › close period › close period scenario 1
+[1A[2K[59/180] [chromium] › cp18_close-period.spec.ts:184:7 › close period › close period scenario 2
+[1A[2K[60/180] [chromium] › cp18_close-period.spec.ts:316:7 › close period › close period scenario 3
+[1A[2K[61/180] [chromium] › cp19_quick-add.spec.ts:6:7 › quick add › quick add
+[1A[2K[62/180] [chromium] › cp19_quick-add.spec.ts:48:7 › quick add › quick add scenario 1
+[1A[2K[63/180] [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2
+[1A[2K[64/180] [chromium] › cp19_quick-add.spec.ts:394:7 › quick add › quick add scenario 3
+[1A[2K[65/180] [chromium] › cp20_open-claims-immutable.spec.ts:6:7 › open claims immutable › open claims immutable
+[1A[2K[66/180] [chromium] › cp20_open-claims-immutable.spec.ts:45:7 › open claims immutable › open claims immutable scenario 1
+[1A[2K[67/180] [chromium] › cp20_open-claims-immutable.spec.ts:306:7 › open claims immutable › open claims immutable scenario 2
+[1A[2K[68/180] [chromium] › cp20_open-claims-immutable.spec.ts:469:7 › open claims immutable › open claims immutable scenario 3
+[1A[2K[69/180] [chromium] › cp21_retire.spec.ts:6:7 › retire › retire
+[1A[2K[70/180] [chromium] › cp21_retire.spec.ts:61:7 › retire › retire scenario 1
+[1A[2K[71/180] [chromium] › cp21_retire.spec.ts:180:7 › retire › retire scenario 2
+[1A[2K[72/180] [chromium] › cp21_retire.spec.ts:369:7 › retire › retire scenario 3
+[1A[2K  1) [chromium] › cp21_retire.spec.ts:369:7 › retire › retire scenario 3 ───────────────────────────
+
+    Error: the sheet is back on screen after a reload
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:121
+
+      119 |   if (showRetiredWas !== null && (await retired.isChecked()) !== showRetiredWas) await retired.setChecked(showRetiredWas);
+      120 |   if (asofWas !== '' && (await shown(page.getByTestId('sheet-asof'))) !== asofWas) await setAsOf(page, asofWas);
+    > 121 |   await expect.poll(async () => {
+          |   ^
+      122 |     for (const [id, n] of before) {
+      123 |       const r = row(page, id);
+      124 |       if ((await r.count()) === 0 || (await claimRows(r).count()) < n) return false;
+
+        at Object.refresh (/home/daniel/ui-work/202610192149/just-solve-chain1/e2e/support/ui.ts:121:3)
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp21_retire.spec.ts:431:5
+
+
+[1A[2K[73/180] [chromium] › cp22_hold.spec.ts:6:7 › hold › hold
+[1A[2K[74/180] [chromium] › cp22_hold.spec.ts:63:7 › hold › hold scenario 1
+[1A[2K[75/180] [chromium] › cp22_hold.spec.ts:262:7 › hold › hold scenario 2
+[1A[2K[76/180] [chromium] › cp22_hold.spec.ts:397:7 › hold › hold scenario 3
+[1A[2K  2) [chromium] › cp22_hold.spec.ts:397:7 › hold › hold scenario 3 ─────────────────────────────────
+
+    Error: the sheet is back on screen after a reload
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:121
+
+      119 |   if (showRetiredWas !== null && (await retired.isChecked()) !== showRetiredWas) await retired.setChecked(showRetiredWas);
+      120 |   if (asofWas !== '' && (await shown(page.getByTestId('sheet-asof'))) !== asofWas) await setAsOf(page, asofWas);
+    > 121 |   await expect.poll(async () => {
+          |   ^
+      122 |     for (const [id, n] of before) {
+      123 |       const r = row(page, id);
+      124 |       if ((await r.count()) === 0 || (await claimRows(r).count()) < n) return false;
+
+        at Object.refresh (/home/daniel/ui-work/202610192149/just-solve-chain1/e2e/support/ui.ts:121:3)
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp22_hold.spec.ts:452:5
+
+
+[1A[2K[77/180] [chromium] › cp23_roles-and-clerk-limit.spec.ts:6:7 › roles and clerk limit › roles and clerk limit
+[1A[2K[78/180] [chromium] › cp23_roles-and-clerk-limit.spec.ts:72:7 › roles and clerk limit › roles and clerk limit scenario 1
+[1A[2K[79/180] [chromium] › cp23_roles-and-clerk-limit.spec.ts:222:7 › roles and clerk limit › roles and clerk limit scenario 2
+[1A[2K[80/180] [chromium] › cp23_roles-and-clerk-limit.spec.ts:386:7 › roles and clerk limit › roles and clerk limit scenario 3
+[1A[2K[81/180] [chromium] › cp24_floor.spec.ts:6:7 › floor › floor
+[1A[2K[82/180] [chromium] › cp24_floor.spec.ts:98:7 › floor › floor scenario 1
+[1A[2K[83/180] [chromium] › cp24_floor.spec.ts:260:7 › floor › floor scenario 2
+[1A[2K[84/180] [chromium] › cp24_floor.spec.ts:408:7 › floor › floor scenario 3
+[1A[2K[85/180] [chromium] › cp25_due-by-and-overdue.spec.ts:6:7 › due by and overdue › due by and overdue
+[1A[2K[86/180] [chromium] › cp25_due-by-and-overdue.spec.ts:84:7 › due by and overdue › due by and overdue scenario 1
+[1A[2K[87/180] [chromium] › cp25_due-by-and-overdue.spec.ts:300:7 › due by and overdue › due by and overdue scenario 2
+[1A[2K[88/180] [chromium] › cp25_due-by-and-overdue.spec.ts:453:7 › due by and overdue › due by and overdue scenario 3
+[1A[2K[89/180] [chromium] › cp26_late-charge.spec.ts:6:7 › late charge › late charge
+[1A[2K[90/180] [chromium] › cp26_late-charge.spec.ts:86:7 › late charge › late charge scenario 1
+[1A[2K[91/180] [chromium] › cp26_late-charge.spec.ts:283:7 › late charge › late charge scenario 2
+[1A[2K  3) [chromium] › cp26_late-charge.spec.ts:283:7 › late charge › late charge scenario 2 ────────────
+
+    Error: the sheet is back on screen after a reload
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:121
+
+      119 |   if (showRetiredWas !== null && (await retired.isChecked()) !== showRetiredWas) await retired.setChecked(showRetiredWas);
+      120 |   if (asofWas !== '' && (await shown(page.getByTestId('sheet-asof'))) !== asofWas) await setAsOf(page, asofWas);
+    > 121 |   await expect.poll(async () => {
+          |   ^
+      122 |     for (const [id, n] of before) {
+      123 |       const r = row(page, id);
+      124 |       if ((await r.count()) === 0 || (await claimRows(r).count()) < n) return false;
+
+        at Object.refresh (/home/daniel/ui-work/202610192149/just-solve-chain1/e2e/support/ui.ts:121:3)
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp26_late-charge.spec.ts:318:5
+
+
+[1A[2K[92/180] [chromium] › cp26_late-charge.spec.ts:445:7 › late charge › late charge scenario 3
+[1A[2K[93/180] [chromium] › cp27_patrons-and-backing.spec.ts:6:7 › patrons and backing › patrons and backing
+[1A[2K[94/180] [chromium] › cp27_patrons-and-backing.spec.ts:74:7 › patrons and backing › patrons and backing scenario 1
+[1A[2K[95/180] [chromium] › cp27_patrons-and-backing.spec.ts:245:7 › patrons and backing › patrons and backing scenario 2
+[1A[2K[96/180] [chromium] › cp27_patrons-and-backing.spec.ts:424:7 › patrons and backing › patrons and backing scenario 3
+[1A[2K[97/180] [chromium] › cp28_grade-dated.spec.ts:6:7 › grade dated › grade dated
+[1A[2K[98/180] [chromium] › cp28_grade-dated.spec.ts:66:7 › grade dated › grade dated scenario 1
+[1A[2K[99/180] [chromium] › cp28_grade-dated.spec.ts:225:7 › grade dated › grade dated scenario 2
+[1A[2K[100/180] [chromium] › cp28_grade-dated.spec.ts:422:7 › grade dated › grade dated scenario 3
+[1A[2K[101/180] [chromium] › cp29_reopen-period.spec.ts:6:7 › reopen period › reopen period
+[1A[2K[102/180] [chromium] › cp29_reopen-period.spec.ts:76:7 › reopen period › reopen period scenario 1
+[1A[2K[103/180] [chromium] › cp29_reopen-period.spec.ts:241:7 › reopen period › reopen period scenario 2
+[1A[2K[104/180] [chromium] › cp29_reopen-period.spec.ts:388:7 › reopen period › reopen period scenario 3
+[1A[2K[105/180] [chromium] › cp30_corrections.spec.ts:6:7 › corrections › corrections
+[1A[2K[106/180] [chromium] › cp30_corrections.spec.ts:70:7 › corrections › corrections scenario 1
+[1A[2K[107/180] [chromium] › cp30_corrections.spec.ts:283:7 › corrections › corrections scenario 2
+[1A[2K[108/180] [chromium] › cp30_corrections.spec.ts:489:7 › corrections › corrections scenario 3
+[1A[2K[109/180] [chromium] › cp31_summary.spec.ts:6:7 › summary › summary
+[1A[2K[110/180] [chromium] › cp31_summary.spec.ts:51:7 › summary › summary scenario 1
+[1A[2K[111/180] [chromium] › cp31_summary.spec.ts:213:7 › summary › summary scenario 2
+[1A[2K[112/180] [chromium] › cp31_summary.spec.ts:397:7 › summary › summary scenario 3
+[1A[2K[113/180] [chromium] › cp32_rounding-policy-date.spec.ts:6:7 › rounding policy date › rounding policy date
+[1A[2K[114/180] [chromium] › cp32_rounding-policy-date.spec.ts:121:7 › rounding policy date › rounding policy date scenario 1
+[1A[2K[115/180] [chromium] › cp32_rounding-policy-date.spec.ts:405:7 › rounding policy date › rounding policy date scenario 2
+[1A[2K[116/180] [chromium] › cp32_rounding-policy-date.spec.ts:618:7 › rounding policy date › rounding policy date scenario 3
+[1A[2K[117/180] [chromium] › cp33_export-people.spec.ts:6:7 › export people › export people
+[1A[2K[118/180] [chromium] › cp33_export-people.spec.ts:22:7 › export people › export people scenario 1
+[1A[2K[119/180] [chromium] › cp33_export-people.spec.ts:250:7 › export people › export people scenario 2
+[1A[2K[120/180] [chromium] › cp33_export-people.spec.ts:459:7 › export people › export people scenario 3
+[1A[2K[121/180] [chromium] › cp34_bulk-open.spec.ts:6:7 › bulk open › bulk open
+[1A[2K[122/180] [chromium] › cp34_bulk-open.spec.ts:55:7 › bulk open › bulk open scenario 1
+[1A[2K[123/180] [chromium] › cp34_bulk-open.spec.ts:299:7 › bulk open › bulk open scenario 2
+[1A[2K[124/180] [chromium] › cp34_bulk-open.spec.ts:484:7 › bulk open › bulk open scenario 3
+[1A[2K[125/180] [chromium] › cp35_numbering-per-period.spec.ts:6:7 › numbering per period › numbering per period
+[1A[2K[126/180] [chromium] › cp35_numbering-per-period.spec.ts:77:7 › numbering per period › numbering per period scenario 1
+[1A[2K[127/180] [chromium] › cp35_numbering-per-period.spec.ts:381:7 › numbering per period › numbering per period scenario 2
+[1A[2K[128/180] [chromium] › cp35_numbering-per-period.spec.ts:652:7 › numbering per period › numbering per period scenario 3
+[1A[2K[129/180] [chromium] › cp36_approvals.spec.ts:6:7 › approvals › approvals
+[1A[2K[130/180] [chromium] › cp36_approvals.spec.ts:99:7 › approvals › approvals scenario 1
+[1A[2K[131/180] [chromium] › cp36_approvals.spec.ts:248:7 › approvals › approvals scenario 2
+[1A[2K[132/180] [chromium] › cp36_approvals.spec.ts:534:7 › approvals › approvals scenario 3
+[1A[2K[133/180] [chromium] › cp37_reassign-claim.spec.ts:6:7 › reassign claim › reassign claim
+[1A[2K[134/180] [chromium] › cp37_reassign-claim.spec.ts:76:7 › reassign claim › reassign claim scenario 1
+[1A[2K[135/180] [chromium] › cp37_reassign-claim.spec.ts:287:7 › reassign claim › reassign claim scenario 2
+[1A[2K[136/180] [chromium] › cp37_reassign-claim.spec.ts:508:7 › reassign claim › reassign claim scenario 3
+[1A[2K[137/180] [chromium] › cp38_terms-per-grade.spec.ts:6:7 › terms per grade › terms per grade
+[1A[2K[138/180] [chromium] › cp38_terms-per-grade.spec.ts:61:7 › terms per grade › terms per grade scenario 1
+[1A[2K[139/180] [chromium] › cp38_terms-per-grade.spec.ts:282:7 › terms per grade › terms per grade scenario 2
+[1A[2K[140/180] [chromium] › cp38_terms-per-grade.spec.ts:535:7 › terms per grade › terms per grade scenario 3
+[1A[2K[141/180] [chromium] › cp39_claim-log.spec.ts:6:7 › claim log › claim log
+[1A[2K[142/180] [chromium] › cp39_claim-log.spec.ts:31:7 › claim log › claim log scenario 1
+[1A[2K[143/180] [chromium] › cp39_claim-log.spec.ts:326:7 › claim log › claim log scenario 2
+[1A[2K[144/180] [chromium] › cp39_claim-log.spec.ts:515:7 › claim log › claim log scenario 3
+[1A[2K[145/180] [chromium] › cp40_hold-interval.spec.ts:6:7 › hold interval › hold interval
+[1A[2K[146/180] [chromium] › cp40_hold-interval.spec.ts:90:7 › hold interval › hold interval scenario 1
+[1A[2K[147/180] [chromium] › cp40_hold-interval.spec.ts:392:7 › hold interval › hold interval scenario 2
+[1A[2K[148/180] [chromium] › cp40_hold-interval.spec.ts:616:7 › hold interval › hold interval scenario 3
+[1A[2K[149/180] [chromium] › cp41_header-counters.spec.ts:6:7 › header counters › header counters
+[1A[2K[150/180] [chromium] › cp41_header-counters.spec.ts:108:7 › header counters › header counters scenario 1
+[1A[2K[151/180] [chromium] › cp41_header-counters.spec.ts:363:7 › header counters › header counters scenario 2
+[1A[2K[152/180] [chromium] › cp41_header-counters.spec.ts:633:7 › header counters › header counters scenario 3
+[1A[2K[153/180] [chromium] › cp42_rate-end-dates.spec.ts:6:7 › rate end dates › rate end dates
+[1A[2K[154/180] [chromium] › cp42_rate-end-dates.spec.ts:81:7 › rate end dates › rate end dates scenario 1
+[1A[2K[155/180] [chromium] › cp42_rate-end-dates.spec.ts:337:7 › rate end dates › rate end dates scenario 2
+[1A[2K[156/180] [chromium] › cp42_rate-end-dates.spec.ts:644:7 › rate end dates › rate end dates scenario 3
+[1A[2K[157/180] [chromium] › cp43_cap.spec.ts:6:7 › cap › cap
+[1A[2K[158/180] [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1
+[1A[2K[159/180] [chromium] › cp43_cap.spec.ts:324:7 › cap › cap scenario 2
+[1A[2K  4) [chromium] › cp43_cap.spec.ts:324:7 › cap › cap scenario 2 ────────────────────────────────────
+
+    Error: the sheet is back on screen after a reload
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:121
+
+      119 |   if (showRetiredWas !== null && (await retired.isChecked()) !== showRetiredWas) await retired.setChecked(showRetiredWas);
+      120 |   if (asofWas !== '' && (await shown(page.getByTestId('sheet-asof'))) !== asofWas) await setAsOf(page, asofWas);
+    > 121 |   await expect.poll(async () => {
+          |   ^
+      122 |     for (const [id, n] of before) {
+      123 |       const r = row(page, id);
+      124 |       if ((await r.count()) === 0 || (await claimRows(r).count()) < n) return false;
+
+        at Object.refresh (/home/daniel/ui-work/202610192149/just-solve-chain1/e2e/support/ui.ts:121:3)
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp43_cap.spec.ts:422:5
+
+
+[1A[2K[160/180] [chromium] › cp43_cap.spec.ts:612:7 › cap › cap scenario 3
+[1A[2K[161/180] [chromium] › cp44_rollup-overdue.spec.ts:6:7 › rollup overdue › rollup overdue
+[1A[2K[162/180] [chromium] › cp44_rollup-overdue.spec.ts:73:7 › rollup overdue › rollup overdue scenario 1
+[1A[2K[163/180] [chromium] › cp44_rollup-overdue.spec.ts:268:7 › rollup overdue › rollup overdue scenario 2
+[1A[2K[164/180] [chromium] › cp44_rollup-overdue.spec.ts:539:7 › rollup overdue › rollup overdue scenario 3
+[1A[2K[165/180] [chromium] › cp45_bulk-settle.spec.ts:6:7 › bulk settle › bulk settle
+[1A[2K[166/180] [chromium] › cp45_bulk-settle.spec.ts:104:7 › bulk settle › bulk settle scenario 1
+[1A[2K[167/180] [chromium] › cp45_bulk-settle.spec.ts:373:7 › bulk settle › bulk settle scenario 2
+[1A[2K[168/180] [chromium] › cp45_bulk-settle.spec.ts:546:7 › bulk settle › bulk settle scenario 3
+[1A[2K[169/180] [chromium] › cp46_re-settle.spec.ts:6:7 › re settle › re settle
+[1A[2K[170/180] [chromium] › cp46_re-settle.spec.ts:106:7 › re settle › re settle scenario 1
+[1A[2K[171/180] [chromium] › cp46_re-settle.spec.ts:383:7 › re settle › re settle scenario 2
+[1A[2K[172/180] [chromium] › cp46_re-settle.spec.ts:671:7 › re settle › re settle scenario 3
+[1A[2K[173/180] [chromium] › cp47_person-period-figures.spec.ts:6:7 › person period figures › person period figures
+[1A[2K[174/180] [chromium] › cp47_person-period-figures.spec.ts:122:7 › person period figures › person period figures scenario 1
+[1A[2K[175/180] [chromium] › cp47_person-period-figures.spec.ts:461:7 › person period figures › person period figures scenario 2
+[1A[2K[176/180] [chromium] › cp47_person-period-figures.spec.ts:725:7 › person period figures › person period figures scenario 3
+[1A[2K[177/180] [chromium] › cp48_dated-settings.spec.ts:6:7 › dated settings › dated settings
+[1A[2K[178/180] [chromium] › cp48_dated-settings.spec.ts:132:7 › dated settings › dated settings scenario 1
+[1A[2K[179/180] [chromium] › cp48_dated-settings.spec.ts:426:7 › dated settings › dated settings scenario 2
+[1A[2K[180/180] [chromium] › cp48_dated-settings.spec.ts:709:7 › dated settings › dated settings scenario 3
+[1A[2K  5) [chromium] › cp48_dated-settings.spec.ts:709:7 › dated settings › dated settings scenario 3 ───
+
+    Error: the sheet is back on screen after a reload
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:121
+
+      119 |   if (showRetiredWas !== null && (await retired.isChecked()) !== showRetiredWas) await retired.setChecked(showRetiredWas);
+      120 |   if (asofWas !== '' && (await shown(page.getByTestId('sheet-asof'))) !== asofWas) await setAsOf(page, asofWas);
+    > 121 |   await expect.poll(async () => {
+          |   ^
+      122 |     for (const [id, n] of before) {
+      123 |       const r = row(page, id);
+      124 |       if ((await r.count()) === 0 || (await claimRows(r).count()) < n) return false;
+
+        at Object.refresh (/home/daniel/ui-work/202610192149/just-solve-chain1/e2e/support/ui.ts:121:3)
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp48_dated-settings.spec.ts:761:5
+
+
+[1A[2K  Slow test file: [chromium] › cp48_dated-settings.spec.ts (31.6s)
+  Slow test file: [chromium] › cp27_patrons-and-backing.spec.ts (29.9s)
+  Slow test file: [chromium] › cp22_hold.spec.ts (28.8s)
+  Slow test file: [chromium] › cp47_person-period-figures.spec.ts (27.4s)
+  Slow test file: [chromium] › cp46_re-settle.spec.ts (27.0s)
+  Consider splitting slow test files to speed up parallel execution
+  5 failed
+    [chromium] › cp21_retire.spec.ts:369:7 › retire › retire scenario 3 ────────────────────────────
+    [chromium] › cp22_hold.spec.ts:397:7 › hold › hold scenario 3 ──────────────────────────────────
+    [chromium] › cp26_late-charge.spec.ts:283:7 › late charge › late charge scenario 2 ─────────────
+    [chromium] › cp43_cap.spec.ts:324:7 › cap › cap scenario 2 ─────────────────────────────────────
+    [chromium] › cp48_dated-settings.spec.ts:709:7 › dated settings › dated settings scenario 3 ────
+  175 passed (17.5m)
