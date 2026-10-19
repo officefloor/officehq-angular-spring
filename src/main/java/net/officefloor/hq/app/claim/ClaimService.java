@@ -10,6 +10,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.rollup.RollupService.Snapshot;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,15 +25,17 @@ public class ClaimService {
     private final RollupService rollup;
     private final SheetService sheets;
     private final PeriodService periods;
+    private final SettingService settings;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
-            PeriodService periods, Audit audit) {
+            PeriodService periods, SettingService settings, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rollup = rollup;
         this.sheets = sheets;
         this.periods = periods;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -83,7 +86,7 @@ public class ClaimService {
     }
 
     /** Move a claim to another status; a change its status does not allow, or of a claim dated in a closed
-     * period, is refused. */
+     * period, is refused; so is a settle by a clerk of a claim whose due is above the clerk limit. */
     @Transactional
     public Claim changeStatus(String user, String sheetId, Long id, ClaimStatus next) {
         sheets.today(sheetId); // the sheet must exist
@@ -102,6 +105,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it.");
         }
         Person person = requirePerson(sheetId, claim.getPersonId());
+        // A clerk settles only a claim whose due is within the sheet's clerk limit.
+        if (next == ClaimStatus.SETTLED) {
+            settings.requireMaySettle(sheetId, user, figureOf(claim, person.getGrade()));
+        }
         Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {

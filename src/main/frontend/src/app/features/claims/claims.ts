@@ -167,6 +167,8 @@ export class Claims {
           message:
             e.status === 403
               ? 'You opened that claim, so someone else must settle it.'
+              : e.status === 422
+              ? 'That claim\'s due is above the clerk limit, so only a steward can settle it.'
               : e.status === 423
               ? 'That claim is dated in a closed period.'
               : e.status === 409

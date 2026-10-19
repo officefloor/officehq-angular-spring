@@ -1,0 +1,13 @@
+package net.officefloor.hq.app.setting;
+
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface SheetRoleRepository extends JpaRepository<SheetRole, Long> {
+
+    /** The roles given on the sheet, in the order they were first given. */
+    List<SheetRole> findBySheetIdOrderById(String sheetId);
+
+    Optional<SheetRole> findBySheetIdAndUser(String sheetId, String user);
+}
