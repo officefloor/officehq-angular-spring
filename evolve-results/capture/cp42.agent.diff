@@ -1,0 +1,391 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 34625b1d..82da4a91 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -138,12 +138,6 @@ function timesPct(pct: string, times: number): string {
+   return `${hundredths / 100n}.${String(hundredths % 100n).padStart(2, '0')}`;
+ }
+ 
+-/** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a
+- * statement while not PENDING. */
+-export function keepsFigure(claim: Claim): boolean {
+-  return claim.due !== null || (bound(claim) && claim.statedDue !== null);
+-}
+-
+ /** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
+ export function isOverdue(claim: Claim, today: string | null): boolean {
+   return isOpen(claim) && today !== null && claim.dueBy < today;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 158555c8..41e7f90a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -15,7 +15,6 @@ import {
+   counts,
+   isOpen,
+   isOverdue,
+-  keepsFigure,
+   roundsBy,
+   sumAmounts,
+ } from '../claims/claims-api';
+@@ -445,14 +444,14 @@ export class People {
+ 
+   /** The sum of the dues of the claims the person has that count (n/a ones skipped), 0.00 with none. A
+    * person shows n/a when neither the grade they have on the sheet's today nor one they had on the date of a
+-   * claim that counts has a rate in force on the sheet's today, unless a settled or stated claim keeps a
+-   * figure. */
++   * claim that counts has a rate in force on the sheet's today, unless a claim that counts has a figure
++   * (kept by a settlement or statement, or at a rate that applies on its date). */
+   protected personDueTotal(person: Person): string {
+     const counted = this.claimsOf(person.id).filter((c) => this.countsLive(c));
+-    const frozen = counted.some(keepsFigure);
++    const dues = counted.map((c) => this.claimDue(c, person)).filter((d) => d !== NO_RATE);
+     const grades = [this.gradeToday(person), ...counted.map((c) => gradeOn(person.grades, c.date))];
+-    if (!grades.some((g) => g !== undefined && this.rateByGrade().has(g)) && !frozen) return NO_RATE;
+-    return sumAmounts(counted.map((c) => this.claimDue(c, person)).filter((d) => d !== NO_RATE));
++    if (!grades.some((g) => g !== undefined && this.rateByGrade().has(g)) && dues.length === 0) return NO_RATE;
++    return sumAmounts(dues);
+   }
+ 
+   /** The person's claims that count and are overdue. */
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index f816de51..9fde44a0 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -8,13 +8,16 @@ export interface Rate {
+   grade: Grade;
+   /** The date (yyyy-mm-dd) the rate is in force from; null for from the beginning of time. */
+   from: string | null;
++  /** The date (yyyy-mm-dd) the rate applies through; null for no end. */
++  to: string | null;
+   /** A percent with two decimals, e.g. "12.50". */
+   rate: string;
+ }
+ 
+ /**
+  * The rate a grade has in force on a date (yyyy-mm-dd): the one with the latest from-date on or
+- * before it; none when the date is before every rate of the grade.
++ * before it, provided the date is not after its to-date; none when the date is before every rate of
++ * the grade, or after the to-date of that one.
+  */
+ export function rateOn(rates: readonly Rate[], grade: Grade, date: string): string | undefined {
+   // No from-date sorts as '', before every date.
+@@ -23,7 +26,7 @@ export function rateOn(rates: readonly Rate[], grade: Grade, date: string): stri
+     const from = r.from ?? '';
+     if (r.grade === grade && from <= date && (!best || from > (best.from ?? ''))) best = r;
+   }
+-  return best?.rate;
++  return best && (best.to === null || date <= best.to) ? best.rate : undefined;
+ }
+ 
+ /** Shown in place of a due whose grade has no rate. */
+@@ -76,8 +79,8 @@ export class RatesApi {
+     return this.http.get<Rate[]>(this.url(sheetId), { headers: this.headers() });
+   }
+ 
+-  set(sheetId: string, grade: Grade, rate: string, from: string | null): Observable<Rate> {
+-    return this.http.put<Rate>(`${this.url(sheetId)}/${grade}`, { rate, from }, { headers: this.headers() });
++  set(sheetId: string, grade: Grade, rate: string, from: string | null, to: string | null): Observable<Rate> {
++    return this.http.put<Rate>(`${this.url(sheetId)}/${grade}`, { rate, from, to }, { headers: this.headers() });
+   }
+ 
+   private url(sheetId: string): string {
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index d7ee67ae..9008619b 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -12,6 +12,7 @@ interface RateRow {
+   key: string;
+   grade: Grade;
+   from: string | null;
++  to: string | null;
+   rate: string | undefined;
+ }
+ 
+@@ -34,6 +35,8 @@ interface RateRow {
+         <input id="rate-form-pct" data-testid="rate-form-pct" inputmode="decimal" formControlName="pct" />
+         <label for="rate-form-from">From (optional)</label>
+         <input id="rate-form-from" data-testid="rate-form-from" type="date" formControlName="from" />
++        <label for="rate-form-to">To (optional)</label>
++        <input id="rate-form-to" data-testid="rate-form-to" type="date" formControlName="to" />
+         <button type="submit" data-testid="rate-form-submit">Set rate</button>
+       </form>
+       @if (formError(); as e) {
+@@ -61,6 +64,7 @@ interface RateRow {
+           <tr>
+             <th scope="col">Grade</th>
+             <th scope="col">From</th>
++            <th scope="col">To</th>
+             <th scope="col">Rate (%)</th>
+           </tr>
+         </thead>
+@@ -69,6 +73,7 @@ interface RateRow {
+             <tr [attr.data-testid]="'rate-row-' + r.key">
+               <td data-testid="rate-grade">{{ r.grade }}</td>
+               <td data-testid="rate-from">{{ r.from ?? 'Start' }}</td>
++              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
+               <td data-testid="rate-pct">
+                 @if (saving() === r.key) {
+                   Saving…
+@@ -103,9 +108,9 @@ export class Rates {
+       const dated = own
+         .filter((r) => r.from !== null)
+         .sort((a, b) => (a.from! < b.from! ? -1 : 1))
+-        .map((r) => ({ key: rowKey(grade, r.from), grade, from: r.from, rate: r.rate }));
++        .map((r) => ({ key: rowKey(grade, r.from), grade, from: r.from, to: r.to, rate: r.rate }));
+       const start = own.find((r) => r.from === null);
+-      return [{ key: rowKey(grade, null), grade, from: null, rate: start?.rate }, ...dated];
++      return [{ key: rowKey(grade, null), grade, from: null, to: start?.to ?? null, rate: start?.rate }, ...dated];
+     }),
+   );
+   /** The row whose rate is being saved, shown as such until the store has it. */
+@@ -115,6 +120,7 @@ export class Rates {
+     grade: new FormControl<Grade>('A', { nonNullable: true }),
+     pct: new FormControl('', { nonNullable: true }),
+     from: new FormControl('', { nonNullable: true }),
++    to: new FormControl('', { nonNullable: true }),
+   });
+ 
+   constructor() {
+@@ -129,7 +135,7 @@ export class Rates {
+       this.formError.set('Load a sheet first.');
+       return;
+     }
+-    const { grade, pct, from: fromValue } = this.form.getRawValue();
++    const { grade, pct, from: fromValue, to: toValue } = this.form.getRawValue();
+     const rate = pct.trim();
+     if (!PCT.test(rate)) {
+       this.formError.set('Type a rate of 0.00 or more, with up to two decimals.');
+@@ -140,12 +146,23 @@ export class Rates {
+       this.formError.set('Pick a from-date, or leave it empty for from the start.');
+       return;
+     }
++    const to = toValue.trim() || null;
++    if (to !== null && !DATE.test(to)) {
++      this.formError.set('Pick a to-date, or leave it empty for no end.');
++      return;
++    }
++    if (to !== null && from !== null && to < from) {
++      // The refused to-date is cleared, so it is picked again rather than carried into the next rate.
++      this.form.controls.to.setValue('', { emitEvent: false });
++      this.formError.set('The to-date cannot be before the from-date.');
++      return;
++    }
+     this.saving.set(rowKey(grade, from));
+-    this.api.set(sheetId, grade, rate, from).subscribe({
++    this.api.set(sheetId, grade, rate, from, to).subscribe({
+       next: (r) => {
+         this.saving.set(null);
+         if (this.session.sheetId() === sheetId) this.saved.emit(r);
+-        this.form.reset({ grade, pct: '', from: '' }, { emitEvent: false });
++        this.form.reset({ grade, pct: '', from: '', to: '' }, { emitEvent: false });
+       },
+       error: () => {
+         this.saving.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index ee4aa75a..f9d64a32 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -13,7 +13,7 @@ import java.util.Comparator;
+ import java.util.Optional;
+ 
+ /** A rate for a grade on a sheet: a percent with two decimals, in force from its from-date (or from the
+- * beginning of time when it has none). */
++ * beginning of time when it has none), and applying through its to-date when it has one. */
+ @Entity
+ @Table(name = "rate")
+ public class Rate {
+@@ -35,24 +35,29 @@ public class Rate {
+     @Column(name = "from_date")
+     private LocalDate from;
+ 
++    @Column(name = "to_date")
++    private LocalDate to;
++
+     @Column(name = "rate", nullable = false, precision = 5, scale = 2)
+     private BigDecimal rate;
+ 
+     protected Rate() {}
+ 
+-    public Rate(String sheetId, String grade, LocalDate from, BigDecimal rate) {
++    public Rate(String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal rate) {
+         this.sheetId = sheetId;
+         this.grade = grade;
+         this.from = from;
++        this.to = to;
+         this.rate = rate;
+     }
+ 
+-    /** Of a grade's rates, the one in force on a date: the latest from-date on or before it; none when the
+-     * date is before every one. */
++    /** Of a grade's rates, the one in force on a date: the latest from-date on or before it, provided the date
++     * is not after its to-date; none when the date is before every one, or after the to-date of that one. */
+     public static Optional<Rate> inForce(Collection<Rate> rates, LocalDate date) {
+         return rates.stream()
+                 .filter(r -> r.getFrom() == null || !r.getFrom().isAfter(date))
+-                .max(BY_FROM);
++                .max(BY_FROM)
++                .filter(r -> r.getTo() == null || !date.isAfter(r.getTo()));
+     }
+ 
+     public Long getId() {
+@@ -71,6 +76,14 @@ public class Rate {
+         return from;
+     }
+ 
++    public LocalDate getTo() {
++        return to;
++    }
++
++    public void setTo(LocalDate to) {
++        this.to = to;
++    }
++
+     public BigDecimal getRate() {
+         return rate;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 994fa7cb..6948b87d 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -20,14 +20,16 @@ import org.springframework.web.bind.annotation.RestController;
+ public class RateController {
+ 
+     /** The rate is a percent, 0.00 or more, with up to two decimals; no from-date means from the beginning
+-     * of time. */
+-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String rate, LocalDate from) {}
++     * of time, no to-date with no end. */
++    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String rate, LocalDate from,
++            LocalDate to) {}
+ 
+     /** The rate is shown with two decimals. */
+-    public record RateView(String grade, LocalDate from, String rate) {
++    public record RateView(String grade, LocalDate from, LocalDate to, String rate) {
+ 
+         static RateView of(Rate rate) {
+-            return new RateView(rate.getGrade(), rate.getFrom(), rate.getRate().setScale(2).toPlainString());
++            return new RateView(rate.getGrade(), rate.getFrom(), rate.getTo(),
++                    rate.getRate().setScale(2).toPlainString());
+         }
+     }
+ 
+@@ -45,6 +47,6 @@ public class RateController {
+     @PutMapping("/{grade:[ABC]}")
+     public RateView set(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+             @PathVariable String grade, @Valid @RequestBody RateForm form) {
+-        return RateView.of(service.set(user, sheetId, grade, form.from(), new BigDecimal(form.rate())));
++        return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), new BigDecimal(form.rate())));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 0a62ca67..052b912e 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -8,8 +8,10 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.rollup.RollupService.Snapshot;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ @Service
+ public class RateService {
+@@ -35,22 +37,27 @@ public class RateService {
+                 .toList();
+     }
+ 
+-    /** Set the rate for a grade from a from-date (none: from the beginning of time), replacing any it had
+-     * from that date. */
++    /** Set the rate for a grade from a from-date (none: from the beginning of time) through a to-date (none: with
++     * no end), replacing any it had from that date. A to-date before the from-date is refused. */
+     @Transactional
+-    public Rate set(String user, String sheetId, String grade, LocalDate from, BigDecimal pct) {
++    public Rate set(String user, String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
+         sheets.today(sheetId); // the sheet must exist
++        if (to != null && from != null && to.isBefore(from)) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The to-date is before the from-date");
++        }
+         BigDecimal value = pct.setScale(2);
+         Snapshot before = rollup.snapshot(sheetId);
+         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
+         if (rate == null) {
+-            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, value));
++            rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, value));
+         } else {
+             rate.setRate(value);
++            rate.setTo(to);
+             rates.flush();
+         }
+         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade
+-                + " rate=" + value.toPlainString() + (from != null ? " from=" + from : ""));
++                + " rate=" + value.toPlainString() + (from != null ? " from=" + from : "")
++                + (to != null ? " to=" + to : ""));
+         rollup.recordChanges(user, sheetId, before);
+         return rate;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 89b846ad..b4e4bc9d 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -100,14 +100,15 @@ public class RollupService {
+             boolean frozen = false;
+             for (Claim claim : counted) {
+                 claimed = claimed.add(claim.getAmount().setScale(2));
+-                frozen |= keepsFigure(claim);
+                 BigDecimal figure = dueOf(claim, ratesOn(person, claim.getDate(), byGrade), floor, late,
+                         roundsBy(claim, datesByNumber));
++                frozen |= figure != null;
+                 if (figure != null) {
+                     due = due.add(figure.setScale(2));
+                 }
+             }
+-            // Like the screen: with no rate in force today and no claim keeping a figure, the due-total is n/a.
++            // Like the screen: with no rate in force today and no claim having a figure (kept, or at a rate that
++            // applies on its date), the due-total is n/a.
+             boolean rated = rated(person, counted, today, byGrade);
+             String personDue = rated || frozen ? due.toPlainString() : NO_RATE;
+             claimedTotal = claimedTotal.add(claimed);
+@@ -300,12 +301,6 @@ public class RollupService {
+         return sheets.findById(sheetId).map(s -> s.getFloor()).orElse(new BigDecimal("1.00"));
+     }
+ 
+-    /** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a
+-     * statement while not PENDING. */
+-    public static boolean keepsFigure(Claim claim) {
+-        return claim.getSettledDue() != null || (bound(claim) && claim.getStatedDue() != null);
+-    }
+-
+     /** Whether a claim goes by the figure its person's last statement bound it to: a PENDING claim is not bound,
+      * but shows its live figure, and is bound again if it is rejected. */
+     private static boolean bound(Claim claim) {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index ea9d3a8d..30555377 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -77,14 +77,14 @@ public class StatementService {
+             }
+             BigDecimal figure = claimService.figureOf(claim, person);
+             BigDecimal due = rollup.dueOf(claim, person);
+-            fixed |= RollupService.keepsFigure(claim);
++            fixed |= due != null;
+             claim.bind(figure);
+             counted.add(claim);
+             if (due != null) {
+                 total = total.add(due);
+             }
+         }
+-        // Like the screen: with no rate in force today and no claim keeping a figure, the due-total is n/a.
++        // Like the screen: with no rate in force today and no claim having a figure, the due-total is n/a.
+         boolean rated = rollup.rated(person, counted, today);
+         BigDecimal dueTotal = rated || fixed ? total : null;
+         claims.flush();
+diff --git a/src/main/resources/db/migration/V33__rate_to.sql b/src/main/resources/db/migration/V33__rate_to.sql
+new file mode 100644
+index 00000000..48163b32
+--- /dev/null
++++ b/src/main/resources/db/migration/V33__rate_to.sql
+@@ -0,0 +1,3 @@
++-- A rate can carry a to-date: it applies through that date, and not after it.
++ALTER TABLE rate ADD COLUMN to_date DATE;
++ALTER TABLE rate ADD CONSTRAINT rate_to_not_before_from CHECK (to_date IS NULL OR from_date IS NULL OR to_date >= from_date);
