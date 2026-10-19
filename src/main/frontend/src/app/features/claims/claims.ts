@@ -129,8 +129,9 @@ export class Claims {
     });
   }
 
+  /** A settled claim shows the due it was settled at; any other is due at the rate its grade has now. */
   protected due(claim: Claim): string {
-    return dueOf(claim.amount, this.rate());
+    return claim.due ?? dueOf(claim.amount, this.rate());
   }
 
   protected changeStatus(claim: Claim, action: ClaimAction): void {

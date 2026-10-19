@@ -43,6 +43,10 @@ public class Claim {
     @Column(name = "claim_number")
     private Integer number;
 
+    /** What was due on the claim when it was settled; none until then, or if its grade had no rate. */
+    @Column(name = "settled_due", precision = 12, scale = 2)
+    private BigDecimal settledDue;
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
@@ -103,5 +107,13 @@ public class Claim {
 
     public void setNumber(Integer number) {
         this.number = number;
+    }
+
+    public BigDecimal getSettledDue() {
+        return settledDue;
+    }
+
+    public void setSettledDue(BigDecimal settledDue) {
+        this.settledDue = settledDue;
     }
 }

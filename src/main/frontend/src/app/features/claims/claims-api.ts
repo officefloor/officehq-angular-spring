@@ -14,6 +14,9 @@ export interface Claim {
   status: ClaimStatus;
   /** The sheet's number for the claim, given when it is opened; null while a draft or once voided. */
   number: number | null;
+  /** What was due when the claim was settled, with two decimals; null while it is live (not settled, or
+   * settled when its grade had no rate). */
+  due: string | null;
 }
 
 /** A claim starts as DRAFT, is opened and then settled; a DRAFT or OPEN claim can be voided. */

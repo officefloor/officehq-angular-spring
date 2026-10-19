@@ -1,12 +1,15 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,12 +21,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -72,12 +78,18 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        Person person = requirePerson(sheetId, claim.getPersonId());
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
         }
         // A voided claim's line carries the number it had.
-        String entry = entry(EVENTS.get(next), user, requirePerson(sheetId, claim.getPersonId()), claim);
+        String entry = entry(EVENTS.get(next), user, person, claim);
+        if (next == ClaimStatus.SETTLED) {
+            // Settling fixes the due at the rate its grade has now; with no rate it stays live.
+            claim.setSettledDue(dueOf(claim.getAmount(), sheetId, person.getGrade()));
+            entry += " due=" + (claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : "n/a");
+        }
         if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
@@ -90,6 +102,14 @@ public class ClaimService {
             ClaimStatus.OPEN, "CLAIM_OPENED",
             ClaimStatus.SETTLED, "CLAIM_SETTLED",
             ClaimStatus.VOID, "CLAIM_VOIDED");
+
+    /** What is due on an amount at a grade's rate, rounded half up to two decimals; none when the grade has
+     * no rate. */
+    private BigDecimal dueOf(BigDecimal amount, String sheetId, String grade) {
+        return rates.findById(new Rate.Key(sheetId, grade))
+                .map(r -> amount.multiply(r.getRate()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                .orElse(null);
+    }
 
     private Person requirePerson(String sheetId, Long personId) {
         return people.findByIdAndSheetId(personId, sheetId)
