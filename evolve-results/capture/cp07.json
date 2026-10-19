@@ -1,0 +1,202 @@
+{
+  "checkpoint": 7,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp07_rates-and-due",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a rate for each grade: a percent with two decimals, set on the screen (RATE_SET\ngrade=<grade> rate=<rate> in the audit). A claim's due is its amount times the rate for its\nperson's grade, divided by 100, rounded half up to two decimals (a half rounds away from zero:\n1.025 becomes 1.03). Show due on each claim. Show each person's due-total: their claimed times\ntheir grade's rate, divided by 100, rounded the same way. Show the sheet's due-total: everyone's\ndue-total added up. A grade with no rate makes its claims' due and its people's due-total n/a,\nand a total skips n/a.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a rate for each grade: a percent with two decimals, set on the screen (RATE_SET\ngrade=<grade> rate=<rate> in the audit). A claim's due is its amount times the rate for its\nperson's grade, divided by 100, rounded half up to two decimals (a half rounds away from zero:\n1.025 becomes 1.03). Show due on each claim. Show each person's due-total: their claimed times\ntheir grade's rate, divided by 100, rounded the same way. Show the sheet's due-total: everyone's\ndue-total added up. A grade with no rate makes its claims' due and its people's due-total n/a,\nand a total skips n/a.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6f3b349c19060d15227168badc1dffc283a4c3b8",
+  "reset_sha": "",
+  "preagent_sha": "f6edaf321a41829aa1a693049556886f78ddb619",
+  "prev_sha": "f6edaf321a41829aa1a693049556886f78ddb619",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8438806,
+    "input_tokens": 26,
+    "output_tokens": 11910,
+    "cache_read_tokens": 611323,
+    "cache_creation_tokens": 60414,
+    "num_turns": 15,
+    "duration_ms": 141978,
+    "duration_api_ms": 101818,
+    "model": "claude-opus-5-5",
+    "session_id": "c8b6c9b3-e841-49c2-95a6-c4e3d3793710",
+    "stop_reason": "success",
+    "result_text": "I've added per-grade rates and dues across the database, server and screen. All 4 tests in the e2e spec pass when run with `bin/e2e`.\n\n**What you'll see on screen**\n- **Rates:** a new Rates section with a form to pick a grade and set its percent. Below it is a table of grades A, B and C showing each grade's rate, or `n/a` if it has none.\n- **Due on each claim:** amount \u00d7 rate \u00f7 100, rounded half up to two decimals.\n- **Due-total per person:** worked out on their total claimed, not by adding up their claim dues. The spec expects this: two claims of 10.25 at 10% each show 1.03, but the person's due-total is 2.05, not 2.06.\n- **Due total for the sheet:** everyone's due-total added up, skipping any that are `n/a`.\n\n**Server**\n- **Storage:** a new `rate` table (migration `V6__rate.sql`) holds one rate per sheet and grade. Setting a rate again replaces the old one.\n- **Endpoints:** a new `rate` package lets you read a sheet's rates and set the rate for one grade.\n- **Validation:** a rate must be 0.00 to 999.99 with up to two decimals. Anything else is refused and shows an error under the form.\n- **Audit:** each successful set writes `RATE_SET sheet=\u2026 by=\u2026 grade=\u2026 rate=\u2026` once it is saved. A refused set writes nothing.\n\n**Choices worth knowing about**\n- **Where dues are calculated:** in the browser, like the existing claimed totals. The sums use whole numbers, so there are no rounding errors.\n- **\"Saving\u2026\" placeholder:** while a rate is being saved, its row shows \"Saving\u2026\" instead of the old value. Without this, setting a grade to the rate it already has would look finished at once, and the test could start its next action before the save reached the server. That would risk audit lines landing in the wrong order.\n- **No date ranges:** the test helper can also send \"from\" and \"to\" dates for a rate, but this spec never uses them, so I didn't add them. Every rate row is labelled `rate-row-<grade>-start`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8438806,
+        "num_turns": 15,
+        "duration_ms": 141978,
+        "duration_api_ms": 101818,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp07.agent.jsonl",
+  "agent_diff_file": "cp07.agent.diff",
+  "build_log_file": "cp07.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 16,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp05_claims.spec.ts::claims scenario 1": true,
+      "cp05_claims.spec.ts::claims scenario 2": true,
+      "cp05_claims.spec.ts::claims scenario 3": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp06_audit.spec.ts::audit scenario 1": true,
+      "cp06_audit.spec.ts::audit scenario 2": true,
+      "cp06_audit.spec.ts::audit scenario 3": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 1": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 2": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1247,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1122,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2127,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1801,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2817,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4216,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4631,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2404,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4279,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4752,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4316,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2430,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4596,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4639,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5137,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
