@@ -34,15 +34,27 @@ export function isCorrection(claim: Claim): boolean {
   return claim.amount.startsWith('-');
 }
 
-/** A claim starts as DRAFT, is opened and then settled; a DRAFT or OPEN claim can be voided. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/** A claim starts as DRAFT, is opened and then settled; one a clerk settles above the clerk limit is PENDING
+ * until a steward approves it (SETTLED) or rejects it (OPEN again). A DRAFT, OPEN or PENDING claim can be voided. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
-/** The status changes a person can ask for on a claim. */
-export type ClaimAction = 'open' | 'settle' | 'void';
+/** The status changes a person can ask for on a claim; a rejection also needs a reason. */
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'void';
 
-/** Only OPEN and SETTLED claims count toward what is claimed and due. */
+/** Whether a claim is still open: OPEN, or PENDING a steward. */
+export function isOpen(claim: Claim): boolean {
+  return claim.status === 'OPEN' || claim.status === 'PENDING';
+}
+
+/** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due. */
 export function counts(claim: Claim): boolean {
-  return claim.status === 'OPEN' || claim.status === 'SETTLED';
+  return isOpen(claim) || claim.status === 'SETTLED';
+}
+
+/** Whether a claim goes by the figure its person's last statement bound it to: a PENDING claim is not bound, but
+ * shows its live figure. */
+function bound(claim: Claim): boolean {
+  return claim.stated && claim.status !== 'PENDING';
 }
 
 /** What a claim's late charge goes by: the sheet's today, its terms and its late percent; and the policy date
@@ -72,7 +84,7 @@ function roundsHalfUp(date: string, late: Lateness): boolean {
 const LATE_PERIOD_DAYS = 30;
 
 /** A settled claim's due is the figure it was settled at (its late charge frozen in); a claim bound by its
- * person's last statement has the figure it was bound to; any other has the figure due at the rate `grade`, the
+ * person's last statement (and not PENDING) has the figure it was bound to; any other has the figure due at the rate `grade`, the
  * one its person has on the claim's date, has now in force on that date, and at least the sheet's floor (n/a
  * when there is no rate). An overdue claim's due adds its late charge to its figure. Live figures round by the
  * date `roundsBy` (see {@link roundsBy}). */
@@ -86,7 +98,7 @@ export function claimDue(
 ): string {
   if (claim.due !== null) return claim.due;
   const halfUp = roundsHalfUp(roundsBy, late);
-  const figure = claim.stated
+  const figure = bound(claim)
     ? (claim.statedDue ?? NO_RATE)
     : correctionFloored(claim, dueOf(claim.amount, grade && rateOn(rates, grade, claim.date), halfUp), floor);
   if (figure === NO_RATE) return figure;
@@ -115,9 +127,9 @@ function timesPct(pct: string, times: number): string {
 }
 
 /** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a
- * statement. */
+ * statement while not PENDING. */
 export function keepsFigure(claim: Claim): boolean {
-  return claim.due !== null || claim.statedDue !== null;
+  return claim.due !== null || (bound(claim) && claim.statedDue !== null);
 }
 
 /** The date a claim is due by: its date plus the sheet's terms in days (yyyy-mm-dd). */
@@ -126,9 +138,9 @@ export function dueBy(claim: Claim, terms: number): string {
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
-/** Whether a claim is overdue: it is OPEN and its due-by is before the sheet's today. */
+/** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
 export function isOverdue(claim: Claim, terms: number, today: string | null): boolean {
-  return claim.status === 'OPEN' && today !== null && dueBy(claim, terms) < today;
+  return isOpen(claim) && today !== null && dueBy(claim, terms) < today;
 }
 
 export interface ClaimForm {
@@ -174,6 +186,11 @@ export class ClaimsApi {
 
   changeStatus(sheetId: string, id: number, action: ClaimAction): Observable<Claim> {
     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() });
+  }
+
+  /** Reject a PENDING claim with a reason: it is OPEN again. */
+  reject(sheetId: string, id: number, reason: string): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reject`, { reason }, { headers: this.headers() });
   }
 
   /** Open the claims together; each that cannot be opened is refused and left as it is. */

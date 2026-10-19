@@ -97,7 +97,7 @@ public class PersonService {
         return person;
     }
 
-    /** Put the person on hold, or take them off it when held; while held their OPEN claims count in no live
+    /** Put the person on hold, or take them off it when held; while held their OPEN and PENDING claims count in no live
      * total. */
     @Transactional
     public Person toggleHold(String user, String sheetId, Long id) {

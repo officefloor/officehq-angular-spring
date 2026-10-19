@@ -59,7 +59,7 @@ public class StatementService {
 
     /**
      * Take a statement for a person: record their due-total now, late charges included, and bind each of their
-     * claims that counts (a held person's OPEN ones do not) to the figure it has now (never its late charge, which keeps following the sheet's
+     * claims that counts (a held person's OPEN and PENDING ones do not) to the figure it has now (never its late charge, which keeps following the sheet's
      * today); a claim of theirs that does not count is left unbound.
      */
     @Transactional
@@ -97,9 +97,10 @@ public class StatementService {
         return person;
     }
 
-    /** Only OPEN and SETTLED claims count toward what is claimed and due; a held person's OPEN ones do not. */
+    /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; a held person's OPEN and
+     * PENDING ones do not. */
     private static boolean counts(Claim claim, Person person) {
-        return (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld())
+        return (claim.getStatus().isOpen() && !person.isHeld())
                 || claim.getStatus() == ClaimStatus.SETTLED;
     }
 }

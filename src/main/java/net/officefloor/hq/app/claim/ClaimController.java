@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.claim;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -53,6 +54,9 @@ public class ClaimController {
     /** How many of the claims were opened and how many refused, and the opened claims as they are now. */
     public record OpenedAllView(int opened, int refused, List<ClaimView> claims) {}
 
+    /** Why a steward rejects a PENDING claim: one word or more, with no line break. */
+    public record RejectForm(@NotBlank @Size(max = 255) @Pattern(regexp = "[^\\r\\n]*") String reason) {}
+
     private final ClaimService service;
 
     public ClaimController(ClaimService service) {
@@ -94,6 +98,17 @@ public class ClaimController {
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/{id}/approve")
+    public ClaimView approve(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+        return ClaimView.of(service.approve(user, sheetId, id));
+    }
+
+    @PostMapping("/claims/{id}/reject")
+    public ClaimView reject(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
+            @Valid @RequestBody RejectForm form) {
+        return ClaimView.of(service.reject(user, sheetId, id, form.reason()));
     }
 
     @PostMapping("/claims/{id}/void")

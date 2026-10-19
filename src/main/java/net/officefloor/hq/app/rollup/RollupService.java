@@ -119,7 +119,7 @@ public class RollupService {
         return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString());
     }
 
-    /** The due-total of the sheet's claims that count (a held person's OPEN ones do not) dated from and to, inclusive: the sum of their dues,
+    /** The due-total of the sheet's claims that count (a held person's OPEN and PENDING ones do not) dated from and to, inclusive: the sum of their dues,
      * late charges included, n/a ones skipped. */
     public BigDecimal dueTotal(String sheetId, LocalDate from, LocalDate to) {
         BigDecimal floor = floorOf(sheetId);
@@ -172,8 +172,8 @@ public class RollupService {
         }
     }
 
-    /** The figure a claim has now: what it was settled at, else what its person's last statement bound it to,
-     * else what is due at the rate of the grade its person has on its date, raised to the sheet's floor; none
+    /** The figure a claim has now: what it was settled at, else what its person's last statement bound it to
+     * (while not PENDING), else what is due at the rate of the grade its person has on its date, raised to the sheet's floor; none
      * when that is n/a. */
     public BigDecimal figureOf(Claim claim, Person person) {
         return figureOf(claim, gradeRates(claim, person), floorOf(claim.getSheetId()),
@@ -259,12 +259,12 @@ public class RollupService {
     }
 
     /**
-     * The late charge on a claim: the late percent of its figure for every full 30 days it is overdue (OPEN, and
-     * its due-by, its date plus the terms, before the sheet's today), rounded to two decimals as the claim rounds.
+     * The late charge on a claim: the late percent of its figure for every full 30 days it is overdue (OPEN or
+     * PENDING, and its due-by, its date plus the terms, before the sheet's today), rounded to two decimals as the claim rounds.
      * A statement never binds it: it follows the sheet's today. A correction has none.
      */
     private static BigDecimal lateCharge(Claim claim, BigDecimal figure, Lateness late, RoundingMode rounding) {
-        if (claim.getStatus() != ClaimStatus.OPEN || late.today() == null || claim.isCorrection()) {
+        if (!claim.getStatus().isOpen() || late.today() == null || claim.isCorrection()) {
             return BigDecimal.ZERO.setScale(2);
         }
         long overdueDays = ChronoUnit.DAYS.between(claim.getDate().plusDays(late.terms()), late.today());
@@ -277,7 +277,7 @@ public class RollupService {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return claim.isStated() ? claim.getStatedDue() : liveDueOf(claim, gradeRates, floor, rounding);
+        return bound(claim) ? claim.getStatedDue() : liveDueOf(claim, gradeRates, floor, rounding);
     }
 
     /** What is due on a claim at the rate its grade has in force on the claim's date, rounded to two decimals as
@@ -301,14 +301,21 @@ public class RollupService {
     }
 
     /** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a
-     * statement. */
+     * statement while not PENDING. */
     public static boolean keepsFigure(Claim claim) {
-        return claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null);
+        return claim.getSettledDue() != null || (bound(claim) && claim.getStatedDue() != null);
     }
 
-    /** Only OPEN and SETTLED claims count toward what is claimed and due; a held person's OPEN ones do not. */
+    /** Whether a claim goes by the figure its person's last statement bound it to: a PENDING claim is not bound,
+     * but shows its live figure, and is bound again if it is rejected. */
+    private static boolean bound(Claim claim) {
+        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+    }
+
+    /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; a held person's OPEN and
+     * PENDING ones do not. */
     private static boolean counts(Claim claim, Person person) {
-        return (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld())
+        return (claim.getStatus().isOpen() && !person.isHeld())
                 || claim.getStatus() == ClaimStatus.SETTLED;
     }
 }

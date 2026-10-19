@@ -114,6 +114,22 @@ const NUMBER = /^\S{1,255}$/;
                     {{ a.label }}
                   </button>
                 }
+                <label class="visually-hidden" [for]="'claim-reject-reason-' + c.id">Reason to reject</label>
+                <input
+                  [id]="'claim-reject-reason-' + c.id"
+                  data-testid="claim-reject-reason"
+                  placeholder="Reason"
+                  [value]="rejectReasons().get(c.id) ?? ''"
+                  (input)="reasonChange(c.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-reject"
+                  [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date"
+                  (click)="reject(c)"
+                >
+                  Reject
+                </button>
                 @if (claimError()?.id === c.id) {
                   <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
                 }
@@ -160,12 +176,15 @@ export class Claims {
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
+    { action: 'approve', label: 'Approve' },
     { action: 'void', label: 'Void' },
   ];
   protected readonly editingId = signal<number | null>(null);
   /** The error of the last action taken on a claim, shown on that claim's row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly formError = signal<string | null>(null);
+  /** The reason typed to reject each PENDING claim, by id. */
+  protected readonly rejectReasons = signal<ReadonlyMap<number, string>>(new Map());
   /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
   private submitting = false;
   protected readonly form = new FormGroup({
@@ -201,7 +220,7 @@ export class Claims {
     return dueBy(claim, this.terms.value());
   }
 
-  /** Whether the claim is OPEN and its due-by is before the sheet's today. */
+  /** Whether the claim is OPEN or PENDING and its due-by is before the sheet's today. */
   protected overdue(claim: Claim): boolean {
     return isOverdue(claim, this.terms.value(), this.session.today());
   }
@@ -224,9 +243,11 @@ export class Claims {
           id: claim.id,
           message:
             e.status === 403
-              ? 'You opened that claim, so someone else must settle it.'
+              ? `You opened that claim, so someone else must ${action === 'approve' ? 'approve' : 'settle'} it.`
               : e.status === 422
-              ? 'That claim\'s due is above the clerk limit, so only a steward can settle it.'
+              ? 'Only a steward can approve a pending claim.'
+              : e.status === 409 && action === 'approve'
+              ? 'Only a pending claim can be approved.'
               : e.status === 423
               ? 'That claim is dated in a closed period.'
               : e.status === 409
@@ -234,6 +255,49 @@ export class Claims {
               : e.status === 404
                 ? 'That claim is no longer on this sheet.'
                 : 'Could not change that claim\'s status.',
+        }),
+    });
+  }
+
+  protected reasonChange(id: number, reason: string): void {
+    if (this.claimError()?.id === id) this.claimError.set(null);
+    this.rejectReasons.update((m) => new Map(m).set(id, reason));
+  }
+
+  /** Reject a PENDING claim with the reason typed on its row: it is OPEN again. */
+  protected reject(claim: Claim): void {
+    this.claimError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const reason = (this.rejectReasons().get(claim.id) ?? '').trim();
+    if (reason === '') {
+      this.claimError.set({ id: claim.id, message: 'Type a reason to reject that claim.' });
+      return;
+    }
+    this.api.reject(sheetId, claim.id, reason).subscribe({
+      next: (c) => {
+        this.rejectReasons.update((m) => {
+          const next = new Map(m);
+          next.delete(claim.id);
+          return next;
+        });
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 422
+              ? 'Only a steward can reject a pending claim.'
+              : e.status === 423
+              ? 'That claim is dated in a closed period.'
+              : e.status === 409
+              ? 'Only a pending claim can be rejected.'
+              : e.status === 404
+                ? 'That claim is no longer on this sheet.'
+                : e.status === 400
+                  ? 'Type a reason on one line to reject that claim.'
+                  : 'Could not reject that claim.',
         }),
     });
   }

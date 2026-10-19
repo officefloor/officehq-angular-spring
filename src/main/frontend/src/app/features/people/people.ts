@@ -12,6 +12,7 @@ import {
   Lateness,
   claimDue,
   counts,
+  isOpen,
   isOverdue,
   keepsFigure,
   roundsBy,
@@ -30,7 +31,7 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
-// claims, what they have claimed (its OPEN and SETTLED claims, though a held person's OPEN ones count in
+// claims, what they have claimed (its OPEN, PENDING and SETTLED claims, though a held person's OPEN and PENDING ones count in
 // no total) and what is due on it: the sum of those
 // claims' rounded dues; the sheet's
 // claimed-total and due-total add everyone's up (a due-total of n/a is skipped). Each person, and the sheet,
@@ -264,7 +265,7 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  /** The ids of the people on hold, whose OPEN claims count in no total. */
+  /** The ids of the people on hold, whose OPEN and PENDING claims count in no total. */
   private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
   protected readonly claimedTotal = computed(() =>
     sumAmounts(this.claims().filter((c) => this.countsLive(c)).map((c) => c.amount)),
@@ -486,9 +487,10 @@ export class People {
     });
   }
 
-  /** Whether a claim counts in the live totals: it counts, and is not an OPEN claim of a held person. */
+  /** Whether a claim counts in the live totals: it counts, and is not an OPEN or PENDING claim of a held
+   * person. */
   private countsLive(claim: Claim): boolean {
-    return counts(claim) && !(claim.status === 'OPEN' && this.heldIds().has(claim.personId));
+    return counts(claim) && !(isOpen(claim) && this.heldIds().has(claim.personId));
   }
 
   protected rateSaved(rate: Rate): void {

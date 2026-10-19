@@ -211,18 +211,19 @@ public class SettingService {
         return from;
     }
 
-    /** Refuse a settle by a clerk of a claim whose due is above the clerk limit; a due of n/a is within any
-     * limit, and a steward settles anything. */
+    /** Whether a user may settle a claim of this due outright: a due of n/a is within any limit, and a steward
+     * settles anything; a clerk's settle above the clerk limit goes to a steward instead. */
     @Transactional(readOnly = true)
-    public void requireMaySettle(String sheetId, String user, BigDecimal due) {
+    public boolean maySettle(String sheetId, String user, BigDecimal due) {
         BigDecimal limit = clerkLimit(sheetId);
-        if (limit == null || due == null || due.compareTo(limit) <= 0) {
-            return;
-        }
+        return limit == null || due == null || due.compareTo(limit) <= 0 || roleOf(sheetId, user) == Role.STEWARD;
+    }
+
+    /** Refuse a change only a steward may make, such as approving or rejecting a PENDING claim. */
+    @Transactional(readOnly = true)
+    public void requireSteward(String sheetId, String user) {
         if (roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "A clerk cannot settle a claim whose due is above the clerk limit of " + limit.toPlainString()
-                            + ".");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Only a steward can do that.");
         }
     }
 

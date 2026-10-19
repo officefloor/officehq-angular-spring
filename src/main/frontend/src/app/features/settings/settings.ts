@@ -44,7 +44,7 @@ const NO_SETTINGS: SheetSettings = {
   template: `
     <section aria-labelledby="settings-heading" data-testid="settings">
       <h2 id="settings-heading">Settings</h2>
-      <form [formGroup]="settingsForm" (ngSubmit)="save()" data-testid="settings-form">
+      <form [formGroup]="settingsForm" (ngSubmit)="save()" (focusin)="focused($event)" data-testid="settings-form">
         <label for="setting-clerk-limit">Clerk limit (blank for none)</label>
         <input
           id="setting-clerk-limit"
@@ -139,6 +139,8 @@ export class Settings {
   protected readonly roleError = signal<string | null>(null);
   protected readonly settingsError = signal<string | null>(null);
   private readonly busy = signal(false);
+  /** The setting a person went into last; the clerk limit until they go into one. */
+  private lastField: keyof SettingsFormValue = 'clerkLimit';
   /** Settings saves, sent one after another in the order they were made, so none is lost while another is
    * waiting on the server. */
   private readonly saves = new Subject<{ sheetId: string; changed: Parameters<SettingsApi['save']>[1]; sent: SettingsFormValue }>();
@@ -230,6 +232,12 @@ export class Settings {
     });
   }
 
+  /** Note the setting a person went into last: a save with nothing changed saves that one again. */
+  protected focused(event: FocusEvent): void {
+    const name = (event.target as Element | null)?.getAttribute('formcontrolname');
+    if (name && name in this.settingsForm.controls) this.lastField = name as keyof SettingsFormValue;
+  }
+
   protected save(): void {
     this.settingsError.set(null);
     const sheetId = this.session.sheetId();
@@ -238,19 +246,21 @@ export class Settings {
       return;
     }
     const controls = this.settingsForm.controls;
+    // With nothing changed, the setting last gone into is saved again as it is.
+    const unchanged = !this.settingsForm.dirty;
+    const send = (key: keyof SettingsFormValue) => controls[key].dirty || (unchanged && this.lastField === key);
     const clerkLimit = controls.clerkLimit.value.trim();
     const floor = controls.floor.value.trim();
     const terms = controls.terms.value.trim();
-    const sendFloor = controls.floor.dirty;
+    const sendFloor = send('floor');
     const latePct = controls.latePct.value.trim();
-    const sendTerms = controls.terms.dirty;
-    const sendLatePct = controls.latePct.dirty;
+    const sendTerms = send('terms');
+    const sendLatePct = send('latePct');
     const policyDate = controls.policyDate.value.trim();
-    const sendPolicyDate = controls.policyDate.dirty;
+    const sendPolicyDate = send('policyDate');
     const periodNumberingFrom = controls.periodNumberingFrom.value.trim();
-    const sendPeriodNumbering = controls.periodNumberingFrom.dirty;
-    const sendLimit =
-      controls.clerkLimit.dirty || (!sendFloor && !sendTerms && !sendLatePct && !sendPolicyDate && !sendPeriodNumbering);
+    const sendPeriodNumbering = send('periodNumberingFrom');
+    const sendLimit = send('clerkLimit');
     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;

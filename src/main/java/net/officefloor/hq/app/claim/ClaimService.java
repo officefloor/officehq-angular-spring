@@ -102,7 +102,8 @@ public class ClaimService {
     }
 
     /** Move a claim to another status; a change its status does not allow, or of a claim dated in a closed
-     * period, is refused; so is a settle by a clerk of a claim whose due is above the clerk limit. */
+     * period, is refused. A settle by a clerk of a claim whose due is above the clerk limit sends it PENDING a
+     * steward instead. */
     @Transactional
     public Claim changeStatus(String user, String sheetId, Long id, ClaimStatus next) {
         sheets.today(sheetId); // the sheet must exist
@@ -124,12 +125,13 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it.");
         }
         Person person = requirePerson(sheetId, claim.getPersonId());
-        // A clerk settles only a claim whose due is within the sheet's clerk limit.
-        if (next == ClaimStatus.SETTLED) {
-            settings.requireMaySettle(sheetId, user, rollup.dueOf(claim, person));
+        BigDecimal due = rollup.dueOf(claim, person);
+        // A clerk settles only a claim whose due is within the sheet's clerk limit; above it, a steward must
+        // approve it.
+        if (next == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, due)) {
+            next = ClaimStatus.PENDING;
         }
         Snapshot before = rollup.snapshot(sheetId);
-        BigDecimal due = rollup.dueOf(claim, person);
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
@@ -141,13 +143,65 @@ public class ClaimService {
             // Settling fixes the due at the figure the claim has: the one its last statement bound it to, else
             // the rate its grade has on its date; with no figure it stays live. The late charge it has (taken
             // while it is still OPEN) is frozen in.
-            claim.setSettledDue(due);
-            entry += " due=" + (claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : "n/a");
+            entry += settle(claim, due);
         }
         claims.flush();
         audit.recordOnCommit(entry);
         rollup.recordChanges(user, sheetId, before);
         return claim;
+    }
+
+    /** A steward approves a PENDING claim: it is SETTLED at the due it has now, its live figure with any late
+     * charge, frozen. The user who opened it cannot approve it. */
+    @Transactional
+    public Claim approve(String user, String sheetId, Long id) {
+        Claim claim = requirePending(user, sheetId, id);
+        if (user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot approve it.");
+        }
+        Person person = requirePerson(sheetId, claim.getPersonId());
+        Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal due = rollup.dueOf(claim, person);
+        claim.setStatus(ClaimStatus.SETTLED);
+        String entry = entry("CLAIM_APPROVED", user, person, claim) + settle(claim, due);
+        claims.flush();
+        audit.recordOnCommit(entry);
+        rollup.recordChanges(user, sheetId, before);
+        return claim;
+    }
+
+    /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by its person's last
+     * statement if that statement included it. */
+    @Transactional
+    public Claim reject(String user, String sheetId, Long id, String reason) {
+        Claim claim = requirePending(user, sheetId, id);
+        Person person = requirePerson(sheetId, claim.getPersonId());
+        Snapshot before = rollup.snapshot(sheetId);
+        claim.setStatus(ClaimStatus.OPEN);
+        claims.flush();
+        audit.recordOnCommit(entry("CLAIM_REJECTED", user, person, claim) + " reason=" + reason.trim());
+        rollup.recordChanges(user, sheetId, before);
+        return claim;
+    }
+
+    /** The PENDING claim a steward acts on; refused when it is not on the sheet, not PENDING, dated in a closed
+     * period, or the user is not a steward. */
+    private Claim requirePending(String user, String sheetId, Long id) {
+        sheets.today(sheetId); // the sheet must exist
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        requireOpenPeriod(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a PENDING claim can be approved or rejected.");
+        }
+        settings.requireSteward(sheetId, user);
+        return claim;
+    }
+
+    /** Fix a claim's due at the given figure (none stays live), giving the end of its audit line. */
+    private static String settle(Claim claim, BigDecimal due) {
+        claim.setSettledDue(due);
+        return " due=" + (due != null ? due.toPlainString() : "n/a");
     }
 
     /** What opening claims together did: how many were opened and refused, and the opened claims. */
@@ -185,6 +239,7 @@ public class ClaimService {
 
     private static final Map<ClaimStatus, String> EVENTS = Map.of(
             ClaimStatus.OPEN, "CLAIM_OPENED",
+            ClaimStatus.PENDING, "CLAIM_PENDING",
             ClaimStatus.SETTLED, "CLAIM_SETTLED",
             ClaimStatus.VOID, "CLAIM_VOIDED");
 
