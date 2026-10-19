@@ -6,6 +6,8 @@ import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Claim, ClaimsApi, claimDue, counts, keepsFigure, sumAmounts } from '../claims/claims-api';
+import { Periods } from '../periods/periods';
+import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
@@ -17,9 +19,10 @@ import { Grade, PeopleApi, Person } from './people-api';
 // claimed-total and due-total add everyone's up (a due-total of n/a is skipped).
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Claims, Rates],
+  imports: [ReactiveFormsModule, Claims, Periods, Rates],
   template: `
     <app-rates [grades]="grades" [rates]="rates()" [current]="rateByGrade()" (saved)="rateSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading" data-testid="people">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
@@ -74,6 +77,7 @@ import { Grade, PeopleApi, Person } from './people-api';
                   [claims]="claimsOf(p.id)"
                   [grade]="p.grade"
                   [rates]="rates()"
+                  [periods]="periods()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -110,6 +114,7 @@ export class People {
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
+  private readonly periodsApi = inject(PeriodsApi);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -132,6 +137,23 @@ export class People {
       if (rate !== undefined) by.set(g, rate);
     }
     return by;
+  });
+
+  /** The sheet's periods by from-date. */
+  protected readonly periods = signal<Period[]>([]);
+  /** Each period's due-total, by id: the sum of the dues of the claims that count dated in it (n/a ones
+   * skipped), 0.00 with none. */
+  protected readonly periodDueTotals = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const dues = new Map<number, string[]>();
+    for (const c of this.claims().filter(counts)) {
+      const period = periodOf(this.periods(), c.date);
+      const grade = grades.get(c.personId);
+      if (!period || !grade) continue;
+      const due = claimDue(c, this.rates(), grade);
+      if (due !== NO_RATE) dues.set(period.id, [...(dues.get(period.id) ?? []), due]);
+    }
+    return new Map(this.periods().map((p) => [p.id, sumAmounts(dues.get(p.id) ?? [])]));
   });
 
   protected readonly dueTotal = computed(() =>
@@ -157,12 +179,18 @@ export class People {
       .pipe(
         switchMap((id) =>
           id
-            ? forkJoin({ people: this.api.list(id), claims: this.claimsApi.list(id), rates: this.ratesApi.list(id) })
-            : of({ people: [] as Person[], claims: [] as Claim[], rates: [] as Rate[] }),
+            ? forkJoin({
+                people: this.api.list(id),
+                claims: this.claimsApi.list(id),
+                rates: this.ratesApi.list(id),
+                periods: this.periodsApi.list(id),
+              })
+            : of({ people: [] as Person[], claims: [] as Claim[], rates: [] as Rate[], periods: [] as Period[] }),
         ),
       )
-      .subscribe(({ people, claims, rates }) => {
+      .subscribe(({ people, claims, rates, periods }) => {
         this.people.set(people);
+        this.periods.set(periods);
         this.claims.set(claims);
         this.rates.set(rates);
         this.reset();
@@ -189,6 +217,10 @@ export class People {
 
   protected rateSaved(rate: Rate): void {
     this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+  }
+
+  protected periodSaved(period: Period): void {
+    this.periods.update((ps) => [...ps, period].sort((a, b) => (a.from < b.from ? -1 : 1)));
   }
 
   protected claimSaved(claim: Claim): void {

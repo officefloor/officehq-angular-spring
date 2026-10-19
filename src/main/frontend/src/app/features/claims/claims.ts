@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Rate } from '../rates/rates-api';
 import { Grade } from '../people/people-api';
+import { Period, periodOf } from '../periods/periods-api';
 import { Claim, ClaimAction, ClaimsApi, claimDue } from './claims-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -45,6 +46,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <th scope="col">Amount</th>
             <th scope="col">Date</th>
             <th scope="col">Note</th>
+            <th scope="col">Period</th>
             <th scope="col">Due</th>
             <th scope="col">Stated</th>
             <th scope="col">Status</th>
@@ -59,6 +61,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
               <td data-testid="claim-amount">{{ c.amount }}</td>
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>
+              <td data-testid="claim-period">{{ periodName(c) }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
@@ -104,6 +107,8 @@ export class Claims {
   /** This person's grade, and the sheet's rates. */
   readonly grade = input.required<Grade>();
   readonly rates = input<readonly Rate[]>([]);
+  /** The sheet's periods. */
+  readonly periods = input<readonly Period[]>([]);
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -141,6 +146,11 @@ export class Claims {
    * force on the claim's date. */
   protected due(claim: Claim): string {
     return claimDue(claim, this.rates(), this.grade());
+  }
+
+  /** The name of the period the claim's date falls in; empty when it falls in none. */
+  protected periodName(claim: Claim): string {
+    return periodOf(this.periods(), claim.date)?.name ?? '';
   }
 
   protected changeStatus(claim: Claim, action: ClaimAction): void {

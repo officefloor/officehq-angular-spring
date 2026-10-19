@@ -67,6 +67,13 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
+    /** Lock the sheet until the calling transaction ends, so changes that must not race take turns. */
+    @Transactional
+    public void lock(String id) {
+        sheets.findLocked(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
+    }
+
     private Sheet find(String id) {
         return sheets.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
