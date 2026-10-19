@@ -1,7 +1,10 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.rollup.RollupService.Snapshot;
@@ -17,14 +20,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonService {
 
     private final PersonRepository people;
+    private final PatronRepository patrons;
     private final SheetRepository sheets;
     private final SheetService sheetService;
     private final RollupService rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetRepository sheets, SheetService sheetService,
+    public PersonService(PersonRepository people, PatronRepository patrons, SheetRepository sheets, SheetService sheetService,
             RollupService rollup, Audit audit) {
         this.people = people;
+        this.patrons = patrons;
         this.sheets = sheets;
         this.sheetService = sheetService;
         this.rollup = rollup;
@@ -101,6 +106,36 @@ public class PersonService {
         audit.recordOnCommit((person.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
                 + " by=" + user + " name=" + person.getName());
         rollup.recordChanges(user, sheetId, before);
+        return person;
+    }
+
+    /** Each person's patrons' ids, by person id, in the order they were named. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<Long>> patronIds(String sheetId) {
+        Map<Long, List<Long>> by = new LinkedHashMap<>();
+        for (Patron patron : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
+            by.computeIfAbsent(patron.getPersonId(), k -> new ArrayList<>()).add(patron.getPatronId());
+        }
+        return by;
+    }
+
+    /** Name another person on the sheet as the person's patron; refused for the person themselves and for one
+     * already named. */
+    @Transactional
+    public Person addPatron(String user, String sheetId, Long id, Long patronId) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        Person patron = people.findByIdAndSheetId(patronId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such patron."));
+        if (patron.getId().equals(person.getId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A person cannot be their own patron.");
+        }
+        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That patron is already named.");
+        }
+        patrons.saveAndFlush(new Patron(sheetId, person.getId(), patron.getId()));
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " patron=" + patron.getName());
         return person;
     }
 

@@ -82,6 +82,8 @@ import { Grade, PeopleApi, Person } from './people-api';
             <th scope="col">On hold</th>
             <th scope="col">Overdue</th>
             <th scope="col">Overdue total</th>
+            <th scope="col">Patrons</th>
+            <th scope="col">Backing</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -101,6 +103,8 @@ import { Grade, PeopleApi, Person } from './people-api';
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
+              <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+              <td data-testid="person-backing">{{ backing(p) }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -153,6 +157,30 @@ import { Grade, PeopleApi, Person } from './people-api';
                 >
                   {{ p.held ? 'Release' : 'Hold' }}
                 </button>
+                <label [for]="'person-patron-select-' + p.id">Patron</label>
+                <select
+                  [id]="'person-patron-select-' + p.id"
+                  data-testid="person-patron-select"
+                  #patronSelect
+                  (change)="patronError.set(null)"
+                >
+                  @for (o of people(); track o.id) {
+                    @if (o.id !== p.id) {
+                      <option [value]="o.id">{{ o.name }}</option>
+                    }
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-patron-add"
+                  [attr.aria-label]="'Add patron for ' + p.name"
+                  (click)="addPatron(p, patronSelect.value)"
+                >
+                  Add patron
+                </button>
+                @if (patronError()?.id === p.id) {
+                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
+                }
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -247,6 +275,8 @@ export class People {
   protected readonly formError = signal<string | null>(null);
   /** The error of the last action taken on a person's row, shown on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
+  /** The error of the last patron added on a person's row, shown on that row. */
+  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
@@ -321,6 +351,53 @@ export class People {
     );
   }
 
+  /** The names of the person's patrons, sorted, comma and space separated. */
+  protected patronNames(person: Person): string {
+    return this.patronsOf(person)
+      .map((p) => p.name)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      .join(', ');
+  }
+
+  /** The person's backing: their patrons' due-totals added up (n/a ones skipped), 0.00 with no patrons. */
+  protected backing(person: Person): string {
+    return sumAmounts(this.patronsOf(person).map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE));
+  }
+
+  private patronsOf(person: Person): Person[] {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    return person.patronIds.map((id) => byId.get(id)).filter((p): p is Person => p !== undefined);
+  }
+
+  /** Name another person on the sheet as the person's patron. */
+  protected addPatron(person: Person, patronId: string): void {
+    this.patronError.set(null);
+    this.personError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    if (!patronId) {
+      this.patronError.set({ id: person.id, message: 'Choose a patron.' });
+      return;
+    }
+    this.api.addPatron(sheetId, person.id, Number(patronId)).subscribe({
+      next: (p) => {
+        if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
+      },
+      error: (e: HttpErrorResponse) =>
+        this.patronError.set({
+          id: person.id,
+          message:
+            e.status === 409
+              ? 'That person is already a patron.'
+              : e.status === 422
+                ? 'A person cannot be their own patron.'
+                : e.status === 404
+                  ? 'That person is no longer on this sheet.'
+                  : 'Could not add that patron.',
+        }),
+    });
+  }
+
   /** Whether a claim counts in the live totals: it counts, and is not an OPEN claim of a held person. */
   private countsLive(claim: Claim): boolean {
     return counts(claim) && !(claim.status === 'OPEN' && this.heldIds().has(claim.personId));
@@ -345,6 +422,7 @@ export class People {
   /** Take a statement for the person, then re-read the sheet's claims, which it binds or unbinds. */
   protected statement(person: Person): void {
     this.personError.set(null);
+    this.patronError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     this.api
@@ -371,6 +449,7 @@ export class People {
   /** Retire the person from the date given, the sheet's today when none is. */
   protected retire(person: Person, from: string): void {
     this.personError.set(null);
+    this.patronError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     this.api.retire(sheetId, person.id, from || null).subscribe({
@@ -388,6 +467,7 @@ export class People {
   /** Put the person on hold, or take them off it when held. */
   protected hold(person: Person): void {
     this.personError.set(null);
+    this.patronError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     this.api.hold(sheetId, person.id).subscribe({
@@ -441,6 +521,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.personError.set(null);
+    this.patronError.set(null);
     this.editingId.set(person.id);
     this.editingVersion = person.version;
     this.form.setValue({ name: person.name, grade: person.grade }, { emitEvent: false });
