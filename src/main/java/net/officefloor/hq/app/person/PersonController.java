@@ -45,12 +45,12 @@ public class PersonController {
     @PostMapping
     public PersonView add(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.add(sheetId, form.name(), form.grade()));
+        return PersonView.of(service.add(user, sheetId, form.name(), form.grade()));
     }
 
     @PutMapping("/{id}")
     public PersonView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.update(sheetId, id, form.name(), form.grade()));
+        return PersonView.of(service.update(user, sheetId, id, form.name(), form.grade()));
     }
 }

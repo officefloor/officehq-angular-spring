@@ -50,12 +50,12 @@ public class ClaimController {
     @PostMapping("/people/{personId}/claims")
     public ClaimView add(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long personId, @Valid @RequestBody ClaimForm form) {
-        return ClaimView.of(service.add(sheetId, personId, new BigDecimal(form.amount()), form.date(), form.note()));
+        return ClaimView.of(service.add(user, sheetId, personId, new BigDecimal(form.amount()), form.date(), form.note()));
     }
 
     @PutMapping("/claims/{id}")
     public ClaimView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody ClaimForm form) {
-        return ClaimView.of(service.update(sheetId, id, new BigDecimal(form.amount()), form.date(), form.note()));
+        return ClaimView.of(service.update(user, sheetId, id, new BigDecimal(form.amount()), form.date(), form.note()));
     }
 }
