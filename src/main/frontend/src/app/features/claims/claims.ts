@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
+import { dueOf } from '../rates/rates-api';
 import { Claim, ClaimsApi } from './claims-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -42,6 +43,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <th scope="col">Amount</th>
             <th scope="col">Date</th>
             <th scope="col">Note</th>
+            <th scope="col">Due</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -51,6 +53,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
               <td data-testid="claim-amount">{{ c.amount }}</td>
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>
+              <td data-testid="claim-due">{{ due(c) }}</td>
               <td>
                 <button
                   type="button"
@@ -76,6 +79,8 @@ export class Claims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
+  /** The rate for this person's grade; none when the grade has no rate. */
+  readonly rate = input<string | undefined>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -98,6 +103,10 @@ export class Claims {
         }
       });
     });
+  }
+
+  protected due(claim: Claim): string {
+    return dueOf(claim.amount, this.rate());
   }
 
   protected edit(claim: Claim): void {

@@ -6,15 +6,19 @@ import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Claim, ClaimsApi, sumAmounts } from '../claims/claims-api';
+import { Rates } from '../rates/rates';
+import { NO_RATE, Rate, RatesApi, dueOf } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
-// claims and what they have claimed; the sheet's claimed-total adds everyone's up.
+// claims, what they have claimed and what is due on it at their grade's rate; the sheet's
+// claimed-total and due-total add everyone's up (a due-total of n/a is skipped).
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Claims],
+  imports: [ReactiveFormsModule, Claims, Rates],
   template: `
+    <app-rates [grades]="grades" [rates]="rateByGrade()" (saved)="rateSaved($event)" />
     <section aria-labelledby="people-heading" data-testid="people">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
@@ -37,12 +41,14 @@ import { Grade, PeopleApi, Person } from './people-api';
         <p role="alert" data-testid="person-form-error">{{ e }}</p>
       }
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="people-list">
         <thead>
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
+            <th scope="col">Due</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -53,11 +59,13 @@ import { Grade, PeopleApi, Person } from './people-api';
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+              <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsOf(p.id)"
+                  [rate]="rateByGrade().get(p.grade)"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -82,6 +90,7 @@ export class People {
   private readonly session = inject(Session);
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
+  private readonly ratesApi = inject(RatesApi);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -93,6 +102,14 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
+  /** The sheet's rates. */
+  protected readonly rates = signal<Rate[]>([]);
+  protected readonly rateByGrade = computed(
+    () => new Map<Grade, string>(this.rates().map((r) => [r.grade, r.rate])),
+  );
+  protected readonly dueTotal = computed(() =>
+    sumAmounts(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
+  );
   protected readonly editingId = signal<number | null>(null);
   protected readonly formError = signal<string | null>(null);
   protected readonly form = new FormGroup({
@@ -107,13 +124,14 @@ export class People {
       .pipe(
         switchMap((id) =>
           id
-            ? forkJoin({ people: this.api.list(id), claims: this.claimsApi.list(id) })
-            : of({ people: [] as Person[], claims: [] as Claim[] }),
+            ? forkJoin({ people: this.api.list(id), claims: this.claimsApi.list(id), rates: this.ratesApi.list(id) })
+            : of({ people: [] as Person[], claims: [] as Claim[], rates: [] as Rate[] }),
         ),
       )
-      .subscribe(({ people, claims }) => {
+      .subscribe(({ people, claims, rates }) => {
         this.people.set(people);
         this.claims.set(claims);
+        this.rates.set(rates);
         this.reset();
       });
   }
@@ -124,6 +142,15 @@ export class People {
 
   protected claimed(personId: number): string {
     return sumAmounts(this.claimsOf(personId).map((c) => c.amount));
+  }
+
+  /** What is due on all the person has claimed, at their grade's rate. */
+  protected personDueTotal(person: Person): string {
+    return dueOf(this.claimed(person.id), this.rateByGrade().get(person.grade));
+  }
+
+  protected rateSaved(rate: Rate): void {
+    this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade), rate]);
   }
 
   protected claimSaved(claim: Claim): void {
