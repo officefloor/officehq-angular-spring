@@ -22,6 +22,7 @@ import {
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
+import { SheetHeader } from '../summary/sheet-header';
 import { GradeSummary, Summary } from '../summary/summary';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
@@ -38,8 +39,14 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
 // also shows how many of the claims that count are overdue and the sum of their dues (n/a ones skipped).
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Claims, Periods, Rates, Summary],
+  imports: [ReactiveFormsModule, Claims, Periods, Rates, SheetHeader, Summary],
   template: `
+    <app-sheet-header
+      [peopleCount]="people().length"
+      [statusCounts]="statusCounts()"
+      [dueTotal]="dueTotal()"
+      [overdueTotal]="overdueTotal()"
+    />
     <app-rates [grades]="grades" [rates]="rates()" [current]="rateByGrade()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <app-summary
