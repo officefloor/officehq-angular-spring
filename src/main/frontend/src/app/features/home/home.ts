@@ -1,9 +1,19 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { Session } from '../../core/session';
+import { People } from '../people/people';
 
-// The base home page (empty). A page is an Angular component like this one, plus one entry in
-// app.routes.ts.
+// The home page: the active sheet's people, once a sheet is loaded.
 @Component({
   selector: 'app-home',
-  template: `<p data-testid="home-empty">Nothing here yet.</p>`,
+  imports: [People],
+  template: `
+    @if (session.sheetId()) {
+      <app-people />
+    } @else {
+      <p data-testid="home-empty">Nothing here yet.</p>
+    }
+  `,
 })
-export class Home {}
+export class Home {
+  protected readonly session = inject(Session);
+}
