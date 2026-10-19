@@ -33,10 +33,11 @@ public class ClaimController {
     /** The amount is shown with two decimals; a claim has no number until it is opened, and no fixed due
      * until it is settled; it shows who opened it, if anyone did, and whether it is bound to the figure it had
      * at its person's last statement (none when that was n/a); a correction shows the number it corrects; and the
-     * date it is due by, fixed when it was added; and its status log, oldest first. */
+     * date it is due by, fixed when it was added; and its status log, oldest first; and the date it is deferred
+     * until, while it is deferred. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String due, String openedBy, boolean stated, String statedDue,
-            String corrects, LocalDate dueBy, List<StatusLogView> statusLog) {
+            String corrects, LocalDate dueBy, List<StatusLogView> statusLog, LocalDate deferredUntil) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -46,7 +47,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().setScale(2).toPlainString() : null,
                     claim.getCorrects(), claim.getDueBy(),
-                    claim.getStatusLog().stream().map(StatusLogView::of).toList());
+                    claim.getStatusLog().stream().map(StatusLogView::of).toList(), claim.getDeferredUntil());
         }
     }
 
@@ -74,6 +75,9 @@ public class ClaimController {
 
     /** The person a claim is moved to, by id. */
     public record ReassignForm(@NotNull Long personId) {}
+
+    /** The date an OPEN claim is deferred until. */
+    public record DeferForm(@NotNull LocalDate until) {}
 
     private final ClaimService service;
 
@@ -147,6 +151,12 @@ public class ClaimController {
     public ClaimView reassign(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody ReassignForm form) {
         return ClaimView.of(service.reassign(user, sheetId, id, form.personId()));
+    }
+
+    @PostMapping("/claims/{id}/defer")
+    public ClaimView defer(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
+            @Valid @RequestBody DeferForm form) {
+        return ClaimView.of(service.defer(user, sheetId, id, form.until()));
     }
 
     @PostMapping("/claims/{id}/void")

@@ -58,7 +58,7 @@ public class StatementService {
 
     /**
      * Take a statement for a person: record their due-total now, late charges included and held to the cap, and bind each of their
-     * claims that counts (OPEN and PENDING ones within a hold, unbound, do not) to the figure it has now (never its late charge, which keeps following the sheet's
+     * claims that counts (OPEN and PENDING ones within a hold, unbound, and deferred ones do not) to the figure it has now (never its late charge, which keeps following the sheet's
      * today); a claim of theirs that does not count is left unbound.
      */
     @Transactional
@@ -71,7 +71,7 @@ public class StatementService {
         boolean fixed = false;
         List<Claim> counted = new ArrayList<>();
         for (Claim claim : claims.findBySheetIdAndPersonId(sheetId, personId)) {
-            if (!RollupService.counts(claim, person)) {
+            if (!RollupService.counts(claim, person, today)) {
                 claim.unbind();
                 continue;
             }

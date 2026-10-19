@@ -31,6 +31,8 @@ export interface Claim {
   dueBy: string;
   /** The claim's status log, oldest first: one line per status it has had, from the DRAFT it was added as. */
   statusLog: StatusLogLine[];
+  /** The date (yyyy-mm-dd) an OPEN claim is deferred until; null when it was never deferred. */
+  deferredUntil: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today (yyyy-mm-dd) then, and the
@@ -57,6 +59,12 @@ export type ClaimAction = 'open' | 'settle' | 'approve' | 'void';
 /** Whether a claim is still open: OPEN, or PENDING a steward. */
 export function isOpen(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'PENDING';
+}
+
+/** Whether a claim is deferred on the sheet's today: it is still open and today has not reached the date it is
+ * deferred until. Such a claim counts in no total, is not overdue and cannot be settled. */
+export function isDeferred(claim: Claim, today: string | null): boolean {
+  return isOpen(claim) && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
 }
 
 /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due. */
@@ -138,9 +146,9 @@ function timesPct(pct: string, times: number): string {
   return `${hundredths / 100n}.${String(hundredths % 100n).padStart(2, '0')}`;
 }
 
-/** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
+/** Whether a claim is overdue: it is OPEN or PENDING, not deferred, and its due-by is before the sheet's today. */
 export function isOverdue(claim: Claim, today: string | null): boolean {
-  return isOpen(claim) && today !== null && claim.dueBy < today;
+  return isOpen(claim) && today !== null && claim.dueBy < today && !isDeferred(claim, today);
 }
 
 export interface ClaimForm {
@@ -199,6 +207,11 @@ export class ClaimsApi {
 
   changeStatus(sheetId: string, id: number, action: ClaimAction): Observable<Claim> {
     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() });
+  }
+
+  /** Defer an OPEN claim until a date after the sheet's today. */
+  defer(sheetId: string, id: number, until: string): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/defer`, { until }, { headers: this.headers() });
   }
 
   /** Reject a PENDING claim with a reason: it is OPEN again. */

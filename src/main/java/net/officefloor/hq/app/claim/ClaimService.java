@@ -125,6 +125,11 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        // A deferred claim cannot be settled until the sheet's today reaches the date it is deferred until.
+        if (next == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + ".");
+        }
         // Four eyes: whoever opened a claim cannot also settle it.
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it.");
@@ -206,6 +211,30 @@ public class ClaimService {
     /** A figure with two decimals, or n/a. */
     private static String figure(BigDecimal due) {
         return due != null ? due.setScale(2).toPlainString() : "n/a";
+    }
+
+    /** Defer an OPEN claim until a date after the sheet's today: until then it counts in no total, is not overdue,
+     * cannot be settled and is left unbound by a statement. A claim that is not OPEN, a date not after today, or
+     * a claim dated in a closed period, is refused. */
+    @Transactional
+    public Claim defer(String user, String sheetId, Long id, LocalDate until) {
+        LocalDate today = sheets.today(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        requireOpenPeriod(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an OPEN claim can be deferred.");
+        }
+        if (!until.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A claim is deferred to a date after today.");
+        }
+        Person person = requirePerson(sheetId, claim.getPersonId());
+        Snapshot before = rollup.snapshot(sheetId);
+        claim.setDeferredUntil(until);
+        claims.flush();
+        audit.recordOnCommit(entry("CLAIM_DEFERRED", user, person, claim) + " until=" + until);
+        rollup.recordChanges(user, sheetId, before);
+        return claim;
     }
 
     /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by its person's last

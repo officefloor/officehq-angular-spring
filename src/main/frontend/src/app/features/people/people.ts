@@ -14,6 +14,7 @@ import {
   claimDue,
   counts,
   isOpen,
+  isDeferred,
   isOverdue,
   roundsBy,
   sumAmounts,
@@ -601,11 +602,12 @@ export class People {
     });
   }
 
-  /** Whether a claim counts in the live totals: it counts, and is not an OPEN or PENDING claim dated within one of
-   * its person's holds and not bound by a statement. */
+  /** Whether a claim counts in the live totals: it counts, is not deferred on the sheet's today, and is not an OPEN
+   * or PENDING claim dated within one of its person's holds and not bound by a statement. */
   private countsLive(claim: Claim): boolean {
     return (
       counts(claim) &&
+      !isDeferred(claim, this.session.today()) &&
       !(isOpen(claim) && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
     );
   }

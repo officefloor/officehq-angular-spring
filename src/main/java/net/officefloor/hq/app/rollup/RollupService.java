@@ -106,7 +106,7 @@ public class RollupService {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counted = byPerson.getOrDefault(person.getId(), List.of()).stream()
-                    .filter(c -> counts(c, person)).toList();
+                    .filter(c -> counts(c, person, today)).toList();
             BigDecimal claimed = BigDecimal.ZERO.setScale(2);
             BigDecimal due = BigDecimal.ZERO.setScale(2);
             BigDecimal overdue = BigDecimal.ZERO.setScale(2);
@@ -147,7 +147,7 @@ public class RollupService {
         return sheets.findById(sheetId).map(s -> s.capped(dueTotal)).orElse(dueTotal);
     }
 
-    /** Each person's due-total of their claims that count (OPEN and PENDING ones within a hold, unbound, do not)
+    /** Each person's due-total of their claims that count (OPEN and PENDING ones within a hold, unbound, and deferred ones do not)
      * dated from and to, inclusive, by person id: the sum of their dues, late charges included, n/a ones skipped;
      * a person with no such due has none. */
     public Map<Long, BigDecimal> dueTotals(String sheetId, LocalDate from, LocalDate to) {
@@ -162,7 +162,7 @@ public class RollupService {
         Map<String, LocalDate> datesByNumber = datesByNumber(all);
         for (Claim claim : all) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !counts(claim, person)
+            if (person == null || !counts(claim, person, late.today())
                     || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
@@ -303,7 +303,7 @@ public class RollupService {
      */
     private static BigDecimal lateCharge(Claim claim, boolean open, BigDecimal figure, Lateness late,
             RoundingMode rounding) {
-        if (!open || late.today() == null || claim.isCorrection()) {
+        if (!open || late.today() == null || claim.isCorrection() || claim.deferredOn(late.today())) {
             return BigDecimal.ZERO.setScale(2);
         }
         long overdueDays = ChronoUnit.DAYS.between(claim.getDueBy(), late.today());
@@ -340,15 +340,19 @@ public class RollupService {
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
     }
 
-    /** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
+    /** Whether a claim is overdue: it is OPEN or PENDING, not deferred, and its due-by is before the sheet's
+     * today. */
     private static boolean overdue(Claim claim, LocalDate today) {
-        return claim.getStatus().isOpen() && today != null && claim.getDueBy().isBefore(today);
+        return claim.getStatus().isOpen() && today != null && claim.getDueBy().isBefore(today)
+                && !claim.deferredOn(today);
     }
 
     /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; an OPEN or PENDING one dated
-     * within one of its person's holds does not, unless it is bound by a statement. */
-    public static boolean counts(Claim claim, Person person) {
-        return (claim.getStatus().isOpen() && (bound(claim) || !person.heldOn(claim.getDate())))
+     * within one of its person's holds does not, unless it is bound by a statement, and one deferred on the
+     * sheet's today does not. */
+    public static boolean counts(Claim claim, Person person, LocalDate today) {
+        return (claim.getStatus().isOpen() && (bound(claim) || !person.heldOn(claim.getDate()))
+                && !claim.deferredOn(today))
                 || claim.getStatus() == ClaimStatus.SETTLED;
     }
 }

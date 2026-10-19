@@ -8,7 +8,7 @@ import { Period, periodOf } from '../periods/periods-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
-import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, isOverdue, roundsBy } from './claims-api';
+import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, isDeferred, isOverdue, roundsBy } from './claims-api';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 /** A claim's number: the sheet-wide one, or a period's, <period name>-<n> (X-<n> in no period). */
@@ -67,6 +67,8 @@ const NUMBER = /^\S{1,255}$/;
             <th scope="col">Status</th>
             <th scope="col">Opened by</th>
             <th scope="col">Corrects</th>
+            <th scope="col">Deferred</th>
+            <th scope="col">Deferred until</th>
             <th scope="col">Status log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -95,6 +97,8 @@ const NUMBER = /^\S{1,255}$/;
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
+              <td data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</td>
+              <td data-testid="claim-deferred-until">{{ deferred(c) ? c.deferredUntil : '' }}</td>
               <td>
                 <ol data-testid="claim-log">
                   @for (l of c.statusLog; track $index) {
@@ -144,6 +148,22 @@ const NUMBER = /^\S{1,255}$/;
                   (click)="resettle(c)"
                 >
                   Re-settle
+                </button>
+                <label class="visually-hidden" [for]="'claim-defer-date-' + c.id">Defer until</label>
+                <input
+                  [id]="'claim-defer-date-' + c.id"
+                  type="date"
+                  data-testid="claim-defer-date"
+                  [value]="deferDates().get(c.id) ?? ''"
+                  (input)="deferDateChange(c.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-defer"
+                  [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date"
+                  (click)="defer(c)"
+                >
+                  Defer
                 </button>
                 <label class="visually-hidden" [for]="'claim-reassign-to-' + c.id">Move to</label>
                 <select
@@ -222,6 +242,8 @@ export class Claims {
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
   /** The reason typed to reject each PENDING claim, by id. */
   protected readonly rejectReasons = signal<ReadonlyMap<number, string>>(new Map());
+  /** The date picked to defer each claim until, by id. */
+  protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
   /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
   private submitting = false;
   protected readonly form = new FormGroup({
@@ -257,6 +279,11 @@ export class Claims {
     return isOverdue(claim, this.session.today());
   }
 
+  /** Whether the claim is deferred on the sheet's today: it counts in no total and cannot be settled. */
+  protected deferred(claim: Claim): boolean {
+    return isDeferred(claim, this.session.today());
+  }
+
   /** The name of the period the claim's date falls in; empty when it falls in none. */
   protected periodName(claim: Claim): string {
     return periodOf(this.periods(), claim.date)?.name ?? '';
@@ -282,6 +309,10 @@ export class Claims {
               ? 'Only a pending claim can be approved.'
               : e.status === 423
               ? 'That claim is dated in a closed period.'
+              : e.status === 409 && action === 'settle' && this.deferred(claim)
+              ? `That claim is deferred until ${claim.deferredUntil}.`
+              : e.status === 409 && action === 'settle' && this.deferred(claim)
+              ? `That claim is deferred until ${claim.deferredUntil}.`
               : e.status === 409
               ? 'That claim\'s status does not allow that change.'
               : e.status === 404
@@ -313,6 +344,47 @@ export class Claims {
               : e.status === 404
                 ? 'That claim is no longer on this sheet.'
                 : 'Could not re-settle that claim.',
+        }),
+    });
+  }
+
+  protected deferDateChange(id: number, date: string): void {
+    if (this.claimError()?.id === id) this.claimError.set(null);
+    this.deferDates.update((m) => new Map(m).set(id, date));
+  }
+
+  /** Defer an OPEN claim until the date picked on its row, a date after the sheet's today. */
+  protected defer(claim: Claim): void {
+    this.claimError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const until = this.deferDates().get(claim.id) ?? '';
+    if (until === '') {
+      this.claimError.set({ id: claim.id, message: 'Pick the date to defer that claim until.' });
+      return;
+    }
+    this.api.defer(sheetId, claim.id, until).subscribe({
+      next: (c) => {
+        this.deferDates.update((m) => {
+          const next = new Map(m);
+          next.delete(claim.id);
+          return next;
+        });
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 423
+              ? 'That claim is dated in a closed period.'
+              : e.status === 409
+              ? 'Only an open claim can be deferred.'
+              : e.status === 400
+              ? 'Defer a claim to a date after today.'
+              : e.status === 404
+                ? 'That claim is no longer on this sheet.'
+                : 'Could not defer that claim.',
         }),
     });
   }
