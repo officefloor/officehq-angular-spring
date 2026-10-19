@@ -49,6 +49,7 @@ public class ClaimService {
     public Claim add(String user, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
         LocalDate today = sheets.today(sheetId);
         Person person = requirePerson(sheetId, personId);
+        requireNotRetired(person, date != null ? date : today);
         requireOpenPeriod(sheetId, date != null ? date : today);
         Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.saveAndFlush(
@@ -70,6 +71,7 @@ public class ClaimService {
         }
         requireOpenPeriod(sheetId, claim.getDate());
         requireOpenPeriod(sheetId, date != null ? date : today);
+        requireNotRetired(requirePerson(sheetId, claim.getPersonId()), date != null ? date : today);
         Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(date != null ? date : today);
@@ -136,6 +138,14 @@ public class ClaimService {
     private void requireOpenPeriod(String sheetId, LocalDate date) {
         sheets.lock(sheetId);
         periods.requireOpen(sheetId, date);
+    }
+
+    /** Refuse a claim dated after its person's retirement. */
+    private static void requireNotRetired(Person person, LocalDate date) {
+        if (person.retiredOn(date)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    person.getName() + " is retired from " + person.getRetiredFrom() + ".");
+        }
     }
 
     private Person requirePerson(String sheetId, Long personId) {

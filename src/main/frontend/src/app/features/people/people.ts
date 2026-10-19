@@ -54,6 +54,10 @@ import { Grade, PeopleApi, Person } from './people-api';
       @if (quickError(); as e) {
         <p role="alert" data-testid="quick-error">{{ e }}</p>
       }
+      <label>
+        <input type="checkbox" data-testid="show-retired" [checked]="showRetired()" (change)="toggleRetired($event)" />
+        Show retired
+      </label>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="people-list">
@@ -66,12 +70,14 @@ import { Grade, PeopleApi, Person } from './people-api';
             <th scope="col">Statements</th>
             <th scope="col">Last stated</th>
             <th scope="col">Stated on</th>
+            <th scope="col">Retired</th>
+            <th scope="col">Retired from</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -80,6 +86,8 @@ import { Grade, PeopleApi, Person } from './people-api';
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              <td data-testid="person-retired">{{ p.retiredFrom ? 'yes' : 'no' }}</td>
+              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -108,6 +116,22 @@ import { Grade, PeopleApi, Person } from './people-api';
                 >
                   Statement
                 </button>
+                <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                <input
+                  type="date"
+                  [id]="'person-retire-date-' + p.id"
+                  data-testid="person-retire-date"
+                  #retireDate
+                  (input)="personError.set(null)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-retire"
+                  [attr.aria-label]="'Retire ' + p.name"
+                  (click)="retire(p, retireDate.value)"
+                >
+                  Retire
+                </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -128,6 +152,13 @@ export class People {
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
+  /** Whether retired people are listed; off when the screen opens, and kept as it is by loading a sheet. */
+  protected readonly showRetired = signal(false);
+  /** The people listed: everyone, or only those not retired unless retired people are shown. Totals count
+   * everyone either way. */
+  protected readonly shownPeople = computed(() =>
+    this.showRetired() ? this.people() : this.people().filter((p) => !p.retiredFrom),
+  );
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -272,6 +303,27 @@ export class People {
       });
   }
 
+  protected toggleRetired(event: Event): void {
+    this.showRetired.set((event.target as HTMLInputElement).checked);
+  }
+
+  /** Retire the person from the date given, the sheet's today when none is. */
+  protected retire(person: Person, from: string): void {
+    this.personError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api.retire(sheetId, person.id, from || null).subscribe({
+      next: (p) => {
+        if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
+      },
+      error: (e: HttpErrorResponse) =>
+        this.personError.set({
+          id: person.id,
+          message: e.status === 404 ? 'That person is no longer on this sheet.' : 'Could not retire that person.',
+        }),
+    });
+  }
+
   /** Add a draft claim for the named person, who is added first when not on the sheet. */
   protected quickAdd(): void {
     if (this.quickAdding) return;
@@ -305,6 +357,7 @@ export class People {
   private quickRefusal(e: HttpErrorResponse): string {
     if (e.status === 400) return 'Type a name and an amount of 0.00 or more, with up to two decimals.';
     if (e.status === 423) return 'The sheet\'s today is in a closed period.';
+    if (e.status === 422) return 'That person is retired from before the sheet\'s today.';
     return 'Could not add that claim.';
   }
 

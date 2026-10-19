@@ -18,6 +18,8 @@ export interface Person {
    * the first. */
   statedTotal: string | null;
   statementDate: string | null;
+  /** The date the person is retired from; null while not retired. */
+  retiredFrom: string | null;
 }
 
 export interface PersonForm {
@@ -60,6 +62,11 @@ export class PeopleApi {
   /** Take a statement for the person. */
   statement(sheetId: string, id: number): Observable<Person> {
     return this.http.post<Person>(`${this.url(sheetId)}/${id}/statement`, null, { headers: this.headers() });
+  }
+
+  /** Retire the person from a date, the sheet's today when none is given. */
+  retire(sheetId: string, id: number, from: string | null): Observable<Person> {
+    return this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from }, { headers: this.headers() });
   }
 
   /** Add a draft claim for the named person, adding them with grade A first when not on the sheet. */

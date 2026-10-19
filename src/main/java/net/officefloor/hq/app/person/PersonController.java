@@ -33,7 +33,7 @@ public class PersonController {
     /** A person shows how many statements were taken for them and the last one's due-total (n/a when it was)
      * and date; none of those before the first. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate) {
+            String statedTotal, LocalDate statementDate, LocalDate retiredFrom) {
 
         public static PersonView of(Person person, Map<Long, Summary> statements) {
             Summary summary = statements.get(person.getId());
@@ -41,7 +41,7 @@ public class PersonController {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     summary != null ? summary.count() : 0,
                     last == null ? null : last.getDueTotal() != null ? last.getDueTotal().toPlainString() : "n/a",
-                    last != null ? last.getTakenOn() : null);
+                    last != null ? last.getTakenOn() : null, person.getRetiredFrom());
         }
     }
 
@@ -71,6 +71,15 @@ public class PersonController {
             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
         return PersonView.of(service.update(user, sheetId, id, form.name(), form.grade(), form.version()),
                 statements.summaries(sheetId));
+    }
+
+    public record RetireForm(LocalDate from) {}
+
+    /** Retire the person from a date, the sheet's today when none is given. */
+    @PostMapping("/{id}/retire")
+    public PersonView retire(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id, @RequestBody RetireForm form) {
+        return PersonView.of(service.retire(user, sheetId, id, form.from()), statements.summaries(sheetId));
     }
 
     /** Take a statement for the person. */

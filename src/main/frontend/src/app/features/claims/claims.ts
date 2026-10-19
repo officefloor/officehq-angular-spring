@@ -227,7 +227,9 @@ export class Claims {
         this.formError.set(
           e.status === 404
             ? 'That person or claim is no longer on this sheet.'
-            : e.status === 423
+            : e.status === 422
+              ? 'That claim is dated after its person is retired.'
+              : e.status === 423
               ? 'That claim is dated in a closed period.'
               : e.status === 409
                 ? 'Only a draft claim can be edited. To change it, void it and add a new one.'
