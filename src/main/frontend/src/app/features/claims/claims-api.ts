@@ -38,13 +38,44 @@ export function counts(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
-/** A settled claim's due is the figure it was settled at; a claim bound by its person's last statement shows
- * the figure it was bound to; any other is due at the rate its grade has now in force on the claim's date,
- * and at least the sheet's floor (n/a when there is no rate). */
-export function claimDue(claim: Claim, rates: readonly Rate[], grade: Grade, floor: string): string {
+/** What a claim's late charge goes by: the sheet's today, its terms and its late percent. */
+export interface Lateness {
+  today: string | null;
+  terms: number;
+  /** With two decimals, e.g. "10.00". */
+  latePct: string;
+}
+
+/** The days in each period an overdue claim gains the late percent for. */
+const LATE_PERIOD_DAYS = 30;
+
+/** A settled claim's due is the figure it was settled at (its late charge frozen in); a claim bound by its
+ * person's last statement has the figure it was bound to; any other has the figure due at the rate its grade
+ * has now in force on the claim's date, and at least the sheet's floor (n/a when there is no rate). An
+ * overdue claim's due adds its late charge to its figure. */
+export function claimDue(claim: Claim, rates: readonly Rate[], grade: Grade, floor: string, late: Lateness): string {
   if (claim.due !== null) return claim.due;
-  if (claim.stated) return claim.statedDue ?? NO_RATE;
-  return floored(dueOf(claim.amount, rateOn(rates, grade, claim.date)), floor);
+  const figure = claim.stated
+    ? (claim.statedDue ?? NO_RATE)
+    : floored(dueOf(claim.amount, rateOn(rates, grade, claim.date)), floor);
+  if (figure === NO_RATE) return figure;
+  return sumAmounts([figure, lateCharge(claim, figure, late)]);
+}
+
+/** The late charge on an overdue claim: the late percent of its figure for every full 30 days it is overdue,
+ * rounded like a due; never bound by a statement, it follows the sheet's today. */
+function lateCharge(claim: Claim, figure: string, late: Lateness): string {
+  if (!isOverdue(claim, late.terms, late.today) || late.today === null) return '0.00';
+  const days = (Date.parse(late.today) - Date.parse(dueBy(claim, late.terms))) / 86_400_000;
+  const periods = Math.floor(days / LATE_PERIOD_DAYS);
+  return dueOf(figure, timesPct(late.latePct, periods));
+}
+
+/** A percent with two decimals times a whole number, with two decimals. */
+function timesPct(pct: string, times: number): string {
+  const [whole, frac = ''] = pct.split('.');
+  const hundredths = (BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'))) * BigInt(times);
+  return `${hundredths / 100n}.${String(hundredths % 100n).padStart(2, '0')}`;
 }
 
 /** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a

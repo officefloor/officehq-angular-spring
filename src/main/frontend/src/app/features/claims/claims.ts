@@ -1,13 +1,14 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Rate } from '../rates/rates-api';
 import { Grade } from '../people/people-api';
 import { Period, periodOf } from '../periods/periods-api';
 import { SheetFloor } from '../settings/sheet-floor';
+import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
-import { Claim, ClaimAction, ClaimsApi, claimDue, dueBy, isOverdue } from './claims-api';
+import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, dueBy, isOverdue } from './claims-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -107,6 +108,13 @@ export class Claims {
   private readonly api = inject(ClaimsApi);
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
+  private readonly latePct = inject(SheetLatePct);
+  /** What a late charge goes by: the sheet's today, terms and late percent. */
+  private readonly late = computed<Lateness>(() => ({
+    today: this.session.today(),
+    terms: this.terms.value(),
+    latePct: this.latePct.value(),
+  }));
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -151,9 +159,9 @@ export class Claims {
   }
 
   /** A settled claim shows the due it was settled at; any other is due at the rate its grade has now in
-   * force on the claim's date, and at least the sheet's floor. */
+   * force on the claim's date, and at least the sheet's floor, plus its late charge when overdue. */
   protected due(claim: Claim): string {
-    return claimDue(claim, this.rates(), this.grade(), this.floor.value());
+    return claimDue(claim, this.rates(), this.grade(), this.floor.value(), this.late());
   }
 
   /** The claim's date plus the sheet's terms. */

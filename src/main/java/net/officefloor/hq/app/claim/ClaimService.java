@@ -107,9 +107,10 @@ public class ClaimService {
         Person person = requirePerson(sheetId, claim.getPersonId());
         // A clerk settles only a claim whose due is within the sheet's clerk limit.
         if (next == ClaimStatus.SETTLED) {
-            settings.requireMaySettle(sheetId, user, figureOf(claim, person.getGrade()));
+            settings.requireMaySettle(sheetId, user, rollup.dueOf(claim, person.getGrade()));
         }
         Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal due = rollup.dueOf(claim, person.getGrade());
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
@@ -119,8 +120,9 @@ public class ClaimService {
         String entry = entry(EVENTS.get(next), user, person, claim);
         if (next == ClaimStatus.SETTLED) {
             // Settling fixes the due at the figure the claim has: the one its last statement bound it to, else
-            // the rate its grade has on its date; with no figure it stays live.
-            claim.setSettledDue(figureOf(claim, person.getGrade()));
+            // the rate its grade has on its date; with no figure it stays live. The late charge it has (taken
+            // while it is still OPEN) is frozen in.
+            claim.setSettledDue(due);
             entry += " due=" + (claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : "n/a");
         }
         claims.flush();

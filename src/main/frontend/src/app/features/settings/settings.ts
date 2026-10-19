@@ -5,15 +5,23 @@ import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
 import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
+import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
 import { DEFAULT_TERMS, SheetTerms } from './sheet-terms';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
-const NO_SETTINGS: SheetSettings = { clerkLimit: null, floor: DEFAULT_FLOOR, terms: DEFAULT_TERMS };
+const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+const NO_SETTINGS: SheetSettings = {
+  clerkLimit: null,
+  floor: DEFAULT_FLOOR,
+  terms: DEFAULT_TERMS,
+  latePct: DEFAULT_LATE_PCT,
+};
 
 // The sheet's settings: the role each user name has (clerk unless given another) with the form that
 // gives one, the clerk limit, the highest due a clerk may settle (blank for no limit), and the floor, the
-// least a claim's live due comes to, and the terms, the days after its date a claim is due by. Saving sends
+// least a claim's live due comes to, the terms, the days after its date a claim is due by, and the late
+// percent, what an overdue claim gains of its figure for every full 30 days overdue. Saving sends
 // only the settings changed in the form (the clerk limit when none was).
 @Component({
   selector: 'app-settings',
@@ -33,6 +41,8 @@ const NO_SETTINGS: SheetSettings = { clerkLimit: null, floor: DEFAULT_FLOOR, ter
         <input id="setting-floor" data-testid="setting-floor" inputmode="decimal" formControlName="floor" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" inputmode="numeric" formControlName="terms" />
+        <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
+        <input id="setting-late-pct" data-testid="setting-late-pct" inputmode="decimal" formControlName="latePct" />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as e) {
@@ -49,6 +59,10 @@ const NO_SETTINGS: SheetSettings = { clerkLimit: null, floor: DEFAULT_FLOOR, ter
       <p>
         Terms in force:
         <span data-testid="setting-terms-current">{{ settings().terms }}</span>
+      </p>
+      <p>
+        Late percent in force:
+        <span data-testid="setting-late-pct-current">{{ settings().latePct }}</span>
       </p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" data-testid="role-form">
         <label for="role-form-user">User</label>
@@ -85,6 +99,7 @@ export class Settings {
   private readonly api = inject(SettingsApi);
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
+  private readonly latePct = inject(SheetLatePct);
 
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly roles = signal<RoleGiven[]>([]);
@@ -100,6 +115,7 @@ export class Settings {
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl(DEFAULT_FLOOR, { nonNullable: true }),
     terms: new FormControl(String(DEFAULT_TERMS), { nonNullable: true }),
+    latePct: new FormControl(DEFAULT_LATE_PCT, { nonNullable: true }),
   });
 
   constructor() {
@@ -172,8 +188,10 @@ export class Settings {
     const floor = controls.floor.value.trim();
     const terms = controls.terms.value.trim();
     const sendFloor = controls.floor.dirty;
+    const latePct = controls.latePct.value.trim();
     const sendTerms = controls.terms.dirty;
-    const sendLimit = controls.clerkLimit.dirty || (!sendFloor && !sendTerms);
+    const sendLatePct = controls.latePct.dirty;
+    const sendLimit = controls.clerkLimit.dirty || (!sendFloor && !sendTerms && !sendLatePct);
     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -186,10 +204,15 @@ export class Settings {
       this.settingsError.set('Type terms of 0 or more whole days.');
       return;
     }
+    if (sendLatePct && !PCT.test(latePct)) {
+      this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
+      return;
+    }
     const changed = {
       ...(sendLimit ? { clerkLimit } : {}),
       ...(sendFloor ? { floor } : {}),
       ...(sendTerms ? { terms } : {}),
+      ...(sendLatePct ? { latePct } : {}),
     };
     this.busy.set(true);
     this.api.save(sheetId, changed).subscribe({
@@ -210,8 +233,9 @@ export class Settings {
     this.settings.set(s);
     this.floor.set(s.floor);
     this.terms.set(s.terms);
+    this.latePct.set(s.latePct);
     this.settingsForm.reset(
-      { clerkLimit: s.clerkLimit ?? '', floor: s.floor, terms: String(s.terms) },
+      { clerkLimit: s.clerkLimit ?? '', floor: s.floor, terms: String(s.terms), latePct: s.latePct },
       { emitEvent: false },
     );
   }

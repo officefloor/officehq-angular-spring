@@ -61,8 +61,9 @@ public class StatementService {
     }
 
     /**
-     * Take a statement for a person: record their due-total now and bind each of their claims that counts to
-     * the figure it has now; a claim of theirs that does not count is left unbound.
+     * Take a statement for a person: record their due-total now, late charges included, and bind each of their
+     * claims that counts (a held person's OPEN ones do not) to the figure it has now (never its late charge, which keeps following the sheet's
+     * today); a claim of theirs that does not count is left unbound.
      */
     @Transactional
     public Person take(String user, String sheetId, Long personId) {
@@ -75,16 +76,17 @@ public class StatementService {
         boolean fixed = false;
         int counted = 0;
         for (Claim claim : claims.findBySheetIdAndPersonId(sheetId, personId)) {
-            if (!counts(claim)) {
+            if (!counts(claim, person)) {
                 claim.unbind();
                 continue;
             }
             BigDecimal figure = claimService.figureOf(claim, grade);
+            BigDecimal due = rollup.dueOf(claim, grade);
             fixed |= RollupService.keepsFigure(claim);
             claim.bind(figure);
             counted++;
-            if (figure != null) {
-                total = total.add(figure);
+            if (due != null) {
+                total = total.add(due);
             }
         }
         // Like the screen: with no rate in force today and no claim keeping a figure, the due-total is n/a.
@@ -99,8 +101,9 @@ public class StatementService {
         return person;
     }
 
-    /** Only OPEN and SETTLED claims count toward what is claimed and due. */
-    private static boolean counts(Claim claim) {
-        return claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.SETTLED;
+    /** Only OPEN and SETTLED claims count toward what is claimed and due; a held person's OPEN ones do not. */
+    private static boolean counts(Claim claim, Person person) {
+        return (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld())
+                || claim.getStatus() == ClaimStatus.SETTLED;
     }
 }

@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has on it, its clerk limit, its floor and its terms. */
+/** A sheet's settings: the role each user name has on it, its clerk limit, its floor, its terms and its late percent. */
 @Service
 public class SettingService {
 
@@ -61,11 +61,11 @@ public class SettingService {
         return given;
     }
 
-    /** Save the settings given, the clerk limit, the floor then the terms, together; a setting not given (null)
-     * is left as it is, and an empty clerk limit removes it. */
+    /** Save the settings given, the clerk limit, the floor, the terms then the late percent, together; a setting
+     * not given (null) is left as it is, and an empty clerk limit removes it. */
     @Transactional
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
-            Integer terms) {
+            Integer terms, BigDecimal latePct) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null));
         }
@@ -74,6 +74,9 @@ public class SettingService {
         }
         if (terms != null) {
             setTerms(user, sheetId, terms);
+        }
+        if (latePct != null) {
+            setLatePct(user, sheetId, latePct);
         }
     }
 
@@ -123,15 +126,39 @@ public class SettingService {
         return find(sheetId).getTerms();
     }
 
-    /** Set the sheet's terms. */
+    /** Set the sheet's terms; they move which claims are overdue, so the late charges, and the figures they move
+     * are written after. */
     @Transactional
     public int setTerms(String user, String sheetId, int terms) {
         sheets.lock(sheetId);
         Sheet sheet = find(sheetId);
+        Snapshot before = rollup.snapshot(sheetId);
         sheet.setTerms(terms);
         sheetRepository.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=terms value=" + terms);
+        rollup.recordChanges(user, sheetId, before);
         return terms;
+    }
+
+    /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days overdue. */
+    @Transactional(readOnly = true)
+    public BigDecimal latePct(String sheetId) {
+        return find(sheetId).getLatePct();
+    }
+
+    /** Set the sheet's late percent; it moves every late charge, and the figures it moves are written after. */
+    @Transactional
+    public BigDecimal setLatePct(String user, String sheetId, BigDecimal latePct) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal value = latePct.setScale(2);
+        sheet.setLatePct(value);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=late-pct value="
+                + value.toPlainString());
+        rollup.recordChanges(user, sheetId, before);
+        return value;
     }
 
     /** Refuse a settle by a clerk of a claim whose due is above the clerk limit; a due of n/a is within any

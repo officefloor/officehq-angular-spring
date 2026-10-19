@@ -5,11 +5,12 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
-import { Claim, ClaimsApi, claimDue, counts, isOverdue, keepsFigure, sumAmounts } from '../claims/claims-api';
+import { Claim, ClaimsApi, Lateness, claimDue, counts, isOverdue, keepsFigure, sumAmounts } from '../claims/claims-api';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { SheetFloor } from '../settings/sheet-floor';
+import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
@@ -171,6 +172,13 @@ export class People {
   private readonly periodsApi = inject(PeriodsApi);
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
+  private readonly latePct = inject(SheetLatePct);
+  /** What a late charge goes by: the sheet's today, terms and late percent. */
+  private readonly late = computed<Lateness>(() => ({
+    today: this.session.today(),
+    terms: this.terms.value(),
+    latePct: this.latePct.value(),
+  }));
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -217,7 +225,7 @@ export class People {
       const period = periodOf(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (!period || !grade) continue;
-      const due = claimDue(c, this.rates(), grade, this.floor.value());
+      const due = claimDue(c, this.rates(), grade, this.floor.value(), this.late());
       if (due !== NO_RATE) dues.set(period.id, [...(dues.get(period.id) ?? []), due]);
     }
     return new Map(this.periods().map((p) => [p.id, p.closedTotal ?? sumAmounts(dues.get(p.id) ?? [])]));
@@ -294,7 +302,7 @@ export class People {
     const frozen = counted.some(keepsFigure);
     if (!this.rateByGrade().has(person.grade) && !frozen) return NO_RATE;
     return sumAmounts(
-      counted.map((c) => claimDue(c, this.rates(), person.grade, this.floor.value())).filter((d) => d !== NO_RATE),
+      counted.map((c) => claimDue(c, this.rates(), person.grade, this.floor.value(), this.late())).filter((d) => d !== NO_RATE),
     );
   }
 
@@ -308,7 +316,7 @@ export class People {
   protected overdueTotalOf(person: Person): string {
     return sumAmounts(
       this.overdueOf(person)
-        .map((c) => claimDue(c, this.rates(), person.grade, this.floor.value()))
+        .map((c) => claimDue(c, this.rates(), person.grade, this.floor.value(), this.late()))
         .filter((d) => d !== NO_RATE),
     );
   }
