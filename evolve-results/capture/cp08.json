@@ -1,0 +1,256 @@
+{
+  "checkpoint": 8,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp08_workflow",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    5,
+    6,
+    7
+  ],
+  "replaced_tests": [
+    "cp05_claims.spec.ts::claims",
+    "cp05_claims.spec.ts::claims scenario 1",
+    "cp05_claims.spec.ts::claims scenario 2",
+    "cp05_claims.spec.ts::claims scenario 3",
+    "cp06_audit.spec.ts::audit scenario 1",
+    "cp06_audit.spec.ts::audit scenario 2",
+    "cp06_audit.spec.ts::audit scenario 3",
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 3"
+  ],
+  "request": {
+    "spec": "A claim now has a status. It starts as DRAFT; it can be opened (OPEN) and then settled\n(SETTLED); a DRAFT or OPEN claim can be voided (VOID). A SETTLED or VOID claim cannot change\nstatus, and the buttons for a change that is not allowed are refused with an error on the claim.\nOnly OPEN and SETTLED claims count toward claimed, due-total and every total; drafts and voided\nclaims do not. Show each claim's status. Every status change writes an audit line: CLAIM_OPENED,\nCLAIM_SETTLED or CLAIM_VOIDED, each with person=<name> amount=<amount> date=<date>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim now has a status. It starts as DRAFT; it can be opened (OPEN) and then settled\n(SETTLED); a DRAFT or OPEN claim can be voided (VOID). A SETTLED or VOID claim cannot change\nstatus, and the buttons for a change that is not allowed are refused with an error on the claim.\nOnly OPEN and SETTLED claims count toward claimed, due-total and every total; drafts and voided\nclaims do not. Show each claim's status. Every status change writes an audit line: CLAIM_OPENED,\nCLAIM_SETTLED or CLAIM_VOIDED, each with person=<name> amount=<amount> date=<date>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6f6835f050de6243eb6efcdfd2751a7707e96504",
+  "reset_sha": "",
+  "preagent_sha": "ea00d70779c7d20ac990841eeab94571ca671173",
+  "prev_sha": "ea00d70779c7d20ac990841eeab94571ca671173",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5071748,
+    "input_tokens": 24,
+    "output_tokens": 6648,
+    "cache_read_tokens": 356234,
+    "cache_creation_tokens": 37859,
+    "num_turns": 13,
+    "duration_ms": 121152,
+    "duration_api_ms": 74527,
+    "model": "claude-opus-5-5",
+    "session_id": "410735b6-88d3-414a-ae63-ac845d311732",
+    "stop_reason": "success",
+    "result_text": "Claims now have a status, and all 4 acceptance tests pass in `bin/e2e`.\n\n**How it behaves**\n- Every claim starts as DRAFT. A DRAFT claim can be opened, an OPEN claim can be settled, and a DRAFT or OPEN claim can be voided. SETTLED and VOID claims can't change.\n- The server checks every status change, so a stale screen (say, a second user's page) can't get a disallowed change through. A refused change saves nothing, writes no audit line, and shows an error on that claim's row. The error goes away when the next action is taken on that row.\n- Each successful change writes `CLAIM_OPENED`, `CLAIM_SETTLED` or `CLAIM_VOIDED` with `person=\u2026 amount=\u2026 date=\u2026`. The audit line is written only after the change is saved.\n- Only OPEN and SETTLED claims count toward a person's claimed and due totals and the sheet-wide totals.\n- Each claim row shows its status, plus Open, Settle and Void buttons next to Edit.\n\n**What changed**\n- **Database:** new migration `V7__claim_status.sql` adds a `status` column. Existing claims become DRAFT, so they stop counting toward totals until someone opens them.\n- **Server:** a new `ClaimStatus` enum holds the allowed moves. `ClaimService.changeStatus` does the check and the audit line, and there are new endpoints `POST /claims/{id}/open`, `/settle` and `/void`. The claim data the server sends now includes `status`.\n- **Front end:** `claims-api.ts` gets the status type, a `counts()` filter used for the totals, and the call for changing status. The buttons and error are in `claims.ts`, and `people.ts` uses the filter for its totals.\n\n**Decisions you may want to revisit**\n- Every claim shows all three buttons and the disallowed ones are refused with an error, rather than hidden. The test clicks buttons on claims where the change isn't allowed, so they have to be there.\n- A claim's own due amount is still shown even when it doesn't count (for example, a VOID claim), because the test expects that.\n- Editing a claim is still allowed whatever its status, including SETTLED and VOID. The request didn't say otherwise.\n- If two users change the same claim's status at the same moment, nothing stops both changes from going through. Adding a version check on the claim would close that gap.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5071748,
+        "num_turns": 13,
+        "duration_ms": 121152,
+        "duration_api_ms": 74527,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp08.agent.jsonl",
+  "agent_diff_file": "cp08.agent.diff",
+  "build_log_file": "cp08.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 20,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp05_claims.spec.ts::claims scenario 1": true,
+      "cp05_claims.spec.ts::claims scenario 2": true,
+      "cp05_claims.spec.ts::claims scenario 3": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp06_audit.spec.ts::audit scenario 1": true,
+      "cp06_audit.spec.ts::audit scenario 2": true,
+      "cp06_audit.spec.ts::audit scenario 3": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 1": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 2": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 3": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp08_workflow.spec.ts::workflow scenario 1": true,
+      "cp08_workflow.spec.ts::workflow scenario 2": true,
+      "cp08_workflow.spec.ts::workflow scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1102,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 891,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2255,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2278,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3079,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4492,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4509,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4515,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2499,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4236,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4736,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4421,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2700,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4456,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4685,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3831,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5550,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4657,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5350,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": {
+    "probe_cost_usd": 0.4577432,
+    "probe_input_tokens": 8,
+    "probe_cache_read_tokens": 79176,
+    "probe_recall": 0.8571428571428571,
+    "probe_text": "I only read the code and changed nothing. Several things you listed don't exist in this code: there are no imports, holds, closed periods, permissions or frozen values, and no rule decides anything by date.\n\n## 1. Figures on the sheet and the rules behind them\n\n### Figures shown\n\n**Sheet level** (`session-bar.ts`, `people.ts`)\n- **`sheet-today`**: the sheet's own \"today\" (`Sheet.today`). It is set to the server's local date when the sheet is first loaded (`new Sheet(...)`, `LocalDate.ofInstant(createdAt, ZoneId.systemDefault())`). Anyone can change it with `SheetService.setToday`, which writes no audit record.\n- **`rollup-claimed-total`** (`People.claimedTotal`): `sumAmounts` of every claim on the sheet that passes `counts`.\n- **`rollup-due-total`** (`People.dueTotal`): `sumAmounts` of each person's `personDueTotal`, leaving out people whose due is `NO_RATE` (\"n/a\"). It adds up per-person dues that are already rounded; it does not recompute from the claims.\n\n**Rates** (`rates.ts`)\n- **`rate-current-<grade>`**: the rate for grade A, B or C, shown with 2 decimals (`RateView`, `setScale(2)`). A grade with no row shows `NO_RATE` \"n/a\". While a save is in flight it shows \"Saving\u2026\".\n\n**Person row** (`people.ts`)\n- **`person-name`, `person-grade`**: stored as entered. The name is trimmed.\n- **`person-claimed`** (`People.claimed`): `sumAmounts` of that person's claims that pass `counts`.\n- **`person-due-total`** (`People.personDueTotal`): `dueOf(claimed(person), rate for person.grade)`. It is rounded once, on the person's counted total, not claim by claim. It shows \"n/a\" if the grade has no rate.\n\n**Claim row** (`claims.ts`)\n- **`claim-amount`**: shown with 2 decimals (`ClaimView.of`, `setScale(2)`).\n- **`claim-date`**: the date given, or the sheet's today if none was given (`ClaimService.add`/`update`, `date != null ? date : today`). The form also fills in today until the date field is touched (`Claims` constructor `effect`).\n- **`claim-note`**: trimmed, defaults to \"\" (`noteOf`).\n- **`claim-due`** (`Claims.due`): `dueOf(claim.amount, rate)`. This does **not** apply `counts`, so DRAFT and VOID claims also show a due. They are still left out of the person and sheet totals.\n- **`claim-status`**: `ClaimStatus` (DRAFT, OPEN, SETTLED or VOID).\n\n### Rules\n\n- **Which claims count**: `counts()` in `claims-api.ts`, true only for `OPEN` and `SETTLED`. The same rule appears as comments in `ClaimStatus.java` and `V7__claim_status.sql`, but nothing on the server enforces it, because all totals are worked out in the browser.\n- **How due is worked out and rounded**: `dueOf()` in `rates-api.ts` works in whole numbers with BigInt: `(hundredths(amount) \u00d7 hundredths(rate) + 5000) / 10000`. That is amount \u00d7 rate% / 100, rounded half up to cents. With no rate the result is `NO_RATE`.\n- **Summing**: `sumAmounts()` in `claims-api.ts` adds whole cents using `Number`, so there is no rounding.\n- **Status changes**: `ClaimStatus.canBecome`:\n  - DRAFT \u2192 OPEN\n  - OPEN \u2192 SETTLED\n  - DRAFT or OPEN \u2192 VOID\n  - nothing goes back to DRAFT\n  \n  `ClaimService.changeStatus` refuses anything else with 409, and the UI shows \"That claim's status does not allow that change.\" in `claim-error`. New claims start as `DRAFT`.\n- **What is frozen**: nothing.\n  - `ClaimService.update` lets you edit the amount, date and note in any status, including SETTLED and VOID.\n  - Rates are not snapshotted. Changing a grade's rate (`RateService.set`) recomputes every due on that grade, past claims included.\n  - Changing a person's grade moves all their dues to the new rate.\n- **Who may do what**: no rules. Sign-in is a name with no password (`SessionController`). The `X-User` header is only written into audit records, and the server does not check it. Any user can do any action on any sheet.\n- **What a date decides**: only the default date for a claim. No rule compares dates.\n- **Imports, holds, closed periods**: none exist.\n- **Validation and refusals**:\n  - Amount must be `\\d{1,10}(\\.\\d{1,2})?` and at least 0 (`ClaimForm`, the `AMOUNT` regex in the front end, the DB `CHECK`).\n  - Rate must be `\\d{1,3}(\\.\\d{1,2})?` (`RateForm`, `PCT`).\n  - Grade must be A, B or C.\n  - A person's name must be non-blank, at most 200 characters, and unique on the sheet ignoring case (`PersonRepository.nameInUse`, DB index `person_sheet_name`). A clash is refused with 409.\n  - The sheet id must have no spaces.\n- **Ordering**: people are listed in the order they were added (`findBySheetIdOrderByIdAsc`). Claims are listed newest first (`findBySheetIdOrderByIdDesc`).\n- **Audit records**: `PERSON_ADDED`/`PERSON_EDITED` (`name= grade=`), `CLAIM_ADDED`/`CLAIM_EDITED`/`CLAIM_OPENED`/`CLAIM_SETTLED`/`CLAIM_VOIDED` (`person= amount= date=`), and `RATE_SET` (`grade= rate=`). They are written only when the change is saved (`Audit.recordOnCommit`), so a refused change writes nothing.\n\n## 2. How hard it was to find and follow\n\nThe code is small and easy to read, but the rules are split between server and browser. Status changes and validation are in Java (`ClaimStatus`, `ClaimService`). Every figure the sheet shows (which claims count, due, rounding, totals) is worked out only in the Angular front end, across `claims-api.ts`, `rates-api.ts` and `people.ts`, and the server never computes or checks any of them. A new developer could follow it in about an hour, but there is no single place where \"the money rules\" live, and inconsistencies are easy to miss. For example, `claim-due` ignores `counts` while the totals apply it, and the person due is rounded on the total rather than claim by claim."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
