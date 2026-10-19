@@ -58,12 +58,16 @@ public class ClaimService {
         return claim;
     }
 
-    /** Edit a claim; one dated in a closed period, or that would be, is refused. */
+    /** Edit a claim; only a draft can be edited (an open claim is voided and added again instead), and one dated
+     * in a closed period, or that would be, is refused. */
     @Transactional
     public Claim update(String user, String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
         LocalDate today = sheets.today(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can be edited.");
+        }
         requireOpenPeriod(sheetId, claim.getDate());
         requireOpenPeriod(sheetId, date != null ? date : today);
         Snapshot before = rollup.snapshot(sheetId);
@@ -109,9 +113,6 @@ public class ClaimService {
             // the rate its grade has on its date; with no figure it stays live.
             claim.setSettledDue(figureOf(claim, person.getGrade()));
             entry += " due=" + (claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : "n/a");
-        }
-        if (next == ClaimStatus.VOID) {
-            claim.setNumber(null);
         }
         claims.flush();
         audit.recordOnCommit(entry);

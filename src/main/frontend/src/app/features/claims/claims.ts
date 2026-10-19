@@ -180,6 +180,13 @@ export class Claims {
 
   protected edit(claim: Claim): void {
     this.claimError.set(null);
+    if (claim.status !== 'DRAFT') {
+      this.claimError.set({
+        id: claim.id,
+        message: 'Only a draft claim can be edited. To change it, void it and add a new one.',
+      });
+      return;
+    }
     this.editingId.set(claim.id);
     this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note }, { emitEvent: false });
     this.formError.set(null);
@@ -222,7 +229,9 @@ export class Claims {
             ? 'That person or claim is no longer on this sheet.'
             : e.status === 423
               ? 'That claim is dated in a closed period.'
-              : 'Could not save that claim.',
+              : e.status === 409
+                ? 'Only a draft claim can be edited. To change it, void it and add a new one.'
+                : 'Could not save that claim.',
         );
       },
     });
