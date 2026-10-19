@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -22,14 +23,16 @@ public class ClaimService {
     private final PersonRepository people;
     private final RollupService rollup;
     private final SheetService sheets;
+    private final PeriodService periods;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
-            Audit audit) {
+            PeriodService periods, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rollup = rollup;
         this.sheets = sheets;
+        this.periods = periods;
         this.audit = audit;
     }
 
@@ -40,11 +43,13 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
-    /** Add a claim for a person; a claim without a date is dated the sheet's today. */
+    /** Add a claim for a person; a claim without a date is dated the sheet's today. One dated in a closed period
+     * is refused. */
     @Transactional
     public Claim add(String user, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
         LocalDate today = sheets.today(sheetId);
         Person person = requirePerson(sheetId, personId);
+        requireOpenPeriod(sheetId, date != null ? date : today);
         Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.saveAndFlush(
                 new Claim(sheetId, personId, amount, date != null ? date : today, noteOf(note)));
@@ -53,11 +58,14 @@ public class ClaimService {
         return claim;
     }
 
+    /** Edit a claim; one dated in a closed period, or that would be, is refused. */
     @Transactional
     public Claim update(String user, String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
         LocalDate today = sheets.today(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        requireOpenPeriod(sheetId, claim.getDate());
+        requireOpenPeriod(sheetId, date != null ? date : today);
         Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(date != null ? date : today);
@@ -68,7 +76,8 @@ public class ClaimService {
         return claim;
     }
 
-    /** Move a claim to another status; a change its status does not allow is refused. */
+    /** Move a claim to another status; a change its status does not allow, or of a claim dated in a closed
+     * period, is refused. */
     @Transactional
     public Claim changeStatus(String user, String sheetId, Long id, ClaimStatus next) {
         sheets.today(sheetId); // the sheet must exist
@@ -77,6 +86,7 @@ public class ClaimService {
         Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        requireOpenPeriod(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
@@ -118,6 +128,13 @@ public class ClaimService {
      * else what is due at its grade's rate; none when that is n/a. */
     public BigDecimal figureOf(Claim claim, String grade) {
         return rollup.figureOf(claim, grade);
+    }
+
+    /** Refuse a change to a claim dated in a closed period. Locks the sheet first, so a period cannot close
+     * while the change is made. */
+    private void requireOpenPeriod(String sheetId, LocalDate date) {
+        sheets.lock(sheetId);
+        periods.requireOpen(sheetId, date);
     }
 
     private Person requirePerson(String sheetId, Long personId) {

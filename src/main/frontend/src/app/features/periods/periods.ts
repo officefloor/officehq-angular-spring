@@ -6,8 +6,8 @@ import { Period, PeriodsApi } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's periods by from-date, each with the due-total of the claims that count dated in it, and the
-// form that adds one.
+// The sheet's periods by from-date, each with the due-total of the claims that count dated in it (fixed once
+// it is closed) and whether it is closed, and the form that adds one.
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -33,6 +33,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             <th scope="col">From</th>
             <th scope="col">To</th>
             <th scope="col">Due</th>
+            <th scope="col">Closed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -42,6 +44,20 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="period-close"
+                  [attr.aria-label]="'Close period ' + p.name"
+                  (click)="close(p)"
+                >
+                  Close
+                </button>
+                @if (periodError()?.id === p.id) {
+                  <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -57,10 +73,12 @@ export class Periods {
   readonly periods = input.required<readonly Period[]>();
   /** Each period's due-total, by id. */
   readonly dueTotals = input.required<ReadonlyMap<number, string>>();
-  /** A period was added. */
+  /** A period was added or closed. */
   readonly saved = output<Period>();
 
   protected readonly formError = signal<string | null>(null);
+  /** The error of the last action taken on a period, shown on that period's row. */
+  protected readonly periodError = signal<{ id: number; message: string } | null>(null);
   /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
   private submitting = false;
   protected readonly form = new FormGroup({
@@ -71,6 +89,27 @@ export class Periods {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.formError.set(null));
+  }
+
+  protected close(period: Period): void {
+    this.periodError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api.close(sheetId, period.id).subscribe({
+      next: (p) => {
+        if (this.session.sheetId() === sheetId) this.saved.emit(p);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.periodError.set({
+          id: period.id,
+          message:
+            e.status === 409
+              ? 'That period is already closed.'
+              : e.status === 404
+                ? 'That period is no longer on this sheet.'
+                : 'Could not close that period.',
+        }),
+    });
   }
 
   protected submit(): void {

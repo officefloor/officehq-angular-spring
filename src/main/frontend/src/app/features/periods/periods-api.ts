@@ -10,6 +10,9 @@ export interface Period {
   /** yyyy-mm-dd, both inclusive. */
   from: string;
   to: string;
+  closed: boolean;
+  /** The due-total fixed when it closed; null while open. */
+  closedTotal: string | null;
 }
 
 export interface PeriodForm {
@@ -23,7 +26,7 @@ export function periodOf(periods: readonly Period[], date: string): Period | und
   return periods.find((p) => p.from <= date && date <= p.to);
 }
 
-// The periods of the active sheet, read and added through the server.
+// The periods of the active sheet, read, added and closed through the server.
 @Injectable({ providedIn: 'root' })
 export class PeriodsApi {
   private readonly http = inject(HttpClient);
@@ -35,6 +38,10 @@ export class PeriodsApi {
 
   add(sheetId: string, form: PeriodForm): Observable<Period> {
     return this.http.post<Period>(this.url(sheetId), form, { headers: this.headers() });
+  }
+
+  close(sheetId: string, id: number): Observable<Period> {
+    return this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() });
   }
 
   private url(sheetId: string): string {

@@ -142,7 +142,7 @@ export class People {
   /** The sheet's periods by from-date. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total, by id: the sum of the dues of the claims that count dated in it (n/a ones
-   * skipped), 0.00 with none. */
+   * skipped), 0.00 with none; a closed period's is the one fixed when it closed. */
   protected readonly periodDueTotals = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const dues = new Map<number, string[]>();
@@ -153,7 +153,7 @@ export class People {
       const due = claimDue(c, this.rates(), grade);
       if (due !== NO_RATE) dues.set(period.id, [...(dues.get(period.id) ?? []), due]);
     }
-    return new Map(this.periods().map((p) => [p.id, sumAmounts(dues.get(p.id) ?? [])]));
+    return new Map(this.periods().map((p) => [p.id, p.closedTotal ?? sumAmounts(dues.get(p.id) ?? [])]));
   });
 
   protected readonly dueTotal = computed(() =>
@@ -220,7 +220,9 @@ export class People {
   }
 
   protected periodSaved(period: Period): void {
-    this.periods.update((ps) => [...ps, period].sort((a, b) => (a.from < b.from ? -1 : 1)));
+    this.periods.update((ps) =>
+      [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => (a.from < b.from ? -1 : 1)),
+    );
   }
 
   protected claimSaved(claim: Claim): void {

@@ -89,6 +89,27 @@ public class RollupService {
         return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString());
     }
 
+    /** The due-total of the sheet's claims that count dated from and to, inclusive: the sum of their figures,
+     * n/a ones skipped. */
+    public BigDecimal dueTotal(String sheetId, LocalDate from, LocalDate to) {
+        Map<Long, List<Rate>> gradeRates = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            gradeRates.put(person.getId(), rates.findBySheetIdAndGrade(sheetId, person.getGrade()));
+        }
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            List<Rate> personRates = gradeRates.get(claim.getPersonId());
+            if (personRates == null || !counts(claim) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+                continue;
+            }
+            BigDecimal figure = figureOf(claim, personRates);
+            if (figure != null) {
+                total = total.add(figure.setScale(2));
+            }
+        }
+        return total;
+    }
+
     /**
      * Write to the audit, once the change commits, one ROLLUP line for each person whose figures moved since
      * {@code before} (a person new since then counts as moved), in the order they were added, then a TOTALS

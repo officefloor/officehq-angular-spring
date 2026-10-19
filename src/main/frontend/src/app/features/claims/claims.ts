@@ -167,6 +167,8 @@ export class Claims {
           message:
             e.status === 403
               ? 'You opened that claim, so someone else must settle it.'
+              : e.status === 423
+              ? 'That claim is dated in a closed period.'
               : e.status === 409
               ? 'That claim\'s status does not allow that change.'
               : e.status === 404
@@ -215,7 +217,13 @@ export class Claims {
       },
       error: (e: HttpErrorResponse) => {
         this.submitting = false;
-        this.formError.set(e.status === 404 ? 'That person or claim is no longer on this sheet.' : 'Could not save that claim.');
+        this.formError.set(
+          e.status === 404
+            ? 'That person or claim is no longer on this sheet.'
+            : e.status === 423
+              ? 'That claim is dated in a closed period.'
+              : 'Could not save that claim.',
+        );
       },
     });
   }
