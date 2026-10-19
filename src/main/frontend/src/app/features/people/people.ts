@@ -9,6 +9,7 @@ import { Claim, ClaimsApi, Lateness, claimDue, counts, isOverdue, keepsFigure, s
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
+import { GradeSummary, Summary } from '../summary/summary';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
@@ -24,10 +25,16 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
 // also shows how many of the claims that count are overdue and the sum of their dues (n/a ones skipped).
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Claims, Periods, Rates],
+  imports: [ReactiveFormsModule, Claims, Periods, Rates, Summary],
   template: `
     <app-rates [grades]="grades" [rates]="rates()" [current]="rateByGrade()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+    <app-summary
+      [grades]="gradeSummary()"
+      [periods]="periods()"
+      [periodDueTotals]="periodDueTotals()"
+      [statusCounts]="statusCounts()"
+    />
     <section aria-labelledby="people-heading" data-testid="people">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
@@ -266,6 +273,21 @@ export class People {
   protected readonly dueTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
   );
+  /** Per grade, the people not retired who have it on the sheet's today and their due-totals added up (n/a
+   * ones skipped). */
+  protected readonly gradeSummary = computed<GradeSummary[]>(() =>
+    this.grades.map((grade) => {
+      const on = this.people().filter((p) => !p.retiredFrom && this.gradeToday(p) === grade);
+      const dueTotal = sumAmounts(on.map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE));
+      return { grade, count: on.length, dueTotal };
+    }),
+  );
+  /** How many of the sheet's claims have each status. */
+  protected readonly statusCounts = computed(() => {
+    const by = new Map<string, number>();
+    for (const c of this.claims()) by.set(c.status, (by.get(c.status) ?? 0) + 1);
+    return by;
+  });
   /** How many of the sheet's claims that count are overdue, and the sum of their dues (n/a ones skipped). */
   protected readonly overdueCount = computed(() =>
     this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
