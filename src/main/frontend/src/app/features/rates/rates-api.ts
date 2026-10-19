@@ -29,10 +29,18 @@ export function rateOn(rates: readonly Rate[], grade: Grade, date: string): stri
 /** Shown in place of a due whose grade has no rate. */
 export const NO_RATE = 'n/a';
 
-/** Hundredths of a decimal with up to two decimals, e.g. "12.5" is 1250. */
-function hundredths(value: string): bigint {
-  const [whole, frac = ''] = value.split('.');
-  return BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
+/** Hundredths of a decimal with up to two decimals, e.g. "12.5" is 1250 and "-0.3" is -30. */
+export function hundredths(value: string): bigint {
+  const negative = value.startsWith('-');
+  const [whole, frac = ''] = (negative ? value.slice(1) : value).split('.');
+  const abs = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
+  return negative ? -abs : abs;
+}
+
+/** Hundredths as a decimal with two decimals, e.g. -30 is "-0.30". */
+export function fromHundredths(value: bigint): string {
+  const abs = value < 0n ? -value : value;
+  return `${value < 0n ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
 }
 
 /**
@@ -42,12 +50,13 @@ function hundredths(value: string): bigint {
 export function dueOf(amount: string, rate: string | undefined): string {
   if (rate === undefined) return NO_RATE;
   // cents × hundredths of a percent is in ten-thousandths of a cent; round to cents, a half to the even
-  // cent (amounts are never negative).
+  // cent, worked on the size so a correction's negative amount rounds the same way.
   const exact = hundredths(amount) * hundredths(rate);
-  const rest = exact % 10000n;
-  let cents = exact / 10000n;
+  const size = exact < 0n ? -exact : exact;
+  const rest = size % 10000n;
+  let cents = size / 10000n;
   if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
-  return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+  return fromHundredths(exact < 0n ? -cents : cents);
 }
 
 /** A due raised to the floor when it is below it; n/a stays n/a. */

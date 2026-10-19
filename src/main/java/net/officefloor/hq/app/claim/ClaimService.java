@@ -47,25 +47,30 @@ public class ClaimService {
     }
 
     /** Add a claim for a person; a claim without a date is dated the sheet's today. One dated in a closed period
-     * is refused. */
+     * is refused, and so is a correction that does not name a settled claim of the same person. */
     @Transactional
-    public Claim add(String user, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String user, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         LocalDate today = sheets.today(sheetId);
         Person person = requirePerson(sheetId, personId);
         requireNotRetired(person, date != null ? date : today);
         requireOpenPeriod(sheetId, date != null ? date : today);
+        Integer corrected = correctedBy(sheetId, personId, amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = claims.saveAndFlush(
-                new Claim(sheetId, personId, amount, date != null ? date : today, noteOf(note)));
+        Claim fresh = new Claim(sheetId, personId, amount, date != null ? date : today, noteOf(note));
+        fresh.setCorrects(corrected);
+        Claim claim = claims.saveAndFlush(fresh);
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, claim));
         rollup.recordChanges(user, sheetId, before);
         return claim;
     }
 
     /** Edit a claim; only a draft can be edited (an open claim is voided and added again instead), and one dated
-     * in a closed period, or that would be, is refused. */
+     * in a closed period, or that would be, is refused, as is a correction that does not name a settled claim of
+     * the same person. */
     @Transactional
-    public Claim update(String user, String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String user, String sheetId, Long id, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         LocalDate today = sheets.today(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
@@ -75,8 +80,10 @@ public class ClaimService {
         requireOpenPeriod(sheetId, claim.getDate());
         requireOpenPeriod(sheetId, date != null ? date : today);
         requireNotRetired(requirePerson(sheetId, claim.getPersonId()), date != null ? date : today);
+        Integer corrected = correctedBy(sheetId, claim.getPersonId(), amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
+        claim.setCorrects(corrected);
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
         claims.flush();
@@ -140,6 +147,21 @@ public class ClaimService {
      * else what is due at the rate of the grade its person has on its date; none when that is n/a. */
     public BigDecimal figureOf(Claim claim, Person person) {
         return rollup.figureOf(claim, person);
+    }
+
+    /** The number a claim of this amount corrects: none unless the amount is negative, when it must name a
+     * SETTLED claim of the same person, or the claim is refused. */
+    private Integer correctedBy(String sheetId, Long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) {
+            return null;
+        }
+        boolean settled = corrects != null && claims.findBySheetIdAndPersonId(sheetId, personId).stream()
+                .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
+        if (!settled) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A correction must name a settled claim of the same person.");
+        }
+        return corrects;
     }
 
     /** Refuse a change to a claim dated in a closed period. Locks the sheet first, so a period cannot close

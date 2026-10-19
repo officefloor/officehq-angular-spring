@@ -11,7 +11,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A claim a person makes on a sheet: an amount (0.00 or more), a date, a note, a status and, once opened, a number. */
+/** A claim a person makes on a sheet: an amount (negative for a correction), a date, a note, a status and, once opened, a number. */
 @Entity
 @Table(name = "claim")
 public class Claim {
@@ -58,6 +58,10 @@ public class Claim {
     /** The figure the claim was bound to at its person's last statement; none when it was n/a then. */
     @Column(name = "stated_due", precision = 12, scale = 2)
     private BigDecimal statedDue;
+
+    /** The number of the settled claim of the same person a correction corrects; none for any other claim. */
+    @Column(name = "corrects")
+    private Integer corrects;
 
     protected Claim() {}
 
@@ -135,6 +139,19 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public Integer getCorrects() {
+        return corrects;
+    }
+
+    public void setCorrects(Integer corrects) {
+        this.corrects = corrects;
+    }
+
+    /** Whether the claim is a correction: its amount is negative. */
+    public boolean isCorrection() {
+        return amount.signum() < 0;
     }
 
     public boolean isStated() {

@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Session } from '../../core/session';
 import { Grade } from '../people/people-api';
-import { NO_RATE, Rate, dueOf, floored, rateOn } from '../rates/rates-api';
+import { NO_RATE, Rate, dueOf, floored, fromHundredths, hundredths, rateOn } from '../rates/rates-api';
 
 export interface Claim {
   id: number;
@@ -25,6 +25,13 @@ export interface Claim {
   stated: boolean;
   /** That bound figure, with two decimals; null when it was n/a or the claim is not bound. */
   statedDue: string | null;
+  /** For a correction (a negative amount), the number of the settled claim it corrects; null otherwise. */
+  corrects: number | null;
+}
+
+/** Whether a claim is a correction: its amount is negative. */
+export function isCorrection(claim: Claim): boolean {
+  return claim.amount.startsWith('-');
 }
 
 /** A claim starts as DRAFT, is opened and then settled; a DRAFT or OPEN claim can be voided. */
@@ -63,15 +70,20 @@ export function claimDue(
   if (claim.due !== null) return claim.due;
   const figure = claim.stated
     ? (claim.statedDue ?? NO_RATE)
-    : floored(dueOf(claim.amount, grade && rateOn(rates, grade, claim.date)), floor);
+    : correctionFloored(claim, dueOf(claim.amount, grade && rateOn(rates, grade, claim.date)), floor);
   if (figure === NO_RATE) return figure;
   return sumAmounts([figure, lateCharge(claim, figure, late)]);
 }
 
+/** A due raised to the sheet's floor, except a correction's, which has no floor. */
+function correctionFloored(claim: Claim, due: string, floor: string): string {
+  return isCorrection(claim) ? due : floored(due, floor);
+}
+
 /** The late charge on an overdue claim: the late percent of its figure for every full 30 days it is overdue,
- * rounded like a due; never bound by a statement, it follows the sheet's today. */
+ * rounded like a due; never bound by a statement, it follows the sheet's today. A correction has none. */
 function lateCharge(claim: Claim, figure: string, late: Lateness): string {
-  if (!isOverdue(claim, late.terms, late.today) || late.today === null) return '0.00';
+  if (isCorrection(claim) || !isOverdue(claim, late.terms, late.today) || late.today === null) return '0.00';
   const days = (Date.parse(late.today) - Date.parse(dueBy(claim, late.terms))) / 86_400_000;
   const periods = Math.floor(days / LATE_PERIOD_DAYS);
   return dueOf(figure, timesPct(late.latePct, periods));
@@ -106,15 +118,13 @@ export interface ClaimForm {
   /** Null for the sheet's today. */
   date: string | null;
   note: string;
+  /** The number of the settled claim a correction corrects; null when none is named. */
+  corrects: number | null;
 }
 
 /** The sum of claim amounts with two decimals, added up in cents so no rounding creeps in. */
 export function sumAmounts(amounts: string[]): string {
-  const cents = amounts.reduce((sum, a) => {
-    const [whole, frac = ''] = a.split('.');
-    return sum + Number(whole) * 100 + Number(frac.padEnd(2, '0'));
-  }, 0);
-  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+  return fromHundredths(amounts.reduce((sum, a) => sum + hundredths(a), 0n));
 }
 
 // The claims people make on the active sheet, read and changed through the server.

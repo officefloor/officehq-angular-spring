@@ -220,10 +220,10 @@ public class RollupService {
     /**
      * The late charge on a claim: the late percent of its figure for every full 30 days it is overdue (OPEN, and
      * its due-by, its date plus the terms, before the sheet's today), rounded half to even to two decimals. A
-     * statement never binds it: it follows the sheet's today.
+     * statement never binds it: it follows the sheet's today. A correction has none.
      */
     private static BigDecimal lateCharge(Claim claim, BigDecimal figure, Lateness late) {
-        if (claim.getStatus() != ClaimStatus.OPEN || late.today() == null) {
+        if (claim.getStatus() != ClaimStatus.OPEN || late.today() == null || claim.isCorrection()) {
             return BigDecimal.ZERO.setScale(2);
         }
         long overdueDays = ChronoUnit.DAYS.between(claim.getDate().plusDays(late.terms()), late.today());
@@ -240,12 +240,12 @@ public class RollupService {
     }
 
     /** What is due on a claim at the rate its grade has in force on the claim's date, rounded half to even to two
-     * decimals, and at least the floor; none when no rate of the grade applies then. */
+     * decimals, and at least the floor (a correction has no floor); none when no rate of the grade applies then. */
     private static BigDecimal liveDueOf(Claim claim, List<Rate> gradeRates, BigDecimal floor) {
         BigDecimal amount = claim.getAmount();
         return Rate.inForce(gradeRates, claim.getDate())
                 .map(r -> amount.multiply(r.getRate()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                .map(due -> due.max(floor.setScale(2)))
+                .map(due -> claim.isCorrection() ? due : due.max(floor.setScale(2)))
                 .orElse(null);
     }
 

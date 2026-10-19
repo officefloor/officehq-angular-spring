@@ -10,7 +10,8 @@ import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
 import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, dueBy, isOverdue } from './claims-api';
 
-const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
+const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
+const NUMBER = /^\d{1,9}$/;
 
 // One person's claims, newest first, and the one form that adds a claim for them or, once a
 // claim's editor is opened, saves changes to it.
@@ -30,6 +31,13 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
       <input [id]="'claim-form-date-' + personId()" type="date" data-testid="claim-form-date" formControlName="date" />
       <label [for]="'claim-form-note-' + personId()">Note</label>
       <input [id]="'claim-form-note-' + personId()" data-testid="claim-form-note" formControlName="note" />
+      <label [for]="'claim-form-corrects-' + personId()">Corrects claim no.</label>
+      <input
+        [id]="'claim-form-corrects-' + personId()"
+        data-testid="claim-form-corrects"
+        inputmode="numeric"
+        formControlName="corrects"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -56,6 +64,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <th scope="col">Stated</th>
             <th scope="col">Status</th>
             <th scope="col">Opened by</th>
+            <th scope="col">Corrects</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -73,6 +82,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+              <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
               <td>
                 <button
                   type="button"
@@ -143,6 +153,7 @@ export class Claims {
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
+    corrects: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -221,13 +232,19 @@ export class Claims {
       return;
     }
     this.editingId.set(claim.id);
-    this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note }, { emitEvent: false });
+    this.form.setValue(
+      { amount: claim.amount, date: claim.date, note: claim.note, corrects: String(claim.corrects ?? '') },
+      { emitEvent: false },
+    );
     this.formError.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ amount: '', date: this.session.today() ?? '', note: '' }, { emitEvent: false });
+    this.form.reset(
+      { amount: '', date: this.session.today() ?? '', note: '', corrects: '' },
+      { emitEvent: false },
+    );
     this.formError.set(null);
   }
 
@@ -242,10 +259,20 @@ export class Claims {
     const value = this.form.getRawValue();
     const amount = value.amount.trim();
     if (!AMOUNT.test(amount)) {
-      this.formError.set('Type an amount of 0.00 or more, with up to two decimals.');
+      this.formError.set('Type an amount with up to two decimals; a negative one is a correction.');
       return;
     }
-    const form = { amount, date: value.date || null, note: value.note.trim() };
+    const corrects = value.corrects.trim();
+    if (corrects !== '' && !NUMBER.test(corrects)) {
+      this.formError.set('Type the number of the settled claim this corrects.');
+      return;
+    }
+    const form = {
+      amount,
+      date: value.date || null,
+      note: value.note.trim(),
+      corrects: corrects === '' ? null : Number(corrects),
+    };
     const id = this.editingId();
     const request = id === null ? this.api.add(sheetId, this.personId(), form) : this.api.update(sheetId, id, form);
     this.submitting = true;
@@ -258,7 +285,9 @@ export class Claims {
       error: (e: HttpErrorResponse) => {
         this.submitting = false;
         this.formError.set(
-          e.status === 404
+          e.status === 400
+            ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects.'
+            : e.status === 404
             ? 'That person or claim is no longer on this sheet.'
             : e.status === 422
               ? 'That claim is dated after its person is retired.'
