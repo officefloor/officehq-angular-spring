@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { DOCUMENT } from '@angular/common';
 import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -85,6 +86,7 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()" (change)="toggleRetired($event)" />
         Show retired
       </label>
+      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -216,6 +218,7 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
 })
 export class People {
   private readonly session = inject(Session);
+  private readonly document = inject(DOCUMENT);
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
@@ -505,6 +508,22 @@ export class People {
       });
   }
 
+  /** Download everyone, retired people included, in list order as a CSV file: name, the grade in force on the
+   * sheet's today, the retired-from date or nothing, and the due-total as shown. */
+  protected exportCsv(): void {
+    const lines = [
+      ['name', 'grade', 'retired-from', 'due-total'],
+      ...this.people().map((p) => [p.name, this.gradeToday(p), p.retiredFrom ?? '', this.personDueTotal(p)]),
+    ];
+    const csv = lines.map((l) => l.map(csvValue).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = this.document.createElement('a');
+    a.href = url;
+    a.download = 'people.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url));
+  }
+
   protected toggleRetired(event: Event): void {
     this.showRetired.set((event.target as HTMLInputElement).checked);
   }
@@ -670,4 +689,10 @@ export class People {
   private refusal(e: HttpErrorResponse, fallback: string): string {
     return e.status === 409 ? 'That name is already in use on this sheet.' : fallback;
   }
+}
+
+/** A CSV value, wrapped in double quotes, with any quote inside doubled, when it holds a comma, a quote or a
+ * line break. */
+function csvValue(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
