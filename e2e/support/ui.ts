@@ -43,6 +43,50 @@ async function ids(loc: Locator, prefix: string): Promise<string[]> {
   return out;
 }
 
+/** The rows matching `loc` whose id is not in `before`, in screen order, each with its id and the
+ *  text of the named cells; read without waiting, so a poll may call it. A creating helper finds
+ *  its row this way: a page may be showing the sheet as it was when it was loaded, so the rows
+ *  other users added can land on it at any moment, including between a submit and its result. */
+async function freshRows(loc: Locator, prefix: string, before: string[], cells: string[]): Promise<Record<string, string>[]> {
+  const out: Record<string, string>[] = [];
+  try {
+    for (const h of await loc.elementHandles()) {
+      const testid = (await h.getAttribute('data-testid')) ?? '';
+      if (!testid.startsWith(prefix) || before.includes(testid.slice(prefix.length))) continue;
+      const x: Record<string, string> = { id: testid.slice(prefix.length) };
+      for (const c of cells) x[c] = ((await (await h.$(`[data-testid="${c}"]`))?.textContent()) ?? '').trim();
+      out.push(x);
+    }
+  } catch {
+    return [];                            // a row was re-rendered mid-read: the poll looks again
+  }
+  return out;
+}
+
+/** An amount as the screen shows it: two decimals, a dot, no grouping. */
+function money(amount: string): string {
+  const n = Number(amount.trim());
+  return amount.trim() !== '' && Number.isFinite(n) ? n.toFixed(2) : amount;
+}
+
+/** The id of a person row new since `before` whose name is `name` (case and outer spaces
+ *  ignored), or null when none shows yet. */
+async function addedPerson(page: Page, before: string[], name: string): Promise<string | null> {
+  const want = name.trim().toLowerCase();
+  const hit = (await freshRows(rows(page), 'person-row-', before, ['person-name'])).find((p) => p['person-name'].toLowerCase() === want);
+  return hit ? hit.id : null;
+}
+
+/** The id of a claim row under `scope` new since `before` showing the amount (and the date,
+ *  when one was given) that was entered, or null when none shows yet; the first in screen order
+ *  (newest first) when more than one does. */
+async function addedClaim(scope: Locator, before: string[], f: ClaimFields): Promise<string | null> {
+  const want = money(f.amount ?? '');
+  const hit = (await freshRows(claimRows(scope), 'claim-row-', before, ['claim-amount', 'claim-date']))
+    .find((c) => c['claim-amount'] === want && (f.date === undefined || c['claim-date'] === f.date));
+  return hit ? hit.id : null;
+}
+
 function idOf(testid: string | null, prefix: string): string {
   if (!testid || !testid.startsWith(prefix)) throw new Error(`no ${prefix}* id on ${testid}`);
   return testid.slice(prefix.length);
@@ -104,9 +148,12 @@ export async function loadSheet(page: Page, sheet: string): Promise<void> {
 
 /** Re-load the active sheet so the screen shows what the store holds now. Loading the same id
  *  again is not observable (the current id already reads that), so the screen first loads a
- *  throwaway id, which must change the current id, then the sheet again; it is back once every
- *  person row from before is on screen with at least as many claims as before. The show-retired
- *  box and the as-of date, which belong to the screen, are put back if the loads reset them. */
+ *  throwaway id, which has no one on it, and waits for the person rows to go; then it loads the
+ *  sheet again and waits for rows to show. Rows that were on screen before may rightly not come
+ *  back (someone retired since, say), so the wait is for any row, and for every row that is back
+ *  to carry at least the claims it had; if none shows within the wait the screen is taken as it
+ *  is and the test's own checks decide. The show-retired box and the as-of date, which belong to
+ *  the screen, are put back if the loads reset them. */
 export async function refresh(page: Page): Promise<void> {
   const sheet = (await page.getByTestId('sheet-current-id').textContent() ?? '').trim();
   const before = new Map<string, number>();
@@ -115,16 +162,21 @@ export async function refresh(page: Page): Promise<void> {
   const showRetiredWas = (await retired.count()) > 0 ? await retired.isChecked() : null;
   const asofWas = await shown(page.getByTestId('sheet-asof'));
   await loadSheet(page, sheet + '-reload');
+  await expect.poll(() => rows(page).count(), { message: 'the throwaway sheet, which has no one on it, is on screen', timeout: WAIT }).toBe(0);
   await loadSheet(page, sheet);
   if (showRetiredWas !== null && (await retired.isChecked()) !== showRetiredWas) await retired.setChecked(showRetiredWas);
   if (asofWas !== '' && (await shown(page.getByTestId('sheet-asof'))) !== asofWas) await setAsOf(page, asofWas);
-  await expect.poll(async () => {
+  if (before.size === 0) return;
+  const back = async () => {
+    if ((await rows(page).count()) === 0) return false;
     for (const [id, n] of before) {
       const r = row(page, id);
-      if ((await r.count()) === 0 || (await claimRows(r).count()) < n) return false;
+      if ((await r.count()) > 0 && (await claimRows(r).count()) < n) return false;
     }
     return true;
-  }, { message: 'the sheet is back on screen after a reload', timeout: WAIT }).toBe(true);
+  };
+  const deadline = Date.now() + WAIT;
+  while (Date.now() < deadline && !(await back())) await page.waitForTimeout(50);
 }
 
 export async function setToday(page: Page, date: string): Promise<void> {
@@ -197,11 +249,10 @@ export async function addPerson(page: Page, f: PersonFields & { name: string; gr
   const before = await ids(rows(page), 'person-row-');
   await fillPersonForm(page, f);
   await page.getByTestId('person-form-submit').click();
-  const ok = await until(page, async () => (await rows(page).count()) > before.length,
+  let added: string | null = null;
+  const ok = await until(page, async () => (added = await addedPerson(page, before, f.name)) !== null,
     page.getByTestId('person-form-error'), 'add person');
-  if (!ok) return null;
-  const fresh = (await ids(rows(page), 'person-row-')).filter((id) => !before.includes(id));
-  return fresh.length === 1 ? fresh[0] : personId(page, f.name);
+  return ok ? added : null;
 }
 
 export async function editOpen(page: Page, personId: string): Promise<void> {
@@ -363,33 +414,28 @@ async function fillClaimForm(r: Locator, f: ClaimFields) {
   if (f.corrects !== undefined) await r.getByTestId('claim-form-corrects').fill(f.corrects);
 }
 
-async function newestClaim(r: Locator): Promise<string> {
-  const first = claimRows(r).first();
-  await expect(first, 'the new claim row under its person').toBeVisible();
-  return idOf(await first.getAttribute('data-testid'), 'claim-row-');
-}
-
-/** Add a claim from the person's row. The new claim's id (listed newest first), or null. */
+/** Add a claim from the person's row. The new claim's id, or null when refused. */
 export async function addClaim(page: Page, personId: string, f: ClaimFields & { amount: string }): Promise<string | null> {
   const r = row(page, personId);
-  const before = await claimRows(r).count();
+  const before = await ids(claimRows(r), 'claim-row-');
   await fillClaimForm(r, f);
   await r.getByTestId('claim-form-submit').click();
-  const ok = await until(page, async () => (await claimRows(r).count()) > before,
+  let added: string | null = null;
+  const ok = await until(page, async () => (added = await addedClaim(r, before, f)) !== null,
     r.getByTestId('claim-form-error'), 'add claim');
-  return ok ? newestClaim(r) : null;
+  return ok ? added : null;
 }
 
 /** Submit the claim form twice in quick succession (a double click on submit). */
 export async function addClaimTwice(page: Page, personId: string, f: ClaimFields & { amount: string }): Promise<string | null> {
   const r = row(page, personId);
-  const before = await claimRows(r).count();
+  const before = await ids(claimRows(r), 'claim-row-');
   await fillClaimForm(r, f);
   await r.getByTestId('claim-form-submit').dblclick();
-  const ok = await until(page, async () => (await claimRows(r).count()) > before,
+  const ok = await until(page, async () => (await addedClaim(r, before, f)) !== null,
     r.getByTestId('claim-form-error'), 'add claim twice');
   await page.waitForTimeout(500);          // let a second record land, if the app stores one
-  return ok ? newestClaim(r) : null;
+  return ok ? addedClaim(r, before, f) : null;
 }
 
 /** Paste lines of claims into the paste box: how many were added, or null when refused. */
@@ -497,17 +543,17 @@ export async function redate(page: Page, claimId: string, date: string): Promise
     c.getByTestId('claim-error'), 'redate');
 }
 
-/** Split an amount off an open claim: the new claim's id (listed newest first under its
- *  person), or null when refused. */
+/** Split an amount off an open claim: the new claim's id, or null when refused. */
 export async function split(page: Page, personId: string, claimId: string, amount: string): Promise<string | null> {
   const r = row(page, personId);
   const c = claimRow(page, claimId);
-  const before = await claimRows(r).count();
+  const before = await ids(claimRows(r), 'claim-row-');
   await c.getByTestId('claim-split-amount').fill(amount);
   await c.getByTestId('claim-split').click();
-  const ok = await until(page, async () => (await claimRows(r).count()) > before,
+  let added: string | null = null;
+  const ok = await until(page, async () => (added = await addedClaim(r, before, { amount })) !== null,
     c.getByTestId('claim-error'), 'split');
-  return ok ? newestClaim(r) : null;
+  return ok ? added : null;
 }
 
 export async function numbersOf(page: Page, claimIds: string[]): Promise<string[]> {
@@ -554,11 +600,10 @@ export async function quickAdd(page: Page, f: { name: string; amount: string }):
   await page.getByTestId('quick-name').fill(f.name);
   await page.getByTestId('quick-amount').fill(f.amount);
   await page.getByTestId('quick-submit').click();
-  const ok = await until(page, async () => (await claimRows(page).count()) > before.length,
+  let added: string | null = null;
+  const ok = await until(page, async () => (added = await addedClaim(rowsNamed(page, f.name), before, { amount: f.amount })) !== null,
     page.getByTestId('quick-error'), 'quick add');
-  if (!ok) return null;
-  const fresh = (await ids(claimRows(page), 'claim-row-')).filter((id) => !before.includes(id));
-  return fresh.length === 1 ? fresh[0] : newestClaim(rowsNamed(page, f.name).last());
+  return ok ? added : null;
 }
 
 // ---- rates, periods, settings, roles, export -------------------------------------------------
