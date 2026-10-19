@@ -1,0 +1,224 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 82da4a91..f9fc9b5d 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -159,6 +159,13 @@ export interface OpenedAll {
+   claims: Claim[];
+ }
+ 
++/** What settling claims together did: how many were settled (or sent PENDING) and refused, and those claims. */
++export interface SettledAll {
++  settled: number;
++  refused: number;
++  claims: Claim[];
++}
++
+ /** The sum of claim amounts with two decimals, added up in cents so no rounding creeps in. */
+ export function sumAmounts(amounts: string[]): string {
+   return fromHundredths(amounts.reduce((sum, a) => sum + hundredths(a), 0n));
+@@ -206,6 +213,12 @@ export class ClaimsApi {
+     return this.http.post<OpenedAll>(`${this.url(sheetId)}/claims/open`, { ids }, { headers: this.headers() });
+   }
+ 
++  /** Settle the claims together, each as a single settle would; each that cannot be settled is refused and left
++   * as it is. */
++  settleAll(sheetId: string, ids: number[]): Observable<SettledAll> {
++    return this.http.post<SettledAll>(`${this.url(sheetId)}/claims/settle`, { ids }, { headers: this.headers() });
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e68cf72f..56ab1605 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -442,6 +442,8 @@ export class Claims {
+       },
+       error: (e: HttpErrorResponse) => {
+         this.submitting = false;
++        // A refused new claim is dropped: the form starts afresh, dated the sheet's today, under its error.
++        if (id === null) this.reset();
+         this.formError.set(
+           e.status === 400
+             ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects.'
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8487f8dd..3596c63b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -105,6 +105,16 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
+       @if (bulkOpenError(); as e) {
+         <p role="alert" data-testid="bulk-open-error">{{ e }}</p>
+       }
++      <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
++      @if (bulkSettleResult(); as r) {
++        <p role="status">
++          Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
++          refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
++        </p>
++      }
++      @if (bulkSettleError(); as e) {
++        <p role="alert" data-testid="bulk-settle-error">{{ e }}</p>
++      }
+       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+@@ -363,6 +373,11 @@ export class People {
+   protected readonly bulkOpenError = signal<string | null>(null);
+   /** Whether an open of the selected claims is waiting on the server; another is ignored until it answers. */
+   private bulkOpening = false;
++  /** How many claims the last settle of the selected ones settled (or sent PENDING) and refused. */
++  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
++  protected readonly bulkSettleError = signal<string | null>(null);
++  /** Whether a settle of the selected claims is waiting on the server; another is ignored until it answers. */
++  private bulkSettling = false;
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private editingVersion: number | null = null;
+@@ -421,6 +436,8 @@ export class People {
+         this.selectedClaims.set(new Set());
+         this.bulkOpenResult.set(null);
+         this.bulkOpenError.set(null);
++        this.bulkSettleResult.set(null);
++        this.bulkSettleError.set(null);
+         this.reset();
+         loaded(id);
+       });
+@@ -562,6 +579,7 @@ export class People {
+ 
+   protected claimSelected(id: number, selected: boolean): void {
+     this.bulkOpenError.set(null);
++    this.bulkSettleError.set(null);
+     this.selectedClaims.update((ids) => {
+       const next = new Set(ids);
+       if (selected) next.add(id);
+@@ -602,6 +620,40 @@ export class People {
+     });
+   }
+ 
++  /** Settle the selected claims together; the server settles them in list order, each as a single settle would,
++   * and leaves each one that cannot be settled as it is. */
++  protected settleSelected(): void {
++    if (this.bulkSettling) return;
++    this.bulkSettleResult.set(null);
++    this.bulkSettleError.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) {
++      this.bulkSettleError.set('Load a sheet first.');
++      return;
++    }
++    const ids = [...this.selectedClaims()];
++    if (ids.length === 0) {
++      this.bulkSettleError.set('Select the claims to settle.');
++      return;
++    }
++    this.bulkSettling = true;
++    this.claimsApi.settleAll(sheetId, ids).subscribe({
++      next: ({ settled, refused, claims }) => {
++        this.bulkSettling = false;
++        if (this.session.sheetId() !== sheetId) return;
++        for (const c of claims) this.claimSaved(c);
++        this.selectedClaims.set(new Set());
++        this.bulkSettleResult.set({ settled, refused });
++      },
++      error: (e: HttpErrorResponse) => {
++        this.bulkSettling = false;
++        this.bulkSettleError.set(
++          e.status === 404 ? 'That sheet is no longer in the store.' : 'Could not settle those claims.',
++        );
++      },
++    });
++  }
++
+   /** Take a statement for the person, then re-read the sheet's claims, which it binds or unbinds. */
+   protected statement(person: Person): void {
+     this.personError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 37f4336e..fa1e1b41 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -59,12 +59,16 @@ public class ClaimController {
+         }
+     }
+ 
+-    /** The claims to open together, by id. */
++    /** The claims to open, or settle, together, by id. */
+     public record OpenAllForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {}
+ 
+     /** How many of the claims were opened and how many refused, and the opened claims as they are now. */
+     public record OpenedAllView(int opened, int refused, List<ClaimView> claims) {}
+ 
++    /** How many of the claims were settled (or sent PENDING) and how many refused, and those claims as they are
++     * now. */
++    public record SettledAllView(int settled, int refused, List<ClaimView> claims) {}
++
+     /** Why a steward rejects a PENDING claim: one word or more, with no line break. */
+     public record RejectForm(@NotBlank @Size(max = 255) @Pattern(regexp = "[^\\r\\n]*") String reason) {}
+ 
+@@ -109,6 +113,14 @@ public class ClaimController {
+                 result.claims().stream().map(ClaimView::of).toList());
+     }
+ 
++    @PostMapping("/claims/settle")
++    public SettledAllView settleAll(@RequestHeader("X-User") String user, @PathVariable String sheetId,
++            @Valid @RequestBody OpenAllForm form) {
++        ClaimService.OpenedAll result = service.settleAll(user, sheetId, form.ids());
++        return new SettledAllView(result.opened(), result.refused(),
++                result.claims().stream().map(ClaimView::of).toList());
++    }
++
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index cccf0cce..9ec2240a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -255,13 +255,27 @@ public class ClaimService {
+         return " due=" + (due != null ? due.toPlainString() : "n/a");
+     }
+ 
+-    /** What opening claims together did: how many were opened and refused, and the opened claims. */
++    /** What opening (or settling) claims together did: how many went through and were refused, and the claims
++     * that went through. */
+     public record OpenedAll(int opened, int refused, List<Claim> claims) {}
+ 
+     /** Open the given claims of the sheet one at a time, in list order: people in the order they were added,
+      * each one's claims newest first. Each is opened, and numbered, as {@link #changeStatus} would open it on its
+      * own; one that cannot be opened (or is not on the sheet) is refused and left as it is. */
+     public OpenedAll openAll(String user, String sheetId, List<Long> ids) {
++        return changeAll(user, sheetId, ids, ClaimStatus.OPEN);
++    }
++
++    /** Settle the given claims of the sheet one at a time, in list order, each as {@link #changeStatus} would
++     * settle it on its own: one a clerk sends PENDING counts as settled; one that cannot be settled (or is not on
++     * the sheet) is refused and left as it is. */
++    public OpenedAll settleAll(String user, String sheetId, List<Long> ids) {
++        return changeAll(user, sheetId, ids, ClaimStatus.SETTLED);
++    }
++
++    /** Move the given claims to a status one at a time, in list order: people in the order they were added, each
++     * one's claims newest first, each in its own transaction; one that is refused is left as it is. */
++    private OpenedAll changeAll(String user, String sheetId, List<Long> ids, ClaimStatus next) {
+         Set<Long> wanted = new HashSet<>(ids);
+         List<Claim> chosen = transaction.execute(status -> {
+             sheets.today(sheetId); // the sheet must exist
+@@ -274,15 +288,15 @@ public class ClaimService {
+                     .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
+                     .toList();
+         });
+-        List<Claim> opened = new ArrayList<>();
++        List<Claim> changed = new ArrayList<>();
+         for (Claim claim : chosen) {
+             try {
+-                opened.add(transaction.execute(status -> changeStatus(user, sheetId, claim.getId(), ClaimStatus.OPEN)));
++                changed.add(transaction.execute(status -> changeStatus(user, sheetId, claim.getId(), next)));
+             } catch (ResponseStatusException refused) {
+                 // Left as it is: its transaction rolled back, writing nothing.
+             }
+         }
+-        return new OpenedAll(opened.size(), wanted.size() - opened.size(), opened);
++        return new OpenedAll(changed.size(), wanted.size() - changed.size(), changed);
+     }
+ 
+     /** The sequence a claim in no period is numbered in, with period numbering. */
