@@ -7,18 +7,19 @@ import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Claim, ClaimsApi, counts, sumAmounts } from '../claims/claims-api';
 import { Rates } from '../rates/rates';
-import { NO_RATE, Rate, RatesApi, dueOf } from '../rates/rates-api';
+import { NO_RATE, Rate, RatesApi, dueOf, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
-// claims, what they have claimed (its OPEN and SETTLED claims) and what is due on it at their grade's rate; the sheet's
+// claims, what they have claimed (its OPEN and SETTLED claims) and what is due on it at the rate their grade has in force
+// on the sheet's today; the sheet's
 // claimed-total and due-total add everyone's up (a due-total of n/a is skipped).
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, Claims, Rates],
   template: `
-    <app-rates [grades]="grades" [rates]="rateByGrade()" (saved)="rateSaved($event)" />
+    <app-rates [grades]="grades" [rates]="rates()" [current]="rateByGrade()" (saved)="rateSaved($event)" />
     <section aria-labelledby="people-heading" data-testid="people">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" data-testid="person-form">
@@ -65,7 +66,8 @@ import { Grade, PeopleApi, Person } from './people-api';
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsOf(p.id)"
-                  [rate]="rateByGrade().get(p.grade)"
+                  [grade]="p.grade"
+                  [rates]="rates()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -104,9 +106,17 @@ export class People {
   protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
   /** The sheet's rates. */
   protected readonly rates = signal<Rate[]>([]);
-  protected readonly rateByGrade = computed(
-    () => new Map<Grade, string>(this.rates().map((r) => [r.grade, r.rate])),
-  );
+  /** The rate each grade with one has in force on the sheet's today. */
+  protected readonly rateByGrade = computed(() => {
+    const today = this.session.today() ?? '';
+    const by = new Map<Grade, string>();
+    for (const g of this.grades) {
+      const rate = rateOn(this.rates(), g, today);
+      if (rate !== undefined) by.set(g, rate);
+    }
+    return by;
+  });
+
   protected readonly dueTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
   );
@@ -144,13 +154,13 @@ export class People {
     return sumAmounts(this.claimsOf(personId).filter(counts).map((c) => c.amount));
   }
 
-  /** What is due on all the person has claimed, at their grade's rate. */
+  /** What is due on all the person has claimed, at the rate their grade has in force on the sheet's today. */
   protected personDueTotal(person: Person): string {
     return dueOf(this.claimed(person.id), this.rateByGrade().get(person.grade));
   }
 
   protected rateSaved(rate: Rate): void {
-    this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade), rate]);
+    this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
   }
 
   protected claimSaved(claim: Claim): void {

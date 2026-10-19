@@ -2,7 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { dueOf } from '../rates/rates-api';
+import { Rate, dueOf, rateOn } from '../rates/rates-api';
+import { Grade } from '../people/people-api';
 import { Claim, ClaimAction, ClaimsApi } from './claims-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -96,8 +97,9 @@ export class Claims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** The rate for this person's grade; none when the grade has no rate. */
-  readonly rate = input<string | undefined>();
+  /** This person's grade, and the sheet's rates. */
+  readonly grade = input.required<Grade>();
+  readonly rates = input<readonly Rate[]>([]);
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -129,9 +131,10 @@ export class Claims {
     });
   }
 
-  /** A settled claim shows the due it was settled at; any other is due at the rate its grade has now. */
+  /** A settled claim shows the due it was settled at; any other is due at the rate its grade has now in
+   * force on the claim's date. */
   protected due(claim: Claim): string {
-    return claim.due ?? dueOf(claim.amount, this.rate());
+    return claim.due ?? dueOf(claim.amount, rateOn(this.rates(), this.grade(), claim.date));
   }
 
   protected changeStatus(claim: Claim, action: ClaimAction): void {

@@ -86,8 +86,8 @@ public class ClaimService {
         // A voided claim's line carries the number it had.
         String entry = entry(EVENTS.get(next), user, person, claim);
         if (next == ClaimStatus.SETTLED) {
-            // Settling fixes the due at the rate its grade has now; with no rate it stays live.
-            claim.setSettledDue(dueOf(claim.getAmount(), sheetId, person.getGrade()));
+            // Settling fixes the due at the rate its grade has on its date; with no rate it stays live.
+            claim.setSettledDue(dueOf(claim, person.getGrade()));
             entry += " due=" + (claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : "n/a");
         }
         if (next == ClaimStatus.VOID) {
@@ -103,10 +103,11 @@ public class ClaimService {
             ClaimStatus.SETTLED, "CLAIM_SETTLED",
             ClaimStatus.VOID, "CLAIM_VOIDED");
 
-    /** What is due on an amount at a grade's rate, rounded half up to two decimals; none when the grade has
-     * no rate. */
-    private BigDecimal dueOf(BigDecimal amount, String sheetId, String grade) {
-        return rates.findById(new Rate.Key(sheetId, grade))
+    /** What is due on a claim at the rate its grade has in force on the claim's date, rounded half up to two
+     * decimals; none when no rate of the grade applies then. */
+    private BigDecimal dueOf(Claim claim, String grade) {
+        BigDecimal amount = claim.getAmount();
+        return Rate.inForce(rates.findBySheetIdAndGrade(claim.getSheetId(), grade), claim.getDate())
                 .map(r -> amount.multiply(r.getRate()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
                 .orElse(null);
     }

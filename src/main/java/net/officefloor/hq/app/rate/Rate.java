@@ -2,60 +2,61 @@ package net.officefloor.hq.app.rate;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
-import java.io.Serializable;
 import java.math.BigDecimal;
-import java.util.Objects;
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Optional;
 
-/** The rate for a grade on a sheet: a percent with two decimals. */
+/** A rate for a grade on a sheet: a percent with two decimals, in force from its from-date (or from the
+ * beginning of time when it has none). */
 @Entity
 @Table(name = "rate")
-@IdClass(Rate.Key.class)
 public class Rate {
 
-    /** A rate is kept by its sheet and grade. */
-    public static class Key implements Serializable {
-
-        private String sheetId;
-        private String grade;
-
-        protected Key() {}
-
-        public Key(String sheetId, String grade) {
-            this.sheetId = sheetId;
-            this.grade = grade;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            return o instanceof Key k && Objects.equals(sheetId, k.sheetId) && Objects.equals(grade, k.grade);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(sheetId, grade);
-        }
-    }
+    /** Rates by from-date, the one with no from-date first. */
+    public static final Comparator<Rate> BY_FROM =
+            Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder()));
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     @Column(name = "sheet_id", nullable = false)
     private String sheetId;
 
-    @Id
     @Column(name = "grade", nullable = false)
     private String grade;
+
+    @Column(name = "from_date")
+    private LocalDate from;
 
     @Column(name = "rate", nullable = false, precision = 5, scale = 2)
     private BigDecimal rate;
 
     protected Rate() {}
 
-    public Rate(String sheetId, String grade, BigDecimal rate) {
+    public Rate(String sheetId, String grade, LocalDate from, BigDecimal rate) {
         this.sheetId = sheetId;
         this.grade = grade;
+        this.from = from;
         this.rate = rate;
+    }
+
+    /** Of a grade's rates, the one in force on a date: the latest from-date on or before it; none when the
+     * date is before every one. */
+    public static Optional<Rate> inForce(Collection<Rate> rates, LocalDate date) {
+        return rates.stream()
+                .filter(r -> r.getFrom() == null || !r.getFrom().isAfter(date))
+                .max(BY_FROM);
+    }
+
+    public Long getId() {
+        return id;
     }
 
     public String getSheetId() {
@@ -64,6 +65,10 @@ public class Rate {
 
     public String getGrade() {
         return grade;
+    }
+
+    public LocalDate getFrom() {
+        return from;
     }
 
     public BigDecimal getRate() {
