@@ -1,0 +1,228 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index af0a96ef..5a91641e 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -193,6 +193,14 @@ export class ClaimsApi {
+     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reject`, { reason }, { headers: this.headers() });
+   }
+ 
++  /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet; it is live again until their next
++   * statement. */
++  reassign(sheetId: string, id: number, personId: number): Observable<Claim> {
++    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reassign`, { personId }, {
++      headers: this.headers(),
++    });
++  }
++
+   /** Open the claims together; each that cannot be opened is refused and left as it is. */
+   openAll(sheetId: string, ids: number[]): Observable<OpenedAll> {
+     return this.http.post<OpenedAll>(`${this.url(sheetId)}/claims/open`, { ids }, { headers: this.headers() });
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 64ac41f8..3e10a7f5 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -130,6 +130,25 @@ const NUMBER = /^\S{1,255}$/;
+                 >
+                   Reject
+                 </button>
++                <label class="visually-hidden" [for]="'claim-reassign-to-' + c.id">Move to</label>
++                <select
++                  [id]="'claim-reassign-to-' + c.id"
++                  data-testid="claim-reassign-to"
++                  (change)="reassignChange(c.id, $any($event.target).value)"
++                >
++                  <option value="" [selected]="!reassignTo().has(c.id)">Move to…</option>
++                  @for (o of others(); track o.id) {
++                    <option [value]="o.id" [selected]="reassignTo().get(c.id) === o.id">{{ o.name }}</option>
++                  }
++                </select>
++                <button
++                  type="button"
++                  data-testid="claim-reassign"
++                  [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date"
++                  (click)="reassign(c)"
++                >
++                  Move
++                </button>
+                 @if (claimError()?.id === c.id) {
+                   <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
+                 }
+@@ -166,6 +185,8 @@ export class Claims {
+   readonly rates = input<readonly Rate[]>([]);
+   /** The sheet's periods. */
+   readonly periods = input<readonly Period[]>([]);
++  /** The people on the sheet a claim can be moved to, by id and name. */
++  readonly people = input<readonly { id: number; name: string }[]>([]);
+   /** The ids of the claims selected to act on together. */
+   readonly selected = input<ReadonlySet<number>>(new Set());
+   /** A claim was added or saved. */
+@@ -183,6 +204,10 @@ export class Claims {
+   /** The error of the last action taken on a claim, shown on that claim's row. */
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+   protected readonly formError = signal<string | null>(null);
++  /** The person picked to move each claim to, by claim id. */
++  protected readonly reassignTo = signal<ReadonlyMap<number, number>>(new Map());
++  /** The people a claim of this person's can be moved to: everyone else on the sheet. */
++  protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
+   /** The reason typed to reject each PENDING claim, by id. */
+   protected readonly rejectReasons = signal<ReadonlyMap<number, string>>(new Map());
+   /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
+@@ -259,6 +284,56 @@ export class Claims {
+     });
+   }
+ 
++  protected reassignChange(id: number, personId: string): void {
++    if (this.claimError()?.id === id) this.claimError.set(null);
++    this.reassignTo.update((m) => {
++      const next = new Map(m);
++      if (personId === '') next.delete(id);
++      else next.set(id, Number(personId));
++      return next;
++    });
++  }
++
++  /** Move a claim to the person picked on its row; it keeps its number and date but is live again. */
++  protected reassign(claim: Claim): void {
++    this.claimError.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const personId = this.reassignTo().get(claim.id);
++    if (personId === undefined) {
++      this.claimError.set({ id: claim.id, message: 'Pick the person to move that claim to.' });
++      return;
++    }
++    this.api.reassign(sheetId, claim.id, personId).subscribe({
++      next: (c) => {
++        this.reassignTo.update((m) => {
++          const next = new Map(m);
++          next.delete(claim.id);
++          return next;
++        });
++        if (this.session.sheetId() === sheetId) this.saved.emit(c);
++      },
++      error: (e: HttpErrorResponse) =>
++        this.claimError.set({
++          id: claim.id,
++          message:
++            e.status === 422
++              ? 'Only a steward can move a claim.'
++              : e.status === 423
++              ? 'That claim is dated in a closed period.'
++              : e.status === 409
++              ? 'Only a draft, open or pending claim can be moved, and never a correction.'
++              : e.status === 410
++              ? 'That person is retired before the claim\'s date.'
++              : e.status === 400
++              ? 'Pick another person to move that claim to.'
++              : e.status === 404
++                ? 'That claim or person is no longer on this sheet.'
++                : 'Could not move that claim.',
++        }),
++    });
++  }
++
+   protected reasonChange(id: number, reason: string): void {
+     if (this.claimError()?.id === id) this.claimError.set(null);
+     this.rejectReasons.update((m) => new Map(m).set(id, reason));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fdfd560a..82974ccc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -148,6 +148,7 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
+                   [grades]="p.grades"
+                   [rates]="rates()"
+                   [periods]="periods()"
++                  [people]="people()"
+                   [selected]="selectedClaims()"
+                   (saved)="claimSaved($event)"
+                   (selectedChange)="claimSelected($event.id, $event.selected)"
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index dd7c36cb..53c03b56 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -86,6 +86,10 @@ public class Claim {
+         return personId;
+     }
+ 
++    public void setPersonId(Long personId) {
++        this.personId = personId;
++    }
++
+     public BigDecimal getAmount() {
+         return amount;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 77e531f7..c39d2544 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -57,6 +57,9 @@ public class ClaimController {
+     /** Why a steward rejects a PENDING claim: one word or more, with no line break. */
+     public record RejectForm(@NotBlank @Size(max = 255) @Pattern(regexp = "[^\\r\\n]*") String reason) {}
+ 
++    /** The person a claim is moved to, by id. */
++    public record ReassignForm(@NotNull Long personId) {}
++
+     private final ClaimService service;
+ 
+     public ClaimController(ClaimService service) {
+@@ -111,6 +114,12 @@ public class ClaimController {
+         return ClaimView.of(service.reject(user, sheetId, id, form.reason()));
+     }
+ 
++    @PostMapping("/claims/{id}/reassign")
++    public ClaimView reassign(@RequestHeader("X-User") String user, @PathVariable String sheetId,
++            @PathVariable Long id, @Valid @RequestBody ReassignForm form) {
++        return ClaimView.of(service.reassign(user, sheetId, id, form.personId()));
++    }
++
+     @PostMapping("/claims/{id}/void")
+     public ClaimView voidClaim(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.VOID));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 98395dbf..d77c3258 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -184,6 +184,43 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and
++     * date but loses any figure a statement bound it to: it is live again until its new person's next statement.
++     * One dated in a closed period, a correction (which names a settled claim of its own person), or one dated
++     * after its new person is retired, is refused. */
++    @Transactional
++    public Claim reassign(String user, String sheetId, Long id, Long toPersonId) {
++        sheets.today(sheetId); // the sheet must exist
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
++        settings.requireSteward(sheetId, user);
++        requireOpenPeriod(sheetId, claim.getDate());
++        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be moved.");
++        }
++        if (claim.isCorrection()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A correction cannot be moved.");
++        }
++        Person from = requirePerson(sheetId, claim.getPersonId());
++        Person to = requirePerson(sheetId, toPersonId);
++        if (from.getId().equals(to.getId())) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The claim is already that person's.");
++        }
++        if (to.retiredOn(claim.getDate())) {
++            throw new ResponseStatusException(HttpStatus.GONE,
++                    to.getName() + " is retired from " + to.getRetiredFrom() + ".");
++        }
++        Snapshot before = rollup.snapshot(sheetId);
++        claim.setPersonId(to.getId());
++        claim.unbind();
++        claims.flush();
++        audit.recordOnCommit(entry("CLAIM_REASSIGNED", user, to, claim) + " from=" + from.getName() + " to="
++                + to.getName());
++        rollup.recordChanges(user, sheetId, before);
++        return claim;
++    }
++
+     /** The PENDING claim a steward acts on; refused when it is not on the sheet, not PENDING, dated in a closed
+      * period, or the user is not a steward. */
+     private Claim requirePending(String user, String sheetId, Long id) {
