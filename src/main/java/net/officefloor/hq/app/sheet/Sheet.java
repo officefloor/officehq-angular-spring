@@ -47,6 +47,11 @@ public class Sheet {
     @Column(name = "late_pct", nullable = false, precision = 7, scale = 2)
     private BigDecimal latePct = new BigDecimal("0.00");
 
+    /** A claim dated before it rounds half up, one dated on or after it half to even; none means the sheet's
+     * today. */
+    @Column(name = "policy_date")
+    private LocalDate policyDate;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt) {
@@ -106,5 +111,18 @@ public class Sheet {
 
     public void setLatePct(BigDecimal latePct) {
         this.latePct = latePct;
+    }
+
+    public LocalDate getPolicyDate() {
+        return policyDate;
+    }
+
+    public void setPolicyDate(LocalDate policyDate) {
+        this.policyDate = policyDate;
+    }
+
+    /** The date the claim rounding goes by: the policy date, or the sheet's today when there is none. */
+    public LocalDate roundingDate() {
+        return policyDate != null ? policyDate : today;
     }
 }

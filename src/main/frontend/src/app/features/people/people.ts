@@ -5,13 +5,24 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
-import { Claim, ClaimsApi, Lateness, claimDue, counts, isOverdue, keepsFigure, sumAmounts } from '../claims/claims-api';
+import {
+  Claim,
+  ClaimsApi,
+  Lateness,
+  claimDue,
+  counts,
+  isOverdue,
+  keepsFigure,
+  roundsBy,
+  sumAmounts,
+} from '../claims/claims-api';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { GradeSummary, Summary } from '../summary/summary';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
+import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { SheetTerms } from '../settings/sheet-terms';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person, gradeOn } from './people-api';
@@ -212,11 +223,14 @@ export class People {
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
-  /** What a late charge goes by: the sheet's today, terms and late percent. */
+  private readonly policyDate = inject(SheetPolicyDate);
+  /** What a late charge goes by: the sheet's today, terms and late percent; and the policy date rounding goes
+   * by. */
   private readonly late = computed<Lateness>(() => ({
     today: this.session.today(),
     terms: this.terms.value(),
     latePct: this.latePct.value(),
+    policyDate: this.policyDate.value() ?? this.session.today(),
   }));
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
@@ -369,7 +383,8 @@ export class People {
 
   /** What is due on a claim of the person's, at the grade they have on the claim's date. */
   private claimDue(claim: Claim, person: Person): string {
-    return claimDue(claim, this.rates(), gradeOn(person.grades, claim.date), this.floor.value(), this.late());
+    return claimDue(claim, this.rates(), gradeOn(person.grades, claim.date), this.floor.value(), this.late(),
+      roundsBy(claim, this.claimsOf(person.id)));
   }
 
   /** The sum of the dues of the claims the person has that count (n/a ones skipped), 0.00 with none. A

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
@@ -14,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has on it, its clerk limit, its floor, its terms and its late percent. */
+/** A sheet's settings: the role each user name has on it, its clerk limit, its floor, its terms, its late percent and its policy date. */
 @Service
 public class SettingService {
 
@@ -61,11 +62,11 @@ public class SettingService {
         return given;
     }
 
-    /** Save the settings given, the clerk limit, the floor, the terms then the late percent, together; a setting
-     * not given (null) is left as it is, and an empty clerk limit removes it. */
+    /** Save the settings given, the clerk limit, the floor, the terms, the late percent then the policy date,
+     * together; a setting not given (null) is left as it is, and an empty clerk limit or policy date removes it. */
     @Transactional
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
-            Integer terms, BigDecimal latePct) {
+            Integer terms, BigDecimal latePct, Optional<LocalDate> policyDate) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null));
         }
@@ -77,6 +78,9 @@ public class SettingService {
         }
         if (latePct != null) {
             setLatePct(user, sheetId, latePct);
+        }
+        if (policyDate != null) {
+            setPolicyDate(user, sheetId, policyDate.orElse(null));
         }
     }
 
@@ -159,6 +163,28 @@ public class SettingService {
                 + value.toPlainString());
         rollup.recordChanges(user, sheetId, before);
         return value;
+    }
+
+    /** The sheet's policy date: a claim dated before it rounds half up, one dated on or after it half to even;
+     * none means the sheet's today. */
+    @Transactional(readOnly = true)
+    public LocalDate policyDate(String sheetId) {
+        return find(sheetId).getPolicyDate();
+    }
+
+    /** Set the sheet's policy date, none for the sheet's today; it moves how live figures round, and the figures
+     * it moves are written after. */
+    @Transactional
+    public LocalDate setPolicyDate(String user, String sheetId, LocalDate policyDate) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        Snapshot before = rollup.snapshot(sheetId);
+        sheet.setPolicyDate(policyDate);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=policy-date value="
+                + (policyDate != null ? policyDate.toString() : ""));
+        rollup.recordChanges(user, sheetId, before);
+        return policyDate;
     }
 
     /** Refuse a settle by a clerk of a claim whose due is above the clerk limit; a due of n/a is within any

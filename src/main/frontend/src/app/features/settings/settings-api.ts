@@ -21,9 +21,12 @@ export interface Settings {
   terms: number;
   /** What an overdue claim gains of its figure for every full 30 days overdue, with two decimals. */
   latePct: string;
+  /** The date (yyyy-mm-dd) a claim dated before rounds half up, on or after half to even; null for the
+   * sheet's today. */
+  policyDate: string | null;
 }
 
-// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and its late percent, read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms, its late percent and its policy date, read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -43,7 +46,10 @@ export class SettingsApi {
   }
 
   /** Save the settings given; one left out is left as it is. */
-  save(sheetId: string, settings: { clerkLimit?: string; floor?: string; terms?: string; latePct?: string }): Observable<Settings> {
+  save(
+    sheetId: string,
+    settings: { clerkLimit?: string; floor?: string; terms?: string; latePct?: string; policyDate?: string },
+  ): Observable<Settings> {
     return this.http.put<Settings>(`${this.url(sheetId)}/settings`, settings, { headers: this.headers() });
   }
 

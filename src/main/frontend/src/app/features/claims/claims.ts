@@ -7,8 +7,9 @@ import { GradeFrom, gradeOn } from '../people/people-api';
 import { Period, periodOf } from '../periods/periods-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
+import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { SheetTerms } from '../settings/sheet-terms';
-import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, dueBy, isOverdue } from './claims-api';
+import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, dueBy, isOverdue, roundsBy } from './claims-api';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 const NUMBER = /^\d{1,9}$/;
@@ -119,11 +120,14 @@ export class Claims {
   private readonly floor = inject(SheetFloor);
   private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
-  /** What a late charge goes by: the sheet's today, terms and late percent. */
+  private readonly policyDate = inject(SheetPolicyDate);
+  /** What a late charge goes by: the sheet's today, terms and late percent; and the policy date rounding goes
+   * by. */
   private readonly late = computed<Lateness>(() => ({
     today: this.session.today(),
     terms: this.terms.value(),
     latePct: this.latePct.value(),
+    policyDate: this.policyDate.value() ?? this.session.today(),
   }));
 
   readonly personId = input.required<number>();
@@ -173,7 +177,8 @@ export class Claims {
    * the claim's date has now in force on that date, and at least the sheet's floor, plus its late charge when
    * overdue. */
   protected due(claim: Claim): string {
-    return claimDue(claim, this.rates(), gradeOn(this.grades(), claim.date), this.floor.value(), this.late());
+    return claimDue(claim, this.rates(), gradeOn(this.grades(), claim.date), this.floor.value(), this.late(),
+      roundsBy(claim, this.claims()));
   }
 
   /** The claim's date plus the sheet's terms. */

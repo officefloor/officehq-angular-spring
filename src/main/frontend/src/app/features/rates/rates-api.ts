@@ -44,18 +44,19 @@ export function fromHundredths(value: bigint): string {
 }
 
 /**
- * What is due on an amount at a rate: the amount times the rate, divided by 100, rounded half to
- * even to two decimals. Worked in whole numbers so no rounding creeps in; n/a when there is no rate.
+ * What is due on an amount at a rate: the amount times the rate, divided by 100, rounded to two
+ * decimals, a half to the even cent, or up when `halfUp`. Worked in whole numbers so no rounding
+ * creeps in; n/a when there is no rate.
  */
-export function dueOf(amount: string, rate: string | undefined): string {
+export function dueOf(amount: string, rate: string | undefined, halfUp = false): string {
   if (rate === undefined) return NO_RATE;
   // cents × hundredths of a percent is in ten-thousandths of a cent; round to cents, a half to the even
-  // cent, worked on the size so a correction's negative amount rounds the same way.
+  // cent (or up), worked on the size so a correction's negative amount rounds the same way.
   const exact = hundredths(amount) * hundredths(rate);
   const size = exact < 0n ? -exact : exact;
   const rest = size % 10000n;
   let cents = size / 10000n;
-  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
+  if (rest > 5000n || (rest === 5000n && (halfUp || cents % 2n === 1n))) cents += 1n;
   return fromHundredths(exact < 0n ? -cents : cents);
 }
 

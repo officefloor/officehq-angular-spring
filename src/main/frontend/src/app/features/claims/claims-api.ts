@@ -45,12 +45,27 @@ export function counts(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
-/** What a claim's late charge goes by: the sheet's today, its terms and its late percent. */
+/** What a claim's late charge goes by: the sheet's today, its terms and its late percent; and the policy date
+ * its rounding goes by, the sheet's today when there is none. */
 export interface Lateness {
   today: string | null;
   terms: number;
   /** With two decimals, e.g. "10.00". */
   latePct: string;
+  policyDate: string | null;
+}
+
+/** The date a claim's rounding goes by: a correction's is the date of the claim of its person's (`claims`) it
+ * corrects, any other's its own. */
+export function roundsBy(claim: Claim, claims: readonly Claim[]): string {
+  if (claim.corrects === null) return claim.date;
+  return claims.find((c) => c.number === claim.corrects)?.date ?? claim.date;
+}
+
+/** Whether a claim's live figures round half up: the date they go by is before the policy date. Otherwise
+ * they round half to even. */
+function roundsHalfUp(date: string, late: Lateness): boolean {
+  return late.policyDate !== null && date < late.policyDate;
 }
 
 /** The days in each period an overdue claim gains the late percent for. */
@@ -59,20 +74,23 @@ const LATE_PERIOD_DAYS = 30;
 /** A settled claim's due is the figure it was settled at (its late charge frozen in); a claim bound by its
  * person's last statement has the figure it was bound to; any other has the figure due at the rate `grade`, the
  * one its person has on the claim's date, has now in force on that date, and at least the sheet's floor (n/a
- * when there is no rate). An overdue claim's due adds its late charge to its figure. */
+ * when there is no rate). An overdue claim's due adds its late charge to its figure. Live figures round by the
+ * date `roundsBy` (see {@link roundsBy}). */
 export function claimDue(
   claim: Claim,
   rates: readonly Rate[],
   grade: Grade | undefined,
   floor: string,
   late: Lateness,
+  roundsBy: string = claim.date,
 ): string {
   if (claim.due !== null) return claim.due;
+  const halfUp = roundsHalfUp(roundsBy, late);
   const figure = claim.stated
     ? (claim.statedDue ?? NO_RATE)
-    : correctionFloored(claim, dueOf(claim.amount, grade && rateOn(rates, grade, claim.date)), floor);
+    : correctionFloored(claim, dueOf(claim.amount, grade && rateOn(rates, grade, claim.date), halfUp), floor);
   if (figure === NO_RATE) return figure;
-  return sumAmounts([figure, lateCharge(claim, figure, late)]);
+  return sumAmounts([figure, lateCharge(claim, figure, late, halfUp)]);
 }
 
 /** A due raised to the sheet's floor, except a correction's, which has no floor. */
@@ -82,11 +100,11 @@ function correctionFloored(claim: Claim, due: string, floor: string): string {
 
 /** The late charge on an overdue claim: the late percent of its figure for every full 30 days it is overdue,
  * rounded like a due; never bound by a statement, it follows the sheet's today. A correction has none. */
-function lateCharge(claim: Claim, figure: string, late: Lateness): string {
+function lateCharge(claim: Claim, figure: string, late: Lateness, halfUp: boolean): string {
   if (isCorrection(claim) || !isOverdue(claim, late.terms, late.today) || late.today === null) return '0.00';
   const days = (Date.parse(late.today) - Date.parse(dueBy(claim, late.terms))) / 86_400_000;
   const periods = Math.floor(days / LATE_PERIOD_DAYS);
-  return dueOf(figure, timesPct(late.latePct, periods));
+  return dueOf(figure, timesPct(late.latePct, periods), halfUp);
 }
 
 /** A percent with two decimals times a whole number, with two decimals. */
