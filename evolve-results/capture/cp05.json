@@ -1,0 +1,138 @@
+{
+  "checkpoint": 5,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp05_claims",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person can have claims. A claim has an amount (required; a number with up to two decimals,\n0.00 or more), a date (defaults to the sheet's today) and a note (may be empty). Claims are added\nfrom the person's row and listed under it, newest first, each showing its amount with two\ndecimals, its date and its note. A claim can be edited (amount, date, note) through the same\nform. Show each person's claimed: the sum of their claims' amounts, with two decimals. Show the\nsheet's claimed-total: everyone's claimed added up.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person can have claims. A claim has an amount (required; a number with up to two decimals,\n0.00 or more), a date (defaults to the sheet's today) and a note (may be empty). Claims are added\nfrom the person's row and listed under it, newest first, each showing its amount with two\ndecimals, its date and its note. A claim can be edited (amount, date, note) through the same\nform. Show each person's claimed: the sum of their claims' amounts, with two decimals. Show the\nsheet's claimed-total: everyone's claimed added up.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "baf4337ca36af3602f8777f2fd6a22fd89a41bc5",
+  "reset_sha": "",
+  "preagent_sha": "59826bfa95a4843ed32b1894900290b27656943e",
+  "prev_sha": "59826bfa95a4843ed32b1894900290b27656943e",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6688052,
+    "input_tokens": 26,
+    "output_tokens": 11747,
+    "cache_read_tokens": 393926,
+    "cache_creation_tokens": 44372,
+    "num_turns": 15,
+    "duration_ms": 148904,
+    "duration_api_ms": 111521,
+    "model": "claude-opus-5-5",
+    "session_id": "d6497991-498b-451f-806e-6763d4bffc76",
+    "stop_reason": "success",
+    "result_text": "People can now have claims, and all 4 tests in `bin/e2e` pass.\n\n**What you see:**\n- Each person's row has a claim form (amount, date, note) and lists their claims underneath, newest first. Each claim shows its amount with two decimals, its date and its note.\n- The date box starts on the sheet's today and follows it when today changes. If the date is left empty, the server uses the sheet's today too.\n- Clicking a claim's Edit button loads it into the same form, which then saves the change instead of adding a new claim.\n- Each row shows the person's claimed sum, and the sheet shows the claimed-total above the table.\n- An amount below zero or with more than two decimals is refused and shows `claim-form-error`. The error clears as soon as the form is changed or submitted again.\n\n**How it's built:**\n- **Stored data:** a new migration, `V5__claim.sql`, adds a `claim` table. Amounts are stored as `DECIMAL(12,2)` and the database rejects negatives.\n- **Server:** a new `claim` package with three endpoints: list a sheet's claims, add a claim to a person, and edit a claim. The amount format is checked on the server as well as in the form.\n- **Front end:** a new `Claims` component sits in each person's row, and `People` loads the people and their claims together. Sums are added up in whole cents so decimals never drift.\n\n**Choices worth knowing:**\n- \"Newest first\" means the order claims were added, not their dates. The test treats the first row as the newest claim even when it was given an earlier date.\n- Spaces around a note are trimmed when it's saved.\n- This spec checks no audit records, so claims don't write any.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6688052,
+        "num_turns": 15,
+        "duration_ms": 148904,
+        "duration_api_ms": 111521,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp05.agent.jsonl",
+  "agent_diff_file": "cp05.agent.diff",
+  "build_log_file": "cp05.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 8,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp05_claims.spec.ts::claims scenario 1": true,
+      "cp05_claims.spec.ts::claims scenario 2": true,
+      "cp05_claims.spec.ts::claims scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1216,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 999,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2152,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2350,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3049,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4506,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4453,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4699,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
