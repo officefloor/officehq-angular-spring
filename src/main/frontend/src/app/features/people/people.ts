@@ -1,16 +1,19 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { of, switchMap } from 'rxjs';
+import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
+import { Claims } from '../claims/claims';
+import { Claim, ClaimsApi, sumAmounts } from '../claims/claims-api';
 import { Grade, PeopleApi, Person } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
-// person or, once a person's editor is opened, saves changes to them.
+// person or, once a person's editor is opened, saves changes to them. Each person's row lists their
+// claims and what they have claimed; the sheet's claimed-total adds everyone's up.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Claims],
   template: `
     <section aria-labelledby="people-heading" data-testid="people">
       <h2 id="people-heading">People</h2>
@@ -33,11 +36,14 @@ import { Grade, PeopleApi, Person } from './people-api';
       @if (formError(); as e) {
         <p role="alert" data-testid="person-form-error">{{ e }}</p>
       }
+      <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <table data-testid="people-list">
         <thead>
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
+            <th scope="col">Claimed</th>
+            <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -46,6 +52,15 @@ import { Grade, PeopleApi, Person } from './people-api';
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+              <td>
+                <app-claims
+                  [personId]="p.id"
+                  [personName]="p.name"
+                  [claims]="claimsOf(p.id)"
+                  (saved)="claimSaved($event)"
+                />
+              </td>
               <td>
                 <button
                   type="button"
@@ -66,9 +81,18 @@ import { Grade, PeopleApi, Person } from './people-api';
 export class People {
   private readonly session = inject(Session);
   private readonly api = inject(PeopleApi);
+  private readonly claimsApi = inject(ClaimsApi);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
+  /** The sheet's claims, newest first. */
+  protected readonly claims = signal<Claim[]>([]);
+  private readonly claimsByPerson = computed(() => {
+    const by = new Map<number, Claim[]>();
+    for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+    return by;
+  });
+  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
   protected readonly editingId = signal<number | null>(null);
   protected readonly formError = signal<string | null>(null);
   protected readonly form = new FormGroup({
@@ -78,13 +102,34 @@ export class People {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.formError.set(null));
-    // Re-read the sheet's people from the store each time a sheet is loaded.
+    // Re-read the sheet's people and their claims from the store each time a sheet is loaded.
     toObservable(this.session.sheetId)
-      .pipe(switchMap((id) => (id ? this.api.list(id) : of([]))))
-      .subscribe((people) => {
+      .pipe(
+        switchMap((id) =>
+          id
+            ? forkJoin({ people: this.api.list(id), claims: this.claimsApi.list(id) })
+            : of({ people: [] as Person[], claims: [] as Claim[] }),
+        ),
+      )
+      .subscribe(({ people, claims }) => {
         this.people.set(people);
+        this.claims.set(claims);
         this.reset();
       });
+  }
+
+  protected claimsOf(personId: number): Claim[] {
+    return this.claimsByPerson().get(personId) ?? [];
+  }
+
+  protected claimed(personId: number): string {
+    return sumAmounts(this.claimsOf(personId).map((c) => c.amount));
+  }
+
+  protected claimSaved(claim: Claim): void {
+    this.claims.update((cs) =>
+      cs.some((c) => c.id === claim.id) ? cs.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...cs],
+    );
   }
 
   protected edit(person: Person): void {
