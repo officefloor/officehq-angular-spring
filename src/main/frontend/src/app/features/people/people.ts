@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -117,7 +118,7 @@ export class People {
           if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, p]);
           this.reset();
         },
-        error: () => this.formError.set('Could not add that person.'),
+        error: (e: HttpErrorResponse) => this.formError.set(this.refusal(e, 'Could not add that person.')),
       });
     } else {
       this.api.update(sheetId, id, value).subscribe({
@@ -125,8 +126,12 @@ export class People {
           if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
           this.reset();
         },
-        error: () => this.formError.set('Could not save that person.'),
+        error: (e: HttpErrorResponse) => this.formError.set(this.refusal(e, 'Could not save that person.')),
       });
     }
+  }
+
+  private refusal(e: HttpErrorResponse, fallback: string): string {
+    return e.status === 409 ? 'That name is already in use on this sheet.' : fallback;
   }
 }
