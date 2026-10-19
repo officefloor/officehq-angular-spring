@@ -89,6 +89,21 @@ public class PersonService {
         return person;
     }
 
+    /** Put the person on hold, or take them off it when held; while held their OPEN claims count in no live
+     * total. */
+    @Transactional
+    public Person toggleHold(String user, String sheetId, Long id) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        Snapshot before = rollup.snapshot(sheetId);
+        person.setHeld(!person.isHeld());
+        people.flush();
+        audit.recordOnCommit((person.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
+                + " by=" + user + " name=" + person.getName());
+        rollup.recordChanges(user, sheetId, before);
+        return person;
+    }
+
     private static String entry(String event, String user, Person person) {
         return event + " sheet=" + person.getSheetId() + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.getGrade();

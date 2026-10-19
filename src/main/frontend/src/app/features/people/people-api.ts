@@ -20,6 +20,8 @@ export interface Person {
   statementDate: string | null;
   /** The date the person is retired from; null while not retired. */
   retiredFrom: string | null;
+  /** Whether the person is on hold: while held, their OPEN claims count in no live total. */
+  held: boolean;
 }
 
 export interface PersonForm {
@@ -67,6 +69,11 @@ export class PeopleApi {
   /** Retire the person from a date, the sheet's today when none is given. */
   retire(sheetId: string, id: number, from: string | null): Observable<Person> {
     return this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from }, { headers: this.headers() });
+  }
+
+  /** Put the person on hold, or take them off it when held. */
+  hold(sheetId: string, id: number): Observable<Person> {
+    return this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, null, { headers: this.headers() });
   }
 
   /** Add a draft claim for the named person, adding them with grade A first when not on the sheet. */

@@ -33,7 +33,7 @@ public class PersonController {
     /** A person shows how many statements were taken for them and the last one's due-total (n/a when it was)
      * and date; none of those before the first. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, LocalDate retiredFrom) {
+            String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held) {
 
         public static PersonView of(Person person, Map<Long, Summary> statements) {
             Summary summary = statements.get(person.getId());
@@ -41,7 +41,7 @@ public class PersonController {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     summary != null ? summary.count() : 0,
                     last == null ? null : last.getDueTotal() != null ? last.getDueTotal().toPlainString() : "n/a",
-                    last != null ? last.getTakenOn() : null, person.getRetiredFrom());
+                    last != null ? last.getTakenOn() : null, person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -80,6 +80,13 @@ public class PersonController {
     public PersonView retire(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @RequestBody RetireForm form) {
         return PersonView.of(service.retire(user, sheetId, id, form.from()), statements.summaries(sheetId));
+    }
+
+    /** Put the person on hold, or take them off it when held. */
+    @PostMapping("/{id}/hold")
+    public PersonView hold(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id) {
+        return PersonView.of(service.toggleHold(user, sheetId, id), statements.summaries(sheetId));
     }
 
     /** Take a statement for the person. */

@@ -14,7 +14,8 @@ import { Grade, PeopleApi, Person } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
-// claims, what they have claimed (its OPEN and SETTLED claims) and what is due on it: the sum of those
+// claims, what they have claimed (its OPEN and SETTLED claims, though a held person's OPEN ones count in
+// no total) and what is due on it: the sum of those
 // claims' rounded dues; the sheet's
 // claimed-total and due-total add everyone's up (a due-total of n/a is skipped).
 @Component({
@@ -72,6 +73,7 @@ import { Grade, PeopleApi, Person } from './people-api';
             <th scope="col">Stated on</th>
             <th scope="col">Retired</th>
             <th scope="col">Retired from</th>
+            <th scope="col">On hold</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -88,6 +90,7 @@ import { Grade, PeopleApi, Person } from './people-api';
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retiredFrom ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -132,6 +135,14 @@ import { Grade, PeopleApi, Person } from './people-api';
                 >
                   Retire
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-hold-toggle"
+                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
+                  (click)="hold(p)"
+                >
+                  {{ p.held ? 'Release' : 'Hold' }}
+                </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -166,7 +177,11 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
+  /** The ids of the people on hold, whose OPEN claims count in no total. */
+  private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
+  protected readonly claimedTotal = computed(() =>
+    sumAmounts(this.claims().filter((c) => this.countsLive(c)).map((c) => c.amount)),
+  );
   /** The sheet's rates. */
   protected readonly rates = signal<Rate[]>([]);
   /** The rate each grade with one has in force on the sheet's today. */
@@ -187,7 +202,7 @@ export class People {
   protected readonly periodDueTotals = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const dues = new Map<number, string[]>();
-    for (const c of this.claims().filter(counts)) {
+    for (const c of this.claims().filter((c) => this.countsLive(c))) {
       const period = periodOf(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (!period || !grade) continue;
@@ -252,17 +267,22 @@ export class People {
   }
 
   protected claimed(personId: number): string {
-    return sumAmounts(this.claimsOf(personId).filter(counts).map((c) => c.amount));
+    return sumAmounts(this.claimsOf(personId).filter((c) => this.countsLive(c)).map((c) => c.amount));
   }
 
   /** The sum of the dues of the claims the person has that count (n/a ones skipped), 0.00 with none. A
    * person whose grade has no rate in force on the sheet's today shows n/a, unless a settled or stated claim
    * keeps a figure. */
   protected personDueTotal(person: Person): string {
-    const counted = this.claimsOf(person.id).filter(counts);
+    const counted = this.claimsOf(person.id).filter((c) => this.countsLive(c));
     const frozen = counted.some(keepsFigure);
     if (!this.rateByGrade().has(person.grade) && !frozen) return NO_RATE;
     return sumAmounts(counted.map((c) => claimDue(c, this.rates(), person.grade)).filter((d) => d !== NO_RATE));
+  }
+
+  /** Whether a claim counts in the live totals: it counts, and is not an OPEN claim of a held person. */
+  private countsLive(claim: Claim): boolean {
+    return counts(claim) && !(claim.status === 'OPEN' && this.heldIds().has(claim.personId));
   }
 
   protected rateSaved(rate: Rate): void {
@@ -320,6 +340,23 @@ export class People {
         this.personError.set({
           id: person.id,
           message: e.status === 404 ? 'That person is no longer on this sheet.' : 'Could not retire that person.',
+        }),
+    });
+  }
+
+  /** Put the person on hold, or take them off it when held. */
+  protected hold(person: Person): void {
+    this.personError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api.hold(sheetId, person.id).subscribe({
+      next: (p) => {
+        if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
+      },
+      error: (e: HttpErrorResponse) =>
+        this.personError.set({
+          id: person.id,
+          message: e.status === 404 ? 'That person is no longer on this sheet.' : 'Could not change that hold.',
         }),
     });
   }

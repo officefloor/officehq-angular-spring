@@ -65,7 +65,7 @@ public class RollupService {
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Rate> gradeRates = rates.findBySheetIdAndGrade(sheetId, person.getGrade());
             List<Claim> counted = byPerson.getOrDefault(person.getId(), List.of()).stream()
-                    .filter(RollupService::counts).toList();
+                    .filter(c -> counts(c, person)).toList();
             BigDecimal claimed = BigDecimal.ZERO.setScale(2);
             BigDecimal due = BigDecimal.ZERO.setScale(2);
             boolean frozen = false;
@@ -89,17 +89,20 @@ public class RollupService {
         return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString());
     }
 
-    /** The due-total of the sheet's claims that count dated from and to, inclusive: the sum of their figures,
+    /** The due-total of the sheet's claims that count (a held person's OPEN ones do not) dated from and to, inclusive: the sum of their figures,
      * n/a ones skipped. */
     public BigDecimal dueTotal(String sheetId, LocalDate from, LocalDate to) {
         Map<Long, List<Rate>> gradeRates = new LinkedHashMap<>();
+        Map<Long, Person> byId = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             gradeRates.put(person.getId(), rates.findBySheetIdAndGrade(sheetId, person.getGrade()));
+            byId.put(person.getId(), person);
         }
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             List<Rate> personRates = gradeRates.get(claim.getPersonId());
-            if (personRates == null || !counts(claim) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            if (personRates == null || !counts(claim, byId.get(claim.getPersonId()))
+                    || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
             BigDecimal figure = figureOf(claim, personRates);
@@ -157,8 +160,9 @@ public class RollupService {
                 .orElse(null);
     }
 
-    /** Only OPEN and SETTLED claims count toward what is claimed and due. */
-    private static boolean counts(Claim claim) {
-        return claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.SETTLED;
+    /** Only OPEN and SETTLED claims count toward what is claimed and due; a held person's OPEN ones do not. */
+    private static boolean counts(Claim claim, Person person) {
+        return (claim.getStatus() == ClaimStatus.OPEN && !person.isHeld())
+                || claim.getStatus() == ClaimStatus.SETTLED;
     }
 }
