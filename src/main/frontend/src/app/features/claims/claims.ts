@@ -3,7 +3,7 @@ import { Component, effect, inject, input, output, signal, untracked } from '@an
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { dueOf } from '../rates/rates-api';
-import { Claim, ClaimsApi } from './claims-api';
+import { Claim, ClaimAction, ClaimsApi } from './claims-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -44,6 +44,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <th scope="col">Date</th>
             <th scope="col">Note</th>
             <th scope="col">Due</th>
+            <th scope="col">Status</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -54,6 +55,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
+              <td data-testid="claim-status">{{ c.status }}</td>
               <td>
                 <button
                   type="button"
@@ -63,6 +65,19 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
                 >
                   Edit
                 </button>
+                @for (a of actions; track a.action) {
+                  <button
+                    type="button"
+                    [attr.data-testid]="'claim-' + a.action"
+                    [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date"
+                    (click)="changeStatus(c, a.action)"
+                  >
+                    {{ a.label }}
+                  </button>
+                }
+                @if (claimError()?.id === c.id) {
+                  <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
+                }
               </td>
             </tr>
           }
@@ -84,7 +99,14 @@ export class Claims {
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
+  protected readonly actions: { action: ClaimAction; label: string }[] = [
+    { action: 'open', label: 'Open' },
+    { action: 'settle', label: 'Settle' },
+    { action: 'void', label: 'Void' },
+  ];
   protected readonly editingId = signal<number | null>(null);
+  /** The error of the last action taken on a claim, shown on that claim's row. */
+  protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly formError = signal<string | null>(null);
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
@@ -109,7 +131,29 @@ export class Claims {
     return dueOf(claim.amount, this.rate());
   }
 
+  protected changeStatus(claim: Claim, action: ClaimAction): void {
+    this.claimError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api.changeStatus(sheetId, claim.id, action).subscribe({
+      next: (c) => {
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 409
+              ? 'That claim\'s status does not allow that change.'
+              : e.status === 404
+                ? 'That claim is no longer on this sheet.'
+                : 'Could not change that claim\'s status.',
+        }),
+    });
+  }
+
   protected edit(claim: Claim): void {
+    this.claimError.set(null);
     this.editingId.set(claim.id);
     this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note }, { emitEvent: false });
     this.formError.set(null);

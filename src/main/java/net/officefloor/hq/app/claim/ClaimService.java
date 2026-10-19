@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -57,6 +58,27 @@ public class ClaimService {
         audit.recordOnCommit(entry("CLAIM_EDITED", user, requirePerson(sheetId, claim.getPersonId()), claim));
         return claim;
     }
+
+    /** Move a claim to another status; a change its status does not allow is refused. */
+    @Transactional
+    public Claim changeStatus(String user, String sheetId, Long id, ClaimStatus next) {
+        sheets.today(sheetId); // the sheet must exist
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (!claim.getStatus().canBecome(next)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot become " + next + ".");
+        }
+        claim.setStatus(next);
+        claims.flush();
+        audit.recordOnCommit(entry(EVENTS.get(next), user, requirePerson(sheetId, claim.getPersonId()), claim));
+        return claim;
+    }
+
+    private static final Map<ClaimStatus, String> EVENTS = Map.of(
+            ClaimStatus.OPEN, "CLAIM_OPENED",
+            ClaimStatus.SETTLED, "CLAIM_SETTLED",
+            ClaimStatus.VOID, "CLAIM_VOIDED");
 
     private Person requirePerson(String sheetId, Long personId) {
         return people.findByIdAndSheetId(personId, sheetId)

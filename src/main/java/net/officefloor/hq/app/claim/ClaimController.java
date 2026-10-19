@@ -28,11 +28,11 @@ public class ClaimController {
             @Size(max = 1000) String note) {}
 
     /** The amount is shown with two decimals. */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
-                    claim.getAmount().setScale(2).toPlainString(), claim.getDate(), claim.getNote());
+                    claim.getAmount().setScale(2).toPlainString(), claim.getDate(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -57,5 +57,20 @@ public class ClaimController {
     public ClaimView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.update(user, sheetId, id, new BigDecimal(form.amount()), form.date(), form.note()));
+    }
+
+    @PostMapping("/claims/{id}/open")
+    public ClaimView open(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.OPEN));
+    }
+
+    @PostMapping("/claims/{id}/settle")
+    public ClaimView settle(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/{id}/void")
+    public ClaimView voidClaim(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+        return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.VOID));
     }
 }

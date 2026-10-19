@@ -5,14 +5,14 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
-import { Claim, ClaimsApi, sumAmounts } from '../claims/claims-api';
+import { Claim, ClaimsApi, counts, sumAmounts } from '../claims/claims-api';
 import { Rates } from '../rates/rates';
 import { NO_RATE, Rate, RatesApi, dueOf } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
-// claims, what they have claimed and what is due on it at their grade's rate; the sheet's
+// claims, what they have claimed (its OPEN and SETTLED claims) and what is due on it at their grade's rate; the sheet's
 // claimed-total and due-total add everyone's up (a due-total of n/a is skipped).
 @Component({
   selector: 'app-people',
@@ -101,7 +101,7 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
+  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
   /** The sheet's rates. */
   protected readonly rates = signal<Rate[]>([]);
   protected readonly rateByGrade = computed(
@@ -141,7 +141,7 @@ export class People {
   }
 
   protected claimed(personId: number): string {
-    return sumAmounts(this.claimsOf(personId).map((c) => c.amount));
+    return sumAmounts(this.claimsOf(personId).filter(counts).map((c) => c.amount));
   }
 
   /** What is due on all the person has claimed, at their grade's rate. */

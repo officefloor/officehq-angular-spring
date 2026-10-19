@@ -11,6 +11,18 @@ export interface Claim {
   /** yyyy-mm-dd */
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+/** A claim starts as DRAFT, is opened and then settled; a DRAFT or OPEN claim can be voided. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** The status changes a person can ask for on a claim. */
+export type ClaimAction = 'open' | 'settle' | 'void';
+
+/** Only OPEN and SETTLED claims count toward what is claimed and due. */
+export function counts(claim: Claim): boolean {
+  return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
 export interface ClaimForm {
@@ -47,6 +59,10 @@ export class ClaimsApi {
 
   update(sheetId: string, id: number, form: ClaimForm): Observable<Claim> {
     return this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}`, form, { headers: this.headers() });
+  }
+
+  changeStatus(sheetId: string, id: number, action: ClaimAction): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() });
   }
 
   private url(sheetId: string): string {
