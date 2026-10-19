@@ -1,0 +1,84 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e132dc06..914c0ee9 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -180,6 +180,13 @@ export class Claims {
+ 
+   protected edit(claim: Claim): void {
+     this.claimError.set(null);
++    if (claim.status !== 'DRAFT') {
++      this.claimError.set({
++        id: claim.id,
++        message: 'Only a draft claim can be edited. To change it, void it and add a new one.',
++      });
++      return;
++    }
+     this.editingId.set(claim.id);
+     this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note }, { emitEvent: false });
+     this.formError.set(null);
+@@ -222,7 +229,9 @@ export class Claims {
+             ? 'That person or claim is no longer on this sheet.'
+             : e.status === 423
+               ? 'That claim is dated in a closed period.'
+-              : 'Could not save that claim.',
++              : e.status === 409
++                ? 'Only a draft claim can be edited. To change it, void it and add a new one.'
++                : 'Could not save that claim.',
+         );
+       },
+     });
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c89050df..003224fd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,7 +39,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The sheet's number for the claim, given when it is opened; none while a draft or once voided. */
++    /** The sheet's number for the claim, given when it is opened and kept once voided; none while a draft. */
+     @Column(name = "claim_number")
+     private Integer number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2688b8bc..765dac37 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -58,12 +58,16 @@ public class ClaimService {
+         return claim;
+     }
+ 
+-    /** Edit a claim; one dated in a closed period, or that would be, is refused. */
++    /** Edit a claim; only a draft can be edited (an open claim is voided and added again instead), and one dated
++     * in a closed period, or that would be, is refused. */
+     @Transactional
+     public Claim update(String user, String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
+         LocalDate today = sheets.today(sheetId);
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can be edited.");
++        }
+         requireOpenPeriod(sheetId, claim.getDate());
+         requireOpenPeriod(sheetId, date != null ? date : today);
+         Snapshot before = rollup.snapshot(sheetId);
+@@ -110,9 +114,6 @@ public class ClaimService {
+             claim.setSettledDue(figureOf(claim, person.getGrade()));
+             entry += " due=" + (claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : "n/a");
+         }
+-        if (next == ClaimStatus.VOID) {
+-            claim.setNumber(null);
+-        }
+         claims.flush();
+         audit.recordOnCommit(entry);
+         rollup.recordChanges(user, sheetId, before);
+diff --git a/src/main/resources/db/migration/V16__void_keeps_number.sql b/src/main/resources/db/migration/V16__void_keeps_number.sql
+new file mode 100644
+index 00000000..d23c5684
+--- /dev/null
++++ b/src/main/resources/db/migration/V16__void_keeps_number.sql
+@@ -0,0 +1,4 @@
++-- A voided claim now keeps the number it was opened with; the number is still never reused, as the
++-- sheet's last_claim_number only grows. Claims voided before this change have no number left to restore.
++-- Only a DRAFT claim can be edited; an open claim is voided and added again instead.
++SELECT 1;
