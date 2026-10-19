@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has, its clerk limit, its floor, its terms, its late percent, its policy date and its period numbering date. */
+/** A sheet's settings: the role each user name has, its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering date and its cap. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
 public class SettingController {
@@ -41,7 +41,7 @@ public class SettingController {
      * decimals, 0.00 or more. The terms are a whole number of days, 0 or more; so are each grade's terms, where
      * blank means the grade uses the sheet's terms. The late percent has up to two
      * decimals, 0.00 or more. The policy date is a date (yyyy-mm-dd); blank means the sheet's today. The period numbering date is a date; blank means
-     * off. A setting
+     * off. The cap has up to two decimals, 0.00 or more; blank means no cap. A setting
      * left out (null) is left as it is. */
     public record SettingsForm(@Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit,
             @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String floor,
@@ -51,21 +51,25 @@ public class SettingController {
             @Pattern(regexp = "|\\d{1,5}") String termsC,
             @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String latePct,
             @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String policyDate,
-            @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String periodNumberingFrom) {}
+            @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String periodNumberingFrom,
+            @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String cap) {}
 
     /** The clerk limit and floor are shown with two decimals; the clerk limit is null when there is none. The
      * terms are the days after its date a claim is due by; each grade's terms are null when it uses the sheet's. The late percent is shown with two decimals. The policy date is null when there is none (the sheet's
-     * today is used). The period numbering date is null when it is off. */
+     * today is used). The period numbering date is null when it is off. The cap is shown with two decimals,
+     * null when there is none. */
     public record SettingsView(String clerkLimit, String floor, int terms, Integer termsA, Integer termsB,
-            Integer termsC, String latePct, String policyDate, String periodNumberingFrom) {
+            Integer termsC, String latePct, String policyDate, String periodNumberingFrom, String cap) {
 
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, Integer termsA, Integer termsB,
-                Integer termsC, BigDecimal latePct, LocalDate policyDate, LocalDate periodNumberingFrom) {
+                Integer termsC, BigDecimal latePct, LocalDate policyDate, LocalDate periodNumberingFrom,
+                BigDecimal cap) {
             return new SettingsView(clerkLimit != null ? clerkLimit.setScale(2).toPlainString() : null,
                     floor.setScale(2).toPlainString(), terms, termsA, termsB, termsC,
                     latePct.setScale(2).toPlainString(),
                     policyDate != null ? policyDate.toString() : null,
-                    periodNumberingFrom != null ? periodNumberingFrom.toString() : null);
+                    periodNumberingFrom != null ? periodNumberingFrom.toString() : null,
+                    cap != null ? cap.setScale(2).toPlainString() : null);
         }
     }
 
@@ -97,21 +101,22 @@ public class SettingController {
     public SettingsView save(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody SettingsForm form) {
         String limit = form.clerkLimit();
-        Optional<BigDecimal> clerkLimit = limit == null ? null
-                : limit.isEmpty() ? Optional.empty() : Optional.of(new BigDecimal(limit));
+        Optional<BigDecimal> clerkLimit = amountOrBlank(limit);
+        Optional<BigDecimal> cap = amountOrBlank(form.cap());
         Optional<LocalDate> policyDate = dateOrBlank(form.policyDate(), "A policy date is a date, or blank.");
         Optional<LocalDate> periodNumberingFrom = dateOrBlank(form.periodNumberingFrom(),
                 "A period numbering date is a date, or blank.");
         service.save(user, sheetId, clerkLimit, form.floor() == null ? null : new BigDecimal(form.floor()),
                 form.terms() == null ? null : Integer.valueOf(form.terms()), gradeTerms(form),
-                form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom);
+                form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom, cap);
         return view(sheetId);
     }
 
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
                 service.gradeTerms(sheetId, "A"), service.gradeTerms(sheetId, "B"), service.gradeTerms(sheetId, "C"),
-                service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId));
+                service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
+                service.cap(sheetId));
     }
 
     /** The grades' terms given, in grade order: empty when blank (the grade uses the sheet's terms); a grade
@@ -128,6 +133,11 @@ public class SettingController {
             }
         });
         return given;
+    }
+
+    /** An amount setting as given: null when left out, empty when blank. */
+    private static Optional<BigDecimal> amountOrBlank(String amount) {
+        return amount == null ? null : amount.isEmpty() ? Optional.empty() : Optional.of(new BigDecimal(amount));
     }
 
     /** A date setting as given: null when left out, empty when blank. */

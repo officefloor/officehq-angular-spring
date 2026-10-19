@@ -57,7 +57,7 @@ public class StatementService {
     }
 
     /**
-     * Take a statement for a person: record their due-total now, late charges included, and bind each of their
+     * Take a statement for a person: record their due-total now, late charges included and held to the cap, and bind each of their
      * claims that counts (OPEN and PENDING ones within a hold, unbound, do not) to the figure it has now (never its late charge, which keeps following the sheet's
      * today); a claim of theirs that does not count is left unbound.
      */
@@ -86,7 +86,7 @@ public class StatementService {
         }
         // Like the screen: with no rate in force today and no claim having a figure, the due-total is n/a.
         boolean rated = rollup.rated(person, counted, today);
-        BigDecimal dueTotal = rated || fixed ? total : null;
+        BigDecimal dueTotal = rollup.capped(sheetId, rated || fixed ? total : null);
         claims.flush();
         statements.saveAndFlush(new Statement(sheetId, personId, today, user, dueTotal, counted.size()));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

@@ -24,16 +24,17 @@ import { Rates } from '../rates/rates';
 import { SheetHeader } from '../summary/sheet-header';
 import { GradeSummary, Summary } from '../summary/summary';
 import { SheetFloor } from '../settings/sheet-floor';
+import { SheetCap } from '../settings/sheet-cap';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
-import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
+import { NO_RATE, Rate, RatesApi, fromHundredths, hundredths, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
 // claims, what they have claimed (its OPEN, PENDING and SETTLED claims, though OPEN and PENDING ones dated within one of
 // their holds and not bound by a statement count in no total) and what is due on it: the sum of those
-// claims' rounded dues; the sheet's
+// claims' rounded dues, at most the sheet's cap (what is above it shows as their excess); the sheet's
 // claimed-total and due-total add everyone's up (a due-total of n/a is skipped). Each person, and the sheet,
 // also shows how many of the claims that count are overdue and the sum of their dues (n/a ones skipped).
 @Component({
@@ -115,6 +116,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Excess</th>
             <th scope="col">Statements</th>
             <th scope="col">Last stated</th>
             <th scope="col">Stated on</th>
@@ -136,6 +138,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
+              <td data-testid="person-excess">{{ excess(p) }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
@@ -271,6 +274,7 @@ export class People {
   private readonly floor = inject(SheetFloor);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
+  private readonly cap = inject(SheetCap);
   /** What a late charge goes by: the sheet's today and late percent; and the policy date rounding goes by. */
   private readonly late = computed<Lateness>(() => ({
     today: this.session.today(),
@@ -445,13 +449,28 @@ export class People {
   /** The sum of the dues of the claims the person has that count (n/a ones skipped), 0.00 with none. A
    * person shows n/a when neither the grade they have on the sheet's today nor one they had on the date of a
    * claim that counts has a rate in force on the sheet's today, unless a claim that counts has a figure
-   * (kept by a settlement or statement, or at a rate that applies on its date). */
-  protected personDueTotal(person: Person): string {
+   * (kept by a settlement or statement, or at a rate that applies on its date). Not held to the cap. */
+  private uncappedDueTotal(person: Person): string {
     const counted = this.claimsOf(person.id).filter((c) => this.countsLive(c));
     const dues = counted.map((c) => this.claimDue(c, person)).filter((d) => d !== NO_RATE);
     const grades = [this.gradeToday(person), ...counted.map((c) => gradeOn(person.grades, c.date))];
     if (!grades.some((g) => g !== undefined && this.rateByGrade().has(g)) && dues.length === 0) return NO_RATE;
     return sumAmounts(dues);
+  }
+
+  /** The person's due-total held to the sheet's cap: the cap when the sum of their dues is above it; n/a is not
+   * capped. */
+  protected personDueTotal(person: Person): string {
+    const total = this.uncappedDueTotal(person);
+    const cap = this.cap.value();
+    return total !== NO_RATE && cap !== null && hundredths(total) > hundredths(cap) ? cap : total;
+  }
+
+  /** What the sum of the person's dues is above the sheet's cap; 0.00 when it is not, or is n/a. */
+  protected excess(person: Person): string {
+    const total = this.uncappedDueTotal(person);
+    if (total === NO_RATE) return '0.00';
+    return fromHundredths(hundredths(total) - hundredths(this.personDueTotal(person)));
   }
 
   /** The person's claims that count and are overdue. */

@@ -25,8 +25,8 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
 /**
- * The sheet's figures as the screen shows them: each person's claimed and due-total, and the sheet's
- * claimed-total and due-total. A change takes them before it alters anything and hands them back after, and
+ * The sheet's figures as the screen shows them: each person's claimed and due-total (at most the sheet's cap),
+ * and the sheet's claimed-total and due-total. A change takes them before it alters anything and hands them back after, and
  * every figure it moved is written to the audit after the change's own lines. Called within the change's
  * transaction.
  */
@@ -92,6 +92,7 @@ public class RollupService {
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
         Map<String, List<Rate>> byGrade = ratesByGrade(sheetId);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counted = byPerson.getOrDefault(person.getId(), List.of()).stream()
                     .filter(c -> counts(c, person)).toList();
@@ -110,6 +111,9 @@ public class RollupService {
             // Like the screen: with no rate in force today and no claim having a figure (kept, or at a rate that
             // applies on its date), the due-total is n/a.
             boolean rated = rated(person, counted, today, byGrade);
+            if (sheet != null) {
+                due = sheet.capped(due);
+            }
             String personDue = rated || frozen ? due.toPlainString() : NO_RATE;
             claimedTotal = claimedTotal.add(claimed);
             if (rated || frozen) {
@@ -118,6 +122,11 @@ public class RollupService {
             figures.put(person.getId(), new Figures(person.getName(), claimed.toPlainString(), personDue));
         }
         return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString());
+    }
+
+    /** A person's due-total held to the sheet's cap; none (n/a) is not capped. */
+    public BigDecimal capped(String sheetId, BigDecimal dueTotal) {
+        return sheets.findById(sheetId).map(s -> s.capped(dueTotal)).orElse(dueTotal);
     }
 
     /** The due-total of the sheet's claims that count (OPEN and PENDING ones within a hold, unbound, do not) dated from and to, inclusive: the sum of their dues,

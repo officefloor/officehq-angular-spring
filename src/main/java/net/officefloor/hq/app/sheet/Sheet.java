@@ -71,6 +71,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The most a person's due-total comes to, with two decimals; none means no cap. */
+    @Column(name = "cap", precision = 12, scale = 2)
+    private BigDecimal cap;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt) {
@@ -165,6 +169,19 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
+    }
+
+    /** A person's due-total held to the cap: the cap when it is above it, else as it is; none (n/a) stays none. */
+    public BigDecimal capped(BigDecimal dueTotal) {
+        return dueTotal != null && cap != null && dueTotal.compareTo(cap) > 0 ? cap.setScale(2) : dueTotal;
     }
 
     /** Whether a claim opened now is numbered within its period: the period numbering date is set and the

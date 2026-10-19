@@ -6,6 +6,7 @@ import { Session } from '../../core/session';
 import { ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
 import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
+import { SheetCap } from './sheet-cap';
 import { SheetPolicyDate } from './sheet-policy-date';
 
 /** The terms a sheet starts with, in days. */
@@ -27,6 +28,7 @@ type SettingsFormValue = {
   latePct: string;
   policyDate: string;
   periodNumberingFrom: string;
+  cap: string;
 };
 
 const NO_SETTINGS: SheetSettings = {
@@ -39,6 +41,7 @@ const NO_SETTINGS: SheetSettings = {
   latePct: DEFAULT_LATE_PCT,
   policyDate: null,
   periodNumberingFrom: null,
+  cap: null,
 };
 
 // The sheet's settings: the role each user name has (clerk unless given another) with the form that
@@ -47,7 +50,8 @@ const NO_SETTINGS: SheetSettings = {
 // added), and each grade's own terms (blank for the sheet's), and the late
 // percent, what an overdue claim gains of its figure for every full 30 days overdue, and the policy date (blank
 // for the sheet's today), before which a claim's date rounds half up, on or after half to even, and the period
-// numbering date (blank for off), from which a claim opened is numbered within its period. Saving sends
+// numbering date (blank for off), from which a claim opened is numbered within its period, and the cap (blank
+// for none), the most a person's due-total comes to. Saving sends
 // only the settings changed in the form (the clerk limit when none was).
 @Component({
   selector: 'app-settings',
@@ -86,6 +90,8 @@ const NO_SETTINGS: SheetSettings = {
           data-testid="setting-period-numbering-from"
           formControlName="periodNumberingFrom"
         />
+        <label for="setting-cap">Cap (blank for none)</label>
+        <input id="setting-cap" data-testid="setting-cap" inputmode="decimal" formControlName="cap" />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as e) {
@@ -120,6 +126,10 @@ const NO_SETTINGS: SheetSettings = {
       <p>
         Period numbering from:
         <span data-testid="setting-period-numbering-from-current">{{ settings().periodNumberingFrom ?? '' }}</span>
+      </p>
+      <p>
+        Cap in force:
+        <span data-testid="setting-cap-current">{{ settings().cap ?? '' }}</span>
       </p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" data-testid="role-form">
         <label for="role-form-user">User</label>
@@ -157,6 +167,7 @@ export class Settings {
   private readonly floor = inject(SheetFloor);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
+  private readonly cap = inject(SheetCap);
 
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly grades = GRADES;
@@ -184,6 +195,7 @@ export class Settings {
     latePct: new FormControl(DEFAULT_LATE_PCT, { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -295,6 +307,8 @@ export class Settings {
     const periodNumberingFrom = controls.periodNumberingFrom.value.trim();
     const sendPeriodNumbering = send('periodNumberingFrom');
     const sendLimit = send('clerkLimit');
+    const cap = controls.cap.value.trim();
+    const sendCap = send('cap');
     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -334,6 +348,10 @@ export class Settings {
       this.settingsError.set('Type a period numbering date as yyyy-mm-dd, or leave it blank.');
       return;
     }
+    if (sendCap && cap !== '' && !LIMIT.test(cap)) {
+      this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     const changed = {
       ...(sendLimit ? { clerkLimit } : {}),
       ...(sendFloor ? { floor } : {}),
@@ -342,6 +360,7 @@ export class Settings {
       ...(sendLatePct ? { latePct } : {}),
       ...(sendPolicyDate ? { policyDate } : {}),
       ...(sendPeriodNumbering ? { periodNumberingFrom } : {}),
+      ...(sendCap ? { cap } : {}),
     };
     this.saves.next({ sheetId, changed, sent: this.settingsForm.getRawValue() });
   }
@@ -353,6 +372,7 @@ export class Settings {
     this.floor.set(s.floor);
     this.latePct.set(s.latePct);
     this.policyDate.set(s.policyDate);
+    this.cap.set(s.cap);
     const shown: SettingsFormValue = {
       clerkLimit: s.clerkLimit ?? '',
       floor: s.floor,
@@ -363,6 +383,7 @@ export class Settings {
       latePct: s.latePct,
       policyDate: s.policyDate ?? '',
       periodNumberingFrom: s.periodNumberingFrom ?? '',
+      cap: s.cap ?? '',
     };
     const controls = this.settingsForm.controls;
     for (const key of Object.keys(shown) as (keyof SettingsFormValue)[]) {

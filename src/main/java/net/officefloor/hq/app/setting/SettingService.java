@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has on it, its clerk limit, its floor, its terms, its late percent, its policy date and its period numbering date. */
+/** A sheet's settings: the role each user name has on it, its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering date and its cap. */
 @Service
 public class SettingService {
 
@@ -64,12 +64,13 @@ public class SettingService {
     }
 
     /** Save the settings given, the clerk limit, the floor, the terms, each grade's terms (in the order given),
-     * the late percent then the policy date, and the period numbering date together; a setting not given (null)
-     * is left as it is, and an empty clerk limit, grade's terms, policy date or period numbering date removes it. */
+     * the late percent then the policy date, the period numbering date and the cap together; a setting not given
+     * (null) is left as it is, and an empty clerk limit, grade's terms, policy date, period numbering date or cap
+     * removes it. */
     @Transactional
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
             Integer terms, Map<String, Optional<Integer>> gradeTerms, BigDecimal latePct,
-            Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom) {
+            Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom, Optional<BigDecimal> cap) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null));
         }
@@ -88,6 +89,9 @@ public class SettingService {
         }
         if (periodNumberingFrom != null) {
             setPeriodNumberingFrom(user, sheetId, periodNumberingFrom.orElse(null));
+        }
+        if (cap != null) {
+            setCap(user, sheetId, cap.orElse(null));
         }
     }
 
@@ -234,6 +238,28 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=period-numbering-from value="
                 + (from != null ? from.toString() : ""));
         return from;
+    }
+
+    /** The sheet's cap: the most a person's due-total comes to; none means no cap. */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String sheetId) {
+        return find(sheetId).getCap();
+    }
+
+    /** Set the sheet's cap, none to remove it; it moves every due-total above it, and the figures it moves are
+     * written after. */
+    @Transactional
+    public BigDecimal setCap(String user, String sheetId, BigDecimal cap) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal value = cap != null ? cap.setScale(2) : null;
+        sheet.setCap(value);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=cap value="
+                + (value != null ? value.toPlainString() : ""));
+        rollup.recordChanges(user, sheetId, before);
+        return value;
     }
 
     /** Whether a user may settle a claim of this due outright: a due of n/a is within any limit, and a steward

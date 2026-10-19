@@ -31,9 +31,11 @@ export interface Settings {
   /** The date (yyyy-mm-dd) from which, while the sheet's today is on or after it, a claim opened is numbered
    * within its period; null when off. */
   periodNumberingFrom: string | null;
+  /** The most a person's due-total comes to, with two decimals; null for none. */
+  cap: string | null;
 }
 
-// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent and its policy date, read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date and its cap, read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -56,7 +58,7 @@ export class SettingsApi {
   save(
     sheetId: string,
     settings: { clerkLimit?: string; floor?: string; terms?: string; termsA?: string; termsB?: string;
-      termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; },
+      termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string; },
   ): Observable<Settings> {
     return this.http.put<Settings>(`${this.url(sheetId)}/settings`, settings, { headers: this.headers() });
   }
