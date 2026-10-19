@@ -138,12 +138,6 @@ function timesPct(pct: string, times: number): string {
   return `${hundredths / 100n}.${String(hundredths % 100n).padStart(2, '0')}`;
 }
 
-/** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a
- * statement while not PENDING. */
-export function keepsFigure(claim: Claim): boolean {
-  return claim.due !== null || (bound(claim) && claim.statedDue !== null);
-}
-
 /** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
 export function isOverdue(claim: Claim, today: string | null): boolean {
   return isOpen(claim) && today !== null && claim.dueBy < today;

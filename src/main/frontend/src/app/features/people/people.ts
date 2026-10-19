@@ -15,7 +15,6 @@ import {
   counts,
   isOpen,
   isOverdue,
-  keepsFigure,
   roundsBy,
   sumAmounts,
 } from '../claims/claims-api';
@@ -445,14 +444,14 @@ export class People {
 
   /** The sum of the dues of the claims the person has that count (n/a ones skipped), 0.00 with none. A
    * person shows n/a when neither the grade they have on the sheet's today nor one they had on the date of a
-   * claim that counts has a rate in force on the sheet's today, unless a settled or stated claim keeps a
-   * figure. */
+   * claim that counts has a rate in force on the sheet's today, unless a claim that counts has a figure
+   * (kept by a settlement or statement, or at a rate that applies on its date). */
   protected personDueTotal(person: Person): string {
     const counted = this.claimsOf(person.id).filter((c) => this.countsLive(c));
-    const frozen = counted.some(keepsFigure);
+    const dues = counted.map((c) => this.claimDue(c, person)).filter((d) => d !== NO_RATE);
     const grades = [this.gradeToday(person), ...counted.map((c) => gradeOn(person.grades, c.date))];
-    if (!grades.some((g) => g !== undefined && this.rateByGrade().has(g)) && !frozen) return NO_RATE;
-    return sumAmounts(counted.map((c) => this.claimDue(c, person)).filter((d) => d !== NO_RATE));
+    if (!grades.some((g) => g !== undefined && this.rateByGrade().has(g)) && dues.length === 0) return NO_RATE;
+    return sumAmounts(dues);
   }
 
   /** The person's claims that count and are overdue. */

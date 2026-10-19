@@ -100,14 +100,15 @@ public class RollupService {
             boolean frozen = false;
             for (Claim claim : counted) {
                 claimed = claimed.add(claim.getAmount().setScale(2));
-                frozen |= keepsFigure(claim);
                 BigDecimal figure = dueOf(claim, ratesOn(person, claim.getDate(), byGrade), floor, late,
                         roundsBy(claim, datesByNumber));
+                frozen |= figure != null;
                 if (figure != null) {
                     due = due.add(figure.setScale(2));
                 }
             }
-            // Like the screen: with no rate in force today and no claim keeping a figure, the due-total is n/a.
+            // Like the screen: with no rate in force today and no claim having a figure (kept, or at a rate that
+            // applies on its date), the due-total is n/a.
             boolean rated = rated(person, counted, today, byGrade);
             String personDue = rated || frozen ? due.toPlainString() : NO_RATE;
             claimedTotal = claimedTotal.add(claimed);
@@ -298,12 +299,6 @@ public class RollupService {
     /** The sheet's floor; 1.00, the one a sheet starts with, when there is no such sheet. */
     private BigDecimal floorOf(String sheetId) {
         return sheets.findById(sheetId).map(s -> s.getFloor()).orElse(new BigDecimal("1.00"));
-    }
-
-    /** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a
-     * statement while not PENDING. */
-    public static boolean keepsFigure(Claim claim) {
-        return claim.getSettledDue() != null || (bound(claim) && claim.getStatedDue() != null);
     }
 
     /** Whether a claim goes by the figure its person's last statement bound it to: a PENDING claim is not bound,

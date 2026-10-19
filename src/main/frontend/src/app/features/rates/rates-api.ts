@@ -8,13 +8,16 @@ export interface Rate {
   grade: Grade;
   /** The date (yyyy-mm-dd) the rate is in force from; null for from the beginning of time. */
   from: string | null;
+  /** The date (yyyy-mm-dd) the rate applies through; null for no end. */
+  to: string | null;
   /** A percent with two decimals, e.g. "12.50". */
   rate: string;
 }
 
 /**
  * The rate a grade has in force on a date (yyyy-mm-dd): the one with the latest from-date on or
- * before it; none when the date is before every rate of the grade.
+ * before it, provided the date is not after its to-date; none when the date is before every rate of
+ * the grade, or after the to-date of that one.
  */
 export function rateOn(rates: readonly Rate[], grade: Grade, date: string): string | undefined {
   // No from-date sorts as '', before every date.
@@ -23,7 +26,7 @@ export function rateOn(rates: readonly Rate[], grade: Grade, date: string): stri
     const from = r.from ?? '';
     if (r.grade === grade && from <= date && (!best || from > (best.from ?? ''))) best = r;
   }
-  return best?.rate;
+  return best && (best.to === null || date <= best.to) ? best.rate : undefined;
 }
 
 /** Shown in place of a due whose grade has no rate. */
@@ -76,8 +79,8 @@ export class RatesApi {
     return this.http.get<Rate[]>(this.url(sheetId), { headers: this.headers() });
   }
 
-  set(sheetId: string, grade: Grade, rate: string, from: string | null): Observable<Rate> {
-    return this.http.put<Rate>(`${this.url(sheetId)}/${grade}`, { rate, from }, { headers: this.headers() });
+  set(sheetId: string, grade: Grade, rate: string, from: string | null, to: string | null): Observable<Rate> {
+    return this.http.put<Rate>(`${this.url(sheetId)}/${grade}`, { rate, from, to }, { headers: this.headers() });
   }
 
   private url(sheetId: string): string {

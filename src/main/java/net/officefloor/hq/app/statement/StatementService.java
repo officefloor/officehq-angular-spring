@@ -77,14 +77,14 @@ public class StatementService {
             }
             BigDecimal figure = claimService.figureOf(claim, person);
             BigDecimal due = rollup.dueOf(claim, person);
-            fixed |= RollupService.keepsFigure(claim);
+            fixed |= due != null;
             claim.bind(figure);
             counted.add(claim);
             if (due != null) {
                 total = total.add(due);
             }
         }
-        // Like the screen: with no rate in force today and no claim keeping a figure, the due-total is n/a.
+        // Like the screen: with no rate in force today and no claim having a figure, the due-total is n/a.
         boolean rated = rollup.rated(person, counted, today);
         BigDecimal dueTotal = rated || fixed ? total : null;
         claims.flush();

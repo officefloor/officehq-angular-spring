@@ -20,14 +20,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** The rate is a percent, 0.00 or more, with up to two decimals; no from-date means from the beginning
-     * of time. */
-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String rate, LocalDate from) {}
+     * of time, no to-date with no end. */
+    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String rate, LocalDate from,
+            LocalDate to) {}
 
     /** The rate is shown with two decimals. */
-    public record RateView(String grade, LocalDate from, String rate) {
+    public record RateView(String grade, LocalDate from, LocalDate to, String rate) {
 
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getFrom(), rate.getRate().setScale(2).toPlainString());
+            return new RateView(rate.getGrade(), rate.getFrom(), rate.getTo(),
+                    rate.getRate().setScale(2).toPlainString());
         }
     }
 
@@ -45,6 +47,6 @@ public class RateController {
     @PutMapping("/{grade:[ABC]}")
     public RateView set(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable String grade, @Valid @RequestBody RateForm form) {
-        return RateView.of(service.set(user, sheetId, grade, form.from(), new BigDecimal(form.rate())));
+        return RateView.of(service.set(user, sheetId, grade, form.from(), form.to(), new BigDecimal(form.rate())));
     }
 }
