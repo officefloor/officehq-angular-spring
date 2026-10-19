@@ -105,6 +105,16 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
       @if (bulkOpenError(); as e) {
         <p role="alert" data-testid="bulk-open-error">{{ e }}</p>
       }
+      <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
+      @if (bulkSettleResult(); as r) {
+        <p role="status">
+          Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
+          refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
+        </p>
+      }
+      @if (bulkSettleError(); as e) {
+        <p role="alert" data-testid="bulk-settle-error">{{ e }}</p>
+      }
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -363,6 +373,11 @@ export class People {
   protected readonly bulkOpenError = signal<string | null>(null);
   /** Whether an open of the selected claims is waiting on the server; another is ignored until it answers. */
   private bulkOpening = false;
+  /** How many claims the last settle of the selected ones settled (or sent PENDING) and refused. */
+  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+  protected readonly bulkSettleError = signal<string | null>(null);
+  /** Whether a settle of the selected claims is waiting on the server; another is ignored until it answers. */
+  private bulkSettling = false;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion: number | null = null;
@@ -421,6 +436,8 @@ export class People {
         this.selectedClaims.set(new Set());
         this.bulkOpenResult.set(null);
         this.bulkOpenError.set(null);
+        this.bulkSettleResult.set(null);
+        this.bulkSettleError.set(null);
         this.reset();
         loaded(id);
       });
@@ -562,6 +579,7 @@ export class People {
 
   protected claimSelected(id: number, selected: boolean): void {
     this.bulkOpenError.set(null);
+    this.bulkSettleError.set(null);
     this.selectedClaims.update((ids) => {
       const next = new Set(ids);
       if (selected) next.add(id);
@@ -598,6 +616,40 @@ export class People {
       error: (e: HttpErrorResponse) => {
         this.bulkOpening = false;
         this.bulkOpenError.set(e.status === 404 ? 'That sheet is no longer in the store.' : 'Could not open those claims.');
+      },
+    });
+  }
+
+  /** Settle the selected claims together; the server settles them in list order, each as a single settle would,
+   * and leaves each one that cannot be settled as it is. */
+  protected settleSelected(): void {
+    if (this.bulkSettling) return;
+    this.bulkSettleResult.set(null);
+    this.bulkSettleError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) {
+      this.bulkSettleError.set('Load a sheet first.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    if (ids.length === 0) {
+      this.bulkSettleError.set('Select the claims to settle.');
+      return;
+    }
+    this.bulkSettling = true;
+    this.claimsApi.settleAll(sheetId, ids).subscribe({
+      next: ({ settled, refused, claims }) => {
+        this.bulkSettling = false;
+        if (this.session.sheetId() !== sheetId) return;
+        for (const c of claims) this.claimSaved(c);
+        this.selectedClaims.set(new Set());
+        this.bulkSettleResult.set({ settled, refused });
+      },
+      error: (e: HttpErrorResponse) => {
+        this.bulkSettling = false;
+        this.bulkSettleError.set(
+          e.status === 404 ? 'That sheet is no longer in the store.' : 'Could not settle those claims.',
+        );
       },
     });
   }

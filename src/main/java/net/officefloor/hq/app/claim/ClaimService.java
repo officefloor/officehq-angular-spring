@@ -255,13 +255,27 @@ public class ClaimService {
         return " due=" + (due != null ? due.toPlainString() : "n/a");
     }
 
-    /** What opening claims together did: how many were opened and refused, and the opened claims. */
+    /** What opening (or settling) claims together did: how many went through and were refused, and the claims
+     * that went through. */
     public record OpenedAll(int opened, int refused, List<Claim> claims) {}
 
     /** Open the given claims of the sheet one at a time, in list order: people in the order they were added,
      * each one's claims newest first. Each is opened, and numbered, as {@link #changeStatus} would open it on its
      * own; one that cannot be opened (or is not on the sheet) is refused and left as it is. */
     public OpenedAll openAll(String user, String sheetId, List<Long> ids) {
+        return changeAll(user, sheetId, ids, ClaimStatus.OPEN);
+    }
+
+    /** Settle the given claims of the sheet one at a time, in list order, each as {@link #changeStatus} would
+     * settle it on its own: one a clerk sends PENDING counts as settled; one that cannot be settled (or is not on
+     * the sheet) is refused and left as it is. */
+    public OpenedAll settleAll(String user, String sheetId, List<Long> ids) {
+        return changeAll(user, sheetId, ids, ClaimStatus.SETTLED);
+    }
+
+    /** Move the given claims to a status one at a time, in list order: people in the order they were added, each
+     * one's claims newest first, each in its own transaction; one that is refused is left as it is. */
+    private OpenedAll changeAll(String user, String sheetId, List<Long> ids, ClaimStatus next) {
         Set<Long> wanted = new HashSet<>(ids);
         List<Claim> chosen = transaction.execute(status -> {
             sheets.today(sheetId); // the sheet must exist
@@ -274,15 +288,15 @@ public class ClaimService {
                     .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
                     .toList();
         });
-        List<Claim> opened = new ArrayList<>();
+        List<Claim> changed = new ArrayList<>();
         for (Claim claim : chosen) {
             try {
-                opened.add(transaction.execute(status -> changeStatus(user, sheetId, claim.getId(), ClaimStatus.OPEN)));
+                changed.add(transaction.execute(status -> changeStatus(user, sheetId, claim.getId(), next)));
             } catch (ResponseStatusException refused) {
                 // Left as it is: its transaction rolled back, writing nothing.
             }
         }
-        return new OpenedAll(opened.size(), wanted.size() - opened.size(), opened);
+        return new OpenedAll(changed.size(), wanted.size() - changed.size(), changed);
     }
 
     /** The sequence a claim in no period is numbered in, with period numbering. */

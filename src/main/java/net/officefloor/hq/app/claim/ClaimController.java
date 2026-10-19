@@ -59,11 +59,15 @@ public class ClaimController {
         }
     }
 
-    /** The claims to open together, by id. */
+    /** The claims to open, or settle, together, by id. */
     public record OpenAllForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {}
 
     /** How many of the claims were opened and how many refused, and the opened claims as they are now. */
     public record OpenedAllView(int opened, int refused, List<ClaimView> claims) {}
+
+    /** How many of the claims were settled (or sent PENDING) and how many refused, and those claims as they are
+     * now. */
+    public record SettledAllView(int settled, int refused, List<ClaimView> claims) {}
 
     /** Why a steward rejects a PENDING claim: one word or more, with no line break. */
     public record RejectForm(@NotBlank @Size(max = 255) @Pattern(regexp = "[^\\r\\n]*") String reason) {}
@@ -106,6 +110,14 @@ public class ClaimController {
             @Valid @RequestBody OpenAllForm form) {
         ClaimService.OpenedAll result = service.openAll(user, sheetId, form.ids());
         return new OpenedAllView(result.opened(), result.refused(),
+                result.claims().stream().map(ClaimView::of).toList());
+    }
+
+    @PostMapping("/claims/settle")
+    public SettledAllView settleAll(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @Valid @RequestBody OpenAllForm form) {
+        ClaimService.OpenedAll result = service.settleAll(user, sheetId, form.ids());
+        return new SettledAllView(result.opened(), result.refused(),
                 result.claims().stream().map(ClaimView::of).toList());
     }
 

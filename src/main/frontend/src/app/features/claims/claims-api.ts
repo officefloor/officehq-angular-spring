@@ -159,6 +159,13 @@ export interface OpenedAll {
   claims: Claim[];
 }
 
+/** What settling claims together did: how many were settled (or sent PENDING) and refused, and those claims. */
+export interface SettledAll {
+  settled: number;
+  refused: number;
+  claims: Claim[];
+}
+
 /** The sum of claim amounts with two decimals, added up in cents so no rounding creeps in. */
 export function sumAmounts(amounts: string[]): string {
   return fromHundredths(amounts.reduce((sum, a) => sum + hundredths(a), 0n));
@@ -204,6 +211,12 @@ export class ClaimsApi {
   /** Open the claims together; each that cannot be opened is refused and left as it is. */
   openAll(sheetId: string, ids: number[]): Observable<OpenedAll> {
     return this.http.post<OpenedAll>(`${this.url(sheetId)}/claims/open`, { ids }, { headers: this.headers() });
+  }
+
+  /** Settle the claims together, each as a single settle would; each that cannot be settled is refused and left
+   * as it is. */
+  settleAll(sheetId: string, ids: number[]): Observable<SettledAll> {
+    return this.http.post<SettledAll>(`${this.url(sheetId)}/claims/settle`, { ids }, { headers: this.headers() });
   }
 
   private url(sheetId: string): string {

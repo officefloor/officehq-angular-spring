@@ -442,6 +442,8 @@ export class Claims {
       },
       error: (e: HttpErrorResponse) => {
         this.submitting = false;
+        // A refused new claim is dropped: the form starts afresh, dated the sheet's today, under its error.
+        if (id === null) this.reset();
         this.formError.set(
           e.status === 400
             ? 'A negative amount is a correction: name the number of a settled claim of this person it corrects.'
