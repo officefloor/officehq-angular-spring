@@ -57,6 +57,9 @@ public class ClaimController {
     /** Why a steward rejects a PENDING claim: one word or more, with no line break. */
     public record RejectForm(@NotBlank @Size(max = 255) @Pattern(regexp = "[^\\r\\n]*") String reason) {}
 
+    /** The person a claim is moved to, by id. */
+    public record ReassignForm(@NotNull Long personId) {}
+
     private final ClaimService service;
 
     public ClaimController(ClaimService service) {
@@ -109,6 +112,12 @@ public class ClaimController {
     public ClaimView reject(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
             @Valid @RequestBody RejectForm form) {
         return ClaimView.of(service.reject(user, sheetId, id, form.reason()));
+    }
+
+    @PostMapping("/claims/{id}/reassign")
+    public ClaimView reassign(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id, @Valid @RequestBody ReassignForm form) {
+        return ClaimView.of(service.reassign(user, sheetId, id, form.personId()));
     }
 
     @PostMapping("/claims/{id}/void")

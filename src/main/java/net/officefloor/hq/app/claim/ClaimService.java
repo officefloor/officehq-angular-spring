@@ -184,6 +184,43 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and
+     * date but loses any figure a statement bound it to: it is live again until its new person's next statement.
+     * One dated in a closed period, a correction (which names a settled claim of its own person), or one dated
+     * after its new person is retired, is refused. */
+    @Transactional
+    public Claim reassign(String user, String sheetId, Long id, Long toPersonId) {
+        sheets.today(sheetId); // the sheet must exist
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        settings.requireSteward(sheetId, user);
+        requireOpenPeriod(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be moved.");
+        }
+        if (claim.isCorrection()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A correction cannot be moved.");
+        }
+        Person from = requirePerson(sheetId, claim.getPersonId());
+        Person to = requirePerson(sheetId, toPersonId);
+        if (from.getId().equals(to.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The claim is already that person's.");
+        }
+        if (to.retiredOn(claim.getDate())) {
+            throw new ResponseStatusException(HttpStatus.GONE,
+                    to.getName() + " is retired from " + to.getRetiredFrom() + ".");
+        }
+        Snapshot before = rollup.snapshot(sheetId);
+        claim.setPersonId(to.getId());
+        claim.unbind();
+        claims.flush();
+        audit.recordOnCommit(entry("CLAIM_REASSIGNED", user, to, claim) + " from=" + from.getName() + " to="
+                + to.getName());
+        rollup.recordChanges(user, sheetId, before);
+        return claim;
+    }
+
     /** The PENDING claim a steward acts on; refused when it is not on the sheet, not PENDING, dated in a closed
      * period, or the user is not a steward. */
     private Claim requirePending(String user, String sheetId, Long id) {

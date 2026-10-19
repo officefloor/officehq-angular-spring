@@ -193,6 +193,14 @@ export class ClaimsApi {
     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reject`, { reason }, { headers: this.headers() });
   }
 
+  /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet; it is live again until their next
+   * statement. */
+  reassign(sheetId: string, id: number, personId: number): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reassign`, { personId }, {
+      headers: this.headers(),
+    });
+  }
+
   /** Open the claims together; each that cannot be opened is refused and left as it is. */
   openAll(sheetId: string, ids: number[]): Observable<OpenedAll> {
     return this.http.post<OpenedAll>(`${this.url(sheetId)}/claims/open`, { ids }, { headers: this.headers() });

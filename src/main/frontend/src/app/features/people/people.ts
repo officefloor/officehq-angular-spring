@@ -148,6 +148,7 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
                   [grades]="p.grades"
                   [rates]="rates()"
                   [periods]="periods()"
+                  [people]="people()"
                   [selected]="selectedClaims()"
                   (saved)="claimSaved($event)"
                   (selectedChange)="claimSelected($event.id, $event.selected)"

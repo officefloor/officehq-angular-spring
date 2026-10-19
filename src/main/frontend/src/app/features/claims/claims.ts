@@ -130,6 +130,25 @@ const NUMBER = /^\S{1,255}$/;
                 >
                   Reject
                 </button>
+                <label class="visually-hidden" [for]="'claim-reassign-to-' + c.id">Move to</label>
+                <select
+                  [id]="'claim-reassign-to-' + c.id"
+                  data-testid="claim-reassign-to"
+                  (change)="reassignChange(c.id, $any($event.target).value)"
+                >
+                  <option value="" [selected]="!reassignTo().has(c.id)">Move to…</option>
+                  @for (o of others(); track o.id) {
+                    <option [value]="o.id" [selected]="reassignTo().get(c.id) === o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="claim-reassign"
+                  [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date"
+                  (click)="reassign(c)"
+                >
+                  Move
+                </button>
                 @if (claimError()?.id === c.id) {
                   <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
                 }
@@ -166,6 +185,8 @@ export class Claims {
   readonly rates = input<readonly Rate[]>([]);
   /** The sheet's periods. */
   readonly periods = input<readonly Period[]>([]);
+  /** The people on the sheet a claim can be moved to, by id and name. */
+  readonly people = input<readonly { id: number; name: string }[]>([]);
   /** The ids of the claims selected to act on together. */
   readonly selected = input<ReadonlySet<number>>(new Set());
   /** A claim was added or saved. */
@@ -183,6 +204,10 @@ export class Claims {
   /** The error of the last action taken on a claim, shown on that claim's row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly formError = signal<string | null>(null);
+  /** The person picked to move each claim to, by claim id. */
+  protected readonly reassignTo = signal<ReadonlyMap<number, number>>(new Map());
+  /** The people a claim of this person's can be moved to: everyone else on the sheet. */
+  protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
   /** The reason typed to reject each PENDING claim, by id. */
   protected readonly rejectReasons = signal<ReadonlyMap<number, string>>(new Map());
   /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
@@ -255,6 +280,56 @@ export class Claims {
               : e.status === 404
                 ? 'That claim is no longer on this sheet.'
                 : 'Could not change that claim\'s status.',
+        }),
+    });
+  }
+
+  protected reassignChange(id: number, personId: string): void {
+    if (this.claimError()?.id === id) this.claimError.set(null);
+    this.reassignTo.update((m) => {
+      const next = new Map(m);
+      if (personId === '') next.delete(id);
+      else next.set(id, Number(personId));
+      return next;
+    });
+  }
+
+  /** Move a claim to the person picked on its row; it keeps its number and date but is live again. */
+  protected reassign(claim: Claim): void {
+    this.claimError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const personId = this.reassignTo().get(claim.id);
+    if (personId === undefined) {
+      this.claimError.set({ id: claim.id, message: 'Pick the person to move that claim to.' });
+      return;
+    }
+    this.api.reassign(sheetId, claim.id, personId).subscribe({
+      next: (c) => {
+        this.reassignTo.update((m) => {
+          const next = new Map(m);
+          next.delete(claim.id);
+          return next;
+        });
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 422
+              ? 'Only a steward can move a claim.'
+              : e.status === 423
+              ? 'That claim is dated in a closed period.'
+              : e.status === 409
+              ? 'Only a draft, open or pending claim can be moved, and never a correction.'
+              : e.status === 410
+              ? 'That person is retired before the claim\'s date.'
+              : e.status === 400
+              ? 'Pick another person to move that claim to.'
+              : e.status === 404
+                ? 'That claim or person is no longer on this sheet.'
+                : 'Could not move that claim.',
         }),
     });
   }
