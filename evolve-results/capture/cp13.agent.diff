@@ -1,0 +1,124 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 8b393955..db3bb5ad 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -19,6 +19,8 @@ export interface Claim {
+   /** What was due when the claim was settled, with two decimals; null while it is live (not settled, or
+    * settled when its grade had no rate). */
+   due: string | null;
++  /** Who opened the claim; null while it is a draft. */
++  openedBy: string | null;
+ }
+ 
+ /** A claim starts as DRAFT, is opened and then settled; a DRAFT or OPEN claim can be voided. */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 8ceff401..450715f2 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -47,6 +47,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
+             <th scope="col">Note</th>
+             <th scope="col">Due</th>
+             <th scope="col">Status</th>
++            <th scope="col">Opened by</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -59,6 +60,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
+               <td data-testid="claim-note">{{ c.note }}</td>
+               <td data-testid="claim-due">{{ due(c) }}</td>
+               <td data-testid="claim-status">{{ c.status }}</td>
++              <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+               <td>
+                 <button
+                   type="button"
+@@ -149,7 +151,9 @@ export class Claims {
+         this.claimError.set({
+           id: claim.id,
+           message:
+-            e.status === 409
++            e.status === 403
++              ? 'You opened that claim, so someone else must settle it.'
++              : e.status === 409
+               ? 'That claim\'s status does not allow that change.'
+               : e.status === 404
+                 ? 'That claim is no longer on this sheet.'
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 91f27981..6868b280 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -47,6 +47,10 @@ public class Claim {
+     @Column(name = "settled_due", precision = 12, scale = 2)
+     private BigDecimal settledDue;
+ 
++    /** Who opened the claim; none while it is a draft. */
++    @Column(name = "opened_by")
++    private String openedBy;
++
+     protected Claim() {}
+ 
+     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+@@ -116,4 +120,12 @@ public class Claim {
+     public void setSettledDue(BigDecimal settledDue) {
+         this.settledDue = settledDue;
+     }
++
++    public String getOpenedBy() {
++        return openedBy;
++    }
++
++    public void setOpenedBy(String openedBy) {
++        this.openedBy = openedBy;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c1627eff..32bb384a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -28,15 +28,16 @@ public class ClaimController {
+             @Size(max = 1000) String note) {}
+ 
+     /** The amount is shown with two decimals; a claim has no number until it is opened, and no fixed due
+-     * until it is settled. */
++     * until it is settled; it shows who opened it, if anyone did. */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+-            Integer number, String due) {
++            Integer number, String due, String openedBy) {
+ 
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(),
+                     claim.getAmount().setScale(2).toPlainString(), claim.getDate(), claim.getNote(), claim.getStatus(),
+                     claim.getNumber(),
+-                    claim.getSettledDue() != null ? claim.getSettledDue().setScale(2).toPlainString() : null);
++                    claim.getSettledDue() != null ? claim.getSettledDue().setScale(2).toPlainString() : null,
++                    claim.getOpenedBy());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2fa0aca5..6f9b61a3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -78,10 +78,15 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+         }
++        // Four eyes: whoever opened a claim cannot also settle it.
++        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it.");
++        }
+         Person person = requirePerson(sheetId, claim.getPersonId());
+         claim.setStatus(next);
+         if (next == ClaimStatus.OPEN) {
+             claim.setNumber(number);
++            claim.setOpenedBy(user);
+         }
+         // A voided claim's line carries the number it had.
+         String entry = entry(EVENTS.get(next), user, person, claim);
+diff --git a/src/main/resources/db/migration/V11__claim_opened_by.sql b/src/main/resources/db/migration/V11__claim_opened_by.sql
+new file mode 100644
+index 00000000..39e1979a
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__claim_opened_by.sql
+@@ -0,0 +1,2 @@
++-- A claim records who opened it; none while it is a draft. The user who opened a claim cannot settle it.
++ALTER TABLE claim ADD COLUMN opened_by VARCHAR(255);
