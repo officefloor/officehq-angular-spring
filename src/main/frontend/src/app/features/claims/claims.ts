@@ -47,6 +47,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <th scope="col">Note</th>
             <th scope="col">Due</th>
             <th scope="col">Status</th>
+            <th scope="col">Opened by</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -59,6 +60,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
+              <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td>
                 <button
                   type="button"
@@ -149,7 +151,9 @@ export class Claims {
         this.claimError.set({
           id: claim.id,
           message:
-            e.status === 409
+            e.status === 403
+              ? 'You opened that claim, so someone else must settle it.'
+              : e.status === 409
               ? 'That claim\'s status does not allow that change.'
               : e.status === 404
                 ? 'That claim is no longer on this sheet.'

@@ -28,15 +28,16 @@ public class ClaimController {
             @Size(max = 1000) String note) {}
 
     /** The amount is shown with two decimals; a claim has no number until it is opened, and no fixed due
-     * until it is settled. */
+     * until it is settled; it shows who opened it, if anyone did. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Integer number, String due) {
+            Integer number, String due, String openedBy) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2).toPlainString(), claim.getDate(), claim.getNote(), claim.getStatus(),
                     claim.getNumber(),
-                    claim.getSettledDue() != null ? claim.getSettledDue().setScale(2).toPlainString() : null);
+                    claim.getSettledDue() != null ? claim.getSettledDue().setScale(2).toPlainString() : null,
+                    claim.getOpenedBy());
         }
     }
 

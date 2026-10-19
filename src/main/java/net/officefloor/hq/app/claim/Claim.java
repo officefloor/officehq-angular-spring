@@ -47,6 +47,10 @@ public class Claim {
     @Column(name = "settled_due", precision = 12, scale = 2)
     private BigDecimal settledDue;
 
+    /** Who opened the claim; none while it is a draft. */
+    @Column(name = "opened_by")
+    private String openedBy;
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
@@ -115,5 +119,13 @@ public class Claim {
 
     public void setSettledDue(BigDecimal settledDue) {
         this.settledDue = settledDue;
+    }
+
+    public String getOpenedBy() {
+        return openedBy;
+    }
+
+    public void setOpenedBy(String openedBy) {
+        this.openedBy = openedBy;
     }
 }

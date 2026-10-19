@@ -78,10 +78,15 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        // Four eyes: whoever opened a claim cannot also settle it.
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it.");
+        }
         Person person = requirePerson(sheetId, claim.getPersonId());
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
+            claim.setOpenedBy(user);
         }
         // A voided claim's line carries the number it had.
         String entry = entry(EVENTS.get(next), user, person, claim);

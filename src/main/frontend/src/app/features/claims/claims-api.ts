@@ -19,6 +19,8 @@ export interface Claim {
   /** What was due when the claim was settled, with two decimals; null while it is live (not settled, or
    * settled when its grade had no rate). */
   due: string | null;
+  /** Who opened the claim; null while it is a draft. */
+  openedBy: string | null;
 }
 
 /** A claim starts as DRAFT, is opened and then settled; a DRAFT or OPEN claim can be voided. */
