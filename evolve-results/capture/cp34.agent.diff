@@ -1,0 +1,283 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 3ee71636..876d3d38 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -140,6 +140,13 @@ export interface ClaimForm {
+   corrects: number | null;
+ }
+ 
++/** What opening claims together did: how many were opened and refused, and the opened claims. */
++export interface OpenedAll {
++  opened: number;
++  refused: number;
++  claims: Claim[];
++}
++
+ /** The sum of claim amounts with two decimals, added up in cents so no rounding creeps in. */
+ export function sumAmounts(amounts: string[]): string {
+   return fromHundredths(amounts.reduce((sum, a) => sum + hundredths(a), 0n));
+@@ -169,6 +176,11 @@ export class ClaimsApi {
+     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() });
+   }
+ 
++  /** Open the claims together; each that cannot be opened is refused and left as it is. */
++  openAll(sheetId: string, ids: number[]): Observable<OpenedAll> {
++    return this.http.post<OpenedAll>(`${this.url(sheetId)}/claims/open`, { ids }, { headers: this.headers() });
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 61be2119..a5a22a67 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -54,6 +54,7 @@ const NUMBER = /^\d{1,9}$/;
+         <caption class="visually-hidden">Claims by {{ personName() }}</caption>
+         <thead>
+           <tr>
++            <th scope="col"><span class="visually-hidden">Select</span></th>
+             <th scope="col">No.</th>
+             <th scope="col">Amount</th>
+             <th scope="col">Date</th>
+@@ -72,6 +73,15 @@ const NUMBER = /^\d{1,9}$/;
+         <tbody>
+           @for (c of claims(); track c.id) {
+             <tr [attr.data-testid]="'claim-row-' + c.id">
++              <td>
++                <input
++                  type="checkbox"
++                  data-testid="claim-select"
++                  [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date"
++                  [checked]="selected().has(c.id)"
++                  (change)="selectedChange.emit({ id: c.id, selected: $any($event.target).checked })"
++                />
++              </td>
+               <td data-testid="claim-number">{{ c.number ?? '' }}</td>
+               <td data-testid="claim-amount">{{ c.amount }}</td>
+               <td data-testid="claim-date">{{ c.date }}</td>
+@@ -139,8 +149,12 @@ export class Claims {
+   readonly rates = input<readonly Rate[]>([]);
+   /** The sheet's periods. */
+   readonly periods = input<readonly Period[]>([]);
++  /** The ids of the claims selected to act on together. */
++  readonly selected = input<ReadonlySet<number>>(new Set());
+   /** A claim was added or saved. */
+   readonly saved = output<Claim>();
++  /** A claim's select box was ticked or cleared. */
++  readonly selectedChange = output<{ id: number; selected: boolean }>();
+ 
+   protected readonly actions: { action: ClaimAction; label: string }[] = [
+     { action: 'open', label: 'Open' },
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 77e8a099..8cec7270 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -87,6 +87,16 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
+         Show retired
+       </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
++      <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
++      @if (bulkOpenResult(); as r) {
++        <p role="status">
++          Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
++          refused <strong data-testid="bulk-refused">{{ r.refused }}</strong>
++        </p>
++      }
++      @if (bulkOpenError(); as e) {
++        <p role="alert" data-testid="bulk-open-error">{{ e }}</p>
++      }
+       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+@@ -137,7 +147,9 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
+                   [grades]="p.grades"
+                   [rates]="rates()"
+                   [periods]="periods()"
++                  [selected]="selectedClaims()"
+                   (saved)="claimSaved($event)"
++                  (selectedChange)="claimSelected($event.id, $event.selected)"
+                 />
+               </td>
+               <td>
+@@ -310,6 +322,13 @@ export class People {
+     this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
+   );
+   protected readonly overdueTotal = computed(() => sumAmounts(this.people().map((p) => this.overdueTotalOf(p))));
++  /** The ids of the claims selected to open together. */
++  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
++  /** How many claims the last open of the selected ones opened and refused. */
++  protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
++  protected readonly bulkOpenError = signal<string | null>(null);
++  /** Whether an open of the selected claims is waiting on the server; another is ignored until it answers. */
++  private bulkOpening = false;
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private editingVersion: number | null = null;
+@@ -365,6 +384,9 @@ export class People {
+         this.periods.set(periods);
+         this.claims.set(claims);
+         this.rates.set(rates);
++        this.selectedClaims.set(new Set());
++        this.bulkOpenResult.set(null);
++        this.bulkOpenError.set(null);
+         this.reset();
+         loaded(id);
+       });
+@@ -485,6 +507,48 @@ export class People {
+     );
+   }
+ 
++  protected claimSelected(id: number, selected: boolean): void {
++    this.bulkOpenError.set(null);
++    this.selectedClaims.update((ids) => {
++      const next = new Set(ids);
++      if (selected) next.add(id);
++      else next.delete(id);
++      return next;
++    });
++  }
++
++  /** Open the selected claims together; the server opens and numbers them in list order and leaves each one
++   * that cannot be opened as it is. */
++  protected openSelected(): void {
++    if (this.bulkOpening) return;
++    this.bulkOpenResult.set(null);
++    this.bulkOpenError.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) {
++      this.bulkOpenError.set('Load a sheet first.');
++      return;
++    }
++    const ids = [...this.selectedClaims()];
++    if (ids.length === 0) {
++      this.bulkOpenError.set('Select the claims to open.');
++      return;
++    }
++    this.bulkOpening = true;
++    this.claimsApi.openAll(sheetId, ids).subscribe({
++      next: ({ opened, refused, claims }) => {
++        this.bulkOpening = false;
++        if (this.session.sheetId() !== sheetId) return;
++        for (const c of claims) this.claimSaved(c);
++        this.selectedClaims.set(new Set());
++        this.bulkOpenResult.set({ opened, refused });
++      },
++      error: (e: HttpErrorResponse) => {
++        this.bulkOpening = false;
++        this.bulkOpenError.set(e.status === 404 ? 'That sheet is no longer in the store.' : 'Could not open those claims.');
++      },
++    });
++  }
++
+   /** Take a statement for the person, then re-read the sheet's claims, which it binds or unbinds. */
+   protected statement(person: Person): void {
+     this.personError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 5f5de744..b981a35e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -48,6 +48,12 @@ public class ClaimController {
+         }
+     }
+ 
++    /** The claims to open together, by id. */
++    public record OpenAllForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {}
++
++    /** How many of the claims were opened and how many refused, and the opened claims as they are now. */
++    public record OpenedAllView(int opened, int refused, List<ClaimView> claims) {}
++
+     private final ClaimService service;
+ 
+     public ClaimController(ClaimService service) {
+@@ -78,6 +84,14 @@ public class ClaimController {
+         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.OPEN));
+     }
+ 
++    @PostMapping("/claims/open")
++    public OpenedAllView openAll(@RequestHeader("X-User") String user, @PathVariable String sheetId,
++            @Valid @RequestBody OpenAllForm form) {
++        ClaimService.OpenedAll result = service.openAll(user, sheetId, form.ids());
++        return new OpenedAllView(result.opened(), result.refused(),
++                result.claims().stream().map(ClaimView::of).toList());
++    }
++
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.SETTLED));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index de0ada02..8f7e4864 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -2,8 +2,13 @@ package net.officefloor.hq.app.claim;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.period.PeriodService;
+ import net.officefloor.hq.app.person.Person;
+@@ -15,6 +20,7 @@ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionTemplate;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ @Service
+@@ -27,9 +33,11 @@ public class ClaimService {
+     private final PeriodService periods;
+     private final SettingService settings;
+     private final Audit audit;
++    private final TransactionTemplate transaction;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
+-            PeriodService periods, SettingService settings, Audit audit) {
++            PeriodService periods, SettingService settings, Audit audit, TransactionTemplate transaction) {
++        this.transaction = transaction;
+         this.claims = claims;
+         this.people = people;
+         this.rollup = rollup;
+@@ -138,6 +146,36 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** What opening claims together did: how many were opened and refused, and the opened claims. */
++    public record OpenedAll(int opened, int refused, List<Claim> claims) {}
++
++    /** Open the given claims of the sheet one at a time, in list order: people in the order they were added,
++     * each one's claims newest first. Each is opened, and numbered, as {@link #changeStatus} would open it on its
++     * own; one that cannot be opened (or is not on the sheet) is refused and left as it is. */
++    public OpenedAll openAll(String user, String sheetId, List<Long> ids) {
++        Set<Long> wanted = new HashSet<>(ids);
++        List<Claim> chosen = transaction.execute(status -> {
++            sheets.today(sheetId); // the sheet must exist
++            Map<Long, Integer> personOrder = new HashMap<>();
++            for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++                personOrder.put(person.getId(), personOrder.size());
++            }
++            return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
++                    .filter(c -> wanted.contains(c.getId()))
++                    .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
++                    .toList();
++        });
++        List<Claim> opened = new ArrayList<>();
++        for (Claim claim : chosen) {
++            try {
++                opened.add(transaction.execute(status -> changeStatus(user, sheetId, claim.getId(), ClaimStatus.OPEN)));
++            } catch (ResponseStatusException refused) {
++                // Left as it is: its transaction rolled back, writing nothing.
++            }
++        }
++        return new OpenedAll(opened.size(), wanted.size() - opened.size(), opened);
++    }
++
+     private static final Map<ClaimStatus, String> EVENTS = Map.of(
+             ClaimStatus.OPEN, "CLAIM_OPENED",
+             ClaimStatus.SETTLED, "CLAIM_SETTLED",
