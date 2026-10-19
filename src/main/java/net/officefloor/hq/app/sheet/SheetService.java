@@ -47,6 +47,19 @@ public class SheetService {
         return sheet;
     }
 
+    /**
+     * Give out the sheet's next claim number. The sheet stays locked until the calling transaction
+     * ends, so claims opened at the same moment get different numbers, and a rolled back
+     * transaction gives its number back.
+     */
+    @Transactional
+    public int nextClaimNumber(String id) {
+        if (sheets.incrementClaimNumber(id) == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet.");
+        }
+        return sheets.lastClaimNumber(id);
+    }
+
     private Sheet find(String id) {
         return sheets.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));

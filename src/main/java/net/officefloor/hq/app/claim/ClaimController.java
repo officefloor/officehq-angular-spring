@@ -27,12 +27,14 @@ public class ClaimController {
             LocalDate date,
             @Size(max = 1000) String note) {}
 
-    /** The amount is shown with two decimals. */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status) {
+    /** The amount is shown with two decimals; a claim has no number until it is opened. */
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+            Integer number) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
-                    claim.getAmount().setScale(2).toPlainString(), claim.getDate(), claim.getNote(), claim.getStatus());
+                    claim.getAmount().setScale(2).toPlainString(), claim.getDate(), claim.getNote(), claim.getStatus(),
+                    claim.getNumber());
         }
     }
 

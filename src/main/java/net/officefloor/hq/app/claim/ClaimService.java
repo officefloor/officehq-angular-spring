@@ -63,6 +63,9 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String user, String sheetId, Long id, ClaimStatus next) {
         sheets.today(sheetId); // the sheet must exist
+        // Taking the number first locks the sheet, so claims are opened one at a time; a refused
+        // open rolls back and gives the number back.
+        Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
         if (!claim.getStatus().canBecome(next)) {
@@ -70,8 +73,16 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
         claim.setStatus(next);
+        if (next == ClaimStatus.OPEN) {
+            claim.setNumber(number);
+        }
+        // A voided claim's line carries the number it had.
+        String entry = entry(EVENTS.get(next), user, requirePerson(sheetId, claim.getPersonId()), claim);
+        if (next == ClaimStatus.VOID) {
+            claim.setNumber(null);
+        }
         claims.flush();
-        audit.recordOnCommit(entry(EVENTS.get(next), user, requirePerson(sheetId, claim.getPersonId()), claim));
+        audit.recordOnCommit(entry);
         return claim;
     }
 
@@ -85,10 +96,12 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
     }
 
-    /** The amount is written as the screen shows it, with two decimals; the date as yyyy-mm-dd. */
+    /** The amount is written as the screen shows it, with two decimals; the date as yyyy-mm-dd; a
+     * claim with a number ends with it. */
     private static String entry(String event, String user, Person person, Claim claim) {
         return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
-                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate();
+                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
+                + (claim.getNumber() != null ? " number=" + claim.getNumber() : "");
     }
 
     private static String noteOf(String note) {

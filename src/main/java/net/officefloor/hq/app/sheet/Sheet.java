@@ -26,6 +26,10 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
+    /** The last number given to a claim opened on the sheet; 0 before the first. */
+    @Column(name = "last_claim_number", nullable = false)
+    private int lastClaimNumber;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt) {

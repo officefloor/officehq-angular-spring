@@ -40,6 +40,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
         <caption class="visually-hidden">Claims by {{ personName() }}</caption>
         <thead>
           <tr>
+            <th scope="col">No.</th>
             <th scope="col">Amount</th>
             <th scope="col">Date</th>
             <th scope="col">Note</th>
@@ -51,6 +52,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
         <tbody>
           @for (c of claims(); track c.id) {
             <tr [attr.data-testid]="'claim-row-' + c.id">
+              <td data-testid="claim-number">{{ c.number ?? '' }}</td>
               <td data-testid="claim-amount">{{ c.amount }}</td>
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>

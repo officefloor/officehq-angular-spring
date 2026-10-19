@@ -12,6 +12,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** The sheet's number for the claim, given when it is opened; null while a draft or once voided. */
+  number: number | null;
 }
 
 /** A claim starts as DRAFT, is opened and then settled; a DRAFT or OPEN claim can be voided. */
