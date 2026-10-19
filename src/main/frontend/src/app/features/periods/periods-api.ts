@@ -26,7 +26,7 @@ export function periodOf(periods: readonly Period[], date: string): Period | und
   return periods.find((p) => p.from <= date && date <= p.to);
 }
 
-// The periods of the active sheet, read, added and closed through the server.
+// The periods of the active sheet, read, added, closed and reopened through the server.
 @Injectable({ providedIn: 'root' })
 export class PeriodsApi {
   private readonly http = inject(HttpClient);
@@ -42,6 +42,10 @@ export class PeriodsApi {
 
   close(sheetId: string, id: number): Observable<Period> {
     return this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() });
+  }
+
+  reopen(sheetId: string, id: number): Observable<Period> {
+    return this.http.post<Period>(`${this.url(sheetId)}/${id}/reopen`, null, { headers: this.headers() });
   }
 
   private url(sheetId: string): string {

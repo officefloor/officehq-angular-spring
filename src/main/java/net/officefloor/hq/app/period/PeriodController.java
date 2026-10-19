@@ -53,4 +53,9 @@ public class PeriodController {
     public PeriodView close(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
         return PeriodView.of(service.close(user, sheetId, id));
     }
+
+    @PostMapping("/{id}/reopen")
+    public PeriodView reopen(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+        return PeriodView.of(service.reopen(user, sheetId, id));
+    }
 }

@@ -54,6 +54,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                 >
                   Close
                 </button>
+                <button
+                  type="button"
+                  data-testid="period-reopen"
+                  [attr.aria-label]="'Reopen period ' + p.name"
+                  (click)="reopen(p)"
+                >
+                  Reopen
+                </button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -73,7 +81,7 @@ export class Periods {
   readonly periods = input.required<readonly Period[]>();
   /** Each period's due-total, by id. */
   readonly dueTotals = input.required<ReadonlyMap<number, string>>();
-  /** A period was added or closed. */
+  /** A period was added, closed or reopened. */
   readonly saved = output<Period>();
 
   protected readonly formError = signal<string | null>(null);
@@ -108,6 +116,29 @@ export class Periods {
               : e.status === 404
                 ? 'That period is no longer on this sheet.'
                 : 'Could not close that period.',
+        }),
+    });
+  }
+
+  protected reopen(period: Period): void {
+    this.periodError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api.reopen(sheetId, period.id).subscribe({
+      next: (p) => {
+        if (this.session.sheetId() === sheetId) this.saved.emit(p);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.periodError.set({
+          id: period.id,
+          message:
+            e.status === 403
+              ? 'Only a steward can reopen a period.'
+              : e.status === 409
+                ? 'That period is not closed.'
+                : e.status === 404
+                  ? 'That period is no longer on this sheet.'
+                  : 'Could not reopen that period.',
         }),
     });
   }

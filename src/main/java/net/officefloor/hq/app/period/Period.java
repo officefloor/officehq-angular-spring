@@ -62,6 +62,12 @@ public class Period {
         this.closedTotal = total;
     }
 
+    /** Reopen the period: its due-total is live again. */
+    public void reopen() {
+        this.closed = false;
+        this.closedTotal = null;
+    }
+
     public boolean isClosed() {
         return closed;
     }
