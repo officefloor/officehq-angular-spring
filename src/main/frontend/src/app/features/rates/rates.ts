@@ -122,6 +122,7 @@ export class Rates {
   }
 
   protected submit(): void {
+    if (this.saving() !== null) return;
     this.formError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) {

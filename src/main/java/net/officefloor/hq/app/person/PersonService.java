@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -38,15 +39,26 @@ public class PersonService {
         return person;
     }
 
+    /**
+     * Saves changes to a person. When {@code version} is given it is the version the editor loaded,
+     * and the save is refused if the person has been saved since.
+     */
     @Transactional
-    public Person update(String user, String sheetId, Long id, String name, String grade) {
+    public Person update(String user, String sheetId, Long id, String name, String grade, Long version) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        if (version != null && version != person.getVersion()) {
+            throw changedMeanwhile();
+        }
         String trimmed = name.trim();
         requireNameFree(sheetId, trimmed, id);
         person.setName(trimmed);
         person.setGrade(grade);
-        people.flush();
+        try {
+            people.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw changedMeanwhile();
+        }
         audit.recordOnCommit(entry("PERSON_EDITED", user, person));
         return person;
     }
@@ -54,6 +66,11 @@ public class PersonService {
     private static String entry(String event, String user, Person person) {
         return event + " sheet=" + person.getSheetId() + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.getGrade();
+    }
+
+    private static ResponseStatusException changedMeanwhile() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
+                "Someone else has saved that person since it was opened.");
     }
 
     private void requireNameFree(String sheetId, String name, Long exceptId) {

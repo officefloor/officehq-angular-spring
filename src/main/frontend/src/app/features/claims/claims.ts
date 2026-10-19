@@ -114,6 +114,8 @@ export class Claims {
   /** The error of the last action taken on a claim, shown on that claim's row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly formError = signal<string | null>(null);
+  /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
+  private submitting = false;
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
@@ -176,6 +178,7 @@ export class Claims {
   }
 
   protected submit(): void {
+    if (this.submitting) return;
     this.formError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) {
@@ -191,13 +194,17 @@ export class Claims {
     const form = { amount, date: value.date || null, note: value.note.trim() };
     const id = this.editingId();
     const request = id === null ? this.api.add(sheetId, this.personId(), form) : this.api.update(sheetId, id, form);
+    this.submitting = true;
     request.subscribe({
       next: (c) => {
+        this.submitting = false;
         if (this.session.sheetId() === sheetId) this.saved.emit(c);
         this.reset();
       },
-      error: (e: HttpErrorResponse) =>
-        this.formError.set(e.status === 404 ? 'That person or claim is no longer on this sheet.' : 'Could not save that claim.'),
+      error: (e: HttpErrorResponse) => {
+        this.submitting = false;
+        this.formError.set(e.status === 404 ? 'That person or claim is no longer on this sheet.' : 'Could not save that claim.');
+      },
     });
   }
 }

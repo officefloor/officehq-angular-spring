@@ -22,12 +22,13 @@ public class PersonController {
 
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {}
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            Long version) {}
 
-    public record PersonView(Long id, String name, String grade) {
+    public record PersonView(Long id, String name, String grade, long version) {
 
         static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }
 
@@ -51,6 +52,6 @@ public class PersonController {
     @PutMapping("/{id}")
     public PersonView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.update(user, sheetId, id, form.name(), form.grade()));
+        return PersonView.of(service.update(user, sheetId, id, form.name(), form.grade(), form.version()));
     }
 }

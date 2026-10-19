@@ -9,11 +9,15 @@ export interface Person {
   id: number;
   name: string;
   grade: Grade;
+  /** Raised each time the person is saved. */
+  version: number;
 }
 
 export interface PersonForm {
   name: string;
   grade: Grade;
+  /** The version of the person the editor loaded; a save is refused once someone else has saved since. */
+  version?: number;
 }
 
 // The people kept on the active sheet, read and changed through the server.

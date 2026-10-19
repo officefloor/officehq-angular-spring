@@ -121,6 +121,10 @@ export class People {
     sumAmounts(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
   );
   protected readonly editingId = signal<number | null>(null);
+  /** The version of the person the editor loaded. */
+  private editingVersion: number | null = null;
+  /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
+  private submitting = false;
   protected readonly formError = signal<string | null>(null);
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
@@ -176,17 +180,20 @@ export class People {
 
   protected edit(person: Person): void {
     this.editingId.set(person.id);
+    this.editingVersion = person.version;
     this.form.setValue({ name: person.name, grade: person.grade }, { emitEvent: false });
     this.formError.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
+    this.editingVersion = null;
     this.form.reset({ name: '', grade: 'A' }, { emitEvent: false });
     this.formError.set(null);
   }
 
   protected submit(): void {
+    if (this.submitting) return;
     this.formError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) {
@@ -199,23 +206,51 @@ export class People {
       return;
     }
     const id = this.editingId();
+    this.submitting = true;
+    const done = () => (this.submitting = false);
     if (id === null) {
       this.api.add(sheetId, value).subscribe({
         next: (p) => {
+          done();
           if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, p]);
           this.reset();
         },
-        error: (e: HttpErrorResponse) => this.formError.set(this.refusal(e, 'Could not add that person.')),
+        error: (e: HttpErrorResponse) => {
+          done();
+          this.formError.set(this.refusal(e, 'Could not add that person.'));
+        },
       });
     } else {
-      this.api.update(sheetId, id, value).subscribe({
+      this.api.update(sheetId, id, { ...value, version: this.editingVersion ?? undefined }).subscribe({
         next: (p) => {
+          done();
           if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
           this.reset();
         },
-        error: (e: HttpErrorResponse) => this.formError.set(this.refusal(e, 'Could not save that person.')),
+        error: (e: HttpErrorResponse) => {
+          done();
+          if (e.status === 412) {
+            this.formError.set('Someone else has saved this person since you opened it. Their values are shown.');
+            this.showCurrent(sheetId, id);
+          } else {
+            this.formError.set(this.refusal(e, 'Could not save that person.'));
+          }
+        },
       });
     }
+  }
+
+  /** Re-read the person from the store and show their current values in the editor, keeping its error. */
+  private showCurrent(sheetId: string, id: number): void {
+    this.api.list(sheetId).subscribe((people) => {
+      if (this.session.sheetId() !== sheetId) return;
+      this.people.set(people);
+      const current = people.find((p) => p.id === id);
+      if (current && this.editingId() === id) {
+        this.editingVersion = current.version;
+        this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+      }
+    });
   }
 
   private refusal(e: HttpErrorResponse, fallback: string): string {

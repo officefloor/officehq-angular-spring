@@ -63,6 +63,8 @@ export class SessionBar {
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly todayError = signal<string | null>(null);
+  /** The forms whose submit is waiting on the server; another submit of one is ignored until it answers. */
+  private readonly submitting = new Set<'signIn' | 'sheet' | 'today'>();
 
   constructor() {
     this.signInForm.valueChanges.subscribe(() => this.signInError.set(null));
@@ -77,8 +79,13 @@ export class SessionBar {
       this.signInError.set('Type your name to sign in.');
       return;
     }
+    if (!this.begin('signIn')) return;
     this.session.signIn(name).subscribe({
-      error: () => this.signInError.set('Could not sign in.'),
+      next: () => this.submitting.delete('signIn'),
+      error: () => {
+        this.submitting.delete('signIn');
+        this.signInError.set('Could not sign in.');
+      },
     });
   }
 
@@ -90,9 +97,16 @@ export class SessionBar {
       return;
     }
     this.todayError.set(null);
+    if (!this.begin('sheet')) return;
     this.session.loadSheet(id).subscribe({
-      next: () => this.todayForm.setValue({ today: this.session.today() ?? '' }, { emitEvent: false }),
-      error: () => this.sheetError.set('Could not load that sheet.'),
+      next: () => {
+        this.submitting.delete('sheet');
+        this.todayForm.setValue({ today: this.session.today() ?? '' }, { emitEvent: false });
+      },
+      error: () => {
+        this.submitting.delete('sheet');
+        this.sheetError.set('Could not load that sheet.');
+      },
     });
   }
 
@@ -103,8 +117,20 @@ export class SessionBar {
       this.todayError.set('Pick a date for today.');
       return;
     }
+    if (!this.begin('today')) return;
     this.session.setToday(today).subscribe({
-      error: () => this.todayError.set('Could not change the sheet\'s today.'),
+      next: () => this.submitting.delete('today'),
+      error: () => {
+        this.submitting.delete('today');
+        this.todayError.set('Could not change the sheet\'s today.');
+      },
     });
+  }
+
+  /** Marks the form as submitting; false when a submit of it is already waiting on the server. */
+  private begin(form: 'signIn' | 'sheet' | 'today'): boolean {
+    if (this.submitting.has(form)) return false;
+    this.submitting.add(form);
+    return true;
   }
 }
