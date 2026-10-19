@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has, its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering date and its cap. */
+/** A sheet's settings: the role each user name has, its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering date, its cap and its proof threshold. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
 public class SettingController {
@@ -42,7 +42,8 @@ public class SettingController {
      * decimals, 0.00 or more. The terms are a whole number of days, 0 or more; so are each grade's terms, where
      * blank means the grade uses the sheet's terms. The late percent has up to two
      * decimals, 0.00 or more. The policy date is a date (yyyy-mm-dd); blank means the sheet's today. The period numbering date is a date; blank means
-     * off. The cap has up to two decimals, 0.00 or more; blank means no cap. A setting
+     * off. The cap has up to two decimals, 0.00 or more; blank means no cap. The proof threshold has up to two
+     * decimals, 0.00 or more; blank means none. A setting
      * left out (null) is left as it is. Each setting that carries a figure has a from-date (yyyy-mm-dd) its value
      * is recorded from; blank or left out means the sheet's today. */
     public record SettingsForm(@Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit,
@@ -55,6 +56,7 @@ public class SettingController {
             @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String policyDate,
             @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String periodNumberingFrom,
             @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String cap,
+            @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String proofThreshold,
             @Pattern(regexp = DATE) String clerkLimitFrom,
             @Pattern(regexp = DATE) String floorFrom,
             @Pattern(regexp = DATE) String termsFrom,
@@ -62,7 +64,8 @@ public class SettingController {
             @Pattern(regexp = DATE) String termsBFrom,
             @Pattern(regexp = DATE) String termsCFrom,
             @Pattern(regexp = DATE) String latePctFrom,
-            @Pattern(regexp = DATE) String capFrom) {}
+            @Pattern(regexp = DATE) String capFrom,
+            @Pattern(regexp = DATE) String proofThresholdFrom) {}
 
     /** A from-date as typed: blank, or yyyy-mm-dd. */
     private static final String DATE = "|\\d{4}-\\d{2}-\\d{2}";
@@ -74,17 +77,19 @@ public class SettingController {
     /** The clerk limit and floor are shown with two decimals; the clerk limit is null when there is none. The
      * terms are the days after its date a claim is due by; each grade's terms are null when it uses the sheet's. The late percent is shown with two decimals. The policy date is null when there is none (the sheet's
      * today is used). The period numbering date is null when it is off. The cap is shown with two decimals,
-     * null when there is none. Each of these that carries a figure is the value in force on the sheet's today;
+     * null when there is none; so is the proof threshold. Each of these that carries a figure is the value in force on the sheet's today;
      * {@code dated} has, by key, every value recorded for it by from-date. */
     public record SettingsView(String clerkLimit, String floor, int terms, Integer termsA, Integer termsB,
             Integer termsC, String latePct, String policyDate, String periodNumberingFrom, String cap,
-            Map<String, List<DatedView>> dated) {
+            String proofThreshold, Map<String, List<DatedView>> dated) {
 
         static SettingsView of(Sheet sheet) {
             BigDecimal clerkLimit = sheet.getClerkLimit();
             BigDecimal cap = sheet.getCap();
+            BigDecimal proofThreshold = sheet.getProofThreshold();
             Map<String, List<DatedView>> dated = new LinkedHashMap<>();
-            for (String key : List.of(Sheet.CLERK_LIMIT, Sheet.FLOOR, Sheet.TERMS, Sheet.LATE_PCT, Sheet.CAP)) {
+            for (String key : List.of(Sheet.CLERK_LIMIT, Sheet.FLOOR, Sheet.TERMS, Sheet.LATE_PCT, Sheet.CAP,
+                    Sheet.PROOF_THRESHOLD)) {
                 dated.put(key, history(sheet, key, !key.equals(Sheet.TERMS)));
             }
             for (String grade : GRADES) {
@@ -95,7 +100,8 @@ public class SettingController {
                     sheet.getGradeTerms("B"), sheet.getGradeTerms("C"), sheet.getLatePct().toPlainString(),
                     sheet.getPolicyDate() != null ? sheet.getPolicyDate().toString() : null,
                     sheet.getPeriodNumberingFrom() != null ? sheet.getPeriodNumberingFrom().toString() : null,
-                    cap != null ? cap.setScale(2).toPlainString() : null, dated);
+                    cap != null ? cap.setScale(2).toPlainString() : null,
+                    proofThreshold != null ? proofThreshold.setScale(2).toPlainString() : null, dated);
         }
 
         /** The values recorded for a key by from-date, shown with two decimals when {@code amount}, else as whole
@@ -143,13 +149,14 @@ public class SettingController {
         String limit = form.clerkLimit();
         Optional<BigDecimal> clerkLimit = amountOrBlank(limit);
         Optional<BigDecimal> cap = amountOrBlank(form.cap());
+        Optional<BigDecimal> proofThreshold = amountOrBlank(form.proofThreshold());
         Optional<LocalDate> policyDate = dateOrBlank(form.policyDate(), "A policy date is a date, or blank.");
         Optional<LocalDate> periodNumberingFrom = dateOrBlank(form.periodNumberingFrom(),
                 "A period numbering date is a date, or blank.");
         service.save(user, sheetId, clerkLimit, form.floor() == null ? null : new BigDecimal(form.floor()),
                 form.terms() == null ? null : Integer.valueOf(form.terms()), gradeTerms(form),
                 form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom, cap,
-                froms(form));
+                proofThreshold, froms(form));
         return view(sheetId);
     }
 
@@ -169,6 +176,7 @@ public class SettingController {
         typed.put(Sheet.gradeTermsKey("C"), form.termsCFrom());
         typed.put(Sheet.LATE_PCT, form.latePctFrom());
         typed.put(Sheet.CAP, form.capFrom());
+        typed.put(Sheet.PROOF_THRESHOLD, form.proofThresholdFrom());
         Map<String, LocalDate> froms = new LinkedHashMap<>();
         typed.forEach((key, from) -> {
             Optional<LocalDate> date = dateOrBlank(from, "A from-date is a date, or blank.");

@@ -34,10 +34,11 @@ public class ClaimController {
      * until it is settled; it shows who opened it, if anyone did, and whether it is bound to the figure it had
      * at its person's last statement (none when that was n/a); a correction shows the number it corrects; and the
      * date it is due by, fixed when it was added; and its status log, oldest first; and the date it is deferred
-     * until, while it is deferred. */
+     * until, while it is deferred; and how many proofs it has. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String due, String openedBy, boolean stated, String statedDue,
-            String corrects, LocalDate dueBy, List<StatusLogView> statusLog, LocalDate deferredUntil) {
+            String corrects, LocalDate dueBy, List<StatusLogView> statusLog, LocalDate deferredUntil,
+            int proofs) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -47,7 +48,8 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().setScale(2).toPlainString() : null,
                     claim.getCorrects(), claim.getDueBy(),
-                    claim.getStatusLog().stream().map(StatusLogView::of).toList(), claim.getDeferredUntil());
+                    claim.getStatusLog().stream().map(StatusLogView::of).toList(), claim.getDeferredUntil(),
+                    claim.getProofs());
         }
     }
 
@@ -157,6 +159,12 @@ public class ClaimController {
     public ClaimView defer(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
             @Valid @RequestBody DeferForm form) {
         return ClaimView.of(service.defer(user, sheetId, id, form.until()));
+    }
+
+    @PostMapping("/claims/{id}/proof")
+    public ClaimView addProof(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id) {
+        return ClaimView.of(service.addProof(user, sheetId, id));
     }
 
     @PostMapping("/claims/{id}/void")

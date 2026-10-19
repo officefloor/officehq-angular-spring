@@ -136,6 +136,11 @@ public class ClaimService {
         }
         Person person = requirePerson(sheetId, claim.getPersonId());
         BigDecimal due = rollup.dueOf(claim, person);
+        // A claim whose due is above the proof threshold in force on its date needs a proof before it is settled,
+        // whoever settles it, so it never goes PENDING without one.
+        if (next == ClaimStatus.SETTLED) {
+            settings.requireProof(sheetId, claim.getDate(), due, claim.getProofs());
+        }
         // A clerk settles only a claim whose due is within the sheet's clerk limit; above it, a steward must
         // approve it.
         if (next == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, due)) {
@@ -163,7 +168,8 @@ public class ClaimService {
     }
 
     /** A steward approves a PENDING claim: it is SETTLED at the due it has now, its live figure with any late
-     * charge, frozen. The user who opened it cannot approve it. */
+     * charge, frozen. The user who opened it cannot approve it, and one whose due is above the proof threshold
+     * in force on its date cannot be approved while it has no proof. */
     @Transactional
     public Claim approve(String user, String sheetId, Long id) {
         Claim claim = requirePending(user, sheetId, id);
@@ -173,6 +179,7 @@ public class ClaimService {
         Person person = requirePerson(sheetId, claim.getPersonId());
         Snapshot before = rollup.snapshot(sheetId);
         BigDecimal due = rollup.dueOf(claim, person);
+        settings.requireProof(sheetId, claim.getDate(), due, claim.getProofs());
         claim.setStatus(ClaimStatus.SETTLED);
         String entry = entry("CLAIM_APPROVED", user, person, claim) + settle(claim, due);
         logStatus(user, sheets.today(sheetId), claim, person);
@@ -234,6 +241,25 @@ public class ClaimService {
         claims.flush();
         audit.recordOnCommit(entry("CLAIM_DEFERRED", user, person, claim) + " until=" + until);
         rollup.recordChanges(user, sheetId, before);
+        return claim;
+    }
+
+    /** Raise a claim's proofs count by one; a SETTLED or VOID claim, or one dated in a closed period, is
+     * refused. */
+    @Transactional
+    public Claim addProof(String user, String sheetId, Long id) {
+        sheets.today(sheetId); // the sheet must exist
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        requireOpenPeriod(sheetId, claim.getDate());
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot take a proof.");
+        }
+        Person person = requirePerson(sheetId, claim.getPersonId());
+        claim.addProof();
+        claims.flush();
+        audit.recordOnCommit(entry("CLAIM_PROOF_ADDED", user, person, claim) + " proofs=" + claim.getProofs());
         return claim;
     }
 

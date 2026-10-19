@@ -14,7 +14,7 @@ export interface RoleGiven {
 }
 
 /** The keys of the settings that carry a figure, each dated. */
-export const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap'] as const;
+export const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold'] as const;
 export type DatedKey = (typeof DATED_KEYS)[number];
 
 /** The settings in force on the sheet's today; `dated` has, for each setting that carries a figure, every value
@@ -40,10 +40,13 @@ export interface Settings {
   periodNumberingFrom: string | null;
   /** The most a person's due-total comes to, with two decimals; null for none. */
   cap: string | null;
+  /** The due above which a claim needs a proof before it is settled or approved, with two decimals; null for
+   * none. */
+  proofThreshold: string | null;
   dated: Record<DatedKey, Dated[]>;
 }
 
-// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date and its cap (those that carry a figure dated), read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap and its proof threshold (those that carry a figure dated), read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -68,8 +71,8 @@ export class SettingsApi {
     sheetId: string,
     settings: { clerkLimit?: string; floor?: string; terms?: string; termsA?: string; termsB?: string;
       termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string;
-      clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
-      termsCFrom?: string; latePctFrom?: string; capFrom?: string; },
+      proofThreshold?: string; clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
+      termsCFrom?: string; latePctFrom?: string; capFrom?: string; proofThresholdFrom?: string; },
   ): Observable<Settings> {
     return this.http.put<Settings>(`${this.url(sheetId)}/settings`, settings, { headers: this.headers() });
   }

@@ -25,6 +25,7 @@ const DATED_FIELDS = {
   termsC: 'terms-C',
   latePct: 'late-pct',
   cap: 'cap',
+  proofThreshold: 'proof-threshold',
 } as const satisfies Record<string, DatedKey>;
 type DatedField = keyof typeof DATED_FIELDS;
 type FromField = `${DatedField}From`;
@@ -43,6 +44,7 @@ type SettingsFormValue = {
   policyDate: string;
   periodNumberingFrom: string;
   cap: string;
+  proofThreshold: string;
 };
 
 const NO_SETTINGS: SheetSettings = {
@@ -56,6 +58,7 @@ const NO_SETTINGS: SheetSettings = {
   policyDate: null,
   periodNumberingFrom: null,
   cap: null,
+  proofThreshold: null,
   dated: Object.fromEntries(DATED_KEYS.map((k) => [k, []])) as unknown as SheetSettings['dated'],
 };
 
@@ -66,7 +69,8 @@ const NO_SETTINGS: SheetSettings = {
 // percent, what an overdue claim gains of its figure for every full 30 days overdue, and the policy date (blank
 // for the sheet's today), before which a claim's date rounds half up, on or after half to even, and the period
 // numbering date (blank for off), from which a claim opened is numbered within its period, and the cap (blank
-// for none), the most a person's due-total comes to. The settings that carry a figure are dated: each is saved
+// for none), the most a person's due-total comes to, and the proof threshold (blank for none), above which a
+// claim's due needs a proof before it is settled or approved. The settings that carry a figure are dated: each is saved
 // from its from-date (blank for the sheet's today), and the value in force on the sheet's today is shown. Saving
 // sends only the settings changed in the form (the clerk limit when none was).
 @Component({
@@ -124,6 +128,19 @@ const NO_SETTINGS: SheetSettings = {
         <input id="setting-cap" data-testid="setting-cap" inputmode="decimal" formControlName="cap" />
         <label for="setting-cap-from">Cap from (yyyy-mm-dd, blank for the sheet's today)</label>
         <input id="setting-cap-from" data-testid="setting-cap-from" formControlName="capFrom" />
+        <label for="setting-proof-threshold">Proof threshold (blank for none)</label>
+        <input
+          id="setting-proof-threshold"
+          data-testid="setting-proof-threshold"
+          inputmode="decimal"
+          formControlName="proofThreshold"
+        />
+        <label for="setting-proof-threshold-from">Proof threshold from (yyyy-mm-dd, blank for the sheet's today)</label>
+        <input
+          id="setting-proof-threshold-from"
+          data-testid="setting-proof-threshold-from"
+          formControlName="proofThresholdFrom"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as e) {
@@ -162,6 +179,10 @@ const NO_SETTINGS: SheetSettings = {
       <p>
         Cap in force:
         <span data-testid="setting-cap-current">{{ inForce().cap ?? '' }}</span>
+      </p>
+      <p>
+        Proof threshold in force:
+        <span data-testid="setting-proof-threshold-current">{{ inForce().proofThreshold ?? '' }}</span>
       </p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" data-testid="role-form">
         <label for="role-form-user">User</label>
@@ -219,6 +240,7 @@ export class Settings {
       termsC: on('terms-C', null),
       latePct: on('late-pct', DEFAULT_LATE_PCT),
       cap: on('cap', null),
+      proofThreshold: on('proof-threshold', null),
     };
   });
   protected readonly roleError = signal<string | null>(null);
@@ -248,6 +270,7 @@ export class Settings {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
+    proofThreshold: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
@@ -256,6 +279,7 @@ export class Settings {
     termsCFrom: new FormControl('', { nonNullable: true }),
     latePctFrom: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
+    proofThresholdFrom: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -373,6 +397,8 @@ export class Settings {
     const sendLimit = send('clerkLimit');
     const cap = controls.cap.value.trim();
     const sendCap = send('cap');
+    const proofThreshold = controls.proofThreshold.value.trim();
+    const sendProofThreshold = send('proofThreshold');
     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -416,6 +442,10 @@ export class Settings {
       this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    if (sendProofThreshold && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
+      this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     const froms: Partial<Record<FromField, string>> = {};
     for (const key of Object.keys(DATED_FIELDS) as DatedField[]) {
       const from = fromOf(key);
@@ -435,6 +465,7 @@ export class Settings {
       ...(sendPolicyDate ? { policyDate } : {}),
       ...(sendPeriodNumbering ? { periodNumberingFrom } : {}),
       ...(sendCap ? { cap } : {}),
+      ...(sendProofThreshold ? { proofThreshold } : {}),
       ...froms,
     };
     this.saves.next({ sheetId, changed, sent: this.settingsForm.getRawValue() });
@@ -459,6 +490,7 @@ export class Settings {
       policyDate: s.policyDate ?? '',
       periodNumberingFrom: s.periodNumberingFrom ?? '',
       cap: s.cap ?? '',
+      proofThreshold: s.proofThreshold ?? '',
     };
     const controls = this.settingsForm.controls;
     for (const key of Object.keys(shown) as (keyof SettingsFormValue)[]) {

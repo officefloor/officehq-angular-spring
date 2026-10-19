@@ -82,6 +82,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs the claim has; 0 until one is added. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /** The claim's status log, oldest first: one line per status it has had, from the DRAFT it was added as. */
     @ElementCollection(fetch = FetchType.EAGER)
     @Fetch(FetchMode.SUBSELECT)
@@ -221,6 +225,15 @@ public class Claim {
      * deferred until. Such a claim counts in no total, is not overdue and cannot be settled. */
     public boolean deferredOn(LocalDate today) {
         return status.isOpen() && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Raise the claim's proofs count by one. */
+    public void addProof() {
+        proofs++;
     }
 
     public List<StatusLogLine> getStatusLog() {

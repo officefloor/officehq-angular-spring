@@ -33,6 +33,8 @@ export interface Claim {
   statusLog: StatusLogLine[];
   /** The date (yyyy-mm-dd) an OPEN claim is deferred until; null when it was never deferred. */
   deferredUntil: string | null;
+  /** How many proofs the claim has. */
+  proofs: number;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today (yyyy-mm-dd) then, and the
@@ -212,6 +214,11 @@ export class ClaimsApi {
   /** Defer an OPEN claim until a date after the sheet's today. */
   defer(sheetId: string, id: number, until: string): Observable<Claim> {
     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/defer`, { until }, { headers: this.headers() });
+  }
+
+  /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
+  addProof(sheetId: string, id: number): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proof`, {}, { headers: this.headers() });
   }
 
   /** Reject a PENDING claim with a reason: it is OPEN again. */

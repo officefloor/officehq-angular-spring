@@ -69,6 +69,7 @@ const NUMBER = /^\S{1,255}$/;
             <th scope="col">Corrects</th>
             <th scope="col">Deferred</th>
             <th scope="col">Deferred until</th>
+            <th scope="col">Proofs</th>
             <th scope="col">Status log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -98,7 +99,8 @@ const NUMBER = /^\S{1,255}$/;
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
               <td data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</td>
-              <td data-testid="claim-deferred-until">{{ deferred(c) ? c.deferredUntil : '' }}</td>
+              <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
+              <td data-testid="claim-proofs">{{ c.proofs }}</td>
               <td>
                 <ol data-testid="claim-log">
                   @for (l of c.statusLog; track $index) {
@@ -148,6 +150,14 @@ const NUMBER = /^\S{1,255}$/;
                   (click)="resettle(c)"
                 >
                   Re-settle
+                </button>
+                <button
+                  type="button"
+                  data-testid="claim-proof"
+                  [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date"
+                  (click)="addProof(c)"
+                >
+                  Add proof
                 </button>
                 <label class="visually-hidden" [for]="'claim-defer-date-' + c.id">Defer until</label>
                 <input
@@ -303,6 +313,8 @@ export class Claims {
           message:
             e.status === 403
               ? `You opened that claim, so someone else must ${action === 'approve' ? 'approve' : 'settle'} it.`
+              : e.status === 428
+              ? `That claim needs a proof before it can be ${action === 'approve' ? 'approved' : 'settled'}.`
               : e.status === 422
               ? 'Only a steward can approve a pending claim.'
               : e.status === 409 && action === 'approve'
@@ -344,6 +356,30 @@ export class Claims {
               : e.status === 404
                 ? 'That claim is no longer on this sheet.'
                 : 'Could not re-settle that claim.',
+        }),
+    });
+  }
+
+  /** Raise the claim's proofs count by one; refused for a SETTLED or VOID claim. */
+  protected addProof(claim: Claim): void {
+    this.claimError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api.addProof(sheetId, claim.id).subscribe({
+      next: (c) => {
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 423
+              ? 'That claim is dated in a closed period.'
+              : e.status === 409
+              ? 'A settled or void claim cannot take a proof.'
+              : e.status === 404
+                ? 'That claim is no longer on this sheet.'
+                : 'Could not add a proof to that claim.',
         }),
     });
   }
