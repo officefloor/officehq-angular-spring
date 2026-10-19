@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -101,6 +102,12 @@ public class PeriodService {
         periods.flush();
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + period.getName());
         return period;
+    }
+
+    /** The sheet's period a date is in, if any. */
+    @Transactional(readOnly = true)
+    public Optional<Period> periodOf(String sheetId, LocalDate date) {
+        return periods.findBySheetIdOrderByFromAsc(sheetId).stream().filter(p -> p.contains(date)).findFirst();
     }
 
     /** Refuse a change to a claim dated in one of the sheet's closed periods. */

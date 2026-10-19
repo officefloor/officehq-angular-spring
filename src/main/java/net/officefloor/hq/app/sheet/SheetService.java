@@ -67,6 +67,12 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
+    /** Whether a claim opened now on the sheet is numbered within its period, not sheet-wide. */
+    @Transactional(readOnly = true)
+    public boolean numbersByPeriod(String id) {
+        return find(id).numbersByPeriod();
+    }
+
     /** Lock the sheet until the calling transaction ends, so changes that must not race take turns. */
     @Transactional
     public void lock(String id) {

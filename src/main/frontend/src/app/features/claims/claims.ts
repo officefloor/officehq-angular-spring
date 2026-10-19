@@ -12,7 +12,8 @@ import { SheetTerms } from '../settings/sheet-terms';
 import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, dueBy, isOverdue, roundsBy } from './claims-api';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
-const NUMBER = /^\d{1,9}$/;
+/** A claim's number: the sheet-wide one, or a period's, <period name>-<n> (X-<n> in no period). */
+const NUMBER = /^\S{1,255}$/;
 
 // One person's claims, newest first, and the one form that adds a claim for them or, once a
 // claim's editor is opened, saves changes to it.
@@ -252,7 +253,7 @@ export class Claims {
     }
     this.editingId.set(claim.id);
     this.form.setValue(
-      { amount: claim.amount, date: claim.date, note: claim.note, corrects: String(claim.corrects ?? '') },
+      { amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' },
       { emitEvent: false },
     );
     this.formError.set(null);
@@ -290,7 +291,7 @@ export class Claims {
       amount,
       date: value.date || null,
       note: value.note.trim(),
-      corrects: corrects === '' ? null : Number(corrects),
+      corrects: corrects === '' ? null : corrects,
     };
     const id = this.editingId();
     const request = id === null ? this.api.add(sheetId, this.personId(), form) : this.api.update(sheetId, id, form);

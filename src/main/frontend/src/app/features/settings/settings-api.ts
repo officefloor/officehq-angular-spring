@@ -24,6 +24,9 @@ export interface Settings {
   /** The date (yyyy-mm-dd) a claim dated before rounds half up, on or after half to even; null for the
    * sheet's today. */
   policyDate: string | null;
+  /** The date (yyyy-mm-dd) from which, while the sheet's today is on or after it, a claim opened is numbered
+   * within its period; null when off. */
+  periodNumberingFrom: string | null;
 }
 
 // A sheet's settings: the role each user name has, its clerk limit, its floor, its terms, its late percent and its policy date, read and changed through the
@@ -48,7 +51,8 @@ export class SettingsApi {
   /** Save the settings given; one left out is left as it is. */
   save(
     sheetId: string,
-    settings: { clerkLimit?: string; floor?: string; terms?: string; latePct?: string; policyDate?: string },
+    settings: { clerkLimit?: string; floor?: string; terms?: string; latePct?: string; policyDate?: string;
+      periodNumberingFrom?: string; },
   ): Observable<Settings> {
     return this.http.put<Settings>(`${this.url(sheetId)}/settings`, settings, { headers: this.headers() });
   }

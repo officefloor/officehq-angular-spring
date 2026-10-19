@@ -87,7 +87,7 @@ public class RollupService {
         for (Claim claim : all) {
             byPerson.computeIfAbsent(claim.getPersonId(), k -> new ArrayList<>()).add(claim);
         }
-        Map<Integer, LocalDate> datesByNumber = datesByNumber(all);
+        Map<String, LocalDate> datesByNumber = datesByNumber(all);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
@@ -131,7 +131,7 @@ public class RollupService {
         }
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
-        Map<Integer, LocalDate> datesByNumber = datesByNumber(all);
+        Map<String, LocalDate> datesByNumber = datesByNumber(all);
         for (Claim claim : all) {
             Person person = byId.get(claim.getPersonId());
             if (person == null || !counts(claim, person)
@@ -195,14 +195,14 @@ public class RollupService {
                         claim.getPersonId())));
     }
 
-    private static LocalDate roundsBy(Claim claim, Map<Integer, LocalDate> datesByNumber) {
+    private static LocalDate roundsBy(Claim claim, Map<String, LocalDate> datesByNumber) {
         return claim.getCorrects() == null ? claim.getDate()
                 : datesByNumber.getOrDefault(claim.getCorrects(), claim.getDate());
     }
 
     /** The dates of the claims given that have a number, by number. */
-    private static Map<Integer, LocalDate> datesByNumber(List<Claim> given) {
-        Map<Integer, LocalDate> by = new HashMap<>();
+    private static Map<String, LocalDate> datesByNumber(List<Claim> given) {
+        Map<String, LocalDate> by = new HashMap<>();
         for (Claim claim : given) {
             if (claim.getNumber() != null) {
                 by.put(claim.getNumber(), claim.getDate());

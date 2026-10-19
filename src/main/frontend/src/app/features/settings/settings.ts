@@ -13,7 +13,14 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-type SettingsFormValue = { clerkLimit: string; floor: string; terms: string; latePct: string; policyDate: string };
+type SettingsFormValue = {
+  clerkLimit: string;
+  floor: string;
+  terms: string;
+  latePct: string;
+  policyDate: string;
+  periodNumberingFrom: string;
+};
 
 const NO_SETTINGS: SheetSettings = {
   clerkLimit: null,
@@ -21,13 +28,15 @@ const NO_SETTINGS: SheetSettings = {
   terms: DEFAULT_TERMS,
   latePct: DEFAULT_LATE_PCT,
   policyDate: null,
+  periodNumberingFrom: null,
 };
 
 // The sheet's settings: the role each user name has (clerk unless given another) with the form that
 // gives one, the clerk limit, the highest due a clerk may settle (blank for no limit), and the floor, the
 // least a claim's live due comes to, the terms, the days after its date a claim is due by, and the late
 // percent, what an overdue claim gains of its figure for every full 30 days overdue, and the policy date (blank
-// for the sheet's today), before which a claim's date rounds half up, on or after half to even. Saving sends
+// for the sheet's today), before which a claim's date rounds half up, on or after half to even, and the period
+// numbering date (blank for off), from which a claim opened is numbered within its period. Saving sends
 // only the settings changed in the form (the clerk limit when none was).
 @Component({
   selector: 'app-settings',
@@ -51,6 +60,12 @@ const NO_SETTINGS: SheetSettings = {
         <input id="setting-late-pct" data-testid="setting-late-pct" inputmode="decimal" formControlName="latePct" />
         <label for="setting-policy-date">Policy date (yyyy-mm-dd, blank for the sheet's today)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" />
+        <label for="setting-period-numbering-from">Period numbering from (yyyy-mm-dd, blank for off)</label>
+        <input
+          id="setting-period-numbering-from"
+          data-testid="setting-period-numbering-from"
+          formControlName="periodNumberingFrom"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as e) {
@@ -75,6 +90,10 @@ const NO_SETTINGS: SheetSettings = {
       <p>
         Policy date in force:
         <span data-testid="setting-policy-date-current">{{ settings().policyDate ?? '' }}</span>
+      </p>
+      <p>
+        Period numbering from:
+        <span data-testid="setting-period-numbering-from-current">{{ settings().periodNumberingFrom ?? '' }}</span>
       </p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" data-testid="role-form">
         <label for="role-form-user">User</label>
@@ -133,6 +152,7 @@ export class Settings {
     terms: new FormControl(String(DEFAULT_TERMS), { nonNullable: true }),
     latePct: new FormControl(DEFAULT_LATE_PCT, { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
+    periodNumberingFrom: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -227,7 +247,10 @@ export class Settings {
     const sendLatePct = controls.latePct.dirty;
     const policyDate = controls.policyDate.value.trim();
     const sendPolicyDate = controls.policyDate.dirty;
-    const sendLimit = controls.clerkLimit.dirty || (!sendFloor && !sendTerms && !sendLatePct && !sendPolicyDate);
+    const periodNumberingFrom = controls.periodNumberingFrom.value.trim();
+    const sendPeriodNumbering = controls.periodNumberingFrom.dirty;
+    const sendLimit =
+      controls.clerkLimit.dirty || (!sendFloor && !sendTerms && !sendLatePct && !sendPolicyDate && !sendPeriodNumbering);
     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -248,12 +271,21 @@ export class Settings {
       this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it blank.');
       return;
     }
+    if (
+      sendPeriodNumbering &&
+      periodNumberingFrom !== '' &&
+      !(DATE.test(periodNumberingFrom) && !isNaN(Date.parse(periodNumberingFrom)))
+    ) {
+      this.settingsError.set('Type a period numbering date as yyyy-mm-dd, or leave it blank.');
+      return;
+    }
     const changed = {
       ...(sendLimit ? { clerkLimit } : {}),
       ...(sendFloor ? { floor } : {}),
       ...(sendTerms ? { terms } : {}),
       ...(sendLatePct ? { latePct } : {}),
       ...(sendPolicyDate ? { policyDate } : {}),
+      ...(sendPeriodNumbering ? { periodNumberingFrom } : {}),
     };
     this.saves.next({ sheetId, changed, sent: this.settingsForm.getRawValue() });
   }
@@ -272,6 +304,7 @@ export class Settings {
       terms: String(s.terms),
       latePct: s.latePct,
       policyDate: s.policyDate ?? '',
+      periodNumberingFrom: s.periodNumberingFrom ?? '',
     };
     const controls = this.settingsForm.controls;
     for (const key of Object.keys(shown) as (keyof SettingsFormValue)[]) {

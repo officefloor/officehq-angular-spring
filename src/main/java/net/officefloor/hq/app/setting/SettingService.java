@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has on it, its clerk limit, its floor, its terms, its late percent and its policy date. */
+/** A sheet's settings: the role each user name has on it, its clerk limit, its floor, its terms, its late percent, its policy date and its period numbering date. */
 @Service
 public class SettingService {
 
@@ -63,10 +63,12 @@ public class SettingService {
     }
 
     /** Save the settings given, the clerk limit, the floor, the terms, the late percent then the policy date,
-     * together; a setting not given (null) is left as it is, and an empty clerk limit or policy date removes it. */
+     * and the period numbering date together; a setting not given (null) is left as it is, and an empty clerk limit,
+     * policy date or period numbering date removes it. */
     @Transactional
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
-            Integer terms, BigDecimal latePct, Optional<LocalDate> policyDate) {
+            Integer terms, BigDecimal latePct, Optional<LocalDate> policyDate,
+            Optional<LocalDate> periodNumberingFrom) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null));
         }
@@ -81,6 +83,9 @@ public class SettingService {
         }
         if (policyDate != null) {
             setPolicyDate(user, sheetId, policyDate.orElse(null));
+        }
+        if (periodNumberingFrom != null) {
+            setPeriodNumberingFrom(user, sheetId, periodNumberingFrom.orElse(null));
         }
     }
 
@@ -185,6 +190,25 @@ public class SettingService {
                 + (policyDate != null ? policyDate.toString() : ""));
         rollup.recordChanges(user, sheetId, before);
         return policyDate;
+    }
+
+    /** The sheet's period numbering date: while the sheet's today is on or after it, a claim opened is numbered
+     * within its period; none means off. */
+    @Transactional(readOnly = true)
+    public LocalDate periodNumberingFrom(String sheetId) {
+        return find(sheetId).getPeriodNumberingFrom();
+    }
+
+    /** Set the sheet's period numbering date, none to turn it off; it numbers only claims opened from now on. */
+    @Transactional
+    public LocalDate setPeriodNumberingFrom(String user, String sheetId, LocalDate from) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        sheet.setPeriodNumberingFrom(from);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=period-numbering-from value="
+                + (from != null ? from.toString() : ""));
+        return from;
     }
 
     /** Refuse a settle by a clerk of a claim whose due is above the clerk limit; a due of n/a is within any

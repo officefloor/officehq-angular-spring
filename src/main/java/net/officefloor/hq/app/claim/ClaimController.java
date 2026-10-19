@@ -3,7 +3,6 @@ package net.officefloor.hq.app.claim;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,14 +27,14 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "-?\\d{1,10}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Positive Integer corrects) {}
+            @Size(max = 255) String corrects) {}
 
     /** The amount is shown with two decimals; a claim has no number until it is opened, and no fixed due
      * until it is settled; it shows who opened it, if anyone did, and whether it is bound to the figure it had
      * at its person's last statement (none when that was n/a); a correction shows the number it corrects. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Integer number, String due, String openedBy, boolean stated, String statedDue,
-            Integer corrects) {
+            String number, String due, String openedBy, boolean stated, String statedDue,
+            String corrects) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),

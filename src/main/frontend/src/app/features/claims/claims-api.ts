@@ -15,7 +15,7 @@ export interface Claim {
   note: string;
   status: ClaimStatus;
   /** The sheet's number for the claim, given when it is opened; null while a draft or once voided. */
-  number: number | null;
+  number: string | null;
   /** What was due when the claim was settled, with two decimals; null while it is live (not settled, or
    * settled when its grade had no rate). */
   due: string | null;
@@ -26,7 +26,7 @@ export interface Claim {
   /** That bound figure, with two decimals; null when it was n/a or the claim is not bound. */
   statedDue: string | null;
   /** For a correction (a negative amount), the number of the settled claim it corrects; null otherwise. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** Whether a claim is a correction: its amount is negative. */
@@ -137,7 +137,7 @@ export interface ClaimForm {
   date: string | null;
   note: string;
   /** The number of the settled claim a correction corrects; null when none is named. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** What opening claims together did: how many were opened and refused, and the opened claims. */

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -58,12 +59,12 @@ public class ClaimService {
      * is refused, and so is a correction that does not name a settled claim of the same person. */
     @Transactional
     public Claim add(String user, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         LocalDate today = sheets.today(sheetId);
         Person person = requirePerson(sheetId, personId);
         requireNotRetired(person, date != null ? date : today);
         requireOpenPeriod(sheetId, date != null ? date : today);
-        Integer corrected = correctedBy(sheetId, personId, amount, corrects);
+        String corrected = correctedBy(sheetId, personId, amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
         Claim fresh = new Claim(sheetId, personId, amount, date != null ? date : today, noteOf(note));
         fresh.setCorrects(corrected);
@@ -78,7 +79,7 @@ public class ClaimService {
      * the same person. */
     @Transactional
     public Claim update(String user, String sheetId, Long id, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         LocalDate today = sheets.today(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
@@ -88,7 +89,7 @@ public class ClaimService {
         requireOpenPeriod(sheetId, claim.getDate());
         requireOpenPeriod(sheetId, date != null ? date : today);
         requireNotRetired(requirePerson(sheetId, claim.getPersonId()), date != null ? date : today);
-        Integer corrected = correctedBy(sheetId, claim.getPersonId(), amount, corrects);
+        String corrected = correctedBy(sheetId, claim.getPersonId(), amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setCorrects(corrected);
@@ -105,11 +106,14 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String user, String sheetId, Long id, ClaimStatus next) {
         sheets.today(sheetId); // the sheet must exist
-        // Taking the number first locks the sheet, so claims are opened one at a time; a refused
-        // open rolls back and gives the number back.
-        Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
+        // Locking the sheet before taking the number opens claims one at a time; a refused open rolls back
+        // and gives the number back.
+        if (next == ClaimStatus.OPEN) {
+            sheets.lock(sheetId);
+        }
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        String number = next == ClaimStatus.OPEN ? nextNumber(sheetId, claim) : null;
         requireOpenPeriod(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -176,6 +180,9 @@ public class ClaimService {
         return new OpenedAll(opened.size(), wanted.size() - opened.size(), opened);
     }
 
+    /** The sequence a claim in no period is numbered in, with period numbering. */
+    private static final String NO_PERIOD = "X";
+
     private static final Map<ClaimStatus, String> EVENTS = Map.of(
             ClaimStatus.OPEN, "CLAIM_OPENED",
             ClaimStatus.SETTLED, "CLAIM_SETTLED",
@@ -187,19 +194,40 @@ public class ClaimService {
         return rollup.figureOf(claim, person);
     }
 
+    /** The number a claim opened now takes: the sheet's next number or, with period numbering in force, the next
+     * in its period's own sequence, <period name>-<n>, or X-<n> for a claim in no period. */
+    private String nextNumber(String sheetId, Claim claim) {
+        if (!sheets.numbersByPeriod(sheetId)) {
+            return String.valueOf(sheets.nextClaimNumber(sheetId));
+        }
+        String prefix = periods.periodOf(sheetId, claim.getDate()).map(Period::getName).orElse(NO_PERIOD) + "-";
+        int last = 0;
+        for (Claim other : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            String number = other.getNumber();
+            if (number != null && number.startsWith(prefix)) {
+                String rest = number.substring(prefix.length());
+                if (rest.matches("\\d{1,9}")) {
+                    last = Math.max(last, Integer.parseInt(rest));
+                }
+            }
+        }
+        return prefix + (last + 1);
+    }
+
     /** The number a claim of this amount corrects: none unless the amount is negative, when it must name a
      * SETTLED claim of the same person, or the claim is refused. */
-    private Integer correctedBy(String sheetId, Long personId, BigDecimal amount, Integer corrects) {
+    private String correctedBy(String sheetId, Long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             return null;
         }
-        boolean settled = corrects != null && claims.findBySheetIdAndPersonId(sheetId, personId).stream()
-                .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
+        String named = corrects == null ? null : corrects.trim();
+        boolean settled = named != null && claims.findBySheetIdAndPersonId(sheetId, personId).stream()
+                .anyMatch(c -> named.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
         if (!settled) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A correction must name a settled claim of the same person.");
         }
-        return corrects;
+        return named;
     }
 
     /** Refuse a change to a claim dated in a closed period. Locks the sheet first, so a period cannot close
