@@ -5,7 +5,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
-import { Claim, ClaimsApi, claimDue, counts, sumAmounts } from '../claims/claims-api';
+import { Claim, ClaimsApi, claimDue, counts, keepsFigure, sumAmounts } from '../claims/claims-api';
 import { Rates } from '../rates/rates';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
@@ -50,6 +50,9 @@ import { Grade, PeopleApi, Person } from './people-api';
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Statements</th>
+            <th scope="col">Last stated</th>
+            <th scope="col">Stated on</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -61,6 +64,9 @@ import { Grade, PeopleApi, Person } from './people-api';
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
+              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
+              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -80,6 +86,17 @@ import { Grade, PeopleApi, Person } from './people-api';
                 >
                   Edit
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-statement"
+                  [attr.aria-label]="'Take statement for ' + p.name"
+                  (click)="statement(p)"
+                >
+                  Statement
+                </button>
+                @if (personError()?.id === p.id) {
+                  <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                }
               </td>
             </tr>
           }
@@ -126,6 +143,8 @@ export class People {
   /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
   private submitting = false;
   protected readonly formError = signal<string | null>(null);
+  /** The error of the last action taken on a person's row, shown on that row. */
+  protected readonly personError = signal<{ id: number; message: string } | null>(null);
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
@@ -159,11 +178,11 @@ export class People {
   }
 
   /** The sum of the dues of the claims the person has that count (n/a ones skipped), 0.00 with none. A
-   * person whose grade has no rate in force on the sheet's today shows n/a, unless a settled claim keeps a
-   * figure. */
+   * person whose grade has no rate in force on the sheet's today shows n/a, unless a settled or stated claim
+   * keeps a figure. */
   protected personDueTotal(person: Person): string {
     const counted = this.claimsOf(person.id).filter(counts);
-    const frozen = counted.some((c) => c.due !== null);
+    const frozen = counted.some(keepsFigure);
     if (!this.rateByGrade().has(person.grade) && !frozen) return NO_RATE;
     return sumAmounts(counted.map((c) => claimDue(c, this.rates(), person.grade)).filter((d) => d !== NO_RATE));
   }
@@ -178,7 +197,30 @@ export class People {
     );
   }
 
+  /** Take a statement for the person, then re-read the sheet's claims, which it binds or unbinds. */
+  protected statement(person: Person): void {
+    this.personError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api
+      .statement(sheetId, person.id)
+      .pipe(switchMap((p) => forkJoin({ person: of(p), claims: this.claimsApi.list(sheetId) })))
+      .subscribe({
+        next: ({ person: p, claims }) => {
+          if (this.session.sheetId() !== sheetId) return;
+          this.claims.set(claims);
+          this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
+        },
+        error: (e: HttpErrorResponse) =>
+          this.personError.set({
+            id: person.id,
+            message: e.status === 404 ? 'That person is no longer on this sheet.' : 'Could not take that statement.',
+          }),
+      });
+  }
+
   protected edit(person: Person): void {
+    this.personError.set(null);
     this.editingId.set(person.id);
     this.editingVersion = person.version;
     this.form.setValue({ name: person.name, grade: person.grade }, { emitEvent: false });

@@ -11,6 +11,12 @@ export interface Person {
   grade: Grade;
   /** Raised each time the person is saved. */
   version: number;
+  /** How many statements were taken for the person. */
+  statementCount: number;
+  /** The last statement's due-total ("n/a" when it was), and the sheet's today when it was taken; null before
+   * the first. */
+  statedTotal: string | null;
+  statementDate: string | null;
 }
 
 export interface PersonForm {
@@ -36,6 +42,11 @@ export class PeopleApi {
 
   update(sheetId: string, id: number, form: PersonForm): Observable<Person> {
     return this.http.put<Person>(`${this.url(sheetId)}/${id}`, form, { headers: this.headers() });
+  }
+
+  /** Take a statement for the person. */
+  statement(sheetId: string, id: number): Observable<Person> {
+    return this.http.post<Person>(`${this.url(sheetId)}/${id}/statement`, null, { headers: this.headers() });
   }
 
   private url(sheetId: string): string {

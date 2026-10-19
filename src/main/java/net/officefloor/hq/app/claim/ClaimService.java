@@ -91,8 +91,9 @@ public class ClaimService {
         // A voided claim's line carries the number it had.
         String entry = entry(EVENTS.get(next), user, person, claim);
         if (next == ClaimStatus.SETTLED) {
-            // Settling fixes the due at the rate its grade has on its date; with no rate it stays live.
-            claim.setSettledDue(dueOf(claim, person.getGrade()));
+            // Settling fixes the due at the figure the claim has: the one its last statement bound it to, else
+            // the rate its grade has on its date; with no figure it stays live.
+            claim.setSettledDue(figureOf(claim, person.getGrade()));
             entry += " due=" + (claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : "n/a");
         }
         if (next == ClaimStatus.VOID) {
@@ -107,6 +108,15 @@ public class ClaimService {
             ClaimStatus.OPEN, "CLAIM_OPENED",
             ClaimStatus.SETTLED, "CLAIM_SETTLED",
             ClaimStatus.VOID, "CLAIM_VOIDED");
+
+    /** The figure a claim has now: what it was settled at, else what its person's last statement bound it to,
+     * else what is due at its grade's rate; none when that is n/a. */
+    public BigDecimal figureOf(Claim claim, String grade) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
+        return claim.isStated() ? claim.getStatedDue() : dueOf(claim, grade);
+    }
 
     /** What is due on a claim at the rate its grade has in force on the claim's date, rounded half to even to two
      * decimals; none when no rate of the grade applies then. */

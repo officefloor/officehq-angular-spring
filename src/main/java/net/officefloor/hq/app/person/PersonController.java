@@ -5,7 +5,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import net.officefloor.hq.app.statement.Statement;
+import net.officefloor.hq.app.statement.StatementService;
+import net.officefloor.hq.app.statement.StatementService.Summary;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,33 +30,53 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             Long version) {}
 
-    public record PersonView(Long id, String name, String grade, long version) {
+    /** A person shows how many statements were taken for them and the last one's due-total (n/a when it was)
+     * and date; none of those before the first. */
+    public record PersonView(Long id, String name, String grade, long version, int statementCount,
+            String statedTotal, LocalDate statementDate) {
 
-        static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+        static PersonView of(Person person, Map<Long, Summary> statements) {
+            Summary summary = statements.get(person.getId());
+            Statement last = summary != null ? summary.last() : null;
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    summary != null ? summary.count() : 0,
+                    last == null ? null : last.getDueTotal() != null ? last.getDueTotal().toPlainString() : "n/a",
+                    last != null ? last.getTakenOn() : null);
         }
     }
 
     private final PersonService service;
+    private final StatementService statements;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, StatementService statements) {
         this.service = service;
+        this.statements = statements;
     }
 
     @GetMapping
     public List<PersonView> list(@RequestHeader("X-User") String user, @PathVariable String sheetId) {
-        return service.list(sheetId).stream().map(PersonView::of).toList();
+        List<Person> people = service.list(sheetId);
+        Map<Long, Summary> taken = statements.summaries(sheetId);
+        return people.stream().map(p -> PersonView.of(p, taken)).toList();
     }
 
     @PostMapping
     public PersonView add(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.add(user, sheetId, form.name(), form.grade()));
+        return PersonView.of(service.add(user, sheetId, form.name(), form.grade()), statements.summaries(sheetId));
     }
 
     @PutMapping("/{id}")
     public PersonView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.update(user, sheetId, id, form.name(), form.grade(), form.version()));
+        return PersonView.of(service.update(user, sheetId, id, form.name(), form.grade(), form.version()),
+                statements.summaries(sheetId));
+    }
+
+    /** Take a statement for the person. */
+    @PostMapping("/{id}/statement")
+    public PersonView statement(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id) {
+        return PersonView.of(statements.take(user, sheetId, id), statements.summaries(sheetId));
     }
 }

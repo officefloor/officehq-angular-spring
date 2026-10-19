@@ -46,6 +46,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <th scope="col">Date</th>
             <th scope="col">Note</th>
             <th scope="col">Due</th>
+            <th scope="col">Stated</th>
             <th scope="col">Status</th>
             <th scope="col">Opened by</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -59,6 +60,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
+              <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td>
