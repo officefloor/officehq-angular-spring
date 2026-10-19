@@ -9,6 +9,7 @@ import { Claim, ClaimsApi, claimDue, counts, keepsFigure, sumAmounts } from '../
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
+import { SheetFloor } from '../settings/sheet-floor';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
 
@@ -160,6 +161,7 @@ export class People {
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
   private readonly periodsApi = inject(PeriodsApi);
+  private readonly floor = inject(SheetFloor);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -206,7 +208,7 @@ export class People {
       const period = periodOf(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (!period || !grade) continue;
-      const due = claimDue(c, this.rates(), grade);
+      const due = claimDue(c, this.rates(), grade, this.floor.value());
       if (due !== NO_RATE) dues.set(period.id, [...(dues.get(period.id) ?? []), due]);
     }
     return new Map(this.periods().map((p) => [p.id, p.closedTotal ?? sumAmounts(dues.get(p.id) ?? [])]));
@@ -277,7 +279,9 @@ export class People {
     const counted = this.claimsOf(person.id).filter((c) => this.countsLive(c));
     const frozen = counted.some(keepsFigure);
     if (!this.rateByGrade().has(person.grade) && !frozen) return NO_RATE;
-    return sumAmounts(counted.map((c) => claimDue(c, this.rates(), person.grade)).filter((d) => d !== NO_RATE));
+    return sumAmounts(
+      counted.map((c) => claimDue(c, this.rates(), person.grade, this.floor.value())).filter((d) => d !== NO_RATE),
+    );
   }
 
   /** Whether a claim counts in the live totals: it counts, and is not an OPEN claim of a held person. */

@@ -55,6 +55,7 @@ public class RollupService {
     /** The sheet's figures now; none (an empty sheet's) when there is no such sheet. */
     public Snapshot snapshot(String sheetId) {
         LocalDate today = sheets.findById(sheetId).map(s -> s.getToday()).orElse(null);
+        BigDecimal floor = floorOf(sheetId);
         Map<Long, List<Claim>> byPerson = new LinkedHashMap<>();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             byPerson.computeIfAbsent(claim.getPersonId(), k -> new ArrayList<>()).add(claim);
@@ -71,8 +72,8 @@ public class RollupService {
             boolean frozen = false;
             for (Claim claim : counted) {
                 claimed = claimed.add(claim.getAmount().setScale(2));
-                frozen |= claim.getSettledDue() != null || claim.isStated();
-                BigDecimal figure = figureOf(claim, gradeRates);
+                frozen |= keepsFigure(claim);
+                BigDecimal figure = figureOf(claim, gradeRates, floor);
                 if (figure != null) {
                     due = due.add(figure.setScale(2));
                 }
@@ -92,6 +93,7 @@ public class RollupService {
     /** The due-total of the sheet's claims that count (a held person's OPEN ones do not) dated from and to, inclusive: the sum of their figures,
      * n/a ones skipped. */
     public BigDecimal dueTotal(String sheetId, LocalDate from, LocalDate to) {
+        BigDecimal floor = floorOf(sheetId);
         Map<Long, List<Rate>> gradeRates = new LinkedHashMap<>();
         Map<Long, Person> byId = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
@@ -105,7 +107,7 @@ public class RollupService {
                     || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
-            BigDecimal figure = figureOf(claim, personRates);
+            BigDecimal figure = figureOf(claim, personRates, floor);
             if (figure != null) {
                 total = total.add(figure.setScale(2));
             }
@@ -139,25 +141,37 @@ public class RollupService {
     }
 
     /** The figure a claim has now: what it was settled at, else what its person's last statement bound it to,
-     * else what is due at its grade's rate; none when that is n/a. */
+     * else what is due at its grade's rate, raised to the sheet's floor; none when that is n/a. */
     public BigDecimal figureOf(Claim claim, String grade) {
-        return figureOf(claim, rates.findBySheetIdAndGrade(claim.getSheetId(), grade));
+        return figureOf(claim, rates.findBySheetIdAndGrade(claim.getSheetId(), grade), floorOf(claim.getSheetId()));
     }
 
-    private static BigDecimal figureOf(Claim claim, List<Rate> gradeRates) {
+    private static BigDecimal figureOf(Claim claim, List<Rate> gradeRates, BigDecimal floor) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return claim.isStated() ? claim.getStatedDue() : dueOf(claim, gradeRates);
+        return claim.isStated() ? claim.getStatedDue() : dueOf(claim, gradeRates, floor);
     }
 
     /** What is due on a claim at the rate its grade has in force on the claim's date, rounded half to even to two
-     * decimals; none when no rate of the grade applies then. */
-    private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates) {
+     * decimals, and at least the floor; none when no rate of the grade applies then. */
+    private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, BigDecimal floor) {
         BigDecimal amount = claim.getAmount();
         return Rate.inForce(gradeRates, claim.getDate())
                 .map(r -> amount.multiply(r.getRate()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                .map(due -> due.max(floor.setScale(2)))
                 .orElse(null);
+    }
+
+    /** The sheet's floor; 1.00, the one a sheet starts with, when there is no such sheet. */
+    private BigDecimal floorOf(String sheetId) {
+        return sheets.findById(sheetId).map(s -> s.getFloor()).orElse(new BigDecimal("1.00"));
+    }
+
+    /** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a
+     * statement. */
+    public static boolean keepsFigure(Claim claim) {
+        return claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null);
     }
 
     /** Only OPEN and SETTLED claims count toward what is claimed and due; a held person's OPEN ones do not. */

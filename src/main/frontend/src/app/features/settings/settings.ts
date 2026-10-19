@@ -4,11 +4,15 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
+import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
 
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
+const NO_SETTINGS: SheetSettings = { clerkLimit: null, floor: DEFAULT_FLOOR };
 
 // The sheet's settings: the role each user name has (clerk unless given another) with the form that
-// gives one, and the clerk limit, the highest due a clerk may settle (blank for no limit).
+// gives one, the clerk limit, the highest due a clerk may settle (blank for no limit), and the floor, the
+// least a claim's live due comes to. Saving sends only the settings changed in the form (the clerk limit
+// when neither was).
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -23,6 +27,8 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
           inputmode="decimal"
           formControlName="clerkLimit"
         />
+        <label for="setting-floor">Floor</label>
+        <input id="setting-floor" data-testid="setting-floor" inputmode="decimal" formControlName="floor" />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as e) {
@@ -31,6 +37,10 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
       <p>
         Clerk limit in force:
         <span data-testid="setting-clerk-limit-current">{{ settings().clerkLimit ?? '' }}</span>
+      </p>
+      <p>
+        Floor in force:
+        <span data-testid="setting-floor-current">{{ settings().floor }}</span>
       </p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" data-testid="role-form">
         <label for="role-form-user">User</label>
@@ -65,10 +75,11 @@ const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 export class Settings {
   private readonly session = inject(Session);
   private readonly api = inject(SettingsApi);
+  private readonly floor = inject(SheetFloor);
 
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly roles = signal<RoleGiven[]>([]);
-  protected readonly settings = signal<SheetSettings>({ clerkLimit: null });
+  protected readonly settings = signal<SheetSettings>(NO_SETTINGS);
   protected readonly roleError = signal<string | null>(null);
   protected readonly settingsError = signal<string | null>(null);
   private readonly busy = signal(false);
@@ -78,6 +89,7 @@ export class Settings {
   });
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
+    floor: new FormControl(DEFAULT_FLOOR, { nonNullable: true }),
   });
 
   constructor() {
@@ -89,13 +101,12 @@ export class Settings {
         switchMap((id) =>
           id
             ? forkJoin({ roles: this.api.roles(id), settings: this.api.get(id) })
-            : of({ roles: [] as RoleGiven[], settings: { clerkLimit: null } as SheetSettings }),
+            : of({ roles: [] as RoleGiven[], settings: NO_SETTINGS }),
         ),
       )
       .subscribe(({ roles, settings }) => {
         this.roles.set(roles);
-        this.settings.set(settings);
-        this.settingsForm.reset({ clerkLimit: settings.clerkLimit ?? '' }, { emitEvent: false });
+        this.showSettings(settings);
         this.roleError.set(null);
         this.settingsError.set(null);
       });
@@ -146,23 +157,38 @@ export class Settings {
       this.settingsError.set('Load a sheet first.');
       return;
     }
-    const clerkLimit = this.settingsForm.getRawValue().clerkLimit.trim();
-    if (clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
+    const controls = this.settingsForm.controls;
+    const clerkLimit = controls.clerkLimit.value.trim();
+    const floor = controls.floor.value.trim();
+    const sendFloor = controls.floor.dirty;
+    const sendLimit = controls.clerkLimit.dirty || !sendFloor;
+    if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    if (sendFloor && !LIMIT.test(floor)) {
+      this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    const changed = { ...(sendLimit ? { clerkLimit } : {}), ...(sendFloor ? { floor } : {}) };
     this.busy.set(true);
-    this.api.save(sheetId, { clerkLimit }).subscribe({
+    this.api.save(sheetId, changed).subscribe({
       next: (s) => {
         this.busy.set(false);
         if (this.session.sheetId() !== sheetId) return;
-        this.settings.set(s);
-        this.settingsForm.reset({ clerkLimit: s.clerkLimit ?? '' }, { emitEvent: false });
+        this.showSettings(s);
       },
       error: () => {
         this.busy.set(false);
         this.settingsError.set('Could not save the settings.');
       },
     });
+  }
+
+  /** Show the settings in force, and put them back in the form as unchanged. */
+  private showSettings(s: SheetSettings): void {
+    this.settings.set(s);
+    this.floor.set(s.floor);
+    this.settingsForm.reset({ clerkLimit: s.clerkLimit ?? '', floor: s.floor }, { emitEvent: false });
   }
 }

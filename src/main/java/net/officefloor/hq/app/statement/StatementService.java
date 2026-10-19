@@ -80,7 +80,7 @@ public class StatementService {
                 continue;
             }
             BigDecimal figure = claimService.figureOf(claim, grade);
-            fixed |= claim.getSettledDue() != null || claim.isStated();
+            fixed |= RollupService.keepsFigure(claim);
             claim.bind(figure);
             counted++;
             if (figure != null) {

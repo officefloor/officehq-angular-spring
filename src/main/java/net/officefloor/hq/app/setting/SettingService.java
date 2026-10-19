@@ -2,7 +2,10 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.rollup.RollupService.Snapshot;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -11,20 +14,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has on it, and its clerk limit. */
+/** A sheet's settings: the role each user name has on it, its clerk limit and its floor. */
 @Service
 public class SettingService {
 
     private final SheetRoleRepository roles;
     private final SheetRepository sheetRepository;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     public SettingService(SheetRoleRepository roles, SheetRepository sheetRepository, SheetService sheets,
-            Audit audit) {
+            RollupService rollup, Audit audit) {
         this.roles = roles;
         this.sheetRepository = sheetRepository;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -56,6 +61,18 @@ public class SettingService {
         return given;
     }
 
+    /** Save the settings given, the clerk limit then the floor, together; a setting not given (null) is left as
+     * it is, and an empty clerk limit removes it. */
+    @Transactional
+    public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor) {
+        if (clerkLimit != null) {
+            setClerkLimit(user, sheetId, clerkLimit.orElse(null));
+        }
+        if (floor != null) {
+            setFloor(user, sheetId, floor);
+        }
+    }
+
     /** The sheet's clerk limit; none means no limit. */
     @Transactional(readOnly = true)
     public BigDecimal clerkLimit(String sheetId) {
@@ -72,6 +89,27 @@ public class SettingService {
         sheetRepository.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=clerk-limit value="
                 + (value != null ? value.toPlainString() : ""));
+        return value;
+    }
+
+    /** The sheet's floor: the least a claim's live due comes to. */
+    @Transactional(readOnly = true)
+    public BigDecimal floor(String sheetId) {
+        return find(sheetId).getFloor();
+    }
+
+    /** Set the sheet's floor; it moves every live due below it, and the figures it moves are written after. */
+    @Transactional
+    public BigDecimal setFloor(String user, String sheetId, BigDecimal floor) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal value = floor.setScale(2);
+        sheet.setFloor(value);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=floor value="
+                + value.toPlainString());
+        rollup.recordChanges(user, sheetId, before);
         return value;
     }
 

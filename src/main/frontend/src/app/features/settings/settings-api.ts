@@ -15,9 +15,11 @@ export interface RoleGiven {
 export interface Settings {
   /** The highest due a clerk may settle, with two decimals; null for no limit. */
   clerkLimit: string | null;
+  /** The least a claim's live due comes to, with two decimals. */
+  floor: string;
 }
 
-// A sheet's settings: the role each user name has, and its clerk limit, read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit and its floor, read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -36,7 +38,8 @@ export class SettingsApi {
     return this.http.get<Settings>(`${this.url(sheetId)}/settings`, { headers: this.headers() });
   }
 
-  save(sheetId: string, settings: { clerkLimit: string }): Observable<Settings> {
+  /** Save the settings given; one left out is left as it is. */
+  save(sheetId: string, settings: { clerkLimit?: string; floor?: string }): Observable<Settings> {
     return this.http.put<Settings>(`${this.url(sheetId)}/settings`, settings, { headers: this.headers() });
   }
 

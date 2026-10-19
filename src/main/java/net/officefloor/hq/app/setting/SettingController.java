@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A sheet's settings: the role each user name has, and its clerk limit. */
+/** A sheet's settings: the role each user name has, its clerk limit and its floor. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
 public class SettingController {
@@ -32,14 +33,17 @@ public class SettingController {
         }
     }
 
-    /** The clerk limit has up to two decimals, 0.00 or more; blank means no limit. */
-    public record SettingsForm(@Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit) {}
+    /** The clerk limit has up to two decimals, 0.00 or more; blank means no limit. The floor has up to two
+     * decimals, 0.00 or more. A setting left out (null) is left as it is. */
+    public record SettingsForm(@Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit,
+            @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String floor) {}
 
-    /** The clerk limit is shown with two decimals; null when there is none. */
-    public record SettingsView(String clerkLimit) {
+    /** The clerk limit and floor are shown with two decimals; the clerk limit is null when there is none. */
+    public record SettingsView(String clerkLimit, String floor) {
 
-        static SettingsView of(BigDecimal clerkLimit) {
-            return new SettingsView(clerkLimit != null ? clerkLimit.setScale(2).toPlainString() : null);
+        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor) {
+            return new SettingsView(clerkLimit != null ? clerkLimit.setScale(2).toPlainString() : null,
+                    floor.setScale(2).toPlainString());
         }
     }
 
@@ -64,13 +68,16 @@ public class SettingController {
 
     @GetMapping("/settings")
     public SettingsView settings(@RequestHeader("X-User") String user, @PathVariable String sheetId) {
-        return SettingsView.of(service.clerkLimit(sheetId));
+        return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId));
     }
 
     @PutMapping("/settings")
     public SettingsView save(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody SettingsForm form) {
-        String limit = form.clerkLimit() == null ? "" : form.clerkLimit();
-        return SettingsView.of(service.setClerkLimit(user, sheetId, limit.isEmpty() ? null : new BigDecimal(limit)));
+        String limit = form.clerkLimit();
+        Optional<BigDecimal> clerkLimit = limit == null ? null
+                : limit.isEmpty() ? Optional.empty() : Optional.of(new BigDecimal(limit));
+        service.save(user, sheetId, clerkLimit, form.floor() == null ? null : new BigDecimal(form.floor()));
+        return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId));
     }
 }

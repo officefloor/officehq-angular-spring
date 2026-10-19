@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 import { Rate } from '../rates/rates-api';
 import { Grade } from '../people/people-api';
 import { Period, periodOf } from '../periods/periods-api';
+import { SheetFloor } from '../settings/sheet-floor';
 import { Claim, ClaimAction, ClaimsApi, claimDue } from './claims-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
@@ -99,6 +100,7 @@ const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 export class Claims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
+  private readonly floor = inject(SheetFloor);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -143,9 +145,9 @@ export class Claims {
   }
 
   /** A settled claim shows the due it was settled at; any other is due at the rate its grade has now in
-   * force on the claim's date. */
+   * force on the claim's date, and at least the sheet's floor. */
   protected due(claim: Claim): string {
-    return claimDue(claim, this.rates(), this.grade());
+    return claimDue(claim, this.rates(), this.grade(), this.floor.value());
   }
 
   /** The name of the period the claim's date falls in; empty when it falls in none. */

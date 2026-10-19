@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Session } from '../../core/session';
 import { Grade } from '../people/people-api';
-import { NO_RATE, Rate, dueOf, rateOn } from '../rates/rates-api';
+import { NO_RATE, Rate, dueOf, floored, rateOn } from '../rates/rates-api';
 
 export interface Claim {
   id: number;
@@ -39,17 +39,18 @@ export function counts(claim: Claim): boolean {
 }
 
 /** A settled claim's due is the figure it was settled at; a claim bound by its person's last statement shows
- * the figure it was bound to; any other is due at the rate its grade has now in force on the claim's date (n/a
- * when there is none). */
-export function claimDue(claim: Claim, rates: readonly Rate[], grade: Grade): string {
+ * the figure it was bound to; any other is due at the rate its grade has now in force on the claim's date,
+ * and at least the sheet's floor (n/a when there is no rate). */
+export function claimDue(claim: Claim, rates: readonly Rate[], grade: Grade, floor: string): string {
   if (claim.due !== null) return claim.due;
   if (claim.stated) return claim.statedDue ?? NO_RATE;
-  return dueOf(claim.amount, rateOn(rates, grade, claim.date));
+  return floored(dueOf(claim.amount, rateOn(rates, grade, claim.date)), floor);
 }
 
-/** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one by a statement. */
+/** Whether a claim keeps a figure whatever the rates: settled at one, or bound to one (not n/a) by a
+ * statement. */
 export function keepsFigure(claim: Claim): boolean {
-  return claim.due !== null || claim.stated;
+  return claim.due !== null || claim.statedDue !== null;
 }
 
 export interface ClaimForm {

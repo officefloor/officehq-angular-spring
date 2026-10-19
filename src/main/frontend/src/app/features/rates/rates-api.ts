@@ -50,6 +50,12 @@ export function dueOf(amount: string, rate: string | undefined): string {
   return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
 }
 
+/** A due raised to the floor when it is below it; n/a stays n/a. */
+export function floored(due: string, floor: string): string {
+  if (due === NO_RATE) return due;
+  return hundredths(due) < hundredths(floor) ? floor : due;
+}
+
 // The rate for each grade on the active sheet, read and changed through the server.
 @Injectable({ providedIn: 'root' })
 export class RatesApi {
