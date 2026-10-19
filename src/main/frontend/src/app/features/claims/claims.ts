@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, input, output, signal, untracked }
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Rate } from '../rates/rates-api';
-import { Grade } from '../people/people-api';
+import { GradeFrom, gradeOn } from '../people/people-api';
 import { Period, periodOf } from '../periods/periods-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
@@ -120,8 +120,8 @@ export class Claims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** This person's grade, and the sheet's rates. */
-  readonly grade = input.required<Grade>();
+  /** This person's dated grades, and the sheet's rates. */
+  readonly grades = input.required<readonly GradeFrom[]>();
   readonly rates = input<readonly Rate[]>([]);
   /** The sheet's periods. */
   readonly periods = input<readonly Period[]>([]);
@@ -158,10 +158,11 @@ export class Claims {
     });
   }
 
-  /** A settled claim shows the due it was settled at; any other is due at the rate its grade has now in
-   * force on the claim's date, and at least the sheet's floor, plus its late charge when overdue. */
+  /** A settled claim shows the due it was settled at; any other is due at the rate the grade its person has on
+   * the claim's date has now in force on that date, and at least the sheet's floor, plus its late charge when
+   * overdue. */
   protected due(claim: Claim): string {
-    return claimDue(claim, this.rates(), this.grade(), this.floor.value(), this.late());
+    return claimDue(claim, this.rates(), gradeOn(this.grades(), claim.date), this.floor.value(), this.late());
   }
 
   /** The claim's date plus the sheet's terms. */

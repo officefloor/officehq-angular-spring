@@ -22,7 +22,7 @@ import { Session } from '../../core/session';
           <p role="alert" data-testid="sheet-load-error">{{ e }}</p>
         }
         <p>
-          Sheet: <strong data-testid="sheet-current-id">{{ session.sheetId() ?? '' }}</strong>
+          Sheet: <strong data-testid="sheet-current-id">{{ session.loadedSheetId() ?? '' }}</strong>
         </p>
         @if (session.sheetId()) {
           <p>

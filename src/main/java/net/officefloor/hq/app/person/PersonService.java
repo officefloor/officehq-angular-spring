@@ -50,17 +50,20 @@ public class PersonService {
         requireNameFree(sheetId, trimmed, null);
         Snapshot before = rollup.snapshot(sheetId);
         Person person = people.saveAndFlush(new Person(sheetId, trimmed, grade));
-        audit.recordOnCommit(entry("PERSON_ADDED", user, person));
+        audit.recordOnCommit(entry("PERSON_ADDED", user, person, sheetService.today(sheetId)));
         rollup.recordChanges(user, sheetId, before);
         return person;
     }
 
     /**
      * Saves changes to a person. When {@code version} is given it is the version the editor loaded,
-     * and the save is refused if the person has been saved since.
+     * and the save is refused if the person has been saved since. The grade is recorded from {@code gradeFrom},
+     * the sheet's today when none is given, keeping the grades the person has from other dates.
      */
     @Transactional
-    public Person update(String user, String sheetId, Long id, String name, String grade, Long version) {
+    public Person update(String user, String sheetId, Long id, String name, String grade, LocalDate gradeFrom,
+            Long version) {
+        LocalDate today = sheetService.today(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (version != null && version != person.getVersion()) {
@@ -70,13 +73,13 @@ public class PersonService {
         requireNameFree(sheetId, trimmed, id);
         Snapshot before = rollup.snapshot(sheetId);
         person.setName(trimmed);
-        person.setGrade(grade);
+        person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         try {
             people.flush();
         } catch (ObjectOptimisticLockingFailureException e) {
             throw changedMeanwhile();
         }
-        audit.recordOnCommit(entry("PERSON_EDITED", user, person));
+        audit.recordOnCommit(entry("PERSON_EDITED", user, person, today));
         rollup.recordChanges(user, sheetId, before);
         return person;
     }
@@ -139,9 +142,10 @@ public class PersonService {
         return person;
     }
 
-    private static String entry(String event, String user, Person person) {
+    /** A line naming the person and the grade they have in force on the sheet's today. */
+    private static String entry(String event, String user, Person person, LocalDate today) {
         return event + " sheet=" + person.getSheetId() + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.getGrade();
+                + " name=" + person.getName() + " grade=" + person.gradeOn(today);
     }
 
     private static ResponseStatusException changedMeanwhile() {

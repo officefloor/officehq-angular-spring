@@ -107,10 +107,10 @@ public class ClaimService {
         Person person = requirePerson(sheetId, claim.getPersonId());
         // A clerk settles only a claim whose due is within the sheet's clerk limit.
         if (next == ClaimStatus.SETTLED) {
-            settings.requireMaySettle(sheetId, user, rollup.dueOf(claim, person.getGrade()));
+            settings.requireMaySettle(sheetId, user, rollup.dueOf(claim, person));
         }
         Snapshot before = rollup.snapshot(sheetId);
-        BigDecimal due = rollup.dueOf(claim, person.getGrade());
+        BigDecimal due = rollup.dueOf(claim, person);
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
@@ -137,9 +137,9 @@ public class ClaimService {
             ClaimStatus.VOID, "CLAIM_VOIDED");
 
     /** The figure a claim has now: what it was settled at, else what its person's last statement bound it to,
-     * else what is due at its grade's rate; none when that is n/a. */
-    public BigDecimal figureOf(Claim claim, String grade) {
-        return rollup.figureOf(claim, grade);
+     * else what is due at the rate of the grade its person has on its date; none when that is n/a. */
+    public BigDecimal figureOf(Claim claim, Person person) {
+        return rollup.figureOf(claim, person);
     }
 
     /** Refuse a change to a claim dated in a closed period. Locks the sheet first, so a period cannot close

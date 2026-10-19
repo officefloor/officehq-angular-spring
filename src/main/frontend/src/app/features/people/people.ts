@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
@@ -13,7 +13,7 @@ import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetTerms } from '../settings/sheet-terms';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
-import { Grade, PeopleApi, Person } from './people-api';
+import { Grade, PeopleApi, Person, gradeOn } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
@@ -39,6 +39,10 @@ import { Grade, PeopleApi, Person } from './people-api';
             <option [value]="g">{{ g }}</option>
           }
         </select>
+        @if (editingId() !== null) {
+          <label for="person-form-grade-from">Grade from</label>
+          <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
+        }
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -92,7 +96,7 @@ import { Grade, PeopleApi, Person } from './people-api';
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
@@ -110,7 +114,7 @@ import { Grade, PeopleApi, Person } from './people-api';
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsOf(p.id)"
-                  [grade]="p.grade"
+                  [grades]="p.grades"
                   [rates]="rates()"
                   [periods]="periods()"
                   (saved)="claimSaved($event)"
@@ -247,13 +251,13 @@ export class People {
   /** Each period's due-total, by id: the sum of the dues of the claims that count dated in it (n/a ones
    * skipped), 0.00 with none; a closed period's is the one fixed when it closed. */
   protected readonly periodDueTotals = computed(() => {
-    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
     const dues = new Map<number, string[]>();
     for (const c of this.claims().filter((c) => this.countsLive(c))) {
       const period = periodOf(this.periods(), c.date);
-      const grade = grades.get(c.personId);
-      if (!period || !grade) continue;
-      const due = claimDue(c, this.rates(), grade, this.floor.value(), this.late());
+      const person = byId.get(c.personId);
+      if (!period || !person) continue;
+      const due = this.claimDue(c, person);
       if (due !== NO_RATE) dues.set(period.id, [...(dues.get(period.id) ?? []), due]);
     }
     return new Map(this.periods().map((p) => [p.id, p.closedTotal ?? sumAmounts(dues.get(p.id) ?? [])]));
@@ -280,6 +284,8 @@ export class People {
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
+    /** The date a saved grade is in force from; the sheet's today unless another date is picked. */
+    gradeFrom: new FormControl('', { nonNullable: true }),
   });
 
   /** Whether a quick-add is waiting on the server; another is ignored until it answers. */
@@ -293,26 +299,35 @@ export class People {
   constructor() {
     this.form.valueChanges.subscribe(() => this.formError.set(null));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(null));
+    effect(() => {
+      const today = this.session.today() ?? '';
+      untracked(() => {
+        if (!this.form.controls.gradeFrom.dirty) this.form.controls.gradeFrom.setValue(today, { emitEvent: false });
+      });
+    });
     // Re-read the sheet's people and their claims from the store each time a sheet is loaded.
+    const loaded = this.session.registerLoader(inject(DestroyRef));
     toObservable(this.session.sheetId)
       .pipe(
         switchMap((id) =>
           id
             ? forkJoin({
+                id: of(id),
                 people: this.api.list(id),
                 claims: this.claimsApi.list(id),
                 rates: this.ratesApi.list(id),
                 periods: this.periodsApi.list(id),
               })
-            : of({ people: [] as Person[], claims: [] as Claim[], rates: [] as Rate[], periods: [] as Period[] }),
+            : of({ id, people: [] as Person[], claims: [] as Claim[], rates: [] as Rate[], periods: [] as Period[] }),
         ),
       )
-      .subscribe(({ people, claims, rates, periods }) => {
+      .subscribe(({ id, people, claims, rates, periods }) => {
         this.people.set(people);
         this.periods.set(periods);
         this.claims.set(claims);
         this.rates.set(rates);
         this.reset();
+        loaded(id);
       });
   }
 
@@ -324,16 +339,27 @@ export class People {
     return sumAmounts(this.claimsOf(personId).filter((c) => this.countsLive(c)).map((c) => c.amount));
   }
 
+  /** The grade the person has in force on the sheet's today. */
+  protected gradeToday(person: Person): Grade {
+    const today = this.session.today();
+    return (today !== null ? gradeOn(person.grades, today) : undefined) ?? person.grade;
+  }
+
+  /** What is due on a claim of the person's, at the grade they have on the claim's date. */
+  private claimDue(claim: Claim, person: Person): string {
+    return claimDue(claim, this.rates(), gradeOn(person.grades, claim.date), this.floor.value(), this.late());
+  }
+
   /** The sum of the dues of the claims the person has that count (n/a ones skipped), 0.00 with none. A
-   * person whose grade has no rate in force on the sheet's today shows n/a, unless a settled or stated claim
-   * keeps a figure. */
+   * person shows n/a when neither the grade they have on the sheet's today nor one they had on the date of a
+   * claim that counts has a rate in force on the sheet's today, unless a settled or stated claim keeps a
+   * figure. */
   protected personDueTotal(person: Person): string {
     const counted = this.claimsOf(person.id).filter((c) => this.countsLive(c));
     const frozen = counted.some(keepsFigure);
-    if (!this.rateByGrade().has(person.grade) && !frozen) return NO_RATE;
-    return sumAmounts(
-      counted.map((c) => claimDue(c, this.rates(), person.grade, this.floor.value(), this.late())).filter((d) => d !== NO_RATE),
-    );
+    const grades = [this.gradeToday(person), ...counted.map((c) => gradeOn(person.grades, c.date))];
+    if (!grades.some((g) => g !== undefined && this.rateByGrade().has(g)) && !frozen) return NO_RATE;
+    return sumAmounts(counted.map((c) => this.claimDue(c, person)).filter((d) => d !== NO_RATE));
   }
 
   /** The person's claims that count and are overdue. */
@@ -346,7 +372,7 @@ export class People {
   protected overdueTotalOf(person: Person): string {
     return sumAmounts(
       this.overdueOf(person)
-        .map((c) => claimDue(c, this.rates(), person.grade, this.floor.value(), this.late()))
+        .map((c) => this.claimDue(c, person))
         .filter((d) => d !== NO_RATE),
     );
   }
@@ -524,14 +550,17 @@ export class People {
     this.patronError.set(null);
     this.editingId.set(person.id);
     this.editingVersion = person.version;
-    this.form.setValue({ name: person.name, grade: person.grade }, { emitEvent: false });
+    this.form.setValue(
+      { name: person.name, grade: this.gradeToday(person), gradeFrom: this.session.today() ?? '' },
+      { emitEvent: false },
+    );
     this.formError.set(null);
   }
 
   protected reset(): void {
     this.editingId.set(null);
     this.editingVersion = null;
-    this.form.reset({ name: '', grade: 'A' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: this.session.today() ?? '' }, { emitEvent: false });
     this.formError.set(null);
   }
 
@@ -552,7 +581,7 @@ export class People {
     this.submitting = true;
     const done = () => (this.submitting = false);
     if (id === null) {
-      this.api.add(sheetId, value).subscribe({
+      this.api.add(sheetId, { name: value.name, grade: value.grade }).subscribe({
         next: (p) => {
           done();
           if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, p]);
@@ -564,22 +593,24 @@ export class People {
         },
       });
     } else {
-      this.api.update(sheetId, id, { ...value, version: this.editingVersion ?? undefined }).subscribe({
-        next: (p) => {
-          done();
-          if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
-          this.reset();
-        },
-        error: (e: HttpErrorResponse) => {
-          done();
-          if (e.status === 412) {
-            this.formError.set('Someone else has saved this person since you opened it. Their values are shown.');
-            this.showCurrent(sheetId, id);
-          } else {
-            this.formError.set(this.refusal(e, 'Could not save that person.'));
-          }
-        },
-      });
+      this.api
+        .update(sheetId, id, { ...value, gradeFrom: value.gradeFrom || null, version: this.editingVersion ?? undefined })
+        .subscribe({
+          next: (p) => {
+            done();
+            if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
+            this.reset();
+          },
+          error: (e: HttpErrorResponse) => {
+            done();
+            if (e.status === 412) {
+              this.formError.set('Someone else has saved this person since you opened it. Their values are shown.');
+              this.showCurrent(sheetId, id);
+            } else {
+              this.formError.set(this.refusal(e, 'Could not save that person.'));
+            }
+          },
+        });
     }
   }
 
@@ -591,7 +622,10 @@ export class People {
       const current = people.find((p) => p.id === id);
       if (current && this.editingId() === id) {
         this.editingVersion = current.version;
-        this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+        this.form.setValue(
+          { name: current.name, grade: this.gradeToday(current), gradeFrom: this.session.today() ?? '' },
+          { emitEvent: false },
+        );
       }
     });
   }

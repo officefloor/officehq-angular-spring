@@ -5,10 +5,13 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -79,8 +82,8 @@ public class RollupService {
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
+        Map<String, List<Rate>> byGrade = ratesByGrade(sheetId);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            List<Rate> gradeRates = rates.findBySheetIdAndGrade(sheetId, person.getGrade());
             List<Claim> counted = byPerson.getOrDefault(person.getId(), List.of()).stream()
                     .filter(c -> counts(c, person)).toList();
             BigDecimal claimed = BigDecimal.ZERO.setScale(2);
@@ -89,13 +92,13 @@ public class RollupService {
             for (Claim claim : counted) {
                 claimed = claimed.add(claim.getAmount().setScale(2));
                 frozen |= keepsFigure(claim);
-                BigDecimal figure = dueOf(claim, gradeRates, floor, late);
+                BigDecimal figure = dueOf(claim, ratesOn(person, claim.getDate(), byGrade), floor, late);
                 if (figure != null) {
                     due = due.add(figure.setScale(2));
                 }
             }
             // Like the screen: with no rate in force today and no claim keeping a figure, the due-total is n/a.
-            boolean rated = today != null && Rate.inForce(gradeRates, today).isPresent();
+            boolean rated = rated(person, counted, today, byGrade);
             String personDue = rated || frozen ? due.toPlainString() : NO_RATE;
             claimedTotal = claimedTotal.add(claimed);
             if (rated || frozen) {
@@ -111,20 +114,19 @@ public class RollupService {
     public BigDecimal dueTotal(String sheetId, LocalDate from, LocalDate to) {
         BigDecimal floor = floorOf(sheetId);
         Lateness late = latenessOf(sheetId);
-        Map<Long, List<Rate>> gradeRates = new LinkedHashMap<>();
+        Map<String, List<Rate>> byGrade = ratesByGrade(sheetId);
         Map<Long, Person> byId = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            gradeRates.put(person.getId(), rates.findBySheetIdAndGrade(sheetId, person.getGrade()));
             byId.put(person.getId(), person);
         }
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            List<Rate> personRates = gradeRates.get(claim.getPersonId());
-            if (personRates == null || !counts(claim, byId.get(claim.getPersonId()))
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !counts(claim, person)
                     || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
-            BigDecimal figure = dueOf(claim, personRates, floor, late);
+            BigDecimal figure = dueOf(claim, ratesOn(person, claim.getDate(), byGrade), floor, late);
             if (figure != null) {
                 total = total.add(figure.setScale(2));
             }
@@ -158,16 +160,56 @@ public class RollupService {
     }
 
     /** The figure a claim has now: what it was settled at, else what its person's last statement bound it to,
-     * else what is due at its grade's rate, raised to the sheet's floor; none when that is n/a. */
-    public BigDecimal figureOf(Claim claim, String grade) {
-        return figureOf(claim, rates.findBySheetIdAndGrade(claim.getSheetId(), grade), floorOf(claim.getSheetId()));
+     * else what is due at the rate of the grade its person has on its date, raised to the sheet's floor; none
+     * when that is n/a. */
+    public BigDecimal figureOf(Claim claim, Person person) {
+        return figureOf(claim, gradeRates(claim, person), floorOf(claim.getSheetId()));
     }
 
     /** What is due on a claim now: its figure, plus the late charge an overdue claim has on it; none when the
      * figure is n/a. A settled claim's due is the figure it was settled at, the charge it had then frozen in. */
-    public BigDecimal dueOf(Claim claim, String grade) {
-        return dueOf(claim, rates.findBySheetIdAndGrade(claim.getSheetId(), grade), floorOf(claim.getSheetId()),
-                latenessOf(claim.getSheetId()));
+    public BigDecimal dueOf(Claim claim, Person person) {
+        return dueOf(claim, gradeRates(claim, person), floorOf(claim.getSheetId()), latenessOf(claim.getSheetId()));
+    }
+
+    /**
+     * Whether a person's due-total has a rate to go by on the sheet's today: the grade they have in force today,
+     * or one they had on the date of a claim of theirs that counts, has a rate in force today.
+     */
+    public boolean rated(Person person, List<Claim> counted, LocalDate today) {
+        return rated(person, counted, today, ratesByGrade(person.getSheetId()));
+    }
+
+    private static boolean rated(Person person, List<Claim> counted, LocalDate today,
+            Map<String, List<Rate>> byGrade) {
+        if (today == null) {
+            return false;
+        }
+        Set<String> grades = new HashSet<>();
+        grades.add(person.gradeOn(today));
+        for (Claim claim : counted) {
+            grades.add(person.gradeOn(claim.getDate()));
+        }
+        return grades.stream().anyMatch(g -> Rate.inForce(byGrade.getOrDefault(g, List.of()), today).isPresent());
+    }
+
+    /** The rates of the grade the claim's person has on the claim's date. */
+    private List<Rate> gradeRates(Claim claim, Person person) {
+        return rates.findBySheetIdAndGrade(claim.getSheetId(), person.gradeOn(claim.getDate()));
+    }
+
+    /** The rates of the grade a person has on a date. */
+    private static List<Rate> ratesOn(Person person, LocalDate date, Map<String, List<Rate>> byGrade) {
+        return byGrade.getOrDefault(person.gradeOn(date), List.of());
+    }
+
+    /** The sheet's rates by grade. */
+    private Map<String, List<Rate>> ratesByGrade(String sheetId) {
+        Map<String, List<Rate>> by = new HashMap<>();
+        for (Rate rate : rates.findBySheetId(sheetId)) {
+            by.computeIfAbsent(rate.getGrade(), k -> new ArrayList<>()).add(rate);
+        }
+        return by;
     }
 
     private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, BigDecimal floor, Lateness late) {

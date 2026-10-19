@@ -6,10 +6,30 @@ import { Claim } from '../claims/claims-api';
 
 export type Grade = 'A' | 'B' | 'C';
 
+/** A grade a person has from a date (yyyy-mm-dd); null for from the beginning of time. */
+export interface GradeFrom {
+  grade: Grade;
+  from: string | null;
+}
+
+/** The grade in force on a date (yyyy-mm-dd): the one with the latest from-date on or before it. */
+export function gradeOn(grades: readonly GradeFrom[], date: string): Grade | undefined {
+  // No from-date sorts as '', before every date.
+  let best: GradeFrom | undefined;
+  for (const g of grades) {
+    const from = g.from ?? '';
+    if (from <= date && (!best || from > (best.from ?? ''))) best = g;
+  }
+  return best?.grade;
+}
+
 export interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the person was read. */
   grade: Grade;
+  /** Every grade recorded for the person, by from-date, the first one given (from the beginning of time) first. */
+  grades: GradeFrom[];
   /** Raised each time the person is saved. */
   version: number;
   /** How many statements were taken for the person. */
@@ -29,6 +49,9 @@ export interface Person {
 export interface PersonForm {
   name: string;
   grade: Grade;
+  /** The date a saved grade is in force from (yyyy-mm-dd); null for the sheet's today. A new person's first
+   * grade applies from the beginning of time. */
+  gradeFrom?: string | null;
   /** The version of the person the editor loaded; a save is refused once someone else has saved since. */
   version?: number;
 }

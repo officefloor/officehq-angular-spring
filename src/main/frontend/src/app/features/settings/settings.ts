@@ -1,7 +1,7 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { forkJoin, of, switchMap } from 'rxjs';
+import { Subject, catchError, concatMap, forkJoin, map, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
 import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
@@ -11,6 +11,8 @@ import { DEFAULT_TERMS, SheetTerms } from './sheet-terms';
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+type SettingsFormValue = { clerkLimit: string; floor: string; terms: string; latePct: string };
+
 const NO_SETTINGS: SheetSettings = {
   clerkLimit: null,
   floor: DEFAULT_FLOOR,
@@ -107,6 +109,9 @@ export class Settings {
   protected readonly roleError = signal<string | null>(null);
   protected readonly settingsError = signal<string | null>(null);
   private readonly busy = signal(false);
+  /** Settings saves, sent one after another in the order they were made, so none is lost while another is
+   * waiting on the server. */
+  private readonly saves = new Subject<{ sheetId: string; changed: Parameters<SettingsApi['save']>[1]; sent: SettingsFormValue }>();
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
@@ -121,20 +126,38 @@ export class Settings {
   constructor() {
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(null));
     this.settingsForm.valueChanges.subscribe(() => this.settingsError.set(null));
+    this.saves
+      .pipe(
+        concatMap(({ sheetId, changed, sent }) =>
+          this.api.save(sheetId, changed).pipe(
+            map((s) => ({ sheetId, sent, s })),
+            catchError(() => of({ sheetId, sent, s: null })),
+          ),
+        ),
+      )
+      .subscribe(({ sheetId, sent, s }) => {
+        if (s === null) {
+          this.settingsError.set('Could not save the settings.');
+        } else if (this.session.sheetId() === sheetId) {
+          this.showSettings(s, sent);
+        }
+      });
     // Re-read the sheet's settings from the store each time a sheet is loaded.
+    const loaded = this.session.registerLoader(inject(DestroyRef));
     toObservable(this.session.sheetId)
       .pipe(
         switchMap((id) =>
           id
-            ? forkJoin({ roles: this.api.roles(id), settings: this.api.get(id) })
-            : of({ roles: [] as RoleGiven[], settings: NO_SETTINGS }),
+            ? forkJoin({ id: of(id), roles: this.api.roles(id), settings: this.api.get(id) })
+            : of({ id, roles: [] as RoleGiven[], settings: NO_SETTINGS }),
         ),
       )
-      .subscribe(({ roles, settings }) => {
+      .subscribe(({ id, roles, settings }) => {
         this.roles.set(roles);
         this.showSettings(settings);
         this.roleError.set(null);
         this.settingsError.set(null);
+        loaded(id);
       });
   }
 
@@ -176,7 +199,6 @@ export class Settings {
   }
 
   protected save(): void {
-    if (this.busy()) return;
     this.settingsError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) {
@@ -214,29 +236,25 @@ export class Settings {
       ...(sendTerms ? { terms } : {}),
       ...(sendLatePct ? { latePct } : {}),
     };
-    this.busy.set(true);
-    this.api.save(sheetId, changed).subscribe({
-      next: (s) => {
-        this.busy.set(false);
-        if (this.session.sheetId() !== sheetId) return;
-        this.showSettings(s);
-      },
-      error: () => {
-        this.busy.set(false);
-        this.settingsError.set('Could not save the settings.');
-      },
-    });
+    this.saves.next({ sheetId, changed, sent: this.settingsForm.getRawValue() });
   }
 
-  /** Show the settings in force, and put them back in the form as unchanged. */
-  private showSettings(s: SheetSettings): void {
+  /** Show the settings in force, and put them back in the form as unchanged; after a save (`sent` the form as
+   * it was saved), a setting changed in the form since is left as it was typed. */
+  private showSettings(s: SheetSettings, sent?: SettingsFormValue): void {
     this.settings.set(s);
     this.floor.set(s.floor);
     this.terms.set(s.terms);
     this.latePct.set(s.latePct);
-    this.settingsForm.reset(
-      { clerkLimit: s.clerkLimit ?? '', floor: s.floor, terms: String(s.terms), latePct: s.latePct },
-      { emitEvent: false },
-    );
+    const shown: SettingsFormValue = {
+      clerkLimit: s.clerkLimit ?? '',
+      floor: s.floor,
+      terms: String(s.terms),
+      latePct: s.latePct,
+    };
+    const controls = this.settingsForm.controls;
+    for (const key of Object.keys(shown) as (keyof SettingsFormValue)[]) {
+      if (!sent || controls[key].value === sent[key]) controls[key].reset(shown[key], { emitEvent: false });
+    }
   }
 }

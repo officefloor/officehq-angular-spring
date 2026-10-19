@@ -50,14 +50,20 @@ export interface Lateness {
 const LATE_PERIOD_DAYS = 30;
 
 /** A settled claim's due is the figure it was settled at (its late charge frozen in); a claim bound by its
- * person's last statement has the figure it was bound to; any other has the figure due at the rate its grade
- * has now in force on the claim's date, and at least the sheet's floor (n/a when there is no rate). An
- * overdue claim's due adds its late charge to its figure. */
-export function claimDue(claim: Claim, rates: readonly Rate[], grade: Grade, floor: string, late: Lateness): string {
+ * person's last statement has the figure it was bound to; any other has the figure due at the rate `grade`, the
+ * one its person has on the claim's date, has now in force on that date, and at least the sheet's floor (n/a
+ * when there is no rate). An overdue claim's due adds its late charge to its figure. */
+export function claimDue(
+  claim: Claim,
+  rates: readonly Rate[],
+  grade: Grade | undefined,
+  floor: string,
+  late: Lateness,
+): string {
   if (claim.due !== null) return claim.due;
   const figure = claim.stated
     ? (claim.statedDue ?? NO_RATE)
-    : floored(dueOf(claim.amount, rateOn(rates, grade, claim.date)), floor);
+    : floored(dueOf(claim.amount, grade && rateOn(rates, grade, claim.date)), floor);
   if (figure === NO_RATE) return figure;
   return sumAmounts([figure, lateCharge(claim, figure, late)]);
 }
