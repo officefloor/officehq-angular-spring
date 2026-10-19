@@ -48,6 +48,12 @@ public class ClaimController {
         }
     }
 
+    /** The claims to open together, by id. */
+    public record OpenAllForm(@NotNull @Size(max = 1000) List<@NotNull Long> ids) {}
+
+    /** How many of the claims were opened and how many refused, and the opened claims as they are now. */
+    public record OpenedAllView(int opened, int refused, List<ClaimView> claims) {}
+
     private final ClaimService service;
 
     public ClaimController(ClaimService service) {
@@ -76,6 +82,14 @@ public class ClaimController {
     @PostMapping("/claims/{id}/open")
     public ClaimView open(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
         return ClaimView.of(service.changeStatus(user, sheetId, id, ClaimStatus.OPEN));
+    }
+
+    @PostMapping("/claims/open")
+    public OpenedAllView openAll(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @Valid @RequestBody OpenAllForm form) {
+        ClaimService.OpenedAll result = service.openAll(user, sheetId, form.ids());
+        return new OpenedAllView(result.opened(), result.refused(),
+                result.claims().stream().map(ClaimView::of).toList());
     }
 
     @PostMapping("/claims/{id}/settle")

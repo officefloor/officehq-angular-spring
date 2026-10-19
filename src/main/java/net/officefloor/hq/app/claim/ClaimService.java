@@ -2,8 +2,13 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
@@ -15,6 +20,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -27,9 +33,11 @@ public class ClaimService {
     private final PeriodService periods;
     private final SettingService settings;
     private final Audit audit;
+    private final TransactionTemplate transaction;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
-            PeriodService periods, SettingService settings, Audit audit) {
+            PeriodService periods, SettingService settings, Audit audit, TransactionTemplate transaction) {
+        this.transaction = transaction;
         this.claims = claims;
         this.people = people;
         this.rollup = rollup;
@@ -136,6 +144,36 @@ public class ClaimService {
         audit.recordOnCommit(entry);
         rollup.recordChanges(user, sheetId, before);
         return claim;
+    }
+
+    /** What opening claims together did: how many were opened and refused, and the opened claims. */
+    public record OpenedAll(int opened, int refused, List<Claim> claims) {}
+
+    /** Open the given claims of the sheet one at a time, in list order: people in the order they were added,
+     * each one's claims newest first. Each is opened, and numbered, as {@link #changeStatus} would open it on its
+     * own; one that cannot be opened (or is not on the sheet) is refused and left as it is. */
+    public OpenedAll openAll(String user, String sheetId, List<Long> ids) {
+        Set<Long> wanted = new HashSet<>(ids);
+        List<Claim> chosen = transaction.execute(status -> {
+            sheets.today(sheetId); // the sheet must exist
+            Map<Long, Integer> personOrder = new HashMap<>();
+            for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+                personOrder.put(person.getId(), personOrder.size());
+            }
+            return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                    .filter(c -> wanted.contains(c.getId()))
+                    .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
+                    .toList();
+        });
+        List<Claim> opened = new ArrayList<>();
+        for (Claim claim : chosen) {
+            try {
+                opened.add(transaction.execute(status -> changeStatus(user, sheetId, claim.getId(), ClaimStatus.OPEN)));
+            } catch (ResponseStatusException refused) {
+                // Left as it is: its transaction rolled back, writing nothing.
+            }
+        }
+        return new OpenedAll(opened.size(), wanted.size() - opened.size(), opened);
     }
 
     private static final Map<ClaimStatus, String> EVENTS = Map.of(

@@ -140,6 +140,13 @@ export interface ClaimForm {
   corrects: number | null;
 }
 
+/** What opening claims together did: how many were opened and refused, and the opened claims. */
+export interface OpenedAll {
+  opened: number;
+  refused: number;
+  claims: Claim[];
+}
+
 /** The sum of claim amounts with two decimals, added up in cents so no rounding creeps in. */
 export function sumAmounts(amounts: string[]): string {
   return fromHundredths(amounts.reduce((sum, a) => sum + hundredths(a), 0n));
@@ -167,6 +174,11 @@ export class ClaimsApi {
 
   changeStatus(sheetId: string, id: number, action: ClaimAction): Observable<Claim> {
     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() });
+  }
+
+  /** Open the claims together; each that cannot be opened is refused and left as it is. */
+  openAll(sheetId: string, ids: number[]): Observable<OpenedAll> {
+    return this.http.post<OpenedAll>(`${this.url(sheetId)}/claims/open`, { ids }, { headers: this.headers() });
   }
 
   private url(sheetId: string): string {

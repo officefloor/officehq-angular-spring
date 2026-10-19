@@ -54,6 +54,7 @@ const NUMBER = /^\d{1,9}$/;
         <caption class="visually-hidden">Claims by {{ personName() }}</caption>
         <thead>
           <tr>
+            <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">No.</th>
             <th scope="col">Amount</th>
             <th scope="col">Date</th>
@@ -72,6 +73,15 @@ const NUMBER = /^\d{1,9}$/;
         <tbody>
           @for (c of claims(); track c.id) {
             <tr [attr.data-testid]="'claim-row-' + c.id">
+              <td>
+                <input
+                  type="checkbox"
+                  data-testid="claim-select"
+                  [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date"
+                  [checked]="selected().has(c.id)"
+                  (change)="selectedChange.emit({ id: c.id, selected: $any($event.target).checked })"
+                />
+              </td>
               <td data-testid="claim-number">{{ c.number ?? '' }}</td>
               <td data-testid="claim-amount">{{ c.amount }}</td>
               <td data-testid="claim-date">{{ c.date }}</td>
@@ -139,8 +149,12 @@ export class Claims {
   readonly rates = input<readonly Rate[]>([]);
   /** The sheet's periods. */
   readonly periods = input<readonly Period[]>([]);
+  /** The ids of the claims selected to act on together. */
+  readonly selected = input<ReadonlySet<number>>(new Set());
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
+  /** A claim's select box was ticked or cleared. */
+  readonly selectedChange = output<{ id: number; selected: boolean }>();
 
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },

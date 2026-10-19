@@ -87,6 +87,16 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+      <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
+      @if (bulkOpenResult(); as r) {
+        <p role="status">
+          Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
+          refused <strong data-testid="bulk-refused">{{ r.refused }}</strong>
+        </p>
+      }
+      @if (bulkOpenError(); as e) {
+        <p role="alert" data-testid="bulk-open-error">{{ e }}</p>
+      }
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -137,7 +147,9 @@ import { Grade, PeopleApi, Person, gradeOn } from './people-api';
                   [grades]="p.grades"
                   [rates]="rates()"
                   [periods]="periods()"
+                  [selected]="selectedClaims()"
                   (saved)="claimSaved($event)"
+                  (selectedChange)="claimSelected($event.id, $event.selected)"
                 />
               </td>
               <td>
@@ -310,6 +322,13 @@ export class People {
     this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
   );
   protected readonly overdueTotal = computed(() => sumAmounts(this.people().map((p) => this.overdueTotalOf(p))));
+  /** The ids of the claims selected to open together. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** How many claims the last open of the selected ones opened and refused. */
+  protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkOpenError = signal<string | null>(null);
+  /** Whether an open of the selected claims is waiting on the server; another is ignored until it answers. */
+  private bulkOpening = false;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion: number | null = null;
@@ -365,6 +384,9 @@ export class People {
         this.periods.set(periods);
         this.claims.set(claims);
         this.rates.set(rates);
+        this.selectedClaims.set(new Set());
+        this.bulkOpenResult.set(null);
+        this.bulkOpenError.set(null);
         this.reset();
         loaded(id);
       });
@@ -483,6 +505,48 @@ export class People {
     this.claims.update((cs) =>
       cs.some((c) => c.id === claim.id) ? cs.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...cs],
     );
+  }
+
+  protected claimSelected(id: number, selected: boolean): void {
+    this.bulkOpenError.set(null);
+    this.selectedClaims.update((ids) => {
+      const next = new Set(ids);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Open the selected claims together; the server opens and numbers them in list order and leaves each one
+   * that cannot be opened as it is. */
+  protected openSelected(): void {
+    if (this.bulkOpening) return;
+    this.bulkOpenResult.set(null);
+    this.bulkOpenError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) {
+      this.bulkOpenError.set('Load a sheet first.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    if (ids.length === 0) {
+      this.bulkOpenError.set('Select the claims to open.');
+      return;
+    }
+    this.bulkOpening = true;
+    this.claimsApi.openAll(sheetId, ids).subscribe({
+      next: ({ opened, refused, claims }) => {
+        this.bulkOpening = false;
+        if (this.session.sheetId() !== sheetId) return;
+        for (const c of claims) this.claimSaved(c);
+        this.selectedClaims.set(new Set());
+        this.bulkOpenResult.set({ opened, refused });
+      },
+      error: (e: HttpErrorResponse) => {
+        this.bulkOpening = false;
+        this.bulkOpenError.set(e.status === 404 ? 'That sheet is no longer in the store.' : 'Could not open those claims.');
+      },
+    });
   }
 
   /** Take a statement for the person, then re-read the sheet's claims, which it binds or unbinds. */
