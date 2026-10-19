@@ -14,6 +14,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.rollup.RollupService.Snapshot;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -32,16 +34,18 @@ public class StatementService {
     private final PersonRepository people;
     private final RateRepository rates;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
-            PersonRepository people, RateRepository rates, SheetService sheets, Audit audit) {
+            PersonRepository people, RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
         this.statements = statements;
         this.claims = claims;
         this.claimService = claimService;
         this.people = people;
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -66,6 +70,7 @@ public class StatementService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         String grade = person.getGrade();
+        Snapshot before = rollup.snapshot(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean fixed = false;
         int counted = 0;
@@ -90,6 +95,7 @@ public class StatementService {
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + (dueTotal != null ? dueTotal.toPlainString() : "n/a")
                 + " claims=" + counted);
+        rollup.recordChanges(user, sheetId, before);
         return person;
     }
 

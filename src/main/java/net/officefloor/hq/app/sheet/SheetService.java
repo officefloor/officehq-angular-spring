@@ -2,6 +2,8 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.rollup.RollupService.Snapshot;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,9 +14,11 @@ import org.springframework.http.HttpStatus;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final RollupService rollup;
 
-    public SheetService(SheetRepository sheets) {
+    public SheetService(SheetRepository sheets, RollupService rollup) {
         this.sheets = sheets;
+        this.rollup = rollup;
     }
 
     /** The sheet with this id, re-read from the store; a sheet never loaded before starts empty. */
@@ -39,11 +43,14 @@ public class SheetService {
         return find(id).getToday();
     }
 
-    /** Change the sheet's today. */
+    /** Change the sheet's today; it writes no line of its own, only the figures it moves. */
     @Transactional
-    public Sheet setToday(String id, LocalDate today) {
+    public Sheet setToday(String user, String id, LocalDate today) {
         Sheet sheet = find(id);
+        Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
+        sheets.flush();
+        rollup.recordChanges(user, id, before);
         return sheet;
     }
 

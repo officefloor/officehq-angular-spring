@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.rollup.RollupService.Snapshot;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,11 +16,13 @@ public class RateService {
 
     private final RateRepository rates;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -37,6 +41,7 @@ public class RateService {
     public Rate set(String user, String sheetId, String grade, LocalDate from, BigDecimal pct) {
         sheets.today(sheetId); // the sheet must exist
         BigDecimal value = pct.setScale(2);
+        Snapshot before = rollup.snapshot(sheetId);
         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
         if (rate == null) {
             rate = rates.saveAndFlush(new Rate(sheetId, grade, from, value));
@@ -46,6 +51,7 @@ public class RateService {
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade
                 + " rate=" + value.toPlainString() + (from != null ? " from=" + from : ""));
+        rollup.recordChanges(user, sheetId, before);
         return rate;
     }
 }

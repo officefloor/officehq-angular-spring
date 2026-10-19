@@ -45,6 +45,6 @@ public class SheetController {
     @PutMapping("/{id}/today")
     public SheetView setToday(@RequestHeader("X-User") String user, @PathVariable String id,
             @Valid @RequestBody SetToday request) {
-        return SheetView.of(service.setToday(id, request.today()));
+        return SheetView.of(service.setToday(user, id, request.today()));
     }
 }

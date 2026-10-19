@@ -1,15 +1,14 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.rollup.RollupService.Snapshot;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,15 +20,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RollupService rollup;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
             Audit audit) {
         this.claims = claims;
         this.people = people;
-        this.rates = rates;
+        this.rollup = rollup;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -46,9 +45,11 @@ public class ClaimService {
     public Claim add(String user, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
         LocalDate today = sheets.today(sheetId);
         Person person = requirePerson(sheetId, personId);
+        Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.saveAndFlush(
                 new Claim(sheetId, personId, amount, date != null ? date : today, noteOf(note)));
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, claim));
+        rollup.recordChanges(user, sheetId, before);
         return claim;
     }
 
@@ -57,11 +58,13 @@ public class ClaimService {
         LocalDate today = sheets.today(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(date != null ? date : today);
         claim.setNote(noteOf(note));
         claims.flush();
         audit.recordOnCommit(entry("CLAIM_EDITED", user, requirePerson(sheetId, claim.getPersonId()), claim));
+        rollup.recordChanges(user, sheetId, before);
         return claim;
     }
 
@@ -83,6 +86,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The user who opened a claim cannot settle it.");
         }
         Person person = requirePerson(sheetId, claim.getPersonId());
+        Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
@@ -101,6 +105,7 @@ public class ClaimService {
         }
         claims.flush();
         audit.recordOnCommit(entry);
+        rollup.recordChanges(user, sheetId, before);
         return claim;
     }
 
@@ -112,19 +117,7 @@ public class ClaimService {
     /** The figure a claim has now: what it was settled at, else what its person's last statement bound it to,
      * else what is due at its grade's rate; none when that is n/a. */
     public BigDecimal figureOf(Claim claim, String grade) {
-        if (claim.getSettledDue() != null) {
-            return claim.getSettledDue();
-        }
-        return claim.isStated() ? claim.getStatedDue() : dueOf(claim, grade);
-    }
-
-    /** What is due on a claim at the rate its grade has in force on the claim's date, rounded half to even to two
-     * decimals; none when no rate of the grade applies then. */
-    private BigDecimal dueOf(Claim claim, String grade) {
-        BigDecimal amount = claim.getAmount();
-        return Rate.inForce(rates.findBySheetIdAndGrade(claim.getSheetId(), grade), claim.getDate())
-                .map(r -> amount.multiply(r.getRate()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                .orElse(null);
+        return rollup.figureOf(claim, grade);
     }
 
     private Person requirePerson(String sheetId, Long personId) {

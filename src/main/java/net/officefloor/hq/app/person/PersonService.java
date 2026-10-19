@@ -2,6 +2,8 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.rollup.RollupService.Snapshot;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -14,11 +16,13 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetRepository sheets, RollupService rollup, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -34,8 +38,10 @@ public class PersonService {
         requireSheet(sheetId);
         String trimmed = name.trim();
         requireNameFree(sheetId, trimmed, null);
+        Snapshot before = rollup.snapshot(sheetId);
         Person person = people.saveAndFlush(new Person(sheetId, trimmed, grade));
         audit.recordOnCommit(entry("PERSON_ADDED", user, person));
+        rollup.recordChanges(user, sheetId, before);
         return person;
     }
 
@@ -52,6 +58,7 @@ public class PersonService {
         }
         String trimmed = name.trim();
         requireNameFree(sheetId, trimmed, id);
+        Snapshot before = rollup.snapshot(sheetId);
         person.setName(trimmed);
         person.setGrade(grade);
         try {
@@ -60,6 +67,7 @@ public class PersonService {
             throw changedMeanwhile();
         }
         audit.recordOnCommit(entry("PERSON_EDITED", user, person));
+        rollup.recordChanges(user, sheetId, before);
         return person;
     }
 
