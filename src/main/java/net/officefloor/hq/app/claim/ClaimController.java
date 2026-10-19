@@ -33,7 +33,7 @@ public class ClaimController {
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             Integer number, String due, String openedBy, boolean stated, String statedDue) {
 
-        static ClaimView of(Claim claim) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2).toPlainString(), claim.getDate(), claim.getNote(), claim.getStatus(),
                     claim.getNumber(),

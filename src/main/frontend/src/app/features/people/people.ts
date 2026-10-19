@@ -44,6 +44,16 @@ import { Grade, PeopleApi, Person } from './people-api';
       @if (formError(); as e) {
         <p role="alert" data-testid="person-form-error">{{ e }}</p>
       }
+      <form [formGroup]="quickForm" (ngSubmit)="quickAdd()" data-testid="quick-add" aria-label="Quick add a claim">
+        <label for="quick-name">Name</label>
+        <input id="quick-name" data-testid="quick-name" formControlName="name" />
+        <label for="quick-amount">Amount</label>
+        <input id="quick-amount" data-testid="quick-amount" formControlName="amount" inputmode="decimal" />
+        <button type="submit" data-testid="quick-submit">Quick add</button>
+      </form>
+      @if (quickError(); as e) {
+        <p role="alert" data-testid="quick-error">{{ e }}</p>
+      }
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="people-list">
@@ -172,8 +182,17 @@ export class People {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
   });
 
+  /** Whether a quick-add is waiting on the server; another is ignored until it answers. */
+  private quickAdding = false;
+  protected readonly quickError = signal<string | null>(null);
+  protected readonly quickForm = new FormGroup({
+    name: new FormControl('', { nonNullable: true }),
+    amount: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.formError.set(null));
+    this.quickForm.valueChanges.subscribe(() => this.quickError.set(null));
     // Re-read the sheet's people and their claims from the store each time a sheet is loaded.
     toObservable(this.session.sheetId)
       .pipe(
@@ -251,6 +270,42 @@ export class People {
             message: e.status === 404 ? 'That person is no longer on this sheet.' : 'Could not take that statement.',
           }),
       });
+  }
+
+  /** Add a draft claim for the named person, who is added first when not on the sheet. */
+  protected quickAdd(): void {
+    if (this.quickAdding) return;
+    this.quickError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) {
+      this.quickError.set('Load a sheet first.');
+      return;
+    }
+    const value = this.quickForm.getRawValue();
+    if (!value.name.trim()) {
+      this.quickError.set('Type a name for the person.');
+      return;
+    }
+    this.quickAdding = true;
+    this.api.quickAdd(sheetId, value).subscribe({
+      next: ({ person, personCreated, claim }) => {
+        this.quickAdding = false;
+        if (this.session.sheetId() !== sheetId) return;
+        if (personCreated) this.people.update((ps) => [...ps, person]);
+        this.claimSaved(claim);
+        this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
+      },
+      error: (e: HttpErrorResponse) => {
+        this.quickAdding = false;
+        this.quickError.set(this.quickRefusal(e));
+      },
+    });
+  }
+
+  private quickRefusal(e: HttpErrorResponse): string {
+    if (e.status === 400) return 'Type a name and an amount of 0.00 or more, with up to two decimals.';
+    if (e.status === 423) return 'The sheet\'s today is in a closed period.';
+    return 'Could not add that claim.';
   }
 
   protected edit(person: Person): void {

@@ -35,7 +35,7 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate) {
 
-        static PersonView of(Person person, Map<Long, Summary> statements) {
+        public static PersonView of(Person person, Map<Long, Summary> statements) {
             Summary summary = statements.get(person.getId());
             Statement last = summary != null ? summary.last() : null;
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),

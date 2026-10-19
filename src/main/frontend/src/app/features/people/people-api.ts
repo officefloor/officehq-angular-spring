@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Session } from '../../core/session';
+import { Claim } from '../claims/claims-api';
 
 export type Grade = 'A' | 'B' | 'C';
 
@@ -26,6 +27,18 @@ export interface PersonForm {
   version?: number;
 }
 
+export interface QuickAddForm {
+  name: string;
+  amount: string;
+}
+
+/** What a quick-add stored: the claim, and its person, who is new when `personCreated`. */
+export interface QuickAdded {
+  person: Person;
+  personCreated: boolean;
+  claim: Claim;
+}
+
 // The people kept on the active sheet, read and changed through the server.
 @Injectable({ providedIn: 'root' })
 export class PeopleApi {
@@ -47,6 +60,13 @@ export class PeopleApi {
   /** Take a statement for the person. */
   statement(sheetId: string, id: number): Observable<Person> {
     return this.http.post<Person>(`${this.url(sheetId)}/${id}/statement`, null, { headers: this.headers() });
+  }
+
+  /** Add a draft claim for the named person, adding them with grade A first when not on the sheet. */
+  quickAdd(sheetId: string, form: QuickAddForm): Observable<QuickAdded> {
+    return this.http.post<QuickAdded>(`/api/sheets/${encodeURIComponent(sheetId)}/quick-add`, form, {
+      headers: this.headers(),
+    });
   }
 
   private url(sheetId: string): string {
