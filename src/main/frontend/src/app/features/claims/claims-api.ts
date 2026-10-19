@@ -2,6 +2,8 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Session } from '../../core/session';
+import { Grade } from '../people/people-api';
+import { Rate, dueOf, rateOn } from '../rates/rates-api';
 
 export interface Claim {
   id: number;
@@ -28,6 +30,12 @@ export type ClaimAction = 'open' | 'settle' | 'void';
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */
 export function counts(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'SETTLED';
+}
+
+/** A settled claim's due is the figure it was settled at; any other is due at the rate its grade has now
+ * in force on the claim's date (n/a when there is none). */
+export function claimDue(claim: Claim, rates: readonly Rate[], grade: Grade): string {
+  return claim.due ?? dueOf(claim.amount, rateOn(rates, grade, claim.date));
 }
 
 export interface ClaimForm {

@@ -2,9 +2,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { Rate, dueOf, rateOn } from '../rates/rates-api';
+import { Rate } from '../rates/rates-api';
 import { Grade } from '../people/people-api';
-import { Claim, ClaimAction, ClaimsApi } from './claims-api';
+import { Claim, ClaimAction, ClaimsApi, claimDue } from './claims-api';
 
 const AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -134,7 +134,7 @@ export class Claims {
   /** A settled claim shows the due it was settled at; any other is due at the rate its grade has now in
    * force on the claim's date. */
   protected due(claim: Claim): string {
-    return claim.due ?? dueOf(claim.amount, rateOn(this.rates(), this.grade(), claim.date));
+    return claimDue(claim, this.rates(), this.grade());
   }
 
   protected changeStatus(claim: Claim, action: ClaimAction): void {

@@ -103,12 +103,12 @@ public class ClaimService {
             ClaimStatus.SETTLED, "CLAIM_SETTLED",
             ClaimStatus.VOID, "CLAIM_VOIDED");
 
-    /** What is due on a claim at the rate its grade has in force on the claim's date, rounded half up to two
+    /** What is due on a claim at the rate its grade has in force on the claim's date, rounded half to even to two
      * decimals; none when no rate of the grade applies then. */
     private BigDecimal dueOf(Claim claim, String grade) {
         BigDecimal amount = claim.getAmount();
         return Rate.inForce(rates.findBySheetIdAndGrade(claim.getSheetId(), grade), claim.getDate())
-                .map(r -> amount.multiply(r.getRate()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                .map(r -> amount.multiply(r.getRate()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
                 .orElse(null);
     }
 

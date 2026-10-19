@@ -5,15 +5,15 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
-import { Claim, ClaimsApi, counts, sumAmounts } from '../claims/claims-api';
+import { Claim, ClaimsApi, claimDue, counts, sumAmounts } from '../claims/claims-api';
 import { Rates } from '../rates/rates';
-import { NO_RATE, Rate, RatesApi, dueOf, rateOn } from '../rates/rates-api';
+import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person } from './people-api';
 
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
-// claims, what they have claimed (its OPEN and SETTLED claims) and what is due on it at the rate their grade has in force
-// on the sheet's today; the sheet's
+// claims, what they have claimed (its OPEN and SETTLED claims) and what is due on it: the sum of those
+// claims' rounded dues; the sheet's
 // claimed-total and due-total add everyone's up (a due-total of n/a is skipped).
 @Component({
   selector: 'app-people',
@@ -154,9 +154,14 @@ export class People {
     return sumAmounts(this.claimsOf(personId).filter(counts).map((c) => c.amount));
   }
 
-  /** What is due on all the person has claimed, at the rate their grade has in force on the sheet's today. */
+  /** The sum of the dues of the claims the person has that count (n/a ones skipped), 0.00 with none. A
+   * person whose grade has no rate in force on the sheet's today shows n/a, unless a settled claim keeps a
+   * figure. */
   protected personDueTotal(person: Person): string {
-    return dueOf(this.claimed(person.id), this.rateByGrade().get(person.grade));
+    const counted = this.claimsOf(person.id).filter(counts);
+    const frozen = counted.some((c) => c.due !== null);
+    if (!this.rateByGrade().has(person.grade) && !frozen) return NO_RATE;
+    return sumAmounts(counted.map((c) => claimDue(c, this.rates(), person.grade)).filter((d) => d !== NO_RATE));
   }
 
   protected rateSaved(rate: Rate): void {
