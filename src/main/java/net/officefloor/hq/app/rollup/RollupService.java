@@ -207,6 +207,16 @@ public class RollupService {
                 roundsBy(claim));
     }
 
+    /** What would be due on a claim today as an OPEN claim bound by no statement: its live figure at the rate its
+     * grade has on its date, raised to the sheet's floor, plus the late charge it would have; none when that is
+     * n/a. Re-settling freezes a claim at this. */
+    public BigDecimal openDueOf(Claim claim, Person person) {
+        Lateness late = latenessOf(claim.getSheetId());
+        RoundingMode rounding = late.rounding(roundsBy(claim));
+        BigDecimal figure = liveDueOf(claim, gradeRates(claim, person), floorOf(claim.getSheetId()), rounding);
+        return figure == null ? null : figure.add(lateCharge(claim, true, figure, late, rounding));
+    }
+
     /** The date a claim's rounding goes by: a correction's is the date of the claim it corrects, any other's its
      * own. */
     private LocalDate roundsBy(Claim claim) {
@@ -275,7 +285,7 @@ public class RollupService {
             LocalDate roundsBy) {
         RoundingMode rounding = late.rounding(roundsBy);
         BigDecimal figure = figureOf(claim, gradeRates, floor, rounding);
-        return figure == null ? null : figure.add(lateCharge(claim, figure, late, rounding));
+        return figure == null ? null : figure.add(lateCharge(claim, claim.getStatus().isOpen(), figure, late, rounding));
     }
 
     /**
@@ -283,8 +293,9 @@ public class RollupService {
      * PENDING, and its due-by, fixed when it was added, before the sheet's today), rounded to two decimals as the claim rounds.
      * A statement never binds it: it follows the sheet's today. A correction has none.
      */
-    private static BigDecimal lateCharge(Claim claim, BigDecimal figure, Lateness late, RoundingMode rounding) {
-        if (!claim.getStatus().isOpen() || late.today() == null || claim.isCorrection()) {
+    private static BigDecimal lateCharge(Claim claim, boolean open, BigDecimal figure, Lateness late,
+            RoundingMode rounding) {
+        if (!open || late.today() == null || claim.isCorrection()) {
             return BigDecimal.ZERO.setScale(2);
         }
         long overdueDays = ChronoUnit.DAYS.between(claim.getDueBy(), late.today());

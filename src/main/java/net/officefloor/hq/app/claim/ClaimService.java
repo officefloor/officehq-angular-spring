@@ -177,6 +177,37 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward re-settles a SETTLED claim: it is frozen again at the figure it would have today as an OPEN
+     * claim bound by no statement, at today's rates, grades, floor and late charge. Refused for anyone else, a
+     * claim of any other status, or one dated in a closed period. */
+    @Transactional
+    public Claim resettle(String user, String sheetId, Long id) {
+        sheets.today(sheetId); // the sheet must exist
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        requireOpenPeriod(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a SETTLED claim can be re-settled.");
+        }
+        settings.requireSteward(sheetId, user);
+        Person person = requirePerson(sheetId, claim.getPersonId());
+        Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal old = rollup.dueOf(claim, person);
+        BigDecimal now = rollup.openDueOf(claim, person);
+        claim.setSettledDue(now);
+        logStatus(user, sheets.today(sheetId), claim, person);
+        claims.flush();
+        audit.recordOnCommit(entry("CLAIM_RESETTLED", user, person, claim) + " old=" + figure(old) + " new="
+                + figure(now));
+        rollup.recordChanges(user, sheetId, before);
+        return claim;
+    }
+
+    /** A figure with two decimals, or n/a. */
+    private static String figure(BigDecimal due) {
+        return due != null ? due.setScale(2).toPlainString() : "n/a";
+    }
+
     /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by its person's last
      * statement if that statement included it. */
     @Transactional

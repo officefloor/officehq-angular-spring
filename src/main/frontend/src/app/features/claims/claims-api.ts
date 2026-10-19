@@ -200,6 +200,12 @@ export class ClaimsApi {
     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reject`, { reason }, { headers: this.headers() });
   }
 
+  /** A steward re-settles a SETTLED claim at the figure it would have today as an open claim bound by no
+   * statement. */
+  resettle(sheetId: string, id: number): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/resettle`, {}, { headers: this.headers() });
+  }
+
   /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet; it is live again until their next
    * statement. */
   reassign(sheetId: string, id: number, personId: number): Observable<Claim> {

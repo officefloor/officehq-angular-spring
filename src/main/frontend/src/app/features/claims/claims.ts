@@ -137,6 +137,14 @@ const NUMBER = /^\S{1,255}$/;
                 >
                   Reject
                 </button>
+                <button
+                  type="button"
+                  data-testid="claim-resettle"
+                  [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date"
+                  (click)="resettle(c)"
+                >
+                  Re-settle
+                </button>
                 <label class="visually-hidden" [for]="'claim-reassign-to-' + c.id">Move to</label>
                 <select
                   [id]="'claim-reassign-to-' + c.id"
@@ -279,6 +287,32 @@ export class Claims {
               : e.status === 404
                 ? 'That claim is no longer on this sheet.'
                 : 'Could not change that claim\'s status.',
+        }),
+    });
+  }
+
+  /** Re-settle a SETTLED claim at the figure it would have today as an open claim bound by no statement. */
+  protected resettle(claim: Claim): void {
+    this.claimError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api.resettle(sheetId, claim.id).subscribe({
+      next: (c) => {
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 422
+              ? 'Only a steward can re-settle a claim.'
+              : e.status === 423
+              ? 'That claim is dated in a closed period.'
+              : e.status === 409
+              ? 'Only a settled claim can be re-settled.'
+              : e.status === 404
+                ? 'That claim is no longer on this sheet.'
+                : 'Could not re-settle that claim.',
         }),
     });
   }

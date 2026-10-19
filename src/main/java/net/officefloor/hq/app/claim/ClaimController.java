@@ -131,6 +131,12 @@ public class ClaimController {
         return ClaimView.of(service.approve(user, sheetId, id));
     }
 
+    @PostMapping("/claims/{id}/resettle")
+    public ClaimView resettle(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id) {
+        return ClaimView.of(service.resettle(user, sheetId, id));
+    }
+
     @PostMapping("/claims/{id}/reject")
     public ClaimView reject(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
             @Valid @RequestBody RejectForm form) {
