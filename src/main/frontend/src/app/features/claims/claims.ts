@@ -67,6 +67,7 @@ const NUMBER = /^\S{1,255}$/;
             <th scope="col">Status</th>
             <th scope="col">Opened by</th>
             <th scope="col">Corrects</th>
+            <th scope="col">Status log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -94,6 +95,13 @@ const NUMBER = /^\S{1,255}$/;
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
+              <td>
+                <ol data-testid="claim-log">
+                  @for (l of c.statusLog; track $index) {
+                    <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due }}</li>
+                  }
+                </ol>
+              </td>
               <td>
                 <button
                   type="button"

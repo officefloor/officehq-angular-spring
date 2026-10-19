@@ -72,6 +72,8 @@ public class ClaimService {
         Claim fresh = new Claim(sheetId, personId, amount, dated, dueBy, noteOf(note));
         fresh.setCorrects(corrected);
         Claim claim = claims.saveAndFlush(fresh);
+        logStatus(user, today, claim, person);
+        claims.flush();
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, claim));
         rollup.recordChanges(user, sheetId, before);
         return claim;
@@ -148,6 +150,7 @@ public class ClaimService {
             // while it is still OPEN) is frozen in.
             entry += settle(claim, due);
         }
+        logStatus(user, sheets.today(sheetId), claim, person);
         claims.flush();
         audit.recordOnCommit(entry);
         rollup.recordChanges(user, sheetId, before);
@@ -167,6 +170,7 @@ public class ClaimService {
         BigDecimal due = rollup.dueOf(claim, person);
         claim.setStatus(ClaimStatus.SETTLED);
         String entry = entry("CLAIM_APPROVED", user, person, claim) + settle(claim, due);
+        logStatus(user, sheets.today(sheetId), claim, person);
         claims.flush();
         audit.recordOnCommit(entry);
         rollup.recordChanges(user, sheetId, before);
@@ -181,6 +185,7 @@ public class ClaimService {
         Person person = requirePerson(sheetId, claim.getPersonId());
         Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
+        logStatus(user, sheets.today(sheetId), claim, person);
         claims.flush();
         audit.recordOnCommit(entry("CLAIM_REJECTED", user, person, claim) + " reason=" + reason.trim());
         rollup.recordChanges(user, sheetId, before);
@@ -236,6 +241,12 @@ public class ClaimService {
         }
         settings.requireSteward(sheetId, user);
         return claim;
+    }
+
+    /** Log the status a claim has now, by the user on the sheet's today, with its due as computed now. */
+    private void logStatus(String user, LocalDate today, Claim claim, Person person) {
+        BigDecimal due = rollup.dueOf(claim, person);
+        claim.logStatus(user, today, due != null ? due.setScale(2).toPlainString() : "n/a");
     }
 
     /** Fix a claim's due at the given figure (none stays live), giving the end of its audit line. */

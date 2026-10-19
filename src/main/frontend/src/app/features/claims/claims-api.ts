@@ -29,6 +29,17 @@ export interface Claim {
   corrects: string | null;
   /** The date (yyyy-mm-dd) the claim is due by, fixed when it was added from the terms of its person's grade. */
   dueBy: string;
+  /** The claim's status log, oldest first: one line per status it has had, from the DRAFT it was added as. */
+  statusLog: StatusLogLine[];
+}
+
+/** A line of a claim's status log: the status, who changed it, the sheet's today (yyyy-mm-dd) then, and the
+ * claim's due as computed at that moment, with two decimals or n/a. */
+export interface StatusLogLine {
+  status: ClaimStatus;
+  by: string;
+  on: string;
+  due: string;
 }
 
 /** Whether a claim is a correction: its amount is negative. */

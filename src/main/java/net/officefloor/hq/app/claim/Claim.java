@@ -1,15 +1,25 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 
 /** A claim a person makes on a sheet: an amount (negative for a correction), a date, a note, a status and, once opened, a number. */
 @Entity
@@ -67,6 +77,13 @@ public class Claim {
     /** The number of the settled claim of the same person a correction corrects; none for any other claim. */
     @Column(name = "corrects")
     private String corrects;
+
+    /** The claim's status log, oldest first: one line per status it has had, from the DRAFT it was added as. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<StatusLogLine> statusLog = new ArrayList<>();
 
     protected Claim() {}
 
@@ -186,5 +203,14 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+    }
+
+    public List<StatusLogLine> getStatusLog() {
+        return Collections.unmodifiableList(statusLog);
+    }
+
+    /** Add a line to the status log for the status the claim has now. */
+    public void logStatus(String by, LocalDate on, String due) {
+        statusLog.add(new StatusLogLine(status, by, on, due));
     }
 }

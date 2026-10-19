@@ -33,10 +33,10 @@ public class ClaimController {
     /** The amount is shown with two decimals; a claim has no number until it is opened, and no fixed due
      * until it is settled; it shows who opened it, if anyone did, and whether it is bound to the figure it had
      * at its person's last statement (none when that was n/a); a correction shows the number it corrects; and the
-     * date it is due by, fixed when it was added. */
+     * date it is due by, fixed when it was added; and its status log, oldest first. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String due, String openedBy, boolean stated, String statedDue,
-            String corrects, LocalDate dueBy) {
+            String corrects, LocalDate dueBy, List<StatusLogView> statusLog) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -45,7 +45,17 @@ public class ClaimController {
                     claim.getSettledDue() != null ? claim.getSettledDue().setScale(2).toPlainString() : null,
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().setScale(2).toPlainString() : null,
-                    claim.getCorrects(), claim.getDueBy());
+                    claim.getCorrects(), claim.getDueBy(),
+                    claim.getStatusLog().stream().map(StatusLogView::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then
+     * with two decimals, or n/a. */
+    public record StatusLogView(ClaimStatus status, String by, LocalDate on, String due) {
+
+        public static StatusLogView of(StatusLogLine line) {
+            return new StatusLogView(line.getStatus(), line.getBy(), line.getOn(), line.getDue());
         }
     }
 
