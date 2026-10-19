@@ -1,0 +1,104 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 4e18ddd7..8032c382 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -25,8 +25,8 @@ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+- * The sheet's figures as the screen shows them: each person's claimed and due-total (at most the sheet's cap),
+- * and the sheet's claimed-total and due-total. A change takes them before it alters anything and hands them back after, and
++ * The sheet's figures as the screen shows them: each person's claimed, due-total (at most the sheet's cap) and
++ * overdue-total, and the sheet's claimed-total, due-total and overdue-total. A change takes them before it alters anything and hands them back after, and
+  * every figure it moved is written to the audit after the change's own lines. Called within the change's
+  * transaction.
+  */
+@@ -37,10 +37,10 @@ public class RollupService {
+     private static final String NO_RATE = "n/a";
+ 
+     /** A person's figures, as the screen shows them. */
+-    public record Figures(String name, String claimed, String dueTotal) {}
++    public record Figures(String name, String claimed, String dueTotal, String overdueTotal) {}
+ 
+     /** The sheet's figures at one moment: each person's by id, in the order they were added, and the totals. */
+-    public record Snapshot(Map<Long, Figures> people, String claimedTotal, String dueTotal) {}
++    public record Snapshot(Map<Long, Figures> people, String claimedTotal, String dueTotal, String overdueTotal) {}
+ 
+     /** What a claim's late charge goes by: the sheet's today (none when there is no such sheet) and its late
+      * percent; and the date its rounding goes by, the policy date or else the sheet's today. */
+@@ -91,6 +91,7 @@ public class RollupService {
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
+         BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
++        BigDecimal overdueTotal = BigDecimal.ZERO.setScale(2);
+         Map<String, List<Rate>> byGrade = ratesByGrade(sheetId);
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+@@ -98,6 +99,7 @@ public class RollupService {
+                     .filter(c -> counts(c, person)).toList();
+             BigDecimal claimed = BigDecimal.ZERO.setScale(2);
+             BigDecimal due = BigDecimal.ZERO.setScale(2);
++            BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+             boolean frozen = false;
+             for (Claim claim : counted) {
+                 claimed = claimed.add(claim.getAmount().setScale(2));
+@@ -106,6 +108,9 @@ public class RollupService {
+                 frozen |= figure != null;
+                 if (figure != null) {
+                     due = due.add(figure.setScale(2));
++                    if (overdue(claim, today)) {
++                        overdue = overdue.add(figure.setScale(2));
++                    }
+                 }
+             }
+             // Like the screen: with no rate in force today and no claim having a figure (kept, or at a rate that
+@@ -119,9 +124,12 @@ public class RollupService {
+             if (rated || frozen) {
+                 dueTotal = dueTotal.add(due);
+             }
+-            figures.put(person.getId(), new Figures(person.getName(), claimed.toPlainString(), personDue));
++            overdueTotal = overdueTotal.add(overdue);
++            figures.put(person.getId(),
++                    new Figures(person.getName(), claimed.toPlainString(), personDue, overdue.toPlainString()));
+         }
+-        return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString());
++        return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString(),
++                overdueTotal.toPlainString());
+     }
+ 
+     /** A person's due-total held to the sheet's cap; none (n/a) is not capped. */
+@@ -169,16 +177,18 @@ public class RollupService {
+         for (Map.Entry<Long, Figures> e : after.people().entrySet()) {
+             Figures now = e.getValue();
+             Figures was = before.people().get(e.getKey());
+-            if (was != null && was.claimed().equals(now.claimed()) && was.dueTotal().equals(now.dueTotal())) {
++            if (was != null && was.claimed().equals(now.claimed()) && was.dueTotal().equals(now.dueTotal())
++                    && was.overdueTotal().equals(now.overdueTotal())) {
+                 continue;
+             }
+             audit.recordOnCommit("ROLLUP" + prefix + " person=" + now.name() + " claimed=" + now.claimed()
+-                    + " due-total=" + now.dueTotal());
++                    + " due-total=" + now.dueTotal() + " overdue-total=" + now.overdueTotal());
+         }
+         if (!Objects.equals(before.claimedTotal(), after.claimedTotal())
+-                || !Objects.equals(before.dueTotal(), after.dueTotal())) {
++                || !Objects.equals(before.dueTotal(), after.dueTotal())
++                || !Objects.equals(before.overdueTotal(), after.overdueTotal())) {
+             audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + after.claimedTotal()
+-                    + " due-total=" + after.dueTotal());
++                    + " due-total=" + after.dueTotal() + " overdue-total=" + after.overdueTotal());
+         }
+     }
+ 
+@@ -316,6 +326,11 @@ public class RollupService {
+         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+     }
+ 
++    /** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
++    private static boolean overdue(Claim claim, LocalDate today) {
++        return claim.getStatus().isOpen() && today != null && claim.getDueBy().isBefore(today);
++    }
++
+     /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; an OPEN or PENDING one dated
+      * within one of its person's holds does not, unless it is bound by a statement. */
+     public static boolean counts(Claim claim, Person person) {
