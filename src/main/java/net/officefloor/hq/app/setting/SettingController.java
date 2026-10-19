@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,7 +43,8 @@ public class SettingController {
      * blank means the grade uses the sheet's terms. The late percent has up to two
      * decimals, 0.00 or more. The policy date is a date (yyyy-mm-dd); blank means the sheet's today. The period numbering date is a date; blank means
      * off. The cap has up to two decimals, 0.00 or more; blank means no cap. A setting
-     * left out (null) is left as it is. */
+     * left out (null) is left as it is. Each setting that carries a figure has a from-date (yyyy-mm-dd) its value
+     * is recorded from; blank or left out means the sheet's today. */
     public record SettingsForm(@Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit,
             @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String floor,
             @Pattern(regexp = "\\d{1,5}") String terms,
@@ -52,26 +54,64 @@ public class SettingController {
             @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String latePct,
             @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String policyDate,
             @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String periodNumberingFrom,
-            @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String cap) {}
+            @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String cap,
+            @Pattern(regexp = DATE) String clerkLimitFrom,
+            @Pattern(regexp = DATE) String floorFrom,
+            @Pattern(regexp = DATE) String termsFrom,
+            @Pattern(regexp = DATE) String termsAFrom,
+            @Pattern(regexp = DATE) String termsBFrom,
+            @Pattern(regexp = DATE) String termsCFrom,
+            @Pattern(regexp = DATE) String latePctFrom,
+            @Pattern(regexp = DATE) String capFrom) {}
+
+    /** A from-date as typed: blank, or yyyy-mm-dd. */
+    private static final String DATE = "|\\d{4}-\\d{2}-\\d{2}";
+
+    /** A value a dated setting has from a from-date (null for the beginning of time); the value as the setting
+     * shows it, null for none. */
+    public record DatedView(String from, String value) {}
 
     /** The clerk limit and floor are shown with two decimals; the clerk limit is null when there is none. The
      * terms are the days after its date a claim is due by; each grade's terms are null when it uses the sheet's. The late percent is shown with two decimals. The policy date is null when there is none (the sheet's
      * today is used). The period numbering date is null when it is off. The cap is shown with two decimals,
-     * null when there is none. */
+     * null when there is none. Each of these that carries a figure is the value in force on the sheet's today;
+     * {@code dated} has, by key, every value recorded for it by from-date. */
     public record SettingsView(String clerkLimit, String floor, int terms, Integer termsA, Integer termsB,
-            Integer termsC, String latePct, String policyDate, String periodNumberingFrom, String cap) {
+            Integer termsC, String latePct, String policyDate, String periodNumberingFrom, String cap,
+            Map<String, List<DatedView>> dated) {
 
-        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, Integer termsA, Integer termsB,
-                Integer termsC, BigDecimal latePct, LocalDate policyDate, LocalDate periodNumberingFrom,
-                BigDecimal cap) {
+        static SettingsView of(Sheet sheet) {
+            BigDecimal clerkLimit = sheet.getClerkLimit();
+            BigDecimal cap = sheet.getCap();
+            Map<String, List<DatedView>> dated = new LinkedHashMap<>();
+            for (String key : List.of(Sheet.CLERK_LIMIT, Sheet.FLOOR, Sheet.TERMS, Sheet.LATE_PCT, Sheet.CAP)) {
+                dated.put(key, history(sheet, key, !key.equals(Sheet.TERMS)));
+            }
+            for (String grade : GRADES) {
+                dated.put(Sheet.gradeTermsKey(grade), history(sheet, Sheet.gradeTermsKey(grade), false));
+            }
             return new SettingsView(clerkLimit != null ? clerkLimit.setScale(2).toPlainString() : null,
-                    floor.setScale(2).toPlainString(), terms, termsA, termsB, termsC,
-                    latePct.setScale(2).toPlainString(),
-                    policyDate != null ? policyDate.toString() : null,
-                    periodNumberingFrom != null ? periodNumberingFrom.toString() : null,
-                    cap != null ? cap.setScale(2).toPlainString() : null);
+                    sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getGradeTerms("A"),
+                    sheet.getGradeTerms("B"), sheet.getGradeTerms("C"), sheet.getLatePct().toPlainString(),
+                    sheet.getPolicyDate() != null ? sheet.getPolicyDate().toString() : null,
+                    sheet.getPeriodNumberingFrom() != null ? sheet.getPeriodNumberingFrom().toString() : null,
+                    cap != null ? cap.setScale(2).toPlainString() : null, dated);
+        }
+
+        /** The values recorded for a key by from-date, shown with two decimals when {@code amount}, else as whole
+         * days. */
+        private static List<DatedView> history(Sheet sheet, String key, boolean amount) {
+            return sheet.history(key).stream()
+                    .map(d -> new DatedView(d.getFrom() != null ? d.getFrom().toString() : null,
+                            d.getValue() == null ? null
+                                    : amount ? d.getValue().setScale(2).toPlainString()
+                                            : String.valueOf(d.getValue().intValue())))
+                    .toList();
         }
     }
+
+    /** The grades that can have terms of their own. */
+    private static final List<String> GRADES = List.of("A", "B", "C");
 
     private final SettingService service;
 
@@ -108,15 +148,35 @@ public class SettingController {
                 "A period numbering date is a date, or blank.");
         service.save(user, sheetId, clerkLimit, form.floor() == null ? null : new BigDecimal(form.floor()),
                 form.terms() == null ? null : Integer.valueOf(form.terms()), gradeTerms(form),
-                form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom, cap);
+                form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom, cap,
+                froms(form));
         return view(sheetId);
     }
 
     private SettingsView view(String sheetId) {
-        return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
-                service.gradeTerms(sheetId, "A"), service.gradeTerms(sheetId, "B"), service.gradeTerms(sheetId, "C"),
-                service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
-                service.cap(sheetId));
+        return SettingsView.of(service.sheet(sheetId));
+    }
+
+    /** The from-dates given, by the key of their setting; a setting without one is recorded from the sheet's
+     * today. */
+    private static Map<String, LocalDate> froms(SettingsForm form) {
+        Map<String, String> typed = new LinkedHashMap<>();
+        typed.put(Sheet.CLERK_LIMIT, form.clerkLimitFrom());
+        typed.put(Sheet.FLOOR, form.floorFrom());
+        typed.put(Sheet.TERMS, form.termsFrom());
+        typed.put(Sheet.gradeTermsKey("A"), form.termsAFrom());
+        typed.put(Sheet.gradeTermsKey("B"), form.termsBFrom());
+        typed.put(Sheet.gradeTermsKey("C"), form.termsCFrom());
+        typed.put(Sheet.LATE_PCT, form.latePctFrom());
+        typed.put(Sheet.CAP, form.capFrom());
+        Map<String, LocalDate> froms = new LinkedHashMap<>();
+        typed.forEach((key, from) -> {
+            Optional<LocalDate> date = dateOrBlank(from, "A from-date is a date, or blank.");
+            if (date != null && date.isPresent()) {
+                froms.put(key, date.get());
+            }
+        });
+        return froms;
     }
 
     /** The grades' terms given, in grade order: empty when blank (the grade uses the sheet's terms); a grade

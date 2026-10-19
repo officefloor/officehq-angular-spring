@@ -184,7 +184,7 @@ export class Claims {
   /** What a late charge goes by: the sheet's today and late percent; and the policy date rounding goes by. */
   private readonly late = computed<Lateness>(() => ({
     today: this.session.today(),
-    latePct: this.latePct.value(),
+    latePct: this.latePct.on(),
     policyDate: this.policyDate.value() ?? this.session.today(),
   }));
 
@@ -248,7 +248,7 @@ export class Claims {
    * the claim's date has now in force on that date, and at least the sheet's floor, plus its late charge when
    * overdue. */
   protected due(claim: Claim): string {
-    return claimDue(claim, this.rates(), gradeOn(this.grades(), claim.date), this.floor.value(), this.late(),
+    return claimDue(claim, this.rates(), gradeOn(this.grades(), claim.date), this.floor.on(), this.late(),
       roundsBy(claim, this.claims()));
   }
 

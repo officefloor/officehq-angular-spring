@@ -1,9 +1,10 @@
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Subject, catchError, concatMap, forkJoin, map, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
-import { ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
+import { DATED_KEYS, DatedKey, ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
+import { valueOn } from './dated';
 import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
 import { SheetCap } from './sheet-cap';
@@ -14,6 +15,19 @@ const DEFAULT_TERMS = 14;
 /** The grades that can have terms of their own. */
 const GRADES = ['A', 'B', 'C'] as const;
 type GradeTermsKey = `terms${(typeof GRADES)[number]}`;
+/** The settings in the form that carry a figure, each saved from a from-date, by the key the sheet keeps them by. */
+const DATED_FIELDS = {
+  clerkLimit: 'clerk-limit',
+  floor: 'floor',
+  terms: 'terms',
+  termsA: 'terms-A',
+  termsB: 'terms-B',
+  termsC: 'terms-C',
+  latePct: 'late-pct',
+  cap: 'cap',
+} as const satisfies Record<string, DatedKey>;
+type DatedField = keyof typeof DATED_FIELDS;
+type FromField = `${DatedField}From`;
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
@@ -42,6 +56,7 @@ const NO_SETTINGS: SheetSettings = {
   policyDate: null,
   periodNumberingFrom: null,
   cap: null,
+  dated: Object.fromEntries(DATED_KEYS.map((k) => [k, []])) as unknown as SheetSettings['dated'],
 };
 
 // The sheet's settings: the role each user name has (clerk unless given another) with the form that
@@ -51,8 +66,9 @@ const NO_SETTINGS: SheetSettings = {
 // percent, what an overdue claim gains of its figure for every full 30 days overdue, and the policy date (blank
 // for the sheet's today), before which a claim's date rounds half up, on or after half to even, and the period
 // numbering date (blank for off), from which a claim opened is numbered within its period, and the cap (blank
-// for none), the most a person's due-total comes to. Saving sends
-// only the settings changed in the form (the clerk limit when none was).
+// for none), the most a person's due-total comes to. The settings that carry a figure are dated: each is saved
+// from its from-date (blank for the sheet's today), and the value in force on the sheet's today is shown. Saving
+// sends only the settings changed in the form (the clerk limit when none was).
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -67,10 +83,16 @@ const NO_SETTINGS: SheetSettings = {
           inputmode="decimal"
           formControlName="clerkLimit"
         />
+        <label for="setting-clerk-limit-from">Clerk limit from (yyyy-mm-dd, blank for the sheet's today)</label>
+        <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" formControlName="clerkLimitFrom" />
         <label for="setting-floor">Floor</label>
         <input id="setting-floor" data-testid="setting-floor" inputmode="decimal" formControlName="floor" />
+        <label for="setting-floor-from">Floor from (yyyy-mm-dd, blank for the sheet's today)</label>
+        <input id="setting-floor-from" data-testid="setting-floor-from" formControlName="floorFrom" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" inputmode="numeric" formControlName="terms" />
+        <label for="setting-terms-from">Terms from (yyyy-mm-dd, blank for the sheet's today)</label>
+        <input id="setting-terms-from" data-testid="setting-terms-from" formControlName="termsFrom" />
         @for (g of grades; track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days, blank for the sheet's)</label>
           <input
@@ -79,9 +101,17 @@ const NO_SETTINGS: SheetSettings = {
             inputmode="numeric"
             [formControlName]="'terms' + g"
           />
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from (yyyy-mm-dd, blank for the sheet's today)</label>
+          <input
+            [id]="'setting-terms-' + g + '-from'"
+            [attr.data-testid]="'setting-terms-' + g + '-from'"
+            [formControlName]="'terms' + g + 'From'"
+          />
         }
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" inputmode="decimal" formControlName="latePct" />
+        <label for="setting-late-pct-from">Late percent from (yyyy-mm-dd, blank for the sheet's today)</label>
+        <input id="setting-late-pct-from" data-testid="setting-late-pct-from" formControlName="latePctFrom" />
         <label for="setting-policy-date">Policy date (yyyy-mm-dd, blank for the sheet's today)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" />
         <label for="setting-period-numbering-from">Period numbering from (yyyy-mm-dd, blank for off)</label>
@@ -92,6 +122,8 @@ const NO_SETTINGS: SheetSettings = {
         />
         <label for="setting-cap">Cap (blank for none)</label>
         <input id="setting-cap" data-testid="setting-cap" inputmode="decimal" formControlName="cap" />
+        <label for="setting-cap-from">Cap from (yyyy-mm-dd, blank for the sheet's today)</label>
+        <input id="setting-cap-from" data-testid="setting-cap-from" formControlName="capFrom" />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as e) {
@@ -99,25 +131,25 @@ const NO_SETTINGS: SheetSettings = {
       }
       <p>
         Clerk limit in force:
-        <span data-testid="setting-clerk-limit-current">{{ settings().clerkLimit ?? '' }}</span>
+        <span data-testid="setting-clerk-limit-current">{{ inForce().clerkLimit ?? '' }}</span>
       </p>
       <p>
         Floor in force:
-        <span data-testid="setting-floor-current">{{ settings().floor }}</span>
+        <span data-testid="setting-floor-current">{{ inForce().floor }}</span>
       </p>
       <p>
         Terms in force:
-        <span data-testid="setting-terms-current">{{ settings().terms }}</span>
+        <span data-testid="setting-terms-current">{{ inForce().terms }}</span>
       </p>
       @for (g of grades; track g) {
         <p>
           Terms for grade {{ g }} in force:
-          <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ settings()[gradeKey(g)] ?? '' }}</span>
+          <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ inForce()[gradeKey(g)] ?? '' }}</span>
         </p>
       }
       <p>
         Late percent in force:
-        <span data-testid="setting-late-pct-current">{{ settings().latePct }}</span>
+        <span data-testid="setting-late-pct-current">{{ inForce().latePct }}</span>
       </p>
       <p>
         Policy date in force:
@@ -129,7 +161,7 @@ const NO_SETTINGS: SheetSettings = {
       </p>
       <p>
         Cap in force:
-        <span data-testid="setting-cap-current">{{ settings().cap ?? '' }}</span>
+        <span data-testid="setting-cap-current">{{ inForce().cap ?? '' }}</span>
       </p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" data-testid="role-form">
         <label for="role-form-user">User</label>
@@ -173,14 +205,34 @@ export class Settings {
   protected readonly grades = GRADES;
   protected readonly roles = signal<RoleGiven[]>([]);
   protected readonly settings = signal<SheetSettings>(NO_SETTINGS);
+  /** The value each setting that carries a figure has in force on the sheet's today. */
+  protected readonly inForce = computed(() => {
+    const s = this.settings();
+    const today = this.session.today();
+    const on = (key: DatedKey, starting: string | null) => (today === null ? starting : valueOn(s.dated[key], today, starting));
+    return {
+      clerkLimit: on('clerk-limit', null),
+      floor: on('floor', DEFAULT_FLOOR),
+      terms: on('terms', String(DEFAULT_TERMS)),
+      termsA: on('terms-A', null),
+      termsB: on('terms-B', null),
+      termsC: on('terms-C', null),
+      latePct: on('late-pct', DEFAULT_LATE_PCT),
+      cap: on('cap', null),
+    };
+  });
   protected readonly roleError = signal<string | null>(null);
   protected readonly settingsError = signal<string | null>(null);
   private readonly busy = signal(false);
   /** The setting a person went into last; the clerk limit until they go into one. */
-  private lastField: keyof SettingsFormValue = 'clerkLimit';
+  private lastField: keyof SettingsFormValue | FromField = 'clerkLimit';
   /** Settings saves, sent one after another in the order they were made, so none is lost while another is
    * waiting on the server. */
-  private readonly saves = new Subject<{ sheetId: string; changed: Parameters<SettingsApi['save']>[1]; sent: SettingsFormValue }>();
+  private readonly saves = new Subject<{
+    sheetId: string;
+    changed: Parameters<SettingsApi['save']>[1];
+    sent: SettingsFormValue & Record<FromField, string>;
+  }>();
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
@@ -196,6 +248,14 @@ export class Settings {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
+    clerkLimitFrom: new FormControl('', { nonNullable: true }),
+    floorFrom: new FormControl('', { nonNullable: true }),
+    termsFrom: new FormControl('', { nonNullable: true }),
+    termsAFrom: new FormControl('', { nonNullable: true }),
+    termsBFrom: new FormControl('', { nonNullable: true }),
+    termsCFrom: new FormControl('', { nonNullable: true }),
+    latePctFrom: new FormControl('', { nonNullable: true }),
+    capFrom: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -281,7 +341,7 @@ export class Settings {
   /** Note the setting a person went into last: a save with nothing changed saves that one again. */
   protected focused(event: FocusEvent): void {
     const name = (event.target as Element | null)?.getAttribute('formcontrolname');
-    if (name && name in this.settingsForm.controls) this.lastField = name as keyof SettingsFormValue;
+    if (name && name in this.settingsForm.controls) this.lastField = name as keyof SettingsFormValue | FromField;
   }
 
   protected save(): void {
@@ -294,7 +354,11 @@ export class Settings {
     const controls = this.settingsForm.controls;
     // With nothing changed, the setting last gone into is saved again as it is.
     const unchanged = !this.settingsForm.dirty;
-    const send = (key: keyof SettingsFormValue) => controls[key].dirty || (unchanged && this.lastField === key);
+    // A setting that carries a figure is sent too when a from-date is typed for it, or it was last gone into.
+    const fromOf = (key: keyof SettingsFormValue) =>
+      key in DATED_FIELDS ? controls[`${key as DatedField}From`].value.trim() : '';
+    const send = (key: keyof SettingsFormValue) =>
+      controls[key].dirty || fromOf(key) !== '' || (unchanged && (this.lastField === key || this.lastField === `${key}From`));
     const clerkLimit = controls.clerkLimit.value.trim();
     const floor = controls.floor.value.trim();
     const terms = controls.terms.value.trim();
@@ -352,6 +416,16 @@ export class Settings {
       this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const froms: Partial<Record<FromField, string>> = {};
+    for (const key of Object.keys(DATED_FIELDS) as DatedField[]) {
+      const from = fromOf(key);
+      if (!send(key) || from === '') continue;
+      if (!(DATE.test(from) && !isNaN(Date.parse(from)))) {
+        this.settingsError.set('Type a from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+        return;
+      }
+      froms[`${key}From`] = from;
+    }
     const changed = {
       ...(sendLimit ? { clerkLimit } : {}),
       ...(sendFloor ? { floor } : {}),
@@ -361,18 +435,19 @@ export class Settings {
       ...(sendPolicyDate ? { policyDate } : {}),
       ...(sendPeriodNumbering ? { periodNumberingFrom } : {}),
       ...(sendCap ? { cap } : {}),
+      ...froms,
     };
     this.saves.next({ sheetId, changed, sent: this.settingsForm.getRawValue() });
   }
 
   /** Show the settings in force, and put them back in the form as unchanged; after a save (`sent` the form as
    * it was saved), a setting changed in the form since is left as it was typed. */
-  private showSettings(s: SheetSettings, sent?: SettingsFormValue): void {
+  private showSettings(s: SheetSettings, sent?: SettingsFormValue & Record<FromField, string>): void {
     this.settings.set(s);
-    this.floor.set(s.floor);
-    this.latePct.set(s.latePct);
+    this.floor.set(s.dated.floor);
+    this.latePct.set(s.dated['late-pct']);
     this.policyDate.set(s.policyDate);
-    this.cap.set(s.cap);
+    this.cap.set(s.dated.cap);
     const shown: SettingsFormValue = {
       clerkLimit: s.clerkLimit ?? '',
       floor: s.floor,
@@ -388,6 +463,11 @@ export class Settings {
     const controls = this.settingsForm.controls;
     for (const key of Object.keys(shown) as (keyof SettingsFormValue)[]) {
       if (!sent || controls[key].value === sent[key]) controls[key].reset(shown[key], { emitEvent: false });
+    }
+    // A from-date goes with the save it was typed for: it is cleared, unless typed again since.
+    for (const key of Object.keys(DATED_FIELDS) as DatedField[]) {
+      const from = controls[`${key}From`];
+      if (!sent || from.value === sent[`${key}From`]) from.reset('', { emitEvent: false });
     }
   }
 }

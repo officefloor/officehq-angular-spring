@@ -67,8 +67,8 @@ public class ClaimService {
         String corrected = correctedBy(sheetId, personId, amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : today;
-        // The due-by is fixed now, from the terms in force for the grade the person has on the claim's date.
-        LocalDate dueBy = dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated)));
+        // The due-by is fixed now, from the terms in force on the claim's date for the grade the person has then.
+        LocalDate dueBy = dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated), dated));
         Claim fresh = new Claim(sheetId, personId, amount, dated, dueBy, noteOf(note));
         fresh.setCorrects(corrected);
         Claim claim = claims.saveAndFlush(fresh);

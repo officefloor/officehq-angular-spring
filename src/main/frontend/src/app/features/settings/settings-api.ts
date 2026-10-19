@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Session } from '../../core/session';
+import { Dated } from './dated';
 
 /** The roles a user name can have on a sheet; any name without one is a clerk. */
 export const ROLES = ['clerk', 'steward'] as const;
@@ -12,6 +13,12 @@ export interface RoleGiven {
   role: Role;
 }
 
+/** The keys of the settings that carry a figure, each dated. */
+export const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap'] as const;
+export type DatedKey = (typeof DATED_KEYS)[number];
+
+/** The settings in force on the sheet's today; `dated` has, for each setting that carries a figure, every value
+ * recorded for it by from-date. */
 export interface Settings {
   /** The highest due a clerk may settle, with two decimals; null for no limit. */
   clerkLimit: string | null;
@@ -33,9 +40,10 @@ export interface Settings {
   periodNumberingFrom: string | null;
   /** The most a person's due-total comes to, with two decimals; null for none. */
   cap: string | null;
+  dated: Record<DatedKey, Dated[]>;
 }
 
-// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date and its cap, read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date and its cap (those that carry a figure dated), read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -54,11 +62,14 @@ export class SettingsApi {
     return this.http.get<Settings>(`${this.url(sheetId)}/settings`, { headers: this.headers() });
   }
 
-  /** Save the settings given; one left out is left as it is. */
+  /** Save the settings given; one left out is left as it is. A setting that carries a figure is recorded from
+   * its from-date (`floorFrom` and so on), or from the sheet's today when none is given. */
   save(
     sheetId: string,
     settings: { clerkLimit?: string; floor?: string; terms?: string; termsA?: string; termsB?: string;
-      termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string; },
+      termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string;
+      clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
+      termsCFrom?: string; latePctFrom?: string; capFrom?: string; },
   ): Observable<Settings> {
     return this.http.put<Settings>(`${this.url(sheetId)}/settings`, settings, { headers: this.headers() });
   }

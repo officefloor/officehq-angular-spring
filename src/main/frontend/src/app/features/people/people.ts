@@ -296,7 +296,7 @@ export class People {
   /** What a late charge goes by: the sheet's today and late percent; and the policy date rounding goes by. */
   private readonly late = computed<Lateness>(() => ({
     today: this.session.today(),
-    latePct: this.latePct.value(),
+    latePct: this.latePct.on(),
     policyDate: this.policyDate.value() ?? this.session.today(),
   }));
 
@@ -487,7 +487,7 @@ export class People {
 
   /** What is due on a claim of the person's, at the grade they have on the claim's date. */
   private claimDue(claim: Claim, person: Person): string {
-    return claimDue(claim, this.rates(), gradeOn(person.grades, claim.date), this.floor.value(), this.late(),
+    return claimDue(claim, this.rates(), gradeOn(person.grades, claim.date), this.floor.on(), this.late(),
       roundsBy(claim, this.claimsOf(person.id)));
   }
 
