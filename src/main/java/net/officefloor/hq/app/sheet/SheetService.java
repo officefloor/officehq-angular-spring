@@ -1,9 +1,12 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @Service
 public class SheetService {
@@ -25,5 +28,27 @@ public class SheetService {
                 return sheets.findById(id).orElseThrow(() -> e);
             }
         });
+    }
+
+    /**
+     * The sheet's today. Every feature that decides by the date, or defaults a date, asks this
+     * rather than the real clock.
+     */
+    @Transactional(readOnly = true)
+    public LocalDate today(String id) {
+        return find(id).getToday();
+    }
+
+    /** Change the sheet's today. */
+    @Transactional
+    public Sheet setToday(String id, LocalDate today) {
+        Sheet sheet = find(id);
+        sheet.setToday(today);
+        return sheet;
+    }
+
+    private Sheet find(String id) {
+        return sheets.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
     }
 }

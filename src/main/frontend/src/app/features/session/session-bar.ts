@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 
 // Sign in by name (no password), then load a sheet by id. Shows the signed-in name and the
-// active sheet id.
+// active sheet id, and the sheet's today, which can be changed here.
 @Component({
   selector: 'app-session-bar',
   imports: [ReactiveFormsModule],
@@ -24,6 +24,24 @@ import { Session } from '../../core/session';
         <p>
           Sheet: <strong data-testid="sheet-current-id">{{ session.sheetId() ?? '' }}</strong>
         </p>
+        @if (session.sheetId()) {
+          <p>
+            Today: <strong data-testid="sheet-today">{{ session.today() ?? '' }}</strong>
+          </p>
+          <form [formGroup]="todayForm" (ngSubmit)="saveToday()">
+            <label for="sheet-today-input">Sheet today</label>
+            <input
+              id="sheet-today-input"
+              type="date"
+              data-testid="sheet-today-input"
+              formControlName="today"
+            />
+            <button type="submit" data-testid="sheet-today-save">Set today</button>
+          </form>
+          @if (todayError(); as e) {
+            <p role="alert" data-testid="sheet-error">{{ e }}</p>
+          }
+        }
       } @else {
         <form [formGroup]="signInForm" (ngSubmit)="signIn()">
           <label for="signin-name">Your name</label>
@@ -43,10 +61,13 @@ export class SessionBar {
   protected readonly sheetForm = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
   protected readonly signInError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
+  protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
+  protected readonly todayError = signal<string | null>(null);
 
   constructor() {
     this.signInForm.valueChanges.subscribe(() => this.signInError.set(null));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
+    this.todayForm.valueChanges.subscribe(() => this.todayError.set(null));
   }
 
   protected signIn(): void {
@@ -68,8 +89,22 @@ export class SessionBar {
       this.sheetError.set('Type a sheet id without spaces.');
       return;
     }
+    this.todayError.set(null);
     this.session.loadSheet(id).subscribe({
+      next: () => this.todayForm.setValue({ today: this.session.today() ?? '' }, { emitEvent: false }),
       error: () => this.sheetError.set('Could not load that sheet.'),
+    });
+  }
+
+  protected saveToday(): void {
+    this.todayError.set(null);
+    const today = this.todayForm.getRawValue().today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+      this.todayError.set('Pick a date for today.');
+      return;
+    }
+    this.session.setToday(today).subscribe({
+      error: () => this.todayError.set('Could not change the sheet\'s today.'),
     });
   }
 }
