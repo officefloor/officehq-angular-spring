@@ -8,7 +8,9 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,27 +38,32 @@ public class SettingController {
     }
 
     /** The clerk limit has up to two decimals, 0.00 or more; blank means no limit. The floor has up to two
-     * decimals, 0.00 or more. The terms are a whole number of days, 0 or more. The late percent has up to two
+     * decimals, 0.00 or more. The terms are a whole number of days, 0 or more; so are each grade's terms, where
+     * blank means the grade uses the sheet's terms. The late percent has up to two
      * decimals, 0.00 or more. The policy date is a date (yyyy-mm-dd); blank means the sheet's today. The period numbering date is a date; blank means
      * off. A setting
      * left out (null) is left as it is. */
     public record SettingsForm(@Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit,
             @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String floor,
             @Pattern(regexp = "\\d{1,5}") String terms,
+            @Pattern(regexp = "|\\d{1,5}") String termsA,
+            @Pattern(regexp = "|\\d{1,5}") String termsB,
+            @Pattern(regexp = "|\\d{1,5}") String termsC,
             @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String latePct,
             @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String policyDate,
             @Pattern(regexp = "|\\d{4}-\\d{2}-\\d{2}") String periodNumberingFrom) {}
 
     /** The clerk limit and floor are shown with two decimals; the clerk limit is null when there is none. The
-     * terms are the days after its date a claim is due by. The late percent is shown with two decimals. The policy date is null when there is none (the sheet's
+     * terms are the days after its date a claim is due by; each grade's terms are null when it uses the sheet's. The late percent is shown with two decimals. The policy date is null when there is none (the sheet's
      * today is used). The period numbering date is null when it is off. */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, String policyDate,
-            String periodNumberingFrom) {
+    public record SettingsView(String clerkLimit, String floor, int terms, Integer termsA, Integer termsB,
+            Integer termsC, String latePct, String policyDate, String periodNumberingFrom) {
 
-        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
-                LocalDate policyDate, LocalDate periodNumberingFrom) {
+        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, Integer termsA, Integer termsB,
+                Integer termsC, BigDecimal latePct, LocalDate policyDate, LocalDate periodNumberingFrom) {
             return new SettingsView(clerkLimit != null ? clerkLimit.setScale(2).toPlainString() : null,
-                    floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(),
+                    floor.setScale(2).toPlainString(), terms, termsA, termsB, termsC,
+                    latePct.setScale(2).toPlainString(),
                     policyDate != null ? policyDate.toString() : null,
                     periodNumberingFrom != null ? periodNumberingFrom.toString() : null);
         }
@@ -96,14 +103,31 @@ public class SettingController {
         Optional<LocalDate> periodNumberingFrom = dateOrBlank(form.periodNumberingFrom(),
                 "A period numbering date is a date, or blank.");
         service.save(user, sheetId, clerkLimit, form.floor() == null ? null : new BigDecimal(form.floor()),
-                form.terms() == null ? null : Integer.valueOf(form.terms()),
+                form.terms() == null ? null : Integer.valueOf(form.terms()), gradeTerms(form),
                 form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom);
         return view(sheetId);
     }
 
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
+                service.gradeTerms(sheetId, "A"), service.gradeTerms(sheetId, "B"), service.gradeTerms(sheetId, "C"),
                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId));
+    }
+
+    /** The grades' terms given, in grade order: empty when blank (the grade uses the sheet's terms); a grade
+     * left out is left as it is. */
+    private static Map<String, Optional<Integer>> gradeTerms(SettingsForm form) {
+        Map<String, Optional<Integer>> given = new LinkedHashMap<>();
+        Map<String, String> typed = new LinkedHashMap<>();
+        typed.put("A", form.termsA());
+        typed.put("B", form.termsB());
+        typed.put("C", form.termsC());
+        typed.forEach((grade, days) -> {
+            if (days != null) {
+                given.put(grade, days.isEmpty() ? Optional.empty() : Optional.of(Integer.valueOf(days)));
+            }
+        });
+        return given;
     }
 
     /** A date setting as given: null when left out, empty when blank. */

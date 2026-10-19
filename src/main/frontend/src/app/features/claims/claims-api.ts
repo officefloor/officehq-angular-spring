@@ -27,6 +27,8 @@ export interface Claim {
   statedDue: string | null;
   /** For a correction (a negative amount), the number of the settled claim it corrects; null otherwise. */
   corrects: string | null;
+  /** The date (yyyy-mm-dd) the claim is due by, fixed when it was added from the terms of its person's grade. */
+  dueBy: string;
 }
 
 /** Whether a claim is a correction: its amount is negative. */
@@ -57,11 +59,10 @@ function bound(claim: Claim): boolean {
   return claim.stated && claim.status !== 'PENDING';
 }
 
-/** What a claim's late charge goes by: the sheet's today, its terms and its late percent; and the policy date
- * its rounding goes by, the sheet's today when there is none. */
+/** What a claim's late charge goes by: the sheet's today and its late percent; and the policy date its
+ * rounding goes by, the sheet's today when there is none. */
 export interface Lateness {
   today: string | null;
-  terms: number;
   /** With two decimals, e.g. "10.00". */
   latePct: string;
   policyDate: string | null;
@@ -113,8 +114,8 @@ function correctionFloored(claim: Claim, due: string, floor: string): string {
 /** The late charge on an overdue claim: the late percent of its figure for every full 30 days it is overdue,
  * rounded like a due; never bound by a statement, it follows the sheet's today. A correction has none. */
 function lateCharge(claim: Claim, figure: string, late: Lateness, halfUp: boolean): string {
-  if (isCorrection(claim) || !isOverdue(claim, late.terms, late.today) || late.today === null) return '0.00';
-  const days = (Date.parse(late.today) - Date.parse(dueBy(claim, late.terms))) / 86_400_000;
+  if (isCorrection(claim) || !isOverdue(claim, late.today) || late.today === null) return '0.00';
+  const days = (Date.parse(late.today) - Date.parse(claim.dueBy)) / 86_400_000;
   const periods = Math.floor(days / LATE_PERIOD_DAYS);
   return dueOf(figure, timesPct(late.latePct, periods), halfUp);
 }
@@ -132,15 +133,9 @@ export function keepsFigure(claim: Claim): boolean {
   return claim.due !== null || (bound(claim) && claim.statedDue !== null);
 }
 
-/** The date a claim is due by: its date plus the sheet's terms in days (yyyy-mm-dd). */
-export function dueBy(claim: Claim, terms: number): string {
-  const [y, m, d] = claim.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
-}
-
 /** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
-export function isOverdue(claim: Claim, terms: number, today: string | null): boolean {
-  return isOpen(claim) && today !== null && dueBy(claim, terms) < today;
+export function isOverdue(claim: Claim, today: string | null): boolean {
+  return isOpen(claim) && today !== null && claim.dueBy < today;
 }
 
 export interface ClaimForm {

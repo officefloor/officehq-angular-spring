@@ -66,7 +66,10 @@ public class ClaimService {
         requireOpenPeriod(sheetId, date != null ? date : today);
         String corrected = correctedBy(sheetId, personId, amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
-        Claim fresh = new Claim(sheetId, personId, amount, date != null ? date : today, noteOf(note));
+        LocalDate dated = date != null ? date : today;
+        // The due-by is fixed now, from the terms in force for the grade the person has on the claim's date.
+        LocalDate dueBy = dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated)));
+        Claim fresh = new Claim(sheetId, personId, amount, dated, dueBy, noteOf(note));
         fresh.setCorrects(corrected);
         Claim claim = claims.saveAndFlush(fresh);
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, claim));

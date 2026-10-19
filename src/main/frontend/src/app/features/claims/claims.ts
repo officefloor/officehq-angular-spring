@@ -8,8 +8,7 @@ import { Period, periodOf } from '../periods/periods-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
-import { SheetTerms } from '../settings/sheet-terms';
-import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, dueBy, isOverdue, roundsBy } from './claims-api';
+import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, isOverdue, roundsBy } from './claims-api';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 /** A claim's number: the sheet-wide one, or a period's, <period name>-<n> (X-<n> in no period). */
@@ -89,7 +88,7 @@ const NUMBER = /^\S{1,255}$/;
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-period">{{ periodName(c) }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
-              <td data-testid="claim-due-by">{{ dueBy(c) }}</td>
+              <td data-testid="claim-due-by">{{ c.dueBy }}</td>
               <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
@@ -164,14 +163,11 @@ export class Claims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
   private readonly floor = inject(SheetFloor);
-  private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
-  /** What a late charge goes by: the sheet's today, terms and late percent; and the policy date rounding goes
-   * by. */
+  /** What a late charge goes by: the sheet's today and late percent; and the policy date rounding goes by. */
   private readonly late = computed<Lateness>(() => ({
     today: this.session.today(),
-    terms: this.terms.value(),
     latePct: this.latePct.value(),
     policyDate: this.policyDate.value() ?? this.session.today(),
   }));
@@ -240,14 +236,9 @@ export class Claims {
       roundsBy(claim, this.claims()));
   }
 
-  /** The claim's date plus the sheet's terms. */
-  protected dueBy(claim: Claim): string {
-    return dueBy(claim, this.terms.value());
-  }
-
   /** Whether the claim is OPEN or PENDING and its due-by is before the sheet's today. */
   protected overdue(claim: Claim): boolean {
-    return isOverdue(claim, this.terms.value(), this.session.today());
+    return isOverdue(claim, this.session.today());
   }
 
   /** The name of the period the claim's date falls in; empty when it falls in none. */

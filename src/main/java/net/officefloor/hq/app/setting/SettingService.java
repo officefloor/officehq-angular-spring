@@ -3,6 +3,7 @@ package net.officefloor.hq.app.setting;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -62,13 +63,13 @@ public class SettingService {
         return given;
     }
 
-    /** Save the settings given, the clerk limit, the floor, the terms, the late percent then the policy date,
-     * and the period numbering date together; a setting not given (null) is left as it is, and an empty clerk limit,
-     * policy date or period numbering date removes it. */
+    /** Save the settings given, the clerk limit, the floor, the terms, each grade's terms (in the order given),
+     * the late percent then the policy date, and the period numbering date together; a setting not given (null)
+     * is left as it is, and an empty clerk limit, grade's terms, policy date or period numbering date removes it. */
     @Transactional
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
-            Integer terms, BigDecimal latePct, Optional<LocalDate> policyDate,
-            Optional<LocalDate> periodNumberingFrom) {
+            Integer terms, Map<String, Optional<Integer>> gradeTerms, BigDecimal latePct,
+            Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null));
         }
@@ -78,6 +79,7 @@ public class SettingService {
         if (terms != null) {
             setTerms(user, sheetId, terms);
         }
+        gradeTerms.forEach((grade, days) -> setGradeTerms(user, sheetId, grade, days.orElse(null)));
         if (latePct != null) {
             setLatePct(user, sheetId, latePct);
         }
@@ -135,18 +137,41 @@ public class SettingService {
         return find(sheetId).getTerms();
     }
 
-    /** Set the sheet's terms; they move which claims are overdue, so the late charges, and the figures they move
-     * are written after. */
+    /** Set the sheet's terms; they go for claims added from now on (a claim's due-by is fixed when it is added),
+     * so they move no figure. */
     @Transactional
     public int setTerms(String user, String sheetId, int terms) {
         sheets.lock(sheetId);
         Sheet sheet = find(sheetId);
-        Snapshot before = rollup.snapshot(sheetId);
         sheet.setTerms(terms);
         sheetRepository.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=terms value=" + terms);
-        rollup.recordChanges(user, sheetId, before);
         return terms;
+    }
+
+    /** A grade's own terms; none when it uses the sheet's. */
+    @Transactional(readOnly = true)
+    public Integer gradeTerms(String sheetId, String grade) {
+        return find(sheetId).getGradeTerms(grade);
+    }
+
+    /** Set a grade's own terms, none to have it use the sheet's; like the sheet's terms they go for claims added
+     * from now on. */
+    @Transactional
+    public Integer setGradeTerms(String user, String sheetId, String grade, Integer terms) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        sheet.setGradeTerms(grade, terms);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=terms-" + grade + " value="
+                + (terms != null ? terms.toString() : ""));
+        return terms;
+    }
+
+    /** The terms in force for a claim of a person of the grade: the grade's own, else the sheet's. */
+    @Transactional(readOnly = true)
+    public int termsFor(String sheetId, String grade) {
+        return find(sheetId).termsFor(grade);
     }
 
     /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days overdue. */

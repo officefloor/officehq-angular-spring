@@ -25,7 +25,6 @@ import { GradeSummary, Summary } from '../summary/summary';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
-import { SheetTerms } from '../settings/sheet-terms';
 import { NO_RATE, Rate, RatesApi, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person, gradeOn } from './people-api';
 
@@ -238,14 +237,11 @@ export class People {
   private readonly ratesApi = inject(RatesApi);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly floor = inject(SheetFloor);
-  private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
-  /** What a late charge goes by: the sheet's today, terms and late percent; and the policy date rounding goes
-   * by. */
+  /** What a late charge goes by: the sheet's today and late percent; and the policy date rounding goes by. */
   private readonly late = computed<Lateness>(() => ({
     today: this.session.today(),
-    terms: this.terms.value(),
     latePct: this.latePct.value(),
     policyDate: this.policyDate.value() ?? this.session.today(),
   }));
@@ -429,7 +425,7 @@ export class People {
   /** The person's claims that count and are overdue. */
   protected overdueOf(person: Person): Claim[] {
     const today = this.session.today();
-    return this.claimsOf(person.id).filter((c) => this.countsLive(c) && isOverdue(c, this.terms.value(), today));
+    return this.claimsOf(person.id).filter((c) => this.countsLive(c) && isOverdue(c, today));
   }
 
   /** The sum of the dues of the person's overdue claims that count (n/a ones skipped), 0.00 with none. */

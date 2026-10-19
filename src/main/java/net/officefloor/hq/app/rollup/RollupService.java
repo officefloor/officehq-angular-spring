@@ -42,13 +42,13 @@ public class RollupService {
     /** The sheet's figures at one moment: each person's by id, in the order they were added, and the totals. */
     public record Snapshot(Map<Long, Figures> people, String claimedTotal, String dueTotal) {}
 
-    /** What a claim's late charge goes by: the sheet's today (none when there is no such sheet), its terms and
-     * its late percent; and the date its rounding goes by, the policy date or else the sheet's today. */
-    private record Lateness(LocalDate today, int terms, BigDecimal latePct, LocalDate policyDate) {
+    /** What a claim's late charge goes by: the sheet's today (none when there is no such sheet) and its late
+     * percent; and the date its rounding goes by, the policy date or else the sheet's today. */
+    private record Lateness(LocalDate today, BigDecimal latePct, LocalDate policyDate) {
 
         static Lateness of(Sheet sheet) {
-            return sheet == null ? new Lateness(null, 0, BigDecimal.ZERO, null)
-                    : new Lateness(sheet.getToday(), sheet.getTerms(), sheet.getLatePct(), sheet.roundingDate());
+            return sheet == null ? new Lateness(null, BigDecimal.ZERO, null)
+                    : new Lateness(sheet.getToday(), sheet.getLatePct(), sheet.roundingDate());
         }
 
         /** How a claim's live figures round, by the date they go by: one before the policy date rounds half up,
@@ -260,14 +260,14 @@ public class RollupService {
 
     /**
      * The late charge on a claim: the late percent of its figure for every full 30 days it is overdue (OPEN or
-     * PENDING, and its due-by, its date plus the terms, before the sheet's today), rounded to two decimals as the claim rounds.
+     * PENDING, and its due-by, fixed when it was added, before the sheet's today), rounded to two decimals as the claim rounds.
      * A statement never binds it: it follows the sheet's today. A correction has none.
      */
     private static BigDecimal lateCharge(Claim claim, BigDecimal figure, Lateness late, RoundingMode rounding) {
         if (!claim.getStatus().isOpen() || late.today() == null || claim.isCorrection()) {
             return BigDecimal.ZERO.setScale(2);
         }
-        long overdueDays = ChronoUnit.DAYS.between(claim.getDate().plusDays(late.terms()), late.today());
+        long overdueDays = ChronoUnit.DAYS.between(claim.getDueBy(), late.today());
         long periods = overdueDays > 0 ? overdueDays / LATE_PERIOD_DAYS : 0;
         return figure.multiply(late.latePct()).multiply(BigDecimal.valueOf(periods))
                 .divide(BigDecimal.valueOf(100), 2, rounding);

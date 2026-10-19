@@ -7,8 +7,12 @@ import { ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './sett
 import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
 import { SheetPolicyDate } from './sheet-policy-date';
-import { DEFAULT_TERMS, SheetTerms } from './sheet-terms';
 
+/** The terms a sheet starts with, in days. */
+const DEFAULT_TERMS = 14;
+/** The grades that can have terms of their own. */
+const GRADES = ['A', 'B', 'C'] as const;
+type GradeTermsKey = `terms${(typeof GRADES)[number]}`;
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
@@ -17,6 +21,9 @@ type SettingsFormValue = {
   clerkLimit: string;
   floor: string;
   terms: string;
+  termsA: string;
+  termsB: string;
+  termsC: string;
   latePct: string;
   policyDate: string;
   periodNumberingFrom: string;
@@ -26,6 +33,9 @@ const NO_SETTINGS: SheetSettings = {
   clerkLimit: null,
   floor: DEFAULT_FLOOR,
   terms: DEFAULT_TERMS,
+  termsA: null,
+  termsB: null,
+  termsC: null,
   latePct: DEFAULT_LATE_PCT,
   policyDate: null,
   periodNumberingFrom: null,
@@ -33,7 +43,8 @@ const NO_SETTINGS: SheetSettings = {
 
 // The sheet's settings: the role each user name has (clerk unless given another) with the form that
 // gives one, the clerk limit, the highest due a clerk may settle (blank for no limit), and the floor, the
-// least a claim's live due comes to, the terms, the days after its date a claim is due by, and the late
+// least a claim's live due comes to, the terms, the days after its date a claim is due by (fixed when it is
+// added), and each grade's own terms (blank for the sheet's), and the late
 // percent, what an overdue claim gains of its figure for every full 30 days overdue, and the policy date (blank
 // for the sheet's today), before which a claim's date rounds half up, on or after half to even, and the period
 // numbering date (blank for off), from which a claim opened is numbered within its period. Saving sends
@@ -56,6 +67,15 @@ const NO_SETTINGS: SheetSettings = {
         <input id="setting-floor" data-testid="setting-floor" inputmode="decimal" formControlName="floor" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" inputmode="numeric" formControlName="terms" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days, blank for the sheet's)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            [attr.data-testid]="'setting-terms-' + g"
+            inputmode="numeric"
+            [formControlName]="'terms' + g"
+          />
+        }
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" inputmode="decimal" formControlName="latePct" />
         <label for="setting-policy-date">Policy date (yyyy-mm-dd, blank for the sheet's today)</label>
@@ -83,6 +103,12 @@ const NO_SETTINGS: SheetSettings = {
         Terms in force:
         <span data-testid="setting-terms-current">{{ settings().terms }}</span>
       </p>
+      @for (g of grades; track g) {
+        <p>
+          Terms for grade {{ g }} in force:
+          <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ settings()[gradeKey(g)] ?? '' }}</span>
+        </p>
+      }
       <p>
         Late percent in force:
         <span data-testid="setting-late-pct-current">{{ settings().latePct }}</span>
@@ -129,11 +155,11 @@ export class Settings {
   private readonly session = inject(Session);
   private readonly api = inject(SettingsApi);
   private readonly floor = inject(SheetFloor);
-  private readonly terms = inject(SheetTerms);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
 
   protected readonly roleNames = ROLES.join(' or ');
+  protected readonly grades = GRADES;
   protected readonly roles = signal<RoleGiven[]>([]);
   protected readonly settings = signal<SheetSettings>(NO_SETTINGS);
   protected readonly roleError = signal<string | null>(null);
@@ -152,6 +178,9 @@ export class Settings {
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl(DEFAULT_FLOOR, { nonNullable: true }),
     terms: new FormControl(String(DEFAULT_TERMS), { nonNullable: true }),
+    termsA: new FormControl('', { nonNullable: true }),
+    termsB: new FormControl('', { nonNullable: true }),
+    termsC: new FormControl('', { nonNullable: true }),
     latePct: new FormControl(DEFAULT_LATE_PCT, { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
@@ -232,6 +261,11 @@ export class Settings {
     });
   }
 
+  /** The setting holding a grade's own terms. */
+  protected gradeKey(grade: (typeof GRADES)[number]): GradeTermsKey {
+    return `terms${grade}`;
+  }
+
   /** Note the setting a person went into last: a save with nothing changed saves that one again. */
   protected focused(event: FocusEvent): void {
     const name = (event.target as Element | null)?.getAttribute('formcontrolname');
@@ -273,6 +307,17 @@ export class Settings {
       this.settingsError.set('Type terms of 0 or more whole days.');
       return;
     }
+    const gradeTerms: Partial<Record<GradeTermsKey, string>> = {};
+    for (const g of GRADES) {
+      const key = this.gradeKey(g);
+      if (!send(key)) continue;
+      const days = controls[key].value.trim();
+      if (days !== '' && !DAYS.test(days)) {
+        this.settingsError.set(`Type terms for grade ${g} of 0 or more whole days, or leave them blank.`);
+        return;
+      }
+      gradeTerms[key] = days;
+    }
     if (sendLatePct && !PCT.test(latePct)) {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
       return;
@@ -293,6 +338,7 @@ export class Settings {
       ...(sendLimit ? { clerkLimit } : {}),
       ...(sendFloor ? { floor } : {}),
       ...(sendTerms ? { terms } : {}),
+      ...gradeTerms,
       ...(sendLatePct ? { latePct } : {}),
       ...(sendPolicyDate ? { policyDate } : {}),
       ...(sendPeriodNumbering ? { periodNumberingFrom } : {}),
@@ -305,13 +351,15 @@ export class Settings {
   private showSettings(s: SheetSettings, sent?: SettingsFormValue): void {
     this.settings.set(s);
     this.floor.set(s.floor);
-    this.terms.set(s.terms);
     this.latePct.set(s.latePct);
     this.policyDate.set(s.policyDate);
     const shown: SettingsFormValue = {
       clerkLimit: s.clerkLimit ?? '',
       floor: s.floor,
       terms: String(s.terms),
+      termsA: s.termsA === null ? '' : String(s.termsA),
+      termsB: s.termsB === null ? '' : String(s.termsB),
+      termsC: s.termsC === null ? '' : String(s.termsC),
       latePct: s.latePct,
       policyDate: s.policyDate ?? '',
       periodNumberingFrom: s.periodNumberingFrom ?? '',
