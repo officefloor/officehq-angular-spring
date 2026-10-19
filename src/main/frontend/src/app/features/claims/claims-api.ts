@@ -159,6 +159,12 @@ export interface OpenedAll {
   claims: Claim[];
 }
 
+/** What a paste added: how many claims, and those claims in the order of their lines. */
+export interface Pasted {
+  added: number;
+  claims: Claim[];
+}
+
 /** What settling claims together did: how many were settled (or sent PENDING) and refused, and those claims. */
 export interface SettledAll {
   settled: number;
@@ -217,6 +223,11 @@ export class ClaimsApi {
   /** Open the claims together; each that cannot be opened is refused and left as it is. */
   openAll(sheetId: string, ids: number[]): Observable<OpenedAll> {
     return this.http.post<OpenedAll>(`${this.url(sheetId)}/claims/open`, { ids }, { headers: this.headers() });
+  }
+
+  /** Add a draft claim per pasted line of name,amount,date,note; one line refused adds none. */
+  paste(sheetId: string, text: string): Observable<Pasted> {
+    return this.http.post<Pasted>(`${this.url(sheetId)}/paste-claims`, { text }, { headers: this.headers() });
   }
 
   /** Settle the claims together, each as a single settle would; each that cannot be settled is refused and left

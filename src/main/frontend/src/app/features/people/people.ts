@@ -90,6 +90,17 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
       @if (quickError(); as e) {
         <p role="alert" data-testid="quick-error">{{ e }}</p>
       }
+      <form [formGroup]="pasteForm" (ngSubmit)="paste()" data-testid="paste" aria-label="Paste claims">
+        <label for="paste-claims">Paste claims, one per line: name,amount,date,note</label>
+        <textarea id="paste-claims" data-testid="paste-claims" rows="4" formControlName="text"></textarea>
+        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+      </form>
+      @if (pasteAdded(); as n) {
+        <p role="status">Added <strong data-testid="paste-added">{{ n }}</strong></p>
+      }
+      @if (pasteError(); as e) {
+        <p role="alert" data-testid="paste-error">{{ e }}</p>
+      }
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()" (change)="toggleRetired($event)" />
         Show retired
@@ -431,7 +442,15 @@ export class People {
     amount: new FormControl('', { nonNullable: true }),
   });
 
+  /** Whether a paste is waiting on the server; another is ignored until it answers. */
+  private pasting = false;
+  protected readonly pasteForm = new FormGroup({ text: new FormControl('', { nonNullable: true }) });
+  /** How many claims the last paste added. */
+  protected readonly pasteAdded = signal<number | null>(null);
+  protected readonly pasteError = signal<string | null>(null);
+
   constructor() {
+    this.pasteForm.valueChanges.subscribe(() => this.pasteError.set(null));
     this.form.valueChanges.subscribe(() => this.formError.set(null));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(null));
     effect(() => {
@@ -466,6 +485,8 @@ export class People {
         this.bulkOpenError.set(null);
         this.bulkSettleResult.set(null);
         this.bulkSettleError.set(null);
+        this.pasteAdded.set(null);
+        this.pasteError.set(null);
         this.reset();
         loaded(id);
       });
@@ -789,6 +810,45 @@ export class People {
         this.quickError.set(this.quickRefusal(e));
       },
     });
+  }
+
+  /** Add a draft claim per pasted line, in order; one line refused adds none. */
+  protected paste(): void {
+    if (this.pasting) return;
+    this.pasteError.set(null);
+    this.pasteAdded.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) {
+      this.pasteError.set('Load a sheet first.');
+      return;
+    }
+    const text = this.pasteForm.getRawValue().text;
+    if (!text.trim()) {
+      this.pasteError.set('Paste at least one line of name,amount,date,note.');
+      return;
+    }
+    this.pasting = true;
+    this.claimsApi.paste(sheetId, text).subscribe({
+      next: ({ added, claims }) => {
+        this.pasting = false;
+        if (this.session.sheetId() !== sheetId) return;
+        for (const c of claims) this.claimSaved(c);
+        this.pasteAdded.set(added);
+        this.pasteForm.reset({ text: '' }, { emitEvent: false });
+      },
+      error: (e: HttpErrorResponse) => {
+        this.pasting = false;
+        this.pasteError.set(this.pasteRefusal(e));
+      },
+    });
+  }
+
+  private pasteRefusal(e: HttpErrorResponse): string {
+    const reason = typeof e.error?.message === 'string' && e.error.message ? ` ${e.error.message}` : '';
+    if (e.status === 400) return `Nothing was added.${reason || ' Check each line\'s name, amount and date.'}`;
+    if (e.status === 423) return 'Nothing was added: a line is dated in a closed period.';
+    if (e.status === 422) return 'Nothing was added: a line is dated after its person is retired.';
+    return 'Nothing was added: a line could not be added.';
   }
 
   private quickRefusal(e: HttpErrorResponse): string {
