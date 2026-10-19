@@ -1,0 +1,333 @@
+diff --git a/src/main/frontend/src/app/app.ts b/src/main/frontend/src/app/app.ts
+index cdda2575..b0381d09 100644
+--- a/src/main/frontend/src/app/app.ts
++++ b/src/main/frontend/src/app/app.ts
+@@ -1,12 +1,13 @@
+ import { Component, inject } from '@angular/core';
+ import { Route, Router, RouterLink, RouterOutlet } from '@angular/router';
++import { SessionBar } from './features/session/session-bar';
+ 
+ // Minimal base shell. It renders the nav bar and the routed page. The nav comes from the ROUTER'S
+ // OWN CONFIG — every route carrying `data.section` becomes a link — so the shell holds no list of
+ // pages and is not edited when one is added. Every observable element carries a stable data-testid.
+ @Component({
+   selector: 'app-root',
+-  imports: [RouterOutlet, RouterLink],
++  imports: [RouterOutlet, RouterLink, SessionBar],
+   template: `
+     <div data-testid="app-root">
+       <nav data-testid="app-nav">
+@@ -18,6 +19,7 @@ import { Route, Router, RouterLink, RouterOutlet } from '@angular/router';
+           >
+         }
+       </nav>
++      <app-session-bar />
+       <main data-testid="app-home">
+         <router-outlet />
+       </main>
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+new file mode 100644
+index 00000000..2a70db23
+--- /dev/null
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -0,0 +1,42 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { Observable, map, tap } from 'rxjs';
++
++interface User {
++  name: string;
++}
++
++interface SheetView {
++  id: string;
++}
++
++// Who is signed in and which sheet is active. Everything else in the app is kept per sheet, so
++// features read `sheetId` and send `user` with their requests (the X-User header).
++@Injectable({ providedIn: 'root' })
++export class Session {
++  private readonly http = inject(HttpClient);
++
++  private readonly _user = signal<string | null>(null);
++  private readonly _sheetId = signal<string | null>(null);
++  readonly user = this._user.asReadonly();
++  readonly sheetId = this._sheetId.asReadonly();
++
++  signIn(name: string): Observable<string> {
++    return this.http.post<User>('/api/session', { name }).pipe(
++      map((u) => u.name),
++      tap((n) => {
++        this._user.set(n);
++        this._sheetId.set(null);
++      }),
++    );
++  }
++
++  loadSheet(id: string): Observable<string> {
++    return this.http
++      .post<SheetView>('/api/sheets/load', { id }, { headers: { 'X-User': this._user() ?? '' } })
++      .pipe(
++        map((s) => s.id),
++        tap((sid) => this._sheetId.set(sid)),
++      );
++  }
++}
+diff --git a/src/main/frontend/src/app/features/session/session-bar.ts b/src/main/frontend/src/app/features/session/session-bar.ts
+new file mode 100644
+index 00000000..06034898
+--- /dev/null
++++ b/src/main/frontend/src/app/features/session/session-bar.ts
+@@ -0,0 +1,75 @@
++import { Component, inject, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { Session } from '../../core/session';
++
++// Sign in by name (no password), then load a sheet by id. Shows the signed-in name and the
++// active sheet id.
++@Component({
++  selector: 'app-session-bar',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-label="Session" data-testid="session-bar">
++      @if (session.user(); as user) {
++        <p>
++          Signed in as <strong data-testid="current-user">{{ user }}</strong>
++        </p>
++        <form [formGroup]="sheetForm" (ngSubmit)="load()">
++          <label for="sheet-id-input">Sheet id</label>
++          <input id="sheet-id-input" data-testid="sheet-id-input" formControlName="id" />
++          <button type="submit" data-testid="sheet-load">Load sheet</button>
++        </form>
++        @if (sheetError(); as e) {
++          <p role="alert" data-testid="sheet-load-error">{{ e }}</p>
++        }
++        <p>
++          Sheet: <strong data-testid="sheet-current-id">{{ session.sheetId() ?? '' }}</strong>
++        </p>
++      } @else {
++        <form [formGroup]="signInForm" (ngSubmit)="signIn()">
++          <label for="signin-name">Your name</label>
++          <input id="signin-name" data-testid="signin-name" formControlName="name" />
++          <button type="submit" data-testid="signin-submit">Sign in</button>
++        </form>
++        @if (signInError(); as e) {
++          <p role="alert" data-testid="signin-error">{{ e }}</p>
++        }
++      }
++    </section>
++  `,
++})
++export class SessionBar {
++  protected readonly session = inject(Session);
++  protected readonly signInForm = new FormGroup({ name: new FormControl('', { nonNullable: true }) });
++  protected readonly sheetForm = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
++  protected readonly signInError = signal<string | null>(null);
++  protected readonly sheetError = signal<string | null>(null);
++
++  constructor() {
++    this.signInForm.valueChanges.subscribe(() => this.signInError.set(null));
++    this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
++  }
++
++  protected signIn(): void {
++    this.signInError.set(null);
++    const name = this.signInForm.getRawValue().name.trim();
++    if (!name) {
++      this.signInError.set('Type your name to sign in.');
++      return;
++    }
++    this.session.signIn(name).subscribe({
++      error: () => this.signInError.set('Could not sign in.'),
++    });
++  }
++
++  protected load(): void {
++    this.sheetError.set(null);
++    const id = this.sheetForm.getRawValue().id.trim();
++    if (!id || /\s/.test(id)) {
++      this.sheetError.set('Type a sheet id without spaces.');
++      return;
++    }
++    this.session.loadSheet(id).subscribe({
++      error: () => this.sheetError.set('Could not load that sheet.'),
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/session/SessionController.java b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+new file mode 100644
+index 00000000..6f042215
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.session;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/**
++ * Sign-in by name: there is no password, the name typed is the user. The client keeps the name and
++ * sends it on later requests in the {@code X-User} header.
++ */
++@RestController
++@RequestMapping("/api/session")
++public class SessionController {
++
++    public record SignIn(@NotBlank @Size(max = 100) String name) {}
++
++    public record User(String name) {}
++
++    @PostMapping
++    public User signIn(@Valid @RequestBody SignIn request) {
++        return new User(request.name().trim());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+new file mode 100644
+index 00000000..63d35d77
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.Instant;
++
++/** A sheet, kept by the id typed to load it. */
++@Entity
++@Table(name = "sheet")
++public class Sheet {
++
++    @Id
++    private String id;
++
++    @Column(name = "created_by", nullable = false)
++    private String createdBy;
++
++    @Column(name = "created_at", nullable = false)
++    private Instant createdAt;
++
++    protected Sheet() {}
++
++    public Sheet(String id, String createdBy, Instant createdAt) {
++        this.id = id;
++        this.createdBy = createdBy;
++        this.createdAt = createdAt;
++    }
++
++    public String getId() {
++        return id;
++    }
++
++    public String getCreatedBy() {
++        return createdBy;
++    }
++
++    public Instant getCreatedAt() {
++        return createdAt;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+new file mode 100644
+index 00000000..d83b867a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets")
++public class SheetController {
++
++    public record LoadSheet(@NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id) {}
++
++    public record SheetView(String id) {}
++
++    private final SheetService service;
++
++    public SheetController(SheetService service) {
++        this.service = service;
++    }
++
++    /** Load a sheet by id, starting it empty when it was never loaded before. */
++    @PostMapping("/load")
++    public SheetView load(@RequestHeader("X-User") String user, @Valid @RequestBody LoadSheet request) {
++        return new SheetView(service.load(request.id(), user).getId());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+new file mode 100644
+index 00000000..c246214c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -0,0 +1,5 @@
++package net.officefloor.hq.app.sheet;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetRepository extends JpaRepository<Sheet, String> {}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+new file mode 100644
+index 00000000..1aeadd57
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.sheet;
++
++import java.time.Instant;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++public class SheetService {
++
++    private final SheetRepository sheets;
++
++    public SheetService(SheetRepository sheets) {
++        this.sheets = sheets;
++    }
++
++    /** The sheet with this id, re-read from the store; a sheet never loaded before starts empty. */
++    @Transactional
++    public Sheet load(String id, String user) {
++        return sheets.findById(id).orElseGet(() -> {
++            try {
++                return sheets.saveAndFlush(new Sheet(id, user, Instant.now()));
++            } catch (DataIntegrityViolationException e) {
++                // Another user created it at the same moment.
++                return sheets.findById(id).orElseThrow(() -> e);
++            }
++        });
++    }
++}
+diff --git a/src/main/resources/db/migration/V1__sheet.sql b/src/main/resources/db/migration/V1__sheet.sql
+new file mode 100644
+index 00000000..0334b7ad
+--- /dev/null
++++ b/src/main/resources/db/migration/V1__sheet.sql
+@@ -0,0 +1,6 @@
++-- A sheet is kept by the id a person types to load it; everything else in the app belongs to one.
++CREATE TABLE sheet (
++    id         VARCHAR(100) PRIMARY KEY,
++    created_by VARCHAR(100) NOT NULL,
++    created_at TIMESTAMP    NOT NULL
++);
