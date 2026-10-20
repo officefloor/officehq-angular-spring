@@ -43,7 +43,7 @@ public class RollupService {
     public record Snapshot(Map<Long, Figures> people, String claimedTotal, String dueTotal, String overdueTotal) {}
 
     /** What a claim's late charge goes by: the sheet's today (none when there is no such sheet) and the sheet,
-     * for its late percent and floor in force on a claim's date; and the date its rounding goes by, the policy
+     * for its late percent in force on each 30-day boundary of a claim's due-by and its floor in force on a claim's date; and the date its rounding goes by, the policy
      * date or else the sheet's today. */
     private record Lateness(LocalDate today, Sheet sheet, LocalDate policyDate) {
 
@@ -52,9 +52,9 @@ public class RollupService {
                     : new Lateness(sheet.getToday(), sheet, sheet.roundingDate());
         }
 
-        /** The late percent in force on a claim's date. */
-        BigDecimal latePct(Claim claim) {
-            return sheet == null ? BigDecimal.ZERO : sheet.latePctOn(claim.getDate());
+        /** The late percent in force on a date. */
+        BigDecimal latePct(LocalDate date) {
+            return sheet == null ? BigDecimal.ZERO : sheet.latePctOn(date);
         }
 
         /** The floor in force on a claim's date; 1.00, the one a sheet starts with, when there is no such sheet. */
@@ -297,19 +297,26 @@ public class RollupService {
     }
 
     /**
-     * The late charge on a claim: the late percent in force on its date of its figure for every full 30 days it is overdue (OPEN or
-     * PENDING, and its due-by, fixed when it was added, before the sheet's today), rounded to two decimals as the claim rounds.
-     * A statement never binds it: it follows the sheet's today. A correction has none.
+     * The late charge on a claim overdue (OPEN or PENDING, and its due-by, fixed when it was added, before the sheet's today):
+     * for each full 30 days it is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90 ... days)
+     * of its figure, rounded to two decimals as the claim rounds, the charges added up; a boundary whose percent is 0.00 adds
+     * nothing. A statement never binds it: it follows the sheet's today. A correction has none.
      */
     private static BigDecimal lateCharge(Claim claim, boolean open, BigDecimal figure, Lateness late,
             RoundingMode rounding) {
+        BigDecimal charge = BigDecimal.ZERO.setScale(2);
         if (!open || late.today() == null || claim.isCorrection() || claim.deferredOn(late.today())) {
-            return BigDecimal.ZERO.setScale(2);
+            return charge;
         }
         long overdueDays = ChronoUnit.DAYS.between(claim.getDueBy(), late.today());
         long periods = overdueDays > 0 ? overdueDays / LATE_PERIOD_DAYS : 0;
-        return figure.multiply(late.latePct(claim)).multiply(BigDecimal.valueOf(periods))
-                .divide(BigDecimal.valueOf(100), 2, rounding);
+        for (long k = 1; k <= periods; k++) {
+            BigDecimal pct = late.latePct(claim.getDueBy().plusDays(k * LATE_PERIOD_DAYS));
+            if (pct.signum() != 0) {
+                charge = charge.add(figure.multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding));
+            }
+        }
+        return charge;
     }
 
     private static BigDecimal figureOf(Claim claim, List<Rate> gradeRates, BigDecimal floor, RoundingMode rounding) {

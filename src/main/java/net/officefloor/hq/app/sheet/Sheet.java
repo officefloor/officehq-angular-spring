@@ -176,7 +176,7 @@ public class Sheet {
         return TERMS + "-" + grade;
     }
 
-    /** The percent of its figure an overdue claim dated on a date gains for every full 30 days it is overdue. */
+    /** The percent of its figure an overdue claim gains for a full 30 days of being overdue that end on a date. */
     public BigDecimal latePctOn(LocalDate date) {
         return valueOn(LATE_PCT, date, STARTING_LATE_PCT).setScale(2);
     }

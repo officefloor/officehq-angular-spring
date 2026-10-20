@@ -162,8 +162,8 @@ public class SettingService {
         return find(sheetId).termsFor(grade, date);
     }
 
-    /** Set the sheet's late percent from a date (the sheet's today when none); it moves the late charge of every
-     * claim dated from then until a later one, and the figures it moves are written after. */
+    /** Set the sheet's late percent from a date (the sheet's today when none); it moves the late charge every
+     * overdue claim gains on a 30-day boundary from then until a later one, and the figures it moves are written after. */
     @Transactional
     public BigDecimal setLatePct(String user, String sheetId, BigDecimal latePct, LocalDate from) {
         BigDecimal value = latePct.setScale(2);

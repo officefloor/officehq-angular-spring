@@ -4,9 +4,9 @@ import { Dated, valueOn } from './dated';
 /** The late percent a sheet starts with, in force before every from-date. */
 export const DEFAULT_LATE_PCT = '0.00';
 
-// The active sheet's late percent, what an overdue claim gains of its figure for every full 30 days it is
+// The active sheet's late percent, what an overdue claim gains of its figure for each full 30 days it is
 // overdue, dated: set by the settings when they are read or saved, and read wherever a due is shown, as the
-// late percent in force on a claim's date.
+// late percent in force on each 30-day boundary of a claim's due-by.
 @Injectable({ providedIn: 'root' })
 export class SheetLatePct {
   private readonly history = signal<readonly Dated[]>([]);

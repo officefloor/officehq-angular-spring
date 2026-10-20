@@ -88,7 +88,7 @@ export function bound(claim: Claim): boolean {
   return claim.stated && claim.status !== 'PENDING';
 }
 
-/** What a claim's late charge goes by: the sheet's today and its late percent in force on a claim's date; and
+/** What a claim's late charge goes by: the sheet's today and its late percent in force on each of a claim's 30-day boundaries; and
  * the policy date its rounding goes by, the sheet's today when there is none. */
 export interface Lateness {
   today: string | null;
@@ -140,20 +140,21 @@ function correctionFloored(claim: Claim, due: string, floor: string): string {
   return isCorrection(claim) ? due : floored(due, floor);
 }
 
-/** The late charge on an overdue claim: the late percent in force on its date of its figure for every full 30 days it is overdue,
- * rounded like a due; never bound by a statement, it follows the sheet's today. A correction has none. */
+/** The late charge on an overdue claim: for each full 30 days it is overdue, the late percent in force on that boundary
+ * date (its due-by plus 30, 60, 90 ... days) of its figure, rounded like a due, the charges added up; a boundary whose
+ * percent is 0.00 adds nothing. Never bound by a statement, it follows the sheet's today. A correction has none. */
 function lateCharge(claim: Claim, figure: string, late: Lateness, halfUp: boolean): string {
   if (isCorrection(claim) || !isOverdue(claim, late.today) || late.today === null) return '0.00';
-  const days = (Date.parse(late.today) - Date.parse(claim.dueBy)) / 86_400_000;
+  const dueBy = Date.parse(claim.dueBy);
+  const days = (Date.parse(late.today) - dueBy) / 86_400_000;
   const periods = Math.floor(days / LATE_PERIOD_DAYS);
-  return dueOf(figure, timesPct(late.latePct(claim.date), periods), halfUp);
-}
-
-/** A percent with two decimals times a whole number, with two decimals. */
-function timesPct(pct: string, times: number): string {
-  const [whole, frac = ''] = pct.split('.');
-  const hundredths = (BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'))) * BigInt(times);
-  return `${hundredths / 100n}.${String(hundredths % 100n).padStart(2, '0')}`;
+  const charges: string[] = [];
+  for (let k = 1; k <= periods; k++) {
+    const boundary = new Date(dueBy + k * LATE_PERIOD_DAYS * 86_400_000).toISOString().slice(0, 10);
+    const pct = late.latePct(boundary);
+    if (hundredths(pct) !== 0n) charges.push(dueOf(figure, pct, halfUp));
+  }
+  return sumAmounts(charges);
 }
 
 /** Whether a claim is overdue: it is OPEN or PENDING, not deferred, and its due-by is before the sheet's today. */
