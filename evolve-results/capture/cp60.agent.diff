@@ -1,0 +1,102 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 9dea5c80..4435bf22 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -204,6 +204,13 @@ export function sumAmounts(amounts: string[]): string {
+   return fromHundredths(amounts.reduce((sum, a) => sum + hundredths(a), 0n));
+ }
+ 
++/** Amounts added up, leaving out the single highest and the single lowest when there are three or more. */
++export function trimmedSum(amounts: string[]): string {
++  if (amounts.length < 3) return sumAmounts(amounts);
++  const sorted = amounts.map(hundredths).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
++  return fromHundredths(sorted.slice(1, -1).reduce((sum, a) => sum + a, 0n));
++}
++
+ // The claims people make on the active sheet, read and changed through the server.
+ @Injectable({ providedIn: 'root' })
+ export class ClaimsApi {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3e3b7038..dc124fc1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -19,6 +19,7 @@ import {
+   isOverdue,
+   roundsBy,
+   sumAmounts,
++  trimmedSum,
+ } from '../claims/claims-api';
+ import { Periods } from '../periods/periods';
+ import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
+@@ -396,8 +397,9 @@ export class People {
+     () => new Map([...this.personPeriodDueTotals()].map(([id, byPerson]) => [id, sumAmounts([...byPerson.values()])])),
+   );
+ 
++  /** The sheet's due-total: the people's due-totals (n/a ones skipped) added up, trimmed of the highest and lowest. */
+   protected readonly dueTotal = computed(() =>
+-    sumAmounts(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
++    trimmedSum(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
+   );
+   /** Per grade, the people not retired who have it on the sheet's today and their due-totals added up (n/a
+    * ones skipped). */
+@@ -418,7 +420,8 @@ export class People {
+   protected readonly overdueCount = computed(() =>
+     this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
+   );
+-  protected readonly overdueTotal = computed(() => sumAmounts(this.people().map((p) => this.overdueTotalOf(p))));
++  /** The sheet's overdue-total: the people's overdue-totals added up, trimmed of the highest and lowest. */
++  protected readonly overdueTotal = computed(() => trimmedSum(this.people().map((p) => this.overdueTotalOf(p))));
+   /** The ids of the claims selected to open together. */
+   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+   /** How many claims the last open of the selected ones opened and refused. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 8d3479ac..c6c0ec35 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -26,7 +26,8 @@ import org.springframework.stereotype.Service;
+ 
+ /**
+  * The sheet's figures as the screen shows them: each person's claimed, due-total (at most the sheet's cap) and
+- * overdue-total, and the sheet's claimed-total, due-total and overdue-total. A change takes them before it alters anything and hands them back after, and
++ * overdue-total, and the sheet's claimed-total, due-total and overdue-total (the sheet's due- and
++ * overdue-totals leave out the highest and lowest person's figure when three or more people have one). A change takes them before it alters anything and hands them back after, and
+  * every figure it moved is written to the audit after the change's own lines. Called within the change's
+  * transaction.
+  */
+@@ -100,8 +101,8 @@ public class RollupService {
+         Map<String, LocalDate> datesByNumber = datesByNumber(all);
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
+-        BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
+-        BigDecimal overdueTotal = BigDecimal.ZERO.setScale(2);
++        List<BigDecimal> dueFigures = new ArrayList<>();
++        List<BigDecimal> overdueFigures = new ArrayList<>();
+         Map<String, List<Rate>> byGrade = ratesByGrade(sheetId);
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+@@ -132,14 +133,21 @@ public class RollupService {
+             String personDue = rated || frozen ? due.toPlainString() : NO_RATE;
+             claimedTotal = claimedTotal.add(claimed);
+             if (rated || frozen) {
+-                dueTotal = dueTotal.add(due);
++                dueFigures.add(due);
+             }
+-            overdueTotal = overdueTotal.add(overdue);
++            overdueFigures.add(overdue);
+             figures.put(person.getId(),
+                     new Figures(person.getName(), claimed.toPlainString(), personDue, overdue.toPlainString()));
+         }
+-        return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString(),
+-                overdueTotal.toPlainString());
++        return new Snapshot(figures, claimedTotal.toPlainString(), trimmedSum(dueFigures).toPlainString(),
++                trimmedSum(overdueFigures).toPlainString());
++    }
++
++    /** Figures added up, leaving out the single highest and the single lowest when there are three or more. */
++    private static BigDecimal trimmedSum(List<BigDecimal> given) {
++        List<BigDecimal> sorted = given.stream().sorted().toList();
++        List<BigDecimal> kept = sorted.size() < 3 ? sorted : sorted.subList(1, sorted.size() - 1);
++        return kept.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+     /** A person's due-total held to the sheet's cap; none (n/a) is not capped. */
