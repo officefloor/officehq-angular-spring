@@ -9,6 +9,7 @@ interface User {
 interface SheetView {
   id: string;
   today: string;
+  archived: boolean;
 }
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet, so
@@ -24,6 +25,10 @@ export class Session {
   readonly sheetId = this._sheetId.asReadonly();
   /** The active sheet's today (yyyy-mm-dd). Date-dependent features use this, never the clock. */
   readonly today = this._today.asReadonly();
+  private readonly _archived = signal<boolean | null>(null);
+  /** Whether the active sheet is archived; null while it is not known (an archive is waiting on the server, or
+   * was refused, until the sheet is loaded again). An archived sheet refuses every change. */
+  readonly archived = this._archived.asReadonly();
   /** The features that read a sheet's data when it is loaded, and those still reading the active one's. */
   private readonly loaders = new Set<symbol>();
   private readonly pending = signal<ReadonlySet<symbol>>(new Set());
@@ -55,6 +60,7 @@ export class Session {
         this.pending.set(new Set());
         this._sheetId.set(null);
         this._today.set(null);
+        this._archived.set(null);
       }),
     );
   }
@@ -67,6 +73,7 @@ export class Session {
           this.pending.set(new Set(this.loaders));
           this._sheetId.set(s.id);
           this._today.set(s.today);
+          this._archived.set(s.archived);
         }),
         map((s) => s.id),
       );
@@ -82,9 +89,28 @@ export class Session {
       )
       .pipe(
         tap((s) => {
-          if (this._sheetId() === s.id) this._today.set(s.today);
+          if (this._sheetId() !== s.id) return;
+          this._today.set(s.today);
+          this._archived.set(s.archived);
         }),
         map((s) => s.today),
+      );
+  }
+
+  /** Archive the active sheet. Whether it is archived is not known until the server answers; a refusal leaves it
+   * unknown until the sheet is loaded again. */
+  archive(): Observable<boolean> {
+    const id = this._sheetId() ?? '';
+    this._archived.set(null);
+    return this.http
+      .post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null, {
+        headers: { 'X-User': this._user() ?? '' },
+      })
+      .pipe(
+        tap((s) => {
+          if (this._sheetId() === s.id) this._archived.set(s.archived);
+        }),
+        map((s) => s.archived),
       );
   }
 }

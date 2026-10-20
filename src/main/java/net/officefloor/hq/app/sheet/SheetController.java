@@ -22,19 +22,21 @@ public class SheetController {
 
     public record SetToday(@NotNull LocalDate today) {}
 
-    public record SheetView(String id, LocalDate today) {
+    public record SheetView(String id, LocalDate today, boolean archived) {
 
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
         }
     }
 
     private final SheetService service;
     private final TodayService todays;
+    private final ArchiveService archives;
 
-    public SheetController(SheetService service, TodayService todays) {
+    public SheetController(SheetService service, TodayService todays, ArchiveService archives) {
         this.service = service;
         this.todays = todays;
+        this.archives = archives;
     }
 
     /** Load a sheet by id, starting it empty when it was never loaded before. */
@@ -48,5 +50,11 @@ public class SheetController {
     public SheetView setToday(@RequestHeader("X-User") String user, @PathVariable String id,
             @Valid @RequestBody SetToday request) {
         return SheetView.of(todays.setToday(user, id, request.today()));
+    }
+
+    /** Archive the sheet; only a steward may. */
+    @PostMapping("/{id}/archive")
+    public SheetView archive(@RequestHeader("X-User") String user, @PathVariable String id) {
+        return SheetView.of(archives.archive(user, id));
     }
 }

@@ -1,9 +1,10 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 
 // Sign in by name (no password), then load a sheet by id. Shows the signed-in name and the
-// active sheet id, and the sheet's today, which can be changed here.
+// active sheet id, the sheet's today, which can be changed here, and whether the sheet is archived, which a
+// steward does here. A refused change to the sheet shows in its error.
 @Component({
   selector: 'app-session-bar',
   imports: [ReactiveFormsModule],
@@ -38,7 +39,12 @@ import { Session } from '../../core/session';
             />
             <button type="submit" data-testid="sheet-today-save">Set today</button>
           </form>
-          @if (todayError(); as e) {
+          <p>
+            Archived:
+            <strong data-testid="sheet-archived">{{ archivedText() }}</strong>
+          </p>
+          <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+          @if (changeError(); as e) {
             <p role="alert" data-testid="sheet-error">{{ e }}</p>
           }
         }
@@ -62,14 +68,18 @@ export class SessionBar {
   protected readonly signInError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
-  protected readonly todayError = signal<string | null>(null);
+  protected readonly changeError = signal<string | null>(null);
+  protected readonly archivedText = computed(() => {
+    const a = this.session.archived();
+    return a === null ? '' : a ? 'yes' : 'no';
+  });
   /** The forms whose submit is waiting on the server; another submit of one is ignored until it answers. */
-  private readonly submitting = new Set<'signIn' | 'sheet' | 'today'>();
+  private readonly submitting = new Set<'signIn' | 'sheet' | 'today' | 'archive'>();
 
   constructor() {
     this.signInForm.valueChanges.subscribe(() => this.signInError.set(null));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
-    this.todayForm.valueChanges.subscribe(() => this.todayError.set(null));
+    this.todayForm.valueChanges.subscribe(() => this.changeError.set(null));
   }
 
   protected signIn(): void {
@@ -96,7 +106,7 @@ export class SessionBar {
       this.sheetError.set('Type a sheet id without spaces.');
       return;
     }
-    this.todayError.set(null);
+    this.changeError.set(null);
     if (!this.begin('sheet')) return;
     this.session.loadSheet(id).subscribe({
       next: () => {
@@ -111,10 +121,10 @@ export class SessionBar {
   }
 
   protected saveToday(): void {
-    this.todayError.set(null);
+    this.changeError.set(null);
     const today = this.todayForm.getRawValue().today;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
-      this.todayError.set('Pick a date for today.');
+      this.changeError.set('Pick a date for today.');
       return;
     }
     if (!this.begin('today')) return;
@@ -122,13 +132,25 @@ export class SessionBar {
       next: () => this.submitting.delete('today'),
       error: () => {
         this.submitting.delete('today');
-        this.todayError.set('Could not change the sheet\'s today.');
+        this.changeError.set('Could not change the sheet\'s today.');
+      },
+    });
+  }
+
+  protected archive(): void {
+    this.changeError.set(null);
+    if (!this.begin('archive')) return;
+    this.session.archive().subscribe({
+      next: () => this.submitting.delete('archive'),
+      error: () => {
+        this.submitting.delete('archive');
+        this.changeError.set('Could not archive the sheet.');
       },
     });
   }
 
   /** Marks the form as submitting; false when a submit of it is already waiting on the server. */
-  private begin(form: 'signIn' | 'sheet' | 'today'): boolean {
+  private begin(form: 'signIn' | 'sheet' | 'today' | 'archive'): boolean {
     if (this.submitting.has(form)) return false;
     this.submitting.add(form);
     return true;

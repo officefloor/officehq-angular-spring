@@ -443,8 +443,8 @@ public class ClaimService {
                     .toList();
         });
         List<Claim> changed = new ArrayList<>();
-        if (settings.roleOf(sheetId, user) == Role.VIEWER) {
-            // A viewer changes nothing: every claim is refused.
+        if (settings.roleOf(sheetId, user) == Role.VIEWER || sheets.isArchived(sheetId)) {
+            // A viewer, or anyone on an archived sheet, changes nothing: every claim is refused.
             return new OpenedAll(0, wanted.size(), changed);
         }
         for (Claim claim : chosen) {

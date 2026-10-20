@@ -51,6 +51,12 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
+    /** Whether the sheet is archived, so that every change to it is refused. */
+    @Transactional(readOnly = true)
+    public boolean isArchived(String id) {
+        return find(id).isArchived();
+    }
+
     /** Whether a claim opened now on the sheet is numbered within its period, not sheet-wide. */
     @Transactional(readOnly = true)
     public boolean numbersByPeriod(String id) {

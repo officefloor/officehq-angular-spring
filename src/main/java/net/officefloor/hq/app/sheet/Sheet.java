@@ -83,6 +83,10 @@ public class Sheet {
     @Column(name = "roles", nullable = false)
     private Map<String, String> permissions = new HashMap<>();
 
+    /** Whether a steward has archived the sheet: it stays readable, and every change to it is refused. */
+    @Column(name = "archived", nullable = false)
+    private boolean archived;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt) {
@@ -110,6 +114,14 @@ public class Sheet {
 
     public void setToday(LocalDate today) {
         this.today = today;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void archive() {
+        this.archived = true;
     }
 
     /** The values a dated setting has, by from-date, the one with no from-date first. */
