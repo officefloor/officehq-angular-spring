@@ -17,6 +17,7 @@ import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -36,6 +37,19 @@ public class SettingController {
 
         static RoleView of(SheetRole role) {
             return new RoleView(role.getUser(), role.getRole().code());
+        }
+    }
+
+    /** A delegation of the steward role to a user name, from a date to a date (yyyy-mm-dd), inclusive. */
+    public record DelegationForm(@NotBlank @Size(max = 100) String user,
+            @NotNull @Pattern(regexp = "\\d{4}-\\d{2}-\\d{2}") String from,
+            @NotNull @Pattern(regexp = "\\d{4}-\\d{2}-\\d{2}") String to) {}
+
+    public record DelegationView(long id, String by, String user, String from, String to) {
+
+        static DelegationView of(Delegation d) {
+            return new DelegationView(d.getId(), d.getDelegator(), d.getUser(), d.getFrom().toString(),
+                    d.getTo().toString());
         }
     }
 
@@ -153,6 +167,19 @@ public class SettingController {
         Role role = Role.of(form.role().trim()).orElseThrow(
                 () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "A role is clerk, steward or viewer."));
         return RoleView.of(service.setRole(user, sheetId, form.user().trim(), role));
+    }
+
+    @GetMapping("/delegations")
+    public List<DelegationView> delegations(@RequestHeader("X-User") String user, @PathVariable String sheetId) {
+        return service.delegations(sheetId).stream().map(DelegationView::of).toList();
+    }
+
+    @PostMapping("/delegations")
+    public DelegationView delegate(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @Valid @RequestBody DelegationForm form) {
+        LocalDate from = dateOrBlank(form.from(), "A from-date is a date.").orElseThrow();
+        LocalDate to = dateOrBlank(form.to(), "A to-date is a date.").orElseThrow();
+        return DelegationView.of(service.delegate(user, sheetId, form.user().trim(), from, to));
     }
 
     @GetMapping("/settings")

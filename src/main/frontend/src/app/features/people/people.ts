@@ -803,20 +803,14 @@ export class People {
     return this.watchedNow().get(person.id) ?? person.watched;
   }
 
-  /** Toggle watching the person, from whether the user watched them when the sheet was read: a toggle that the
-   * store already has (made since, here or elsewhere) is refused, and the row shows what was read until it
-   * goes through. */
+  /** Toggle watching the person, from whether the row shows the user watching them: a toggle that the store
+   * already has (made elsewhere since) is refused, and the row keeps what it shows until it goes through. */
   protected watch(person: Person): void {
     this.personError.set(null);
     this.patronError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const watched = !person.watched;
-    this.watchedNow.update((m) => {
-      const next = new Map(m);
-      next.delete(person.id);
-      return next;
-    });
+    const watched = !this.watchedShown(person);
     this.api.watch(sheetId, person.id, watched).subscribe({
       next: (p) => {
         if (this.session.sheetId() === sheetId) this.watchedNow.update((m) => new Map(m).set(p.id, p.watched));

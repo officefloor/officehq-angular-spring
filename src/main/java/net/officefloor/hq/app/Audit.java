@@ -6,6 +6,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import net.officefloor.hq.app.setting.SettingService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -23,10 +27,15 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 public class Audit {
 
-    private final Path file;
+    /** The sheet and user a record names, after its event name. */
+    private static final Pattern WHO = Pattern.compile("^(\\S+) sheet=(\\S+) by=(\\S+)");
 
-    public Audit(@Value("${app.audit.file:.run/audit.log}") String path) {
+    private final Path file;
+    private final ObjectProvider<SettingService> settings;
+
+    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, ObjectProvider<SettingService> settings) {
         this.file = Path.of(path);
+        this.settings = settings;
     }
 
     /** Append one audit record. Tests assert the exact line(s) in the file. */
@@ -45,9 +54,12 @@ public class Audit {
 
     /**
      * Append one audit record once the current transaction commits, so a change that is refused or
-     * rolled back writes nothing. Outside a transaction the record is appended at once.
+     * rolled back writes nothing. Outside a transaction the record is appended at once. A record of a change
+     * made by a user acting as a steward by delegation (other than a ROLLUP or TOTALS line) ends with
+     * {@code for=<the steward who delegated>}.
      */
-    public void recordOnCommit(String entry) {
+    public void recordOnCommit(String record) {
+        String entry = record + delegated(record);
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             record(entry);
             return;
@@ -58,6 +70,15 @@ public class Audit {
                 record(entry);
             }
         });
+    }
+
+    /** " for=<steward>" when the record's user acts as a steward by delegation on the sheet's today; else "". */
+    private String delegated(String entry) {
+        Matcher who = WHO.matcher(entry);
+        if (!who.find() || who.group(1).equals("ROLLUP") || who.group(1).equals("TOTALS")) {
+            return "";
+        }
+        return settings.getObject().delegatorOf(who.group(2), who.group(3)).map(s -> " for=" + s).orElse("");
     }
 
     /** Truncate the audit file. */
