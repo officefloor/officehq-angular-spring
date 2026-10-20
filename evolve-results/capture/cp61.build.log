@@ -1,0 +1,343 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+ay(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "20.00"})).toBe(true);
+      12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {"name": "Ben", "grade": "B"}));
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:10:70
+
+
+[1A[2K[218/232] [chromium] › cp58_watch-and-notify.spec.ts:98:7 › watch and notify › watch and notify scenario 1
+[1A[2K  19) [chromium] › cp58_watch-and-notify.spec.ts:98:7 › watch and notify › watch and notify scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      100 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      101 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 102 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      103 |     await ui.setSetting(pg_uma, "clerk-limit", "3.00");
+      104 |     await ui.setSetting(pg_uma, "late-pct", "10.00");
+      105 |     await ui.setSetting(pg_uma, "perm-open", "clerk");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:102:56
+
+
+[1A[2K[219/232] [chromium] › cp58_watch-and-notify.spec.ts:358:7 › watch and notify › watch and notify scenario 2
+[1A[2K  20) [chromium] › cp58_watch-and-notify.spec.ts:358:7 › watch and notify › watch and notify scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      360 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      361 |     await ui.setToday(pg_uma, "2026-03-20");
+    > 362 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+          |                                                        ^
+      363 |     await ui.setSetting(pg_uma, "floor", "2.00");
+      364 |     await ui.setSetting(pg_uma, "terms", "7");
+      365 |     await ui.setSetting(pg_uma, "policy-date", "2026-03-15");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:362:56
+
+
+[1A[2K[220/232] [chromium] › cp58_watch-and-notify.spec.ts:694:7 › watch and notify › watch and notify scenario 3
+[1A[2K  21) [chromium] › cp58_watch-and-notify.spec.ts:694:7 › watch and notify › watch and notify scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      696 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      697 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 698 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      699 |     await ui.setSetting(pg_uma, "terms", "30");
+      700 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      701 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "33.33"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:698:56
+
+
+[1A[2K[221/232] [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates
+[1A[2K  22) [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ─────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       8 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       9 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      12 |     expect(await ui.addPeriod(pg_uma, {"name": "P1", "from": "2026-03-05", "to": "2026-03-08"})).toBe(true);
+      13 |     expect(await ui.generatePeriods(pg_uma, "2026-02-15", "2026-04-10")).toBe(2);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:10:70
+
+
+[1A[2K[222/232] [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1
+[1A[2K  23) [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      105 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      106 |     await ui.setToday(pg_uma, "2026-03-20");
+    > 107 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+          |                                                        ^
+      108 |     await ui.setSetting(pg_uma, "clerk-limit", "3.00");
+      109 |     await ui.setSetting(pg_uma, "floor", "0.50");
+      110 |     await ui.setSetting(pg_uma, "terms", "10");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:107:56
+
+
+[1A[2K[223/232] [chromium] › cp59_period-templates.spec.ts:332:7 › period templates › period templates scenario 2
+[1A[2K  24) [chromium] › cp59_period-templates.spec.ts:332:7 › period templates › period templates scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      334 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      335 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 336 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      337 |     await ui.setSetting(pg_uma, "clerk-limit", "1.50");
+      338 |     await ui.setSetting(pg_uma, "terms", "7");
+      339 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:336:56
+
+
+[1A[2K[224/232] [chromium] › cp59_period-templates.spec.ts:604:7 › period templates › period templates scenario 3
+[1A[2K  25) [chromium] › cp59_period-templates.spec.ts:604:7 › period templates › period templates scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      606 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      607 |     await ui.setToday(pg_uma, "2026-03-20");
+    > 608 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      609 |     await ui.setSetting(pg_uma, "clerk-limit", "3.00");
+      610 |     await ui.setSetting(pg_uma, "terms-C", "3");
+      611 |     await ui.setSetting(pg_uma, "proof-threshold", "3.00");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:608:56
+
+
+[1A[2K[225/232] [chromium] › cp60_trimmed-totals.spec.ts:6:7 › trimmed totals › trimmed totals
+[1A[2K  26) [chromium] › cp60_trimmed-totals.spec.ts:6:7 › trimmed totals › trimmed totals ───────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       8 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       9 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "20.00"})).toBe(true);
+      12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {"name": "Ben", "grade": "B"}));
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp60_trimmed-totals.spec.ts:10:70
+
+
+[1A[2K[226/232] [chromium] › cp60_trimmed-totals.spec.ts:175:7 › trimmed totals › trimmed totals scenario 1
+[1A[2K  27) [chromium] › cp60_trimmed-totals.spec.ts:175:7 › trimmed totals › trimmed totals scenario 1 ──
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      177 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      178 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 179 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      180 |     await ui.setSetting(pg_uma, "clerk-limit", "1.50");
+      181 |     await ui.setSetting(pg_uma, "floor", "2.00");
+      182 |     await ui.setSetting(pg_uma, "terms", "7");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp60_trimmed-totals.spec.ts:179:56
+
+
+[1A[2K[227/232] [chromium] › cp60_trimmed-totals.spec.ts:427:7 › trimmed totals › trimmed totals scenario 2
+[1A[2K  28) [chromium] › cp60_trimmed-totals.spec.ts:427:7 › trimmed totals › trimmed totals scenario 2 ──
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      433 |     await ui.setSetting(pg_uma, "perm-settle", "steward");
+      434 |     await ui.setSetting(pg_uma, "grace-days", "0");
+    > 435 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "5.00"})).toBe(true);
+          |                                                                     ^
+      436 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "12.50"})).toBe(true);
+      437 |     expect(await ui.addPeriod(pg_uma, {"name": "P1", "from": "2026-03-01", "to": "2026-03-15"})).toBe(true);
+      438 |     expect(await ui.addPeriod(pg_uma, {"name": "P2", "from": "2026-03-16", "to": "2026-03-31"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp60_trimmed-totals.spec.ts:435:69
+
+
+[1A[2K[228/232] [chromium] › cp60_trimmed-totals.spec.ts:751:7 › trimmed totals › trimmed totals scenario 3
+[1A[2K  29) [chromium] › cp60_trimmed-totals.spec.ts:751:7 › trimmed totals › trimmed totals scenario 3 ──
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      753 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      754 |     await ui.setToday(pg_uma, "2026-03-20");
+    > 755 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      756 |     await ui.setSetting(pg_uma, "terms", "10");
+      757 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      758 |     await ui.setSetting(pg_uma, "policy-date", "2026-03-05");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp60_trimmed-totals.spec.ts:755:56
+
+
+[1A[2K[229/232] [chromium] › cp61_delegation.spec.ts:6:7 › delegation › delegation
+[1A[2K  30) [chromium] › cp61_delegation.spec.ts:6:7 › delegation › delegation ───────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       8 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       9 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      12 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+      13 |     await ui.setSetting(pg_uma, "clerk-limit", "1.50");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp61_delegation.spec.ts:10:70
+
+
+[1A[2K[230/232] [chromium] › cp61_delegation.spec.ts:76:7 › delegation › delegation scenario 1
+[1A[2K  31) [chromium] › cp61_delegation.spec.ts:76:7 › delegation › delegation scenario 1 ───────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      78 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      79 |     await ui.setToday(pg_uma, "2026-03-20");
+    > 80 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+         |                                                        ^
+      81 |     await ui.setSetting(pg_uma, "clerk-limit", "1.50");
+      82 |     await ui.setSetting(pg_uma, "floor", "2.00");
+      83 |     await ui.setSetting(pg_uma, "terms", "7");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp61_delegation.spec.ts:80:56
+
+
+[1A[2K[231/232] [chromium] › cp61_delegation.spec.ts:429:7 › delegation › delegation scenario 2
+[1A[2K  32) [chromium] › cp61_delegation.spec.ts:429:7 › delegation › delegation scenario 2 ──────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      435 |     await ui.setSetting(pg_uma, "cap", "5.00");
+      436 |     await ui.setSetting(pg_uma, "proof-threshold", "1.00");
+    > 437 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "33.33"})).toBe(true);
+          |                                                                      ^
+      438 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "5.00"})).toBe(true);
+      439 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "20.00", "from": "2026-03-10"})).toBe(true);
+      440 |     expect(await ui.addPeriod(pg_uma, {"name": "P1", "from": "2026-03-01", "to": "2026-03-15"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp61_delegation.spec.ts:437:70
+
+
+[1A[2K[232/232] [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3
+[1A[2K  33) [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 ──────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      695 |     await ui.setSetting(pg_uma, "terms", "30");
+      696 |     await ui.setSetting(pg_uma, "proof-threshold", "1.00");
+    > 697 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "7.50"})).toBe(true);
+          |                                                                     ^
+      698 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "12.50"})).toBe(true);
+      699 |     expect(await ui.addPeriod(pg_uma, {"name": "P1", "from": "2026-03-01", "to": "2026-03-15"})).toBe(true);
+      700 |     expect(await ui.addPeriod(pg_uma, {"name": "P2", "from": "2026-03-16", "to": "2026-03-31"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp61_delegation.spec.ts:697:69
+
+
+[1A[2K  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (1.7m)
+  Slow test file: [chromium] › cp27_patrons-and-backing.spec.ts (56.8s)
+  Slow test file: [chromium] › cp25_due-by-and-overdue.spec.ts (45.8s)
+  Slow test file: [chromium] › cp49_paste-claims.spec.ts (44.1s)
+  Slow test file: [chromium] › cp51_proofs.spec.ts (43.4s)
+  Consider splitting slow test files to speed up parallel execution
+  33 failed
+    [chromium] › cp36_approvals.spec.ts:6:7 › approvals › approvals ────────────────────────────────
+    [chromium] › cp54_viewer-role.spec.ts:6:7 › viewer role › viewer role ──────────────────────────
+    [chromium] › cp54_viewer-role.spec.ts:78:7 › viewer role › viewer role scenario 1 ──────────────
+    [chromium] › cp54_viewer-role.spec.ts:291:7 › viewer role › viewer role scenario 2 ─────────────
+    [chromium] › cp54_viewer-role.spec.ts:613:7 › viewer role › viewer role scenario 3 ─────────────
+    [chromium] › cp55_auto-close.spec.ts:6:7 › auto close › auto close ─────────────────────────────
+    [chromium] › cp55_auto-close.spec.ts:95:7 › auto close › auto close scenario 1 ─────────────────
+    [chromium] › cp55_auto-close.spec.ts:367:7 › auto close › auto close scenario 2 ────────────────
+    [chromium] › cp55_auto-close.spec.ts:614:7 › auto close › auto close scenario 3 ────────────────
+    [chromium] › cp56_late-per-boundary.spec.ts:6:7 › late per boundary › late per boundary ────────
+    [chromium] › cp56_late-per-boundary.spec.ts:84:7 › late per boundary › late per boundary scenario 1 
+    [chromium] › cp56_late-per-boundary.spec.ts:395:7 › late per boundary › late per boundary scenario 2 
+    [chromium] › cp56_late-per-boundary.spec.ts:674:7 › late per boundary › late per boundary scenario 3 
+    [chromium] › cp57_split-claim.spec.ts:6:7 › split claim › split claim ──────────────────────────
+    [chromium] › cp57_split-claim.spec.ts:142:7 › split claim › split claim scenario 1 ─────────────
+    [chromium] › cp57_split-claim.spec.ts:464:7 › split claim › split claim scenario 2 ─────────────
+    [chromium] › cp57_split-claim.spec.ts:752:7 › split claim › split claim scenario 3 ─────────────
+    [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify ───────────
+    [chromium] › cp58_watch-and-notify.spec.ts:98:7 › watch and notify › watch and notify scenario 1 
+    [chromium] › cp58_watch-and-notify.spec.ts:358:7 › watch and notify › watch and notify scenario 2 
+    [chromium] › cp58_watch-and-notify.spec.ts:694:7 › watch and notify › watch and notify scenario 3 
+    [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ───────────
+    [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1 
+    [chromium] › cp59_period-templates.spec.ts:332:7 › period templates › period templates scenario 2 
+    [chromium] › cp59_period-templates.spec.ts:604:7 › period templates › period templates scenario 3 
+    [chromium] › cp60_trimmed-totals.spec.ts:6:7 › trimmed totals › trimmed totals ─────────────────
+    [chromium] › cp60_trimmed-totals.spec.ts:175:7 › trimmed totals › trimmed totals scenario 1 ────
+    [chromium] › cp60_trimmed-totals.spec.ts:427:7 › trimmed totals › trimmed totals scenario 2 ────
+    [chromium] › cp60_trimmed-totals.spec.ts:751:7 › trimmed totals › trimmed totals scenario 3 ────
+    [chromium] › cp61_delegation.spec.ts:6:7 › delegation › delegation ─────────────────────────────
+    [chromium] › cp61_delegation.spec.ts:76:7 › delegation › delegation scenario 1 ─────────────────
+    [chromium] › cp61_delegation.spec.ts:429:7 › delegation › delegation scenario 2 ────────────────
+    [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 ────────────────
+  199 passed (28.4m)
