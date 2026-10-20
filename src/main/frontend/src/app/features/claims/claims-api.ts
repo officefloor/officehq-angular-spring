@@ -74,6 +74,14 @@ export function counts(claim: Claim): boolean {
   return isOpen(claim) || claim.status === 'SETTLED';
 }
 
+/** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it (its lines are dated by
+ * the sheet's today when each change was made): that of the last line on or before it; null when the claim was
+ * added after it. A claim with no log (one there before the log was kept) has the status it has now. */
+export function statusAt(claim: Claim, date: string): ClaimStatus | null {
+  if (claim.statusLog.length === 0) return claim.status;
+  return claim.statusLog.filter((l) => l.on <= date).at(-1)?.status ?? null;
+}
+
 /** Whether a claim goes by the figure its person's last statement bound it to: a PENDING claim is not bound, but
  * shows its live figure. */
 export function bound(claim: Claim): boolean {

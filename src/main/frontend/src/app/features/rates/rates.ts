@@ -152,8 +152,8 @@ export class Rates {
       return;
     }
     if (to !== null && from !== null && to < from) {
-      // The refused to-date is cleared, so it is picked again rather than carried into the next rate.
-      this.form.controls.to.setValue('', { emitEvent: false });
+      // The refused dates are cleared, so they are picked again rather than carried into the next rate.
+      this.form.patchValue({ from: '', to: '' }, { emitEvent: false });
       this.formError.set('The to-date cannot be before the from-date.');
       return;
     }

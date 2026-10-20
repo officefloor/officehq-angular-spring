@@ -240,6 +240,22 @@ public class Claim {
         return Collections.unmodifiableList(statusLog);
     }
 
+    /** The status the claim had at the end of a day, as its status log records it (its lines are dated by the
+     * sheet's today when each change was made): that of the last line on or before it; none when the claim was
+     * added after it. A claim with no log (one there before the log was kept) has the status it has now. */
+    public ClaimStatus statusAt(LocalDate date) {
+        if (statusLog.isEmpty()) {
+            return status;
+        }
+        ClaimStatus then = null;
+        for (StatusLogLine line : statusLog) {
+            if (!line.getOn().isAfter(date)) {
+                then = line.getStatus();
+            }
+        }
+        return then;
+    }
+
     /** Add a line to the status log for the status the claim has now. */
     public void logStatus(String by, LocalDate on, String due) {
         statusLog.add(new StatusLogLine(status, by, on, due));

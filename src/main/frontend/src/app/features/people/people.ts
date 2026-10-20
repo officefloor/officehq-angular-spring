@@ -13,6 +13,7 @@ import {
   bound,
   claimDue,
   counts,
+  statusAt,
   isOpen,
   isDeferred,
   isOverdue,
@@ -348,16 +349,17 @@ export class People {
 
   /** The sheet's periods by from-date. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each period's due-total for each person, by period id then person id: the sum of the dues of the
-   * person's claims that count dated in it (n/a ones skipped), 0.00 with none; a closed period's are the ones
+  /** Each period's due-total for each person, by period id then person id: the sum of the dues, as shown now,
+   * of the person's claims dated in it that count by the status they had at the end of its last day (n/a ones
+   * skipped), 0.00 with none; a closed period's are the ones
    * fixed when it closed, 0.00 for a person who had none then. */
   protected readonly personPeriodDueTotals = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const dues = new Map<number, Map<number, string[]>>();
-    for (const c of this.claims().filter((c) => this.countsLive(c))) {
+    for (const c of this.claims()) {
       const period = periodOf(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (!period || period.closed || !person) continue;
+      if (!period || period.closed || !person || !this.countsAt(c, period.to)) continue;
       const due = this.claimDue(c, person);
       if (due === NO_RATE) continue;
       const byPerson = dues.get(period.id) ?? new Map<number, string[]>();
@@ -609,6 +611,19 @@ export class People {
       counts(claim) &&
       !isDeferred(claim, this.session.today()) &&
       !(isOpen(claim) && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
+    );
+  }
+
+  /** Whether a claim counts toward a period ending on a date: by the status it had at the end of that day, it is
+   * OPEN, PENDING or SETTLED (one added after it is not), and the live rules leave it in: it is not deferred on
+   * the sheet's today, and not OPEN or PENDING then, dated within one of its person's holds and not bound. */
+  private countsAt(claim: Claim, end: string): boolean {
+    const then = statusAt(claim, end);
+    const openThen = then === 'OPEN' || then === 'PENDING';
+    return (
+      (openThen || then === 'SETTLED') &&
+      !isDeferred(claim, this.session.today()) &&
+      !(openThen && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
     );
   }
 

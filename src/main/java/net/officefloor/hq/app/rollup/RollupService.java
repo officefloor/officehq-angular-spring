@@ -147,8 +147,8 @@ public class RollupService {
         return sheets.findById(sheetId).map(s -> s.capped(dueTotal)).orElse(dueTotal);
     }
 
-    /** Each person's due-total of their claims that count (OPEN and PENDING ones within a hold, unbound, and deferred ones do not)
-     * dated from and to, inclusive, by person id: the sum of their dues, late charges included, n/a ones skipped;
+    /** Each person's due-total of their claims dated from and to, inclusive, that count by the status they had at
+     * the end of the to-date (see {@link #countsAt}), by person id: the sum of their dues, late charges included, n/a ones skipped;
      * a person with no such due has none. */
     public Map<Long, BigDecimal> dueTotals(String sheetId, LocalDate from, LocalDate to) {
         Lateness late = latenessOf(sheetId);
@@ -162,7 +162,7 @@ public class RollupService {
         Map<String, LocalDate> datesByNumber = datesByNumber(all);
         for (Claim claim : all) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !counts(claim, person, late.today())
+            if (person == null || !countsAt(claim, person, late.today(), to)
                     || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
@@ -345,6 +345,19 @@ public class RollupService {
     private static boolean overdue(Claim claim, LocalDate today) {
         return claim.getStatus().isOpen() && today != null && claim.getDueBy().isBefore(today)
                 && !claim.deferredOn(today);
+    }
+
+    /** Whether a claim counts toward a period ending on a date: by the status it had at the end of that day, only
+     * an OPEN, PENDING or SETTLED one does (one added after it does not); an OPEN or PENDING one then, dated
+     * within one of its person's holds, does not unless it is bound by a statement, and one deferred on the
+     * sheet's today does not. */
+    public static boolean countsAt(Claim claim, Person person, LocalDate today, LocalDate end) {
+        ClaimStatus then = claim.statusAt(end);
+        if (then == null) {
+            return false;
+        }
+        return (then.isOpen() && (bound(claim) || !person.heldOn(claim.getDate())) && !claim.deferredOn(today))
+                || then == ClaimStatus.SETTLED;
     }
 
     /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; an OPEN or PENDING one dated
