@@ -10,7 +10,10 @@ export interface Period {
   /** yyyy-mm-dd, both inclusive. */
   from: string;
   to: string;
+  /** Closed, soft or not: its figures are fixed. */
   closed: boolean;
+  /** Soft-closed: closed, but claims dated in it can still be added and changed. */
+  soft: boolean;
   /** The due-total fixed when it closed; null while open. */
   closedTotal: string | null;
   /** Each person's due-total for it, by person id, fixed when it closed (a person with none has 0.00); null
@@ -50,6 +53,10 @@ export class PeriodsApi {
 
   close(sheetId: string, id: number): Observable<Period> {
     return this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() });
+  }
+
+  softClose(sheetId: string, id: number): Observable<Period> {
+    return this.http.post<Period>(`${this.url(sheetId)}/${id}/soft-close`, null, { headers: this.headers() });
   }
 
   reopen(sheetId: string, id: number): Observable<Period> {

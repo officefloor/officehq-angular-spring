@@ -84,6 +84,7 @@ const SPLIT_AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
             <th scope="col">Deferred until</th>
             <th scope="col">Proofs</th>
             <th scope="col">Split from</th>
+            <th scope="col">Late entry</th>
             <th scope="col">Status log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -116,6 +117,7 @@ const SPLIT_AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
               <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
               <td data-testid="claim-proofs">{{ c.proofs }}</td>
               <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
+              <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</td>
               <td>
                 <ol data-testid="claim-log">
                   @for (l of c.statusLog; track $index) {
@@ -692,7 +694,8 @@ export class Claims {
       });
       return;
     }
-    if (periodOf(this.periods(), claim.date)?.closed) {
+    const period = periodOf(this.periods(), claim.date);
+    if (period?.closed && !period.soft) {
       this.claimError.set({ id: claim.id, message: 'That claim is dated in a closed period.' });
       return;
     }

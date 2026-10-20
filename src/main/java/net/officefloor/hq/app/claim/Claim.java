@@ -100,6 +100,10 @@ public class Claim {
     @Column(name = "locked_on")
     private LocalDate lockedOn;
 
+    /** Whether the claim was added while the period it is dated in was soft-closed. */
+    @Column(name = "late_entry", nullable = false)
+    private boolean lateEntry;
+
     /** The claim's status log, oldest first: one line per status it has had, from the DRAFT it was added as. */
     @ElementCollection(fetch = FetchType.EAGER)
     @Fetch(FetchMode.SUBSELECT)
@@ -294,6 +298,14 @@ public class Claim {
     public void lock(String user, LocalDate today) {
         this.lockedBy = user;
         this.lockedOn = today;
+    }
+
+    public boolean isLateEntry() {
+        return lateEntry;
+    }
+
+    public void setLateEntry(boolean lateEntry) {
+        this.lateEntry = lateEntry;
     }
 
     public void unlock() {

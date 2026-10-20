@@ -61,7 +61,7 @@ public class ClaimService {
     }
 
     /** Add a claim for a person; a claim without a date is dated the sheet's today. One dated in a closed period
-     * is refused, and so is a correction that does not name a settled claim of the same person. */
+     * is refused, one dated in a soft-closed period is a late entry, and so is a correction that does not name a settled claim of the same person. */
     @Transactional
     public Claim add(String user, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
@@ -75,10 +75,14 @@ public class ClaimService {
         LocalDate dueBy = dueBy(sheetId, person, dated);
         Claim fresh = new Claim(sheetId, personId, amount, dated, dueBy, noteOf(note));
         fresh.setCorrects(corrected);
+        fresh.setLateEntry(periods.periodOf(sheetId, dated).filter(Period::isSoftClosed).isPresent());
         Claim claim = claims.saveAndFlush(fresh);
         logStatus(user, today, claim, person);
         claims.flush();
         audit.recordOnCommit(entry("CLAIM_ADDED", user, person, claim));
+        if (claim.isLateEntry()) {
+            audit.recordOnCommit(entry("LATE_ENTRY", user, person, claim));
+        }
         rollup.recordChanges(user, sheetId, before);
         return claim;
     }

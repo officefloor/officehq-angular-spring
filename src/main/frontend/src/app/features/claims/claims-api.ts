@@ -42,6 +42,8 @@ export interface Claim {
   lockedBy: string | null;
   /** The sheet's today (yyyy-mm-dd) when the editor was opened; null when no one has it open. */
   lockedOn: string | null;
+  /** Whether the claim was added while the period it is dated in was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** Who holds the claim's lock on the sheet's today; null when no one does, or the lock has lapsed. */

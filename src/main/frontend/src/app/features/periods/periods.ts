@@ -7,7 +7,7 @@ import { Period, PeriodsApi } from './periods-api';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's periods by from-date, each with the due-total of the claims that count dated in it (fixed once
-// it is closed) and whether it is closed, and the form that adds one.
+// it is closed, soft or not) and whether it is closed or soft-closed, and the form that adds one.
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -57,7 +57,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.soft ? 'soft' : p.closed ? 'yes' : 'no' }}</td>
               <td>
                 <button
                   type="button"
@@ -66,6 +66,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                   (click)="close(p)"
                 >
                   Close
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-soft-close"
+                  [attr.aria-label]="'Soft-close period ' + p.name"
+                  (click)="softClose(p)"
+                >
+                  Soft-close
                 </button>
                 <button
                   type="button"
@@ -173,6 +181,29 @@ export class Periods {
               : e.status === 404
                 ? 'That period is no longer on this sheet.'
                 : 'Could not close that period.',
+        }),
+    });
+  }
+
+  protected softClose(period: Period): void {
+    this.periodError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api.softClose(sheetId, period.id).subscribe({
+      next: (p) => {
+        if (this.session.sheetId() === sheetId) this.saved.emit(p);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.periodError.set({
+          id: period.id,
+          message:
+            e.status === 403
+              ? 'Your role cannot close a period.'
+              : e.status === 409
+                ? 'That period is already closed.'
+                : e.status === 404
+                  ? 'That period is no longer on this sheet.'
+                  : 'Could not soft-close that period.',
         }),
     });
   }

@@ -27,16 +27,16 @@ public class PeriodController {
     /** Both dates are inclusive. */
     public record GenerateForm(@NotNull LocalDate from, @NotNull LocalDate to) {}
 
-    /** A closed period carries the due-total it closed at, and each person's, by person id (a person with none
+    /** A closed period, soft or not, carries the due-total it closed at, and each person's, by person id (a person with none
      * has 0.00); an open one neither. */
-    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal,
+    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, boolean soft, String closedTotal,
             Map<Long, String> personTotals) {
 
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.setScale(2).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
-                    period.isClosed(),
+                    period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() != null ? period.getClosedTotal().setScale(2).toPlainString() : null,
                     period.isClosed() ? personTotals : null);
         }
@@ -69,6 +69,12 @@ public class PeriodController {
     @PostMapping("/{id}/close")
     public PeriodView close(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
         return PeriodView.of(service.close(user, sheetId, id));
+    }
+
+    @PostMapping("/{id}/soft-close")
+    public PeriodView softClose(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id) {
+        return PeriodView.of(service.softClose(user, sheetId, id));
     }
 
     @PostMapping("/{id}/reopen")

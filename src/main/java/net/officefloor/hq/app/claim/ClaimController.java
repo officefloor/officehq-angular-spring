@@ -39,7 +39,7 @@ public class ClaimController {
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String due, String openedBy, boolean stated, String statedDue,
             String corrects, LocalDate dueBy, List<StatusLogView> statusLog, LocalDate deferredUntil,
-            int proofs, String splitFrom, String lockedBy, LocalDate lockedOn) {
+            int proofs, String splitFrom, String lockedBy, LocalDate lockedOn, boolean lateEntry) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -50,7 +50,7 @@ public class ClaimController {
                     claim.getStatedDue() != null ? claim.getStatedDue().setScale(2).toPlainString() : null,
                     claim.getCorrects(), claim.getDueBy(),
                     claim.getStatusLog().stream().map(StatusLogView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.getLockedOn());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.getLockedOn(), claim.isLateEntry());
         }
     }
 
