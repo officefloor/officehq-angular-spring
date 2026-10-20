@@ -18,6 +18,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 
@@ -97,6 +99,13 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<StatusLogLine> statusLog = new ArrayList<>();
 
+    /** The numbers the claim had before it was re-dated into another period's sequence; none is given out again. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "claim_former_number", joinColumns = @JoinColumn(name = "claim_id"))
+    @Column(name = "former_number")
+    private Set<String> formerNumbers = new TreeSet<>();
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note) {
@@ -166,6 +175,18 @@ public class Claim {
 
     public void setNumber(String number) {
         this.number = number;
+    }
+
+    public Set<String> getFormerNumbers() {
+        return Collections.unmodifiableSet(formerNumbers);
+    }
+
+    /** Give the claim a new number; the one it had is kept as a former number, never given out again. */
+    public void renumber(String next) {
+        if (number != null) {
+            formerNumbers.add(number);
+        }
+        this.number = next;
     }
 
     public BigDecimal getSettledDue() {

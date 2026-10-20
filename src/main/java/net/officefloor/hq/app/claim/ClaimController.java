@@ -82,6 +82,9 @@ public class ClaimController {
     /** The date an OPEN claim is deferred until. */
     public record DeferForm(@NotNull LocalDate until) {}
 
+    /** The new date of an OPEN or PENDING claim. */
+    public record RedateForm(@NotNull LocalDate date) {}
+
     /** The amount split off an OPEN claim: a number with up to two decimals. */
     public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String amount) {}
 
@@ -166,6 +169,12 @@ public class ClaimController {
     public ClaimView defer(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
             @Valid @RequestBody DeferForm form) {
         return ClaimView.of(service.defer(user, sheetId, id, form.until()));
+    }
+
+    @PostMapping("/claims/{id}/redate")
+    public ClaimView redate(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
+            @Valid @RequestBody RedateForm form) {
+        return ClaimView.of(service.redate(user, sheetId, id, form.date()));
     }
 
     @PostMapping("/claims/{id}/split")

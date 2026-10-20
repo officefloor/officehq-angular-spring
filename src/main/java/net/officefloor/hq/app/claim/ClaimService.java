@@ -292,6 +292,40 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement bound
+     * it to stays bound; its period follows the new date and, with period numbering, a claim whose period changes
+     * takes the next number of its new period's sequence, its old number never given out again. A claim of any
+     * other status, one dated in a closed period or a new date inside one, a date after its person's retirement,
+     * or anyone but a steward, is refused. */
+    @Transactional
+    public Claim redate(String user, String sheetId, Long id, LocalDate date) {
+        sheets.today(sheetId); // the sheet must exist
+        // Locking the sheet before taking the number numbers claims one at a time.
+        sheets.lock(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        settings.requireSteward(sheetId, user);
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an OPEN or PENDING claim can be re-dated.");
+        }
+        requireOpenPeriod(sheetId, claim.getDate());
+        requireOpenPeriod(sheetId, date);
+        Person person = requirePerson(sheetId, claim.getPersonId());
+        requireNotRetired(person, date);
+        Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDate();
+        boolean periodChanged = !periods.periodOf(sheetId, old).map(Period::getId)
+                .equals(periods.periodOf(sheetId, date).map(Period::getId));
+        claim.setDate(date);
+        if (periodChanged && claim.getNumber() != null && sheets.numbersByPeriod(sheetId)) {
+            claim.renumber(nextNumber(sheetId, claim));
+        }
+        claims.flush();
+        audit.recordOnCommit(entry("CLAIM_REDATED", user, person, claim) + " old=" + old + " new=" + date);
+        rollup.recordChanges(user, sheetId, before);
+        return claim;
+    }
+
     /** Split an amount off an OPEN claim: more than 0.00 and less than its amount. The claim keeps the rest and
      * loses any figure a statement bound it to; a new OPEN claim of the amount split off, with the same date and
      * note, takes the next number, is opened by the user, has its due-by fixed now from the terms in force on the
@@ -515,11 +549,15 @@ public class ClaimService {
         String prefix = periods.periodOf(sheetId, claim.getDate()).map(Period::getName).orElse(NO_PERIOD) + "-";
         int last = 0;
         for (Claim other : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            String number = other.getNumber();
-            if (number != null && number.startsWith(prefix)) {
-                String rest = number.substring(prefix.length());
-                if (rest.matches("\\d{1,9}")) {
-                    last = Math.max(last, Integer.parseInt(rest));
+            // A number a re-dated claim had before is never given out again.
+            List<String> taken = new ArrayList<>(other.getFormerNumbers());
+            taken.add(other.getNumber());
+            for (String number : taken) {
+                if (number != null && number.startsWith(prefix)) {
+                    String rest = number.substring(prefix.length());
+                    if (rest.matches("\\d{1,9}")) {
+                        last = Math.max(last, Integer.parseInt(rest));
+                    }
                 }
             }
         }

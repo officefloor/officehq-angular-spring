@@ -179,6 +179,22 @@ const SPLIT_AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
                 >
                   Defer
                 </button>
+                <label class="visually-hidden" [for]="'claim-date-new-' + c.id">New date</label>
+                <input
+                  [id]="'claim-date-new-' + c.id"
+                  type="date"
+                  data-testid="claim-date-new"
+                  [value]="redates().get(c.id) ?? ''"
+                  (input)="redateChange(c.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-redate"
+                  [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date"
+                  (click)="redate(c)"
+                >
+                  Re-date
+                </button>
                 <label class="visually-hidden" [for]="'claim-split-amount-' + c.id">Amount to split off</label>
                 <input
                   [id]="'claim-split-amount-' + c.id"
@@ -275,6 +291,8 @@ export class Claims {
   protected readonly rejectReasons = signal<ReadonlyMap<number, string>>(new Map());
   /** The date picked to defer each claim until, by id. */
   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The new date picked for each claim, by id. */
+  protected readonly redates = signal<ReadonlyMap<number, string>>(new Map());
   /** The amount typed to split off each claim, by id. */
   protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
@@ -448,6 +466,47 @@ export class Claims {
               : e.status === 404
                 ? 'That claim is no longer on this sheet.'
                 : 'Could not defer that claim.',
+        }),
+    });
+  }
+
+  protected redateChange(id: number, date: string): void {
+    if (this.claimError()?.id === id) this.claimError.set(null);
+    this.redates.update((m) => new Map(m).set(id, date));
+  }
+
+  /** A steward re-dates an OPEN or PENDING claim to the date picked on its row. */
+  protected redate(claim: Claim): void {
+    this.claimError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const date = this.redates().get(claim.id) ?? '';
+    if (date === '') {
+      this.claimError.set({ id: claim.id, message: 'Pick the new date for that claim.' });
+      return;
+    }
+    this.api.redate(sheetId, claim.id, date).subscribe({
+      next: (c) => {
+        this.redates.update((m) => {
+          const next = new Map(m);
+          next.delete(claim.id);
+          return next;
+        });
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 423
+              ? 'That claim, or its new date, is in a closed period.'
+              : e.status === 409
+              ? 'Only an open or pending claim can be re-dated.'
+              : e.status === 422
+              ? (e.error?.message ?? 'Only a steward can re-date a claim, to a date before its person retires.')
+              : e.status === 404
+                ? 'That claim is no longer on this sheet.'
+                : 'Could not re-date that claim.',
         }),
     });
   }

@@ -237,6 +237,11 @@ export class ClaimsApi {
     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/defer`, { until }, { headers: this.headers() });
   }
 
+  /** Re-date an OPEN or PENDING claim; only a steward may. */
+  redate(sheetId: string, id: number, date: string): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/redate`, { date }, { headers: this.headers() });
+  }
+
   /** Split an amount (more than 0.00, less than its amount) off an OPEN claim into a new OPEN claim. */
   split(sheetId: string, id: number, amount: string): Observable<Split> {
     return this.http.post<Split>(`${this.url(sheetId)}/claims/${id}/split`, { amount }, { headers: this.headers() });
