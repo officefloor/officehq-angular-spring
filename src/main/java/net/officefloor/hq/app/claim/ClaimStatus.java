@@ -7,7 +7,8 @@ public enum ClaimStatus {
     DRAFT, OPEN, PENDING, SETTLED, VOID;
 
     /** Whether a claim in this status may be opened, settled (or sent PENDING) or voided to the given status. A
-     * PENDING claim moves on only by a steward's approval or rejection, or by being voided. */
+     * PENDING claim moves on only by a steward's approval or rejection, or by being voided. (A steward may also void
+     * a SETTLED claim shortly after it was settled; see ClaimService.) */
     public boolean canBecome(ClaimStatus next) {
         return switch (next) {
             case OPEN -> this == DRAFT;

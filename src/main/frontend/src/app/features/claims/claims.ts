@@ -338,6 +338,8 @@ export class Claims {
               ? `You opened that claim, so someone else must ${action === 'approve' ? 'approve' : 'settle'} it.`
               : e.status === 428
               ? `That claim needs a proof before it can be ${action === 'approve' ? 'approved' : 'settled'}.`
+              : e.status === 422 && action === 'void'
+              ? 'Only a steward can void a settled claim.'
               : e.status === 422
               ? 'Only a steward can approve a pending claim.'
               : e.status === 409 && action === 'approve'
@@ -348,6 +350,8 @@ export class Claims {
               ? `That claim is deferred until ${claim.deferredUntil}.`
               : e.status === 409 && action === 'settle' && this.deferred(claim)
               ? `That claim is deferred until ${claim.deferredUntil}.`
+              : e.status === 409 && action === 'void' && claim.status === 'SETTLED'
+              ? 'A settled claim can be voided only within 7 days of its settlement.'
               : e.status === 409
               ? 'That claim\'s status does not allow that change.'
               : e.status === 404

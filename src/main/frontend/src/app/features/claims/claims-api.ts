@@ -60,7 +60,8 @@ export function isCorrection(claim: Claim): boolean {
 }
 
 /** A claim starts as DRAFT, is opened and then settled; one a clerk settles above the clerk limit is PENDING
- * until a steward approves it (SETTLED) or rejects it (OPEN again). A DRAFT, OPEN or PENDING claim can be voided. */
+ * until a steward approves it (SETTLED) or rejects it (OPEN again). A DRAFT, OPEN or PENDING claim can be voided, and a steward may void a SETTLED one
+ * within 7 days of its settlement. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** The status changes a person can ask for on a claim; a rejection also needs a reason. */
