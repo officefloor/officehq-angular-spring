@@ -1,0 +1,159 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index e86798d3..566be2d5 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -74,6 +74,14 @@ export function counts(claim: Claim): boolean {
+   return isOpen(claim) || claim.status === 'SETTLED';
+ }
+ 
++/** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it (its lines are dated by
++ * the sheet's today when each change was made): that of the last line on or before it; null when the claim was
++ * added after it. A claim with no log (one there before the log was kept) has the status it has now. */
++export function statusAt(claim: Claim, date: string): ClaimStatus | null {
++  if (claim.statusLog.length === 0) return claim.status;
++  return claim.statusLog.filter((l) => l.on <= date).at(-1)?.status ?? null;
++}
++
+ /** Whether a claim goes by the figure its person's last statement bound it to: a PENDING claim is not bound, but
+  * shows its live figure. */
+ export function bound(claim: Claim): boolean {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bd914948..108704d4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -13,6 +13,7 @@ import {
+   bound,
+   claimDue,
+   counts,
++  statusAt,
+   isOpen,
+   isDeferred,
+   isOverdue,
+@@ -348,16 +349,17 @@ export class People {
+ 
+   /** The sheet's periods by from-date. */
+   protected readonly periods = signal<Period[]>([]);
+-  /** Each period's due-total for each person, by period id then person id: the sum of the dues of the
+-   * person's claims that count dated in it (n/a ones skipped), 0.00 with none; a closed period's are the ones
++  /** Each period's due-total for each person, by period id then person id: the sum of the dues, as shown now,
++   * of the person's claims dated in it that count by the status they had at the end of its last day (n/a ones
++   * skipped), 0.00 with none; a closed period's are the ones
+    * fixed when it closed, 0.00 for a person who had none then. */
+   protected readonly personPeriodDueTotals = computed(() => {
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     const dues = new Map<number, Map<number, string[]>>();
+-    for (const c of this.claims().filter((c) => this.countsLive(c))) {
++    for (const c of this.claims()) {
+       const period = periodOf(this.periods(), c.date);
+       const person = byId.get(c.personId);
+-      if (!period || period.closed || !person) continue;
++      if (!period || period.closed || !person || !this.countsAt(c, period.to)) continue;
+       const due = this.claimDue(c, person);
+       if (due === NO_RATE) continue;
+       const byPerson = dues.get(period.id) ?? new Map<number, string[]>();
+@@ -612,6 +614,19 @@ export class People {
+     );
+   }
+ 
++  /** Whether a claim counts toward a period ending on a date: by the status it had at the end of that day, it is
++   * OPEN, PENDING or SETTLED (one added after it is not), and the live rules leave it in: it is not deferred on
++   * the sheet's today, and not OPEN or PENDING then, dated within one of its person's holds and not bound. */
++  private countsAt(claim: Claim, end: string): boolean {
++    const then = statusAt(claim, end);
++    const openThen = then === 'OPEN' || then === 'PENDING';
++    return (
++      (openThen || then === 'SETTLED') &&
++      !isDeferred(claim, this.session.today()) &&
++      !(openThen && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
++    );
++  }
++
+   protected rateSaved(rate: Rate): void {
+     this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+   }
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 9008619b..2cf8e5cf 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -152,8 +152,8 @@ export class Rates {
+       return;
+     }
+     if (to !== null && from !== null && to < from) {
+-      // The refused to-date is cleared, so it is picked again rather than carried into the next rate.
+-      this.form.controls.to.setValue('', { emitEvent: false });
++      // The refused dates are cleared, so they are picked again rather than carried into the next rate.
++      this.form.patchValue({ from: '', to: '' }, { emitEvent: false });
+       this.formError.set('The to-date cannot be before the from-date.');
+       return;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 766bf106..8f9fc8cf 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -240,6 +240,22 @@ public class Claim {
+         return Collections.unmodifiableList(statusLog);
+     }
+ 
++    /** The status the claim had at the end of a day, as its status log records it (its lines are dated by the
++     * sheet's today when each change was made): that of the last line on or before it; none when the claim was
++     * added after it. A claim with no log (one there before the log was kept) has the status it has now. */
++    public ClaimStatus statusAt(LocalDate date) {
++        if (statusLog.isEmpty()) {
++            return status;
++        }
++        ClaimStatus then = null;
++        for (StatusLogLine line : statusLog) {
++            if (!line.getOn().isAfter(date)) {
++                then = line.getStatus();
++            }
++        }
++        return then;
++    }
++
+     /** Add a line to the status log for the status the claim has now. */
+     public void logStatus(String by, LocalDate on, String due) {
+         statusLog.add(new StatusLogLine(status, by, on, due));
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index bd5238ce..b5ab3f49 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -147,8 +147,8 @@ public class RollupService {
+         return sheets.findById(sheetId).map(s -> s.capped(dueTotal)).orElse(dueTotal);
+     }
+ 
+-    /** Each person's due-total of their claims that count (OPEN and PENDING ones within a hold, unbound, and deferred ones do not)
+-     * dated from and to, inclusive, by person id: the sum of their dues, late charges included, n/a ones skipped;
++    /** Each person's due-total of their claims dated from and to, inclusive, that count by the status they had at
++     * the end of the to-date (see {@link #countsAt}), by person id: the sum of their dues, late charges included, n/a ones skipped;
+      * a person with no such due has none. */
+     public Map<Long, BigDecimal> dueTotals(String sheetId, LocalDate from, LocalDate to) {
+         Lateness late = latenessOf(sheetId);
+@@ -162,7 +162,7 @@ public class RollupService {
+         Map<String, LocalDate> datesByNumber = datesByNumber(all);
+         for (Claim claim : all) {
+             Person person = byId.get(claim.getPersonId());
+-            if (person == null || !counts(claim, person, late.today())
++            if (person == null || !countsAt(claim, person, late.today(), to)
+                     || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+                 continue;
+             }
+@@ -347,6 +347,19 @@ public class RollupService {
+                 && !claim.deferredOn(today);
+     }
+ 
++    /** Whether a claim counts toward a period ending on a date: by the status it had at the end of that day, only
++     * an OPEN, PENDING or SETTLED one does (one added after it does not); an OPEN or PENDING one then, dated
++     * within one of its person's holds, does not unless it is bound by a statement, and one deferred on the
++     * sheet's today does not. */
++    public static boolean countsAt(Claim claim, Person person, LocalDate today, LocalDate end) {
++        ClaimStatus then = claim.statusAt(end);
++        if (then == null) {
++            return false;
++        }
++        return (then.isOpen() && (bound(claim) || !person.heldOn(claim.getDate())) && !claim.deferredOn(today))
++                || then == ClaimStatus.SETTLED;
++    }
++
+     /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; an OPEN or PENDING one dated
+      * within one of its person's holds does not, unless it is bound by a statement, and one deferred on the
+      * sheet's today does not. */
