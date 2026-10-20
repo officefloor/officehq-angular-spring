@@ -14,6 +14,7 @@ import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.rollup.RollupService.Snapshot;
 import net.officefloor.hq.app.setting.Permission;
@@ -31,6 +32,7 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final PersonService persons;
     private final RollupService rollup;
     private final SheetService sheets;
     private final PeriodService periods;
@@ -38,11 +40,12 @@ public class ClaimService {
     private final Audit audit;
     private final TransactionTemplate transaction;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RollupService rollup, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, PersonService persons, RollupService rollup, SheetService sheets,
             PeriodService periods, SettingService settings, Audit audit, TransactionTemplate transaction) {
         this.transaction = transaction;
         this.claims = claims;
         this.people = people;
+        this.persons = persons;
         this.rollup = rollup;
         this.sheets = sheets;
         this.periods = periods;
@@ -167,6 +170,9 @@ public class ClaimService {
         logStatus(user, sheets.today(sheetId), claim, person);
         claims.flush();
         audit.recordOnCommit(entry);
+        if (next == ClaimStatus.SETTLED) {
+            notifyWatchers(user, person, claim);
+        }
         rollup.recordChanges(user, sheetId, before);
         return claim;
     }
@@ -189,6 +195,7 @@ public class ClaimService {
         logStatus(user, sheets.today(sheetId), claim, person);
         claims.flush();
         audit.recordOnCommit(entry);
+        notifyWatchers(user, person, claim);
         rollup.recordChanges(user, sheetId, before);
         return claim;
     }
@@ -215,8 +222,17 @@ public class ClaimService {
         claims.flush();
         audit.recordOnCommit(entry("CLAIM_RESETTLED", user, person, claim) + " old=" + figure(old) + " new="
                 + figure(now));
+        notifyWatchers(user, person, claim);
         rollup.recordChanges(user, sheetId, before);
         return claim;
+    }
+
+    /** Notify each user watching the claim's person, in the order they started watching, that it was settled. */
+    private void notifyWatchers(String user, Person person, Claim claim) {
+        for (String watcher : persons.watchers(person.getId())) {
+            audit.recordOnCommit("NOTIFY sheet=" + claim.getSheetId() + " by=" + user + " user=" + watcher
+                    + " person=" + person.getName() + " number=" + claim.getNumber());
+        }
     }
 
     /** A figure with two decimals, or n/a. */

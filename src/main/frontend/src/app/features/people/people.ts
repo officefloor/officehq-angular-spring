@@ -153,6 +153,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
             <th scope="col">Overdue total</th>
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
+            <th scope="col">Watched</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -189,6 +190,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td data-testid="person-patrons">{{ patronNames(p) }}</td>
               <td data-testid="person-backing">{{ backing(p) }}</td>
+              <td data-testid="person-watched">{{ watchedShown(p) ? 'yes' : 'no' }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -219,6 +221,15 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
                   (click)="statement(p)"
                 >
                   Statement
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-watch"
+                  [attr.aria-label]="'Watch or unwatch ' + p.name"
+                  [attr.aria-pressed]="watchedShown(p)"
+                  (click)="watch(p)"
+                >
+                  Watch
                 </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
                 <input
@@ -428,6 +439,9 @@ export class People {
   protected readonly formError = signal<string | null>(null);
   /** The error of the last action taken on a person's row, shown on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
+  /** Whether the signed-in user watches a person, by id, as their last watch toggle on this load left it; a person
+   * not toggled since the sheet was read shows what was read. */
+  private readonly watchedNow = signal<ReadonlyMap<number, boolean>>(new Map());
   /** The error of the last patron added on a person's row, shown on that row. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   protected readonly form = new FormGroup({
@@ -480,6 +494,7 @@ export class People {
       )
       .subscribe(({ id, people, claims, rates, periods }) => {
         this.people.set(people);
+        this.watchedNow.set(new Map());
         this.periods.set(periods);
         this.claims.set(claims);
         this.rates.set(rates);
@@ -777,6 +792,43 @@ export class People {
         this.personError.set({
           id: person.id,
           message: e.status === 404 ? 'That person is no longer on this sheet.' : 'Could not retire that person.',
+        }),
+    });
+  }
+
+  protected watchedShown(person: Person): boolean {
+    return this.watchedNow().get(person.id) ?? person.watched;
+  }
+
+  /** Toggle watching the person, from whether the user watched them when the sheet was read: a toggle that the
+   * store already has (made since, here or elsewhere) is refused, and the row shows what was read until it
+   * goes through. */
+  protected watch(person: Person): void {
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const watched = !person.watched;
+    this.watchedNow.update((m) => {
+      const next = new Map(m);
+      next.delete(person.id);
+      return next;
+    });
+    this.api.watch(sheetId, person.id, watched).subscribe({
+      next: (p) => {
+        if (this.session.sheetId() === sheetId) this.watchedNow.update((m) => new Map(m).set(p.id, p.watched));
+      },
+      error: (e: HttpErrorResponse) =>
+        this.personError.set({
+          id: person.id,
+          message:
+            e.status === 404
+              ? 'That person is no longer on this sheet.'
+              : e.status === 409
+                ? watched
+                  ? 'You already watch that person.'
+                  : 'You do not watch that person.'
+                : 'Could not change that watch.',
         }),
     });
   }

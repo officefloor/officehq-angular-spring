@@ -58,6 +58,8 @@ export interface Person {
   holds: Hold[];
   /** The ids of the people named as the person's patrons, in the order they were named. */
   patronIds: number[];
+  /** Whether the signed-in user watches the person. */
+  watched: boolean;
 }
 
 export interface PersonForm {
@@ -113,6 +115,11 @@ export class PeopleApi {
   /** Put the person on hold from a date, the sheet's today when none is given, to a date or open-ended. */
   hold(sheetId: string, id: number, from: string | null, to: string | null): Observable<Person> {
     return this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { from, to }, { headers: this.headers() });
+  }
+
+  /** Start (true) or stop (false) watching the person as the signed-in user. */
+  watch(sheetId: string, id: number, watched: boolean): Observable<Person> {
+    return this.http.put<Person>(`${this.url(sheetId)}/${id}/watch`, { watched }, { headers: this.headers() });
   }
 
   /** Name another person on the sheet as the person's patron. */

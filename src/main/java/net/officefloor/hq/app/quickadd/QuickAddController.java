@@ -48,7 +48,7 @@ public class QuickAddController {
             @Valid @RequestBody QuickAddForm form) {
         QuickAddService.Added added = service.add(user, sheetId, form.name(), new BigDecimal(form.amount()));
         return new QuickAddView(PersonView.of(added.person(), sheets.today(sheetId), statements.summaries(sheetId),
-                people.patronIds(sheetId)), added.personCreated(),
+                people.patronIds(sheetId), people.watchedIds(sheetId, user)), added.personCreated(),
                 ClaimView.of(added.claim()));
     }
 }

@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementService;
@@ -40,13 +41,14 @@ public class PersonController {
 
     /** A person shows how many statements were taken for them and the last one's due-total (n/a when it was)
      * and date; none of those before the first; and the ids of their patrons, in the order they were named. Its
-     * grade is the one in force on the sheet's today, and its grades every one recorded, by from-date. */
+     * grade is the one in force on the sheet's today, and its grades every one recorded, by from-date. Watched is
+     * whether the signed-in user watches the person. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
-            List<HoldView> holds, List<Long> patronIds) {
+            List<HoldView> holds, List<Long> patronIds, boolean watched) {
 
         public static PersonView of(Person person, LocalDate today, Map<Long, Summary> statements,
-                Map<Long, List<Long>> patrons) {
+                Map<Long, List<Long>> patrons, Set<Long> watched) {
             Summary summary = statements.get(person.getId());
             Statement last = summary != null ? summary.last() : null;
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
@@ -56,7 +58,7 @@ public class PersonController {
                     last == null ? null : last.getDueTotal() != null ? last.getDueTotal().toPlainString() : "n/a",
                     last != null ? last.getTakenOn() : null, person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(),
-                    patrons.getOrDefault(person.getId(), List.of()));
+                    patrons.getOrDefault(person.getId(), List.of()), watched.contains(person.getId()));
         }
     }
 
@@ -75,20 +77,21 @@ public class PersonController {
         List<Person> people = service.list(sheetId);
         Map<Long, Summary> taken = statements.summaries(sheetId);
         Map<Long, List<Long>> patrons = service.patronIds(sheetId);
+        Set<Long> watched = service.watchedIds(sheetId, user);
         LocalDate today = sheets.today(sheetId);
-        return people.stream().map(p -> PersonView.of(p, today, taken, patrons)).toList();
+        return people.stream().map(p -> PersonView.of(p, today, taken, patrons, watched)).toList();
     }
 
     @PostMapping
     public PersonView add(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody PersonForm form) {
-        return view(sheetId, service.add(user, sheetId, form.name(), form.grade()));
+        return view(user, sheetId, service.add(user, sheetId, form.name(), form.grade()));
     }
 
     @PutMapping("/{id}")
     public PersonView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
-        return view(sheetId, service.update(user, sheetId, id, form.name(), form.grade(), form.gradeFrom(),
+        return view(user, sheetId, service.update(user, sheetId, id, form.name(), form.grade(), form.gradeFrom(),
                 form.version()));
     }
 
@@ -98,7 +101,7 @@ public class PersonController {
     @PostMapping("/{id}/retire")
     public PersonView retire(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @RequestBody RetireForm form) {
-        return view(sheetId, service.retire(user, sheetId, id, form.from()));
+        return view(user, sheetId, service.retire(user, sheetId, id, form.from()));
     }
 
     public record HoldForm(LocalDate from, LocalDate to) {}
@@ -107,7 +110,7 @@ public class PersonController {
     @PostMapping("/{id}/hold")
     public PersonView hold(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @RequestBody HoldForm form) {
-        return view(sheetId, service.hold(user, sheetId, id, form.from(), form.to()));
+        return view(user, sheetId, service.hold(user, sheetId, id, form.from(), form.to()));
     }
 
     public record PatronForm(@NotNull Long patronId) {}
@@ -116,17 +119,27 @@ public class PersonController {
     @PostMapping("/{id}/patrons")
     public PersonView addPatron(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody PatronForm form) {
-        return view(sheetId, service.addPatron(user, sheetId, id, form.patronId()));
+        return view(user, sheetId, service.addPatron(user, sheetId, id, form.patronId()));
+    }
+
+    public record WatchForm(@NotNull Boolean watched) {}
+
+    /** Start or stop watching the person as the signed-in user. */
+    @PutMapping("/{id}/watch")
+    public PersonView watch(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id, @Valid @RequestBody WatchForm form) {
+        return view(user, sheetId, service.watch(user, sheetId, id, form.watched()));
     }
 
     /** Take a statement for the person. */
     @PostMapping("/{id}/statement")
     public PersonView statement(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id) {
-        return view(sheetId, statements.take(user, sheetId, id));
+        return view(user, sheetId, statements.take(user, sheetId, id));
     }
 
-    private PersonView view(String sheetId, Person person) {
-        return PersonView.of(person, sheets.today(sheetId), statements.summaries(sheetId), service.patronIds(sheetId));
+    private PersonView view(String user, String sheetId, Person person) {
+        return PersonView.of(person, sheets.today(sheetId), statements.summaries(sheetId), service.patronIds(sheetId),
+                service.watchedIds(sheetId, user));
     }
 }
