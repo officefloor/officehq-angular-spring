@@ -1,12 +1,14 @@
 package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.setting.Permission;
 import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -77,10 +79,34 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
         }
+        return closeNow(user, sheetId, period, false);
+    }
+
+    /** Close every open period of the sheet whose to-date plus the sheet's grace days is before its today, in
+     * order of their to-dates, each as a close by hand would; none when the sheet has no grace days. The caller
+     * holds the sheet's lock. */
+    @Transactional
+    public List<Period> closeLapsed(String user, String sheetId) {
+        Sheet sheet = settings.sheet(sheetId);
+        Integer graceDays = sheet.getGraceDays();
+        if (graceDays == null) {
+            return List.of();
+        }
+        LocalDate today = sheet.getToday();
+        return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> !p.isClosed() && p.getTo().plusDays(graceDays).isBefore(today))
+                .sorted(Comparator.comparing(Period::getTo))
+                .map(p -> closeNow(user, sheetId, p, true))
+                .toList();
+    }
+
+    /** Fix the period's due-totals as they are now and write that it closed, {@code auto=yes} at the end when it
+     * was closed by a change of the sheet's today. */
+    private Period closeNow(String user, String sheetId, Period period, boolean auto) {
         period.close(rollup.dueTotals(sheetId, period.getFrom(), period.getTo()));
         periods.flush();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + period.getName()
-                + " total=" + period.getClosedTotal().toPlainString());
+                + " total=" + period.getClosedTotal().toPlainString() + (auto ? " auto=yes" : ""));
         return period;
     }
 

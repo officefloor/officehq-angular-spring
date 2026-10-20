@@ -13,7 +13,8 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /** Refuse every change a viewer asks of a sheet: any request on a sheet other than a read, before it reaches its
- * handler, so it writes nothing and records nothing. Loading the sheet is a read. */
+ * handler, so it writes nothing and records nothing. Loading the sheet is a read. Opening or settling claims
+ * together goes through, so that each claim is refused on its own and counted as refused. */
 @Configuration
 public class ViewerGuard implements HandlerInterceptor, WebMvcConfigurer {
 
@@ -25,7 +26,8 @@ public class ViewerGuard implements HandlerInterceptor, WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(this).addPathPatterns("/api/sheets/{sheet}/**").excludePathPatterns("/api/sheets/load");
+        registry.addInterceptor(this).addPathPatterns("/api/sheets/{sheet}/**").excludePathPatterns("/api/sheets/load",
+                "/api/sheets/{sheet}/claims/open", "/api/sheets/{sheet}/claims/settle");
     }
 
     @Override

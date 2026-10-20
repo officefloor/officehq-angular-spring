@@ -47,12 +47,15 @@ export interface Settings {
   /** The due above which a claim needs a proof before it is settled or approved, with two decimals; null for
    * none. */
   proofThreshold: string | null;
+  /** The days after a period's to-date it is closed when the sheet's today is changed past them; null when
+   * off. */
+  graceDays: number | null;
   dated: Record<DatedKey, Dated[]>;
   /** By action, the roles that may take it, comma separated; blank keeps the standing rule. */
   permissions: Record<Permission, string>;
 }
 
-// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap, its proof threshold (those that carry a figure dated) and its permission matrix, read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap, its proof threshold (those that carry a figure dated), its grace days and its permission matrix, read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -77,7 +80,7 @@ export class SettingsApi {
     sheetId: string,
     settings: { clerkLimit?: string; floor?: string; terms?: string; termsA?: string; termsB?: string;
       termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string;
-      proofThreshold?: string; clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
+      proofThreshold?: string; graceDays?: string; clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
       termsCFrom?: string; latePctFrom?: string; capFrom?: string; proofThresholdFrom?: string;
       permOpen?: string; permSettle?: string; permVoid?: string; permReassign?: string; permClose?: string;
       permReopen?: string; },

@@ -30,9 +30,11 @@ public class SheetController {
     }
 
     private final SheetService service;
+    private final TodayService todays;
 
-    public SheetController(SheetService service) {
+    public SheetController(SheetService service, TodayService todays) {
         this.service = service;
+        this.todays = todays;
     }
 
     /** Load a sheet by id, starting it empty when it was never loaded before. */
@@ -45,6 +47,6 @@ public class SheetController {
     @PutMapping("/{id}/today")
     public SheetView setToday(@RequestHeader("X-User") String user, @PathVariable String id,
             @Valid @RequestBody SetToday request) {
-        return SheetView.of(service.setToday(user, id, request.today()));
+        return SheetView.of(todays.setToday(user, id, request.today()));
     }
 }

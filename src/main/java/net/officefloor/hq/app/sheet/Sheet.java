@@ -70,6 +70,11 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** When the sheet's today is changed, every open period whose to-date plus these days is before it is
+     * closed; none means off. */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     /** The sheet's permission matrix: by action (e.g. "open"), the roles that may take it, comma separated; an
      * action not in it keeps the standing rule. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -209,6 +214,14 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public Integer getGraceDays() {
+        return graceDays;
+    }
+
+    public void setGraceDays(Integer graceDays) {
+        this.graceDays = graceDays;
     }
 
     /** The most a person's due-total comes to in force on the sheet's today; none means no cap. */

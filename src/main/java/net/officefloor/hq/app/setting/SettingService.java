@@ -68,13 +68,15 @@ public class SettingService {
      * the late percent then the policy date, the period numbering date, the cap, the proof threshold and the
      * permission matrix (each action in the order given) together; a
      * setting not given (null) is left as it is, and an empty clerk limit, grade's terms, policy date, period
-     * numbering date, cap or proof threshold removes it. A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
+     * numbering date, cap, proof threshold or grace days removes it; the grace days are saved after the proof
+     * threshold. A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
      * from the sheet's today when none is given. */
     @Transactional
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
             Integer terms, Map<String, Optional<Integer>> gradeTerms, BigDecimal latePct,
             Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom, Optional<BigDecimal> cap,
-            Optional<BigDecimal> proofThreshold, Map<String, LocalDate> froms, Map<Permission, List<Role>> permissions) {
+            Optional<BigDecimal> proofThreshold, Optional<Integer> graceDays, Map<String, LocalDate> froms,
+            Map<Permission, List<Role>> permissions) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null), froms.get(Sheet.CLERK_LIMIT));
         }
@@ -100,6 +102,9 @@ public class SettingService {
         }
         if (proofThreshold != null) {
             setProofThreshold(user, sheetId, proofThreshold.orElse(null), froms.get(Sheet.PROOF_THRESHOLD));
+        }
+        if (graceDays != null) {
+            setGraceDays(user, sheetId, graceDays.orElse(null));
         }
         permissions.forEach((action, given) -> setPermission(user, sheetId, action, given));
     }
@@ -224,6 +229,19 @@ public class SettingService {
         record(user, sheetId, Sheet.PROOF_THRESHOLD, from, value, value != null ? value.toPlainString() : "",
                 false);
         return value;
+    }
+
+    /** Set the sheet's grace days, none to turn them off; not dated, and they close no period until the sheet's
+     * today is next changed. */
+    @Transactional
+    public Integer setGraceDays(String user, String sheetId, Integer days) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        sheet.setGraceDays(days);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=grace-days value="
+                + (days != null ? days.toString() : ""));
+        return days;
     }
 
     /** Give an action the roles that may take it, none (empty) to keep the standing rule; not dated, and it moves

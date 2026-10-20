@@ -17,6 +17,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.rollup.RollupService.Snapshot;
 import net.officefloor.hq.app.setting.Permission;
+import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -378,6 +379,10 @@ public class ClaimService {
                     .toList();
         });
         List<Claim> changed = new ArrayList<>();
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) {
+            // A viewer changes nothing: every claim is refused.
+            return new OpenedAll(0, wanted.size(), changed);
+        }
         for (Claim claim : chosen) {
             try {
                 changed.add(transaction.execute(status -> changeStatus(user, sheetId, claim.getId(), next)));
