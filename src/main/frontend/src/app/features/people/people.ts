@@ -138,6 +138,20 @@ const BACKING_DAYS = 90;
       @if (bulkSettleError(); as e) {
         <p role="alert" data-testid="bulk-settle-error">{{ e }}</p>
       }
+      <form [formGroup]="bulkGradeForm" (ngSubmit)="gradeSelected()" aria-label="Grade selected people">
+        <label for="bulk-grade">Grade selected people</label>
+        <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">From</label>
+        <input id="bulk-grade-from" type="date" data-testid="bulk-grade-from" formControlName="from" />
+        <button type="submit" data-testid="bulk-grade-apply">Apply grade</button>
+      </form>
+      @if (bulkGraded() !== null) {
+        <p role="status">Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></p>
+      }
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -145,6 +159,7 @@ const BACKING_DAYS = 90;
       <table data-testid="people-list">
         <thead>
           <tr>
+            <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
@@ -173,6 +188,15 @@ const BACKING_DAYS = 90;
         <tbody>
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
+              <td>
+                <input
+                  type="checkbox"
+                  data-testid="person-select"
+                  [attr.aria-label]="'Select ' + p.name"
+                  [checked]="selectedPeople().has(p.id)"
+                  (change)="personSelected(p.id, $any($event.target).checked)"
+                />
+              </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -469,6 +493,17 @@ export class People {
   protected readonly bulkSettleError = signal<string | null>(null);
   /** Whether a settle of the selected claims is waiting on the server; another is ignored until it answers. */
   private bulkSettling = false;
+  /** The ids of the people selected to grade together. */
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  /** How many people the last grade of the selected ones changed. */
+  protected readonly bulkGraded = signal<number | null>(null);
+  /** Whether a grade of the selected people is waiting on the server; another is ignored until it answers. */
+  private bulkGrading = false;
+  protected readonly bulkGradeForm = new FormGroup({
+    grade: new FormControl<Grade>('A', { nonNullable: true }),
+    /** The date the grade is in force from; the sheet's today unless another date is picked. */
+    from: new FormControl('', { nonNullable: true }),
+  });
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private editingVersion: number | null = null;
@@ -510,10 +545,12 @@ export class People {
     this.pasteForm.valueChanges.subscribe(() => this.pasteError.set(null));
     this.form.valueChanges.subscribe(() => this.formError.set(null));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(null));
+    this.bulkGradeForm.valueChanges.subscribe(() => this.personError.set(null));
     effect(() => {
       const today = this.session.today() ?? '';
       untracked(() => {
         if (!this.form.controls.gradeFrom.dirty) this.form.controls.gradeFrom.setValue(today, { emitEvent: false });
+        if (!this.bulkGradeForm.controls.from.dirty) this.bulkGradeForm.controls.from.setValue(today, { emitEvent: false });
       });
     });
     // Re-read the sheet's people and their claims from the store each time a sheet is loaded.
@@ -540,6 +577,8 @@ export class People {
         this.claims.set(claims);
         this.rates.set(rates);
         this.selectedClaims.set(new Set());
+        this.selectedPeople.set(new Set());
+        this.bulkGraded.set(null);
         this.bulkOpenResult.set(null);
         this.bulkOpenError.set(null);
         this.bulkSettleResult.set(null);
@@ -807,6 +846,53 @@ export class People {
         this.bulkSettleError.set(
           e.status === 404 ? 'That sheet is no longer in the store.' : 'Could not settle those claims.',
         );
+      },
+    });
+  }
+
+  protected personSelected(id: number, selected: boolean): void {
+    this.personError.set(null);
+    this.selectedPeople.update((ids) => {
+      const next = new Set(ids);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Give the selected people the grade chosen from the date chosen (blank: the sheet's today); the server changes
+   * each in list order as the person form would, or none when one is no longer on the sheet. A refusal shows on the
+   * first selected person's row. */
+  protected gradeSelected(): void {
+    if (this.bulkGrading) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const ids = this.people().map((p) => p.id).filter((id) => this.selectedPeople().has(id));
+    const first = ids[0] ?? this.shownPeople()[0]?.id;
+    if (ids.length === 0) {
+      if (first !== undefined) this.personError.set({ id: first, message: 'Select the people to grade.' });
+      return;
+    }
+    const value = this.bulkGradeForm.getRawValue();
+    this.bulkGrading = true;
+    this.api.gradeAll(sheetId, ids, value.grade, value.from || null).subscribe({
+      next: ({ graded, people }) => {
+        this.bulkGrading = false;
+        if (this.session.sheetId() !== sheetId) return;
+        const byId = new Map(people.map((p) => [p.id, p]));
+        this.people.update((ps) => ps.map((x) => byId.get(x.id) ?? x));
+        this.selectedPeople.set(new Set());
+        this.bulkGraded.set(graded);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.bulkGrading = false;
+        this.personError.set({
+          id: first,
+          message:
+            e.status === 404 ? 'A selected person is no longer on this sheet.' : 'Could not grade those people.',
+        });
       },
     });
   }

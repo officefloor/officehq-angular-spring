@@ -77,6 +77,12 @@ export interface PersonForm {
   version?: number;
 }
 
+/** What giving people a grade together changed: how many, and each of them as now stored, in list order. */
+export interface GradedAll {
+  graded: number;
+  people: Person[];
+}
+
 export interface QuickAddForm {
   name: string;
   amount: string;
@@ -105,6 +111,11 @@ export class PeopleApi {
 
   update(sheetId: string, id: number, form: PersonForm): Observable<Person> {
     return this.http.put<Person>(`${this.url(sheetId)}/${id}`, form, { headers: this.headers() });
+  }
+
+  /** Give the people a grade together from a date (null: the sheet's today); the server changes them in list order. */
+  gradeAll(sheetId: string, ids: number[], grade: Grade, from: string | null): Observable<GradedAll> {
+    return this.http.post<GradedAll>(`${this.url(sheetId)}/grade`, { ids, grade, from }, { headers: this.headers() });
   }
 
   /** Take a statement for the person, as of a date (null: now). */

@@ -102,6 +102,32 @@ public class PersonService {
         return person;
     }
 
+    /**
+     * Gives each of the people with the given ids, in list order, the grade from {@code gradeFrom}, the sheet's
+     * today when none is given, as saving the person form with only that grade would: each is recorded as edited,
+     * with the changes to the rollup it makes. Refused, changing no one, when any id is not a person on the sheet.
+     * Returns the people changed, in list order.
+     */
+    @Transactional
+    public List<Person> grade(String user, String sheetId, List<Long> ids, String grade, LocalDate gradeFrom) {
+        requireSheet(sheetId);
+        LocalDate today = sheetService.today(sheetId);
+        Set<Long> wanted = Set.copyOf(ids);
+        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> wanted.contains(p.getId())).toList();
+        if (chosen.size() != wanted.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person.");
+        }
+        for (Person person : chosen) {
+            Snapshot before = rollup.snapshot(sheetId);
+            person.setGrade(grade, gradeFrom != null ? gradeFrom : today, today);
+            people.flush();
+            audit.recordOnCommit(entry("PERSON_EDITED", user, person, today));
+            rollup.recordChanges(user, sheetId, before);
+        }
+        return chosen;
+    }
+
     /** Retire the person from a date, the sheet's today when none is given; claims dated after it are refused; from
      * the sheet's today on or after it, their OPEN and PENDING claims not bound by a statement count in no live total. */
     @Transactional

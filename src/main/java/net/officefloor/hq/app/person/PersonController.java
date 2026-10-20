@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -103,6 +104,19 @@ public class PersonController {
             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
         return view(user, sheetId, service.update(user, sheetId, id, form.name(), form.grade(), form.gradeFrom(),
                 form.termsDays(), form.terms() != null, form.version()));
+    }
+
+    public record GradeAllForm(@NotEmpty List<@NotNull Long> ids, @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {}
+
+    public record GradedAllView(int graded, List<PersonView> people) {}
+
+    /** Give the selected people a grade together, from a date, the sheet's today when none is given. */
+    @PostMapping("/grade")
+    public GradedAllView gradeAll(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @Valid @RequestBody GradeAllForm form) {
+        List<Person> graded = service.grade(user, sheetId, form.ids(), form.grade(), form.from());
+        return new GradedAllView(graded.size(), graded.stream().map(p -> view(user, sheetId, p)).toList());
     }
 
     public record RetireForm(LocalDate from) {}
