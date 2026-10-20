@@ -1,0 +1,211 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 6633e87d..fa6e672b 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -111,6 +111,11 @@ export class PeopleApi {
+     return this.http.post<Person>(`${this.url(sheetId)}/${id}/statement`, null, { headers: this.headers() });
+   }
+ 
++  /** Cancel the person's last statement. */
++  unstate(sheetId: string, id: number): Observable<Person> {
++    return this.http.delete<Person>(`${this.url(sheetId)}/${id}/statement`, { headers: this.headers() });
++  }
++
+   /** Retire the person from a date, the sheet's today when none is given. */
+   retire(sheetId: string, id: number, from: string | null): Observable<Person> {
+     return this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from }, { headers: this.headers() });
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6c8ef406..5cf83305 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -236,6 +236,14 @@ const BACKING_DAYS = 90;
+                 >
+                   Statement
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-unstate"
++                  [attr.aria-label]="'Cancel last statement for ' + p.name"
++                  (click)="unstate(p)"
++                >
++                  Cancel statement
++                </button>
+                 <button
+                   type="button"
+                   data-testid="person-watch"
+@@ -342,11 +350,14 @@ export class People {
+   protected readonly people = signal<Person[]>([]);
+   /** Whether retired people are listed; off when the screen opens, and kept as it is by loading a sheet. */
+   protected readonly showRetired = signal(false);
+-  /** The people listed: everyone, or only those not retired unless retired people are shown. Totals count
+-   * everyone either way. */
+-  protected readonly shownPeople = computed(() =>
+-    this.showRetired() ? this.people() : this.people().filter((p) => !p.retiredFrom),
+-  );
++  /** The people listed: everyone, or only those not retired on the sheet's today (one retired from a later date
++   * is still listed) unless retired people are shown. Totals count everyone either way. */
++  protected readonly shownPeople = computed(() => {
++    const today = this.session.today() ?? '';
++    return this.showRetired()
++      ? this.people()
++      : this.people().filter((p) => !p.retiredFrom || p.retiredFrom > today);
++  });
+   /** The sheet's claims, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
+   private readonly claimsByPerson = computed(() => {
+@@ -798,6 +809,32 @@ export class People {
+       });
+   }
+ 
++  /** Cancel the person's last statement (a steward only), then re-read the sheet's claims, which are live again. */
++  protected unstate(person: Person): void {
++    this.personError.set(null);
++    this.patronError.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    this.api
++      .unstate(sheetId, person.id)
++      .pipe(switchMap((p) => forkJoin({ person: of(p), claims: this.claimsApi.list(sheetId) })))
++      .subscribe({
++        next: ({ person: p, claims }) => {
++          if (this.session.sheetId() !== sheetId) return;
++          this.claims.set(claims);
++          this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
++        },
++        error: (e: HttpErrorResponse) =>
++          this.personError.set({
++            id: person.id,
++            message:
++              e.status === 404
++                ? 'That person is no longer on this sheet.'
++                : 'Could not cancel that statement: only a steward can, and only a statement that was taken.',
++          }),
++      });
++  }
++
+   /** Download everyone, retired people included, in list order as a CSV file: name, the grade in force on the
+    * sheet's today, the retired-from date or nothing, and the due-total as shown. */
+   protected exportCsv(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 15a3fb9f..198a77fc 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -141,7 +141,7 @@ public class PeriodService {
+         }
+         LocalDate today = sheet.getToday();
+         return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+-                .filter(p -> !p.isHardClosed() && p.getTo().plusDays(graceDays).isBefore(today))
++                .filter(p -> !p.isClosed() && p.getTo().plusDays(graceDays).isBefore(today))
+                 .sorted(Comparator.comparing(Period::getTo))
+                 .map(p -> closeNow(user, sheetId, p, true))
+                 .toList();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 1b2e9fa3..4cf4f20f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -13,6 +13,7 @@ import net.officefloor.hq.app.sheet.SheetService;
+ import net.officefloor.hq.app.statement.Statement;
+ import net.officefloor.hq.app.statement.StatementService;
+ import net.officefloor.hq.app.statement.StatementService.Summary;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -147,6 +148,13 @@ public class PersonController {
+         return view(user, sheetId, statements.take(user, sheetId, id));
+     }
+ 
++    /** Cancel the person's last statement. */
++    @DeleteMapping("/{id}/statement")
++    public PersonView unstate(@RequestHeader("X-User") String user, @PathVariable String sheetId,
++            @PathVariable Long id) {
++        return view(user, sheetId, statements.cancel(user, sheetId, id));
++    }
++
+     private PersonView view(String user, String sheetId, Person person) {
+         return PersonView.of(person, sheets.today(sheetId), statements.summaries(sheetId), service.patronIds(sheetId),
+                 service.watchedIds(sheetId, user));
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java b/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
+index 3fb782e1..4255da9c 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
+@@ -1,10 +1,14 @@
+ package net.officefloor.hq.app.statement;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface StatementRepository extends JpaRepository<Statement, Long> {
+ 
+     /** The sheet's statements in the order they were taken. */
+     List<Statement> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** The person's last statement, if any. */
++    Optional<Statement> findFirstBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index c2de5fc6..772a4ef3 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.rollup.RollupService.Snapshot;
++import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -32,16 +33,18 @@ public class StatementService {
+     private final PersonRepository people;
+     private final SheetService sheets;
+     private final RollupService rollup;
++    private final SettingService settings;
+     private final Audit audit;
+ 
+     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
+-            PersonRepository people, SheetService sheets, RollupService rollup, Audit audit) {
++            PersonRepository people, SheetService sheets, RollupService rollup, SettingService settings, Audit audit) {
+         this.statements = statements;
+         this.claims = claims;
+         this.claimService = claimService;
+         this.people = people;
+         this.sheets = sheets;
+         this.rollup = rollup;
++        this.settings = settings;
+         this.audit = audit;
+     }
+ 
+@@ -95,4 +98,32 @@ public class StatementService {
+         rollup.recordChanges(user, sheetId, before);
+         return person;
+     }
++
++    /**
++     * A steward cancels a person's last statement: it is removed, and the claims it bound are live again (a figure
++     * bound by the statement before it is not restored). Refused for anyone else, and for a person with no statement.
++     */
++    @Transactional
++    public Person cancel(String user, String sheetId, Long personId) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
++        settings.requireSteward(sheetId, user);
++        Statement last = statements.findFirstBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
++                        "That person has no statement to cancel."));
++        Snapshot before = rollup.snapshot(sheetId);
++        // Every claim of the person still bound was bound by their last statement, which rebinds or unbinds each.
++        for (Claim claim : claims.findBySheetIdAndPersonId(sheetId, personId)) {
++            if (claim.isStated()) {
++                claim.unbind();
++            }
++        }
++        claims.flush();
++        statements.delete(last);
++        statements.flush();
++        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " due-total=" + (last.getDueTotal() != null ? last.getDueTotal().toPlainString() : "n/a"));
++        rollup.recordChanges(user, sheetId, before);
++        return person;
++    }
+ }

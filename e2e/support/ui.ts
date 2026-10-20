@@ -4,7 +4,7 @@
 // true/false for whether the action went through or the screen refused it (its error element
 // appeared). It throws when neither a result nor an error shows within the wait, so a screen that
 // does nothing fails the test instead of passing as "refused".
-import { expect, type Browser, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 
 const AUDIT_FILE = process.env.AUDIT_FILE ?? '../.run/audit.log';
@@ -131,8 +131,22 @@ async function counter(page: Page, cell: Locator, error: Locator, what: string):
 
 // ---- session ---------------------------------------------------------------------------------
 
+// Each sign-in gets its own browser context, so users on one sheet act independently. A context
+// is closed once the test that opened it has finished: the test runner leaves them open, and a
+// whole suite of open pages, each still running the app, would exhaust the machine.
+const opened = new Map<BrowserContext, string>();   // context -> id of the test that opened it
+
 export async function userPage(browser: Browser, user: string, sheet: string): Promise<Page> {
-  const page = await (await browser.newContext()).newPage();
+  let owner = '';
+  try { owner = test.info().testId; } catch { /* outside a test: nothing to tidy by */ }
+  for (const [c, t] of opened) {
+    if (t === owner) continue;
+    opened.delete(c);
+    await c.close().catch(() => { /* already gone */ });
+  }
+  const context = await browser.newContext();
+  opened.set(context, owner);
+  const page = await context.newPage();
   page.setDefaultTimeout(LOAD_WAIT);     // an element an action needs that never shows fails here, not at the test's limit
   await page.goto('/');
   await page.getByTestId('signin-name').fill(user);
