@@ -1,0 +1,163 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index 5a2bf49e..c01b82a1 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
+ import { Dated } from './dated';
+ 
+ /** The roles a user name can have on a sheet; any name without one is a clerk. */
+-export const ROLES = ['clerk', 'steward'] as const;
++export const ROLES = ['clerk', 'steward', 'viewer'] as const;
+ export type Role = (typeof ROLES)[number];
+ 
+ export interface RoleGiven {
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index b3f74612..90e38fc1 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -244,7 +244,7 @@ export class Settings {
+   private readonly policyDate = inject(SheetPolicyDate);
+   private readonly cap = inject(SheetCap);
+ 
+-  protected readonly roleNames = ROLES.join(' or ');
++  protected readonly roleNames = `${ROLES.slice(0, -1).join(', ')} or ${ROLES[ROLES.length - 1]}`;
+   protected readonly grades = GRADES;
+   protected readonly permissions = PERMISSIONS;
+   protected readonly roles = signal<RoleGiven[]>([]);
+diff --git a/src/main/java/db/migration/V40__role_viewer.java b/src/main/java/db/migration/V40__role_viewer.java
+new file mode 100644
+index 00000000..f5dbda65
+--- /dev/null
++++ b/src/main/java/db/migration/V40__role_viewer.java
+@@ -0,0 +1,39 @@
++package db.migration;
++
++import java.sql.Connection;
++import java.sql.ResultSet;
++import java.sql.Statement;
++import java.util.ArrayList;
++import java.util.List;
++import org.flywaydb.core.api.migration.BaseJavaMigration;
++import org.flywaydb.core.api.migration.Context;
++
++/**
++ * A user name can be given the viewer role, who sees the sheet and changes nothing, so the sheet_role table's role
++ * check allows it. The old check was created unnamed, so it is found by its table.
++ */
++public class V40__role_viewer extends BaseJavaMigration {
++
++    @Override
++    public void migrate(Context context) throws Exception {
++        Connection connection = context.getConnection();
++        List<String> checks = new ArrayList<>();
++        try (Statement statement = connection.createStatement();
++                ResultSet rs = statement.executeQuery("SELECT tc.CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc"
++                        + " JOIN INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA"
++                        + " AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME"
++                        + " WHERE tc.TABLE_NAME = 'SHEET_ROLE' AND tc.CONSTRAINT_TYPE = 'CHECK'"
++                        + " AND UPPER(cc.CHECK_CLAUSE) LIKE '%ROLE%'")) {
++            while (rs.next()) {
++                checks.add(rs.getString(1));
++            }
++        }
++        try (Statement statement = connection.createStatement()) {
++            for (String check : checks) {
++                statement.execute("ALTER TABLE sheet_role DROP CONSTRAINT \"" + check + "\"");
++            }
++            statement.execute("ALTER TABLE sheet_role ADD CONSTRAINT sheet_role_known"
++                    + " CHECK (role IN ('clerk', 'steward', 'viewer'))");
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/Role.java b/src/main/java/net/officefloor/hq/app/setting/Role.java
+index 78be4e26..54a401f9 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/Role.java
++++ b/src/main/java/net/officefloor/hq/app/setting/Role.java
+@@ -3,9 +3,10 @@ package net.officefloor.hq.app.setting;
+ import java.util.Arrays;
+ import java.util.Optional;
+ 
+-/** The role a user name has on a sheet; any name without one is a clerk. */
++/** The role a user name has on a sheet; any name without one is a clerk. A viewer sees the sheet and changes
++ * nothing. */
+ public enum Role {
+-    CLERK, STEWARD;
++    CLERK, STEWARD, VIEWER;
+ 
+     /** The role as it is typed and shown, e.g. "steward". */
+     public String code() {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 8f372e8d..8ed04983 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -29,7 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class SettingController {
+ 
+-    /** The role is clerk or steward. */
++    /** The role is clerk, steward or viewer. */
+     public record RoleForm(@NotBlank @Size(max = 100) String user, @NotNull String role) {}
+ 
+     public record RoleView(String user, String role) {
+@@ -148,7 +148,7 @@ public class SettingController {
+     public RoleView setRole(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+             @Valid @RequestBody RoleForm form) {
+         Role role = Role.of(form.role().trim()).orElseThrow(
+-                () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "A role is clerk or steward."));
++                () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "A role is clerk, steward or viewer."));
+         return RoleView.of(service.setRole(user, sheetId, form.user().trim(), role));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+new file mode 100644
+index 00000000..d01902a4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.setting;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.util.Map;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.http.HttpMethod;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.server.ResponseStatusException;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.HandlerMapping;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/** Refuse every change a viewer asks of a sheet: any request on a sheet other than a read, before it reaches its
++ * handler, so it writes nothing and records nothing. Loading the sheet is a read. */
++@Configuration
++public class ViewerGuard implements HandlerInterceptor, WebMvcConfigurer {
++
++    private final SettingService settings;
++
++    public ViewerGuard(SettingService settings) {
++        this.settings = settings;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(this).addPathPatterns("/api/sheets/{sheet}/**").excludePathPatterns("/api/sheets/load");
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        if (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod())
++                || HttpMethod.OPTIONS.matches(request.getMethod())) {
++            return true;
++        }
++        String user = request.getHeader("X-User");
++        @SuppressWarnings("unchecked")
++        Map<String, String> vars = (Map<String, String>) request
++                .getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
++        String sheetId = vars == null ? null : vars.getOrDefault("sheetId", vars.get("id"));
++        if (user != null && sheetId != null && settings.roleOf(sheetId, user.trim()) == Role.VIEWER) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer cannot change anything.");
++        }
++        return true;
++    }
++}
