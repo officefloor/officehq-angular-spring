@@ -49,12 +49,21 @@ public class PersonService {
 
     @Transactional
     public Person add(String user, String sheetId, String name, String grade) {
+        return add(user, sheetId, name, grade, null);
+    }
+
+    /** Add a person with their own terms, null for none. */
+    @Transactional
+    public Person add(String user, String sheetId, String name, String grade, Integer terms) {
         requireSheet(sheetId);
         String trimmed = name.trim();
         requireNameFree(sheetId, trimmed, null);
         Snapshot before = rollup.snapshot(sheetId);
-        Person person = people.saveAndFlush(new Person(sheetId, trimmed, grade));
-        audit.recordOnCommit(entry("PERSON_ADDED", user, person, sheetService.today(sheetId)));
+        Person fresh = new Person(sheetId, trimmed, grade);
+        fresh.setTerms(terms);
+        Person person = people.saveAndFlush(fresh);
+        audit.recordOnCommit(entry("PERSON_ADDED", user, person, sheetService.today(sheetId))
+                + (terms != null ? " terms=" + terms : ""));
         rollup.recordChanges(user, sheetId, before);
         return person;
     }
@@ -62,11 +71,12 @@ public class PersonService {
     /**
      * Saves changes to a person. When {@code version} is given it is the version the editor loaded,
      * and the save is refused if the person has been saved since. The grade is recorded from {@code gradeFrom},
-     * the sheet's today when none is given, keeping the grades the person has from other dates.
+     * the sheet's today when none is given, keeping the grades the person has from other dates. The person's own
+     * terms are set to {@code terms}, null for none; the record names them when given, or when cleared.
      */
     @Transactional
     public Person update(String user, String sheetId, Long id, String name, String grade, LocalDate gradeFrom,
-            Long version) {
+            Integer terms, Long version) {
         LocalDate today = sheetService.today(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
@@ -78,12 +88,15 @@ public class PersonService {
         Snapshot before = rollup.snapshot(sheetId);
         person.setName(trimmed);
         person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        boolean cleared = terms == null && person.getTerms() != null;
+        person.setTerms(terms);
         try {
             people.flush();
         } catch (ObjectOptimisticLockingFailureException e) {
             throw changedMeanwhile();
         }
-        audit.recordOnCommit(entry("PERSON_EDITED", user, person, today));
+        audit.recordOnCommit(entry("PERSON_EDITED", user, person, today)
+                + (terms != null ? " terms=" + terms : cleared ? " terms=" : ""));
         rollup.recordChanges(user, sheetId, before);
         return person;
     }

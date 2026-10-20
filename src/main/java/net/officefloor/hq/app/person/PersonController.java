@@ -31,7 +31,14 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
-            Long version) {}
+            @Pattern(regexp = "|\\d{1,5}") String terms,
+            Long version) {
+
+        /** The person's own terms given: null when blank. */
+        Integer termsDays() {
+            return terms == null || terms.isEmpty() ? null : Integer.valueOf(terms);
+        }
+    }
 
     /** A grade the person has from a from-date (none: from the beginning of time). */
     public record GradeView(String grade, LocalDate from) {}
@@ -41,9 +48,11 @@ public class PersonController {
 
     /** A person shows how many statements were taken for them and the last one's due-total (n/a when it was)
      * and date; none of those before the first; and the ids of their patrons, in the order they were named. Its
-     * grade is the one in force on the sheet's today, and its grades every one recorded, by from-date. Watched is
+     * grade is the one in force on the sheet's today, and its grades every one recorded, by from-date; its terms its own,
+     * null for none. Watched is
      * whether the signed-in user watches the person. */
-    public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
+    public record PersonView(Long id, String name, String grade, List<GradeView> grades, Integer terms, long version,
+            int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
             List<HoldView> holds, List<Long> patronIds, boolean watched) {
 
@@ -53,7 +62,7 @@ public class PersonController {
             Statement last = summary != null ? summary.last() : null;
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFrom())).toList(),
-                    person.getVersion(),
+                    person.getTerms(), person.getVersion(),
                     summary != null ? summary.count() : 0,
                     last == null ? null : last.getDueTotal() != null ? last.getDueTotal().toPlainString() : "n/a",
                     last != null ? last.getTakenOn() : null, person.getRetiredFrom(), person.isHeld(),
@@ -85,14 +94,14 @@ public class PersonController {
     @PostMapping
     public PersonView add(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody PersonForm form) {
-        return view(user, sheetId, service.add(user, sheetId, form.name(), form.grade()));
+        return view(user, sheetId, service.add(user, sheetId, form.name(), form.grade(), form.termsDays()));
     }
 
     @PutMapping("/{id}")
     public PersonView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
         return view(user, sheetId, service.update(user, sheetId, id, form.name(), form.grade(), form.gradeFrom(),
-                form.version()));
+                form.termsDays(), form.version()));
     }
 
     public record RetireForm(LocalDate from) {}

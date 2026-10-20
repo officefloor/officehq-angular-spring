@@ -41,6 +41,8 @@ export interface Person {
   grade: Grade;
   /** Every grade recorded for the person, by from-date, the first one given (from the beginning of time) first. */
   grades: GradeFrom[];
+  /** The person's own terms in days, ahead of their grade's and the sheet's; null for none. */
+  terms: number | null;
   /** Raised each time the person is saved. */
   version: number;
   /** How many statements were taken for the person. */
@@ -68,6 +70,8 @@ export interface PersonForm {
   /** The date a saved grade is in force from (yyyy-mm-dd); null for the sheet's today. A new person's first
    * grade applies from the beginning of time. */
   gradeFrom?: string | null;
+  /** The person's own terms in days; blank for none. */
+  terms?: string;
   /** The version of the person the editor loaded; a save is refused once someone else has saved since. */
   version?: number;
 }

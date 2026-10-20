@@ -73,6 +73,8 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
           <label for="person-form-grade-from">Grade from</label>
           <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         }
+        <label for="person-form-terms">Terms (days)</label>
+        <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -138,6 +140,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
+            <th scope="col">Terms</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             @for (pd of periods(); track pd.id) {
@@ -164,6 +167,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ personDueTotal(p) }}</td>
               @for (pd of periods(); track pd.id) {
@@ -452,6 +456,8 @@ export class People {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     /** The date a saved grade is in force from; the sheet's today unless another date is picked. */
     gradeFrom: new FormControl('', { nonNullable: true }),
+    /** The person's own terms in days; blank for none. */
+    terms: new FormControl('', { nonNullable: true }),
   });
 
   /** Whether a quick-add is waiting on the server; another is ignored until it answers. */
@@ -930,7 +936,8 @@ export class People {
     this.editingId.set(person.id);
     this.editingVersion = person.version;
     this.form.setValue(
-      { name: person.name, grade: this.gradeToday(person), gradeFrom: this.session.today() ?? '' },
+      { name: person.name, grade: this.gradeToday(person), gradeFrom: this.session.today() ?? '',
+        terms: person.terms?.toString() ?? '' },
       { emitEvent: false },
     );
     this.formError.set(null);
@@ -939,7 +946,9 @@ export class People {
   protected reset(): void {
     this.editingId.set(null);
     this.editingVersion = null;
-    this.form.reset({ name: '', grade: 'A', gradeFrom: this.session.today() ?? '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: this.session.today() ?? '', terms: '' },
+      { emitEvent: false },
+    );
     this.formError.set(null);
   }
 
@@ -956,11 +965,18 @@ export class People {
       this.formError.set('Type a name for the person.');
       return;
     }
+    const terms = value.terms.trim();
+    if (!/^\d{0,5}$/.test(terms)) {
+      // Refused: nothing is saved, and the editor closes so the form is free for the next person.
+      this.reset();
+      this.formError.set('Terms are a whole number of days, or blank for none.');
+      return;
+    }
     const id = this.editingId();
     this.submitting = true;
     const done = () => (this.submitting = false);
     if (id === null) {
-      this.api.add(sheetId, { name: value.name, grade: value.grade }).subscribe({
+      this.api.add(sheetId, { name: value.name, grade: value.grade, terms }).subscribe({
         next: (p) => {
           done();
           if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, p]);
@@ -973,7 +989,7 @@ export class People {
       });
     } else {
       this.api
-        .update(sheetId, id, { ...value, gradeFrom: value.gradeFrom || null, version: this.editingVersion ?? undefined })
+        .update(sheetId, id, { ...value, gradeFrom: value.gradeFrom || null, terms, version: this.editingVersion ?? undefined })
         .subscribe({
           next: (p) => {
             done();
@@ -1002,7 +1018,8 @@ export class People {
       if (current && this.editingId() === id) {
         this.editingVersion = current.version;
         this.form.setValue(
-          { name: current.name, grade: this.gradeToday(current), gradeFrom: this.session.today() ?? '' },
+          { name: current.name, grade: this.gradeToday(current), gradeFrom: this.session.today() ?? '',
+            terms: current.terms?.toString() ?? '' },
           { emitEvent: false },
         );
       }

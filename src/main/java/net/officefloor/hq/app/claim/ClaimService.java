@@ -72,8 +72,7 @@ public class ClaimService {
         String corrected = correctedBy(sheetId, personId, amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
         LocalDate dated = date != null ? date : today;
-        // The due-by is fixed now, from the terms in force on the claim's date for the grade the person has then.
-        LocalDate dueBy = dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated), dated));
+        LocalDate dueBy = dueBy(sheetId, person, dated);
         Claim fresh = new Claim(sheetId, personId, amount, dated, dueBy, noteOf(note));
         fresh.setCorrects(corrected);
         Claim claim = claims.saveAndFlush(fresh);
@@ -294,7 +293,7 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
         LocalDate dated = claim.getDate();
-        LocalDate dueBy = dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated), dated));
+        LocalDate dueBy = dueBy(sheetId, person, dated);
         Claim fresh = new Claim(sheetId, person.getId(), amount, dated, dueBy, claim.getNote());
         fresh.setSplitFrom(claim.getNumber());
         fresh.setStatus(ClaimStatus.OPEN);
@@ -527,6 +526,13 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     person.getName() + " is retired from " + person.getRetiredFrom() + ".");
         }
+    }
+
+    /** The due-by fixed for a claim of the person dated {@code dated}: its date plus the person's own terms, else
+     * the terms in force then for the grade the person has then, else the sheet's terms then. */
+    private LocalDate dueBy(String sheetId, Person person, LocalDate dated) {
+        Integer own = person.getTerms();
+        return dated.plusDays(own != null ? own : settings.termsFor(sheetId, person.gradeOn(dated), dated));
     }
 
     private Person requirePerson(String sheetId, Long personId) {
