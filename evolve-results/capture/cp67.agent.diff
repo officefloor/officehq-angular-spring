@@ -1,0 +1,147 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 59d9e914..fe3fbb06 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -33,6 +33,10 @@ import { SheetPolicyDate } from '../settings/sheet-policy-date';
+ import { NO_RATE, Rate, RatesApi, fromHundredths, hundredths, rateOn } from '../rates/rates-api';
+ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
+ 
++/** The days up to and including the sheet's today in which an OPEN or PENDING claim that counts makes its person
++ * active. */
++const ACTIVE_DAYS = 30;
++
+ // The people on the active sheet, in the order they were added, and the one form that adds a
+ // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
+ // claims, what they have claimed (its OPEN, PENDING and SETTLED claims, though OPEN and PENDING ones dated within one of
+@@ -158,6 +162,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
+             <th scope="col">Patrons</th>
+             <th scope="col">Backing</th>
+             <th scope="col">Watched</th>
++            <th scope="col">Active</th>
+             <th scope="col">Claims</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+@@ -196,6 +201,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
+               <td data-testid="person-patrons">{{ patronNames(p) }}</td>
+               <td data-testid="person-backing">{{ backing(p) }}</td>
+               <td data-testid="person-watched">{{ watchedShown(p) ? 'yes' : 'no' }}</td>
++              <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
+               <td>
+                 <app-claims
+                   [personId]="p.id"
+@@ -405,13 +411,13 @@ export class People {
+   protected readonly dueTotal = computed(() =>
+     trimmedSum(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
+   );
+-  /** Per grade, the people not retired who have it on the sheet's today and their due-totals added up (n/a
+-   * ones skipped). */
++  /** Per grade, the people not retired who have it on the sheet's today, their due-totals added up (n/a
++   * ones skipped), and how many of them are active. */
+   protected readonly gradeSummary = computed<GradeSummary[]>(() =>
+     this.grades.map((grade) => {
+       const on = this.people().filter((p) => !p.retiredFrom && this.gradeToday(p) === grade);
+       const dueTotal = sumAmounts(on.map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE));
+-      return { grade, count: on.length, dueTotal };
++      return { grade, count: on.length, dueTotal, active: on.filter((p) => this.isActive(p)).length };
+     }),
+   );
+   /** How many of the sheet's claims have each status. */
+@@ -566,6 +572,17 @@ export class People {
+     return fromHundredths(hundredths(total) - hundredths(this.personDueTotal(person)));
+   }
+ 
++  /** Whether the person is active: they have an OPEN or PENDING claim that counts dated within the 30 days up
++   * to and including the sheet's today. */
++  protected isActive(person: Person): boolean {
++    const today = this.session.today();
++    if (today === null) return false;
++    const from = new Date(Date.parse(today) - (ACTIVE_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
++    return this.claimsOf(person.id).some(
++      (c) => isOpen(c) && this.countsLive(c) && c.date >= from && c.date <= today,
++    );
++  }
++
+   /** The person's claims that count and are overdue. */
+   protected overdueOf(person: Person): Claim[] {
+     const today = this.session.today();
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 1bf1b526..dd6bb48c 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -5,15 +5,17 @@ import { Period } from '../periods/periods-api';
+ /** The statuses the summary counts claims by, in the order shown. */
+ export const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+ 
+-/** One grade's line: how many people not retired have it today, and their due-totals added up. */
++/** One grade's line: how many people not retired have it today, their due-totals added up, and how many of
++ * them are active. */
+ export interface GradeSummary {
+   grade: Grade;
+   count: number;
+   dueTotal: string;
++  active: number;
+ }
+ 
+ // The sheet at a glance, from the same figures the list shows: per grade, the people on it today (retired
+-// people excluded) and their due-totals added up; per period, its due-total; per status, how many claims have it.
++// people excluded), their due-totals added up and how many of them are active; per period, its due-total; per status, how many claims have it.
+ @Component({
+   selector: 'app-summary',
+   template: `
+@@ -26,6 +28,7 @@ export interface GradeSummary {
+             <th scope="col">Grade</th>
+             <th scope="col">People</th>
+             <th scope="col">Due</th>
++            <th scope="col">Active</th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -34,6 +37,7 @@ export interface GradeSummary {
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index d1068781..1b2e9fa3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -101,7 +101,7 @@ public class PersonController {
+     public PersonView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
+         return view(user, sheetId, service.update(user, sheetId, id, form.name(), form.grade(), form.gradeFrom(),
+-                form.termsDays(), form.version()));
++                form.termsDays(), form.terms() != null, form.version()));
+     }
+ 
+     public record RetireForm(LocalDate from) {}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 16d77c25..2afe2fa2 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -72,11 +72,12 @@ public class PersonService {
+      * Saves changes to a person. When {@code version} is given it is the version the editor loaded,
+      * and the save is refused if the person has been saved since. The grade is recorded from {@code gradeFrom},
+      * the sheet's today when none is given, keeping the grades the person has from other dates. The person's own
+-     * terms are set to {@code terms}, null for none; the record names them when given, or when cleared.
++     * terms are set to {@code terms}, null for none; the record names them when given, or when cleared or
++     * {@code termsGiven} blank.
+      */
+     @Transactional
+     public Person update(String user, String sheetId, Long id, String name, String grade, LocalDate gradeFrom,
+-            Integer terms, Long version) {
++            Integer terms, boolean termsGiven, Long version) {
+         LocalDate today = sheetService.today(sheetId);
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+@@ -96,7 +97,7 @@ public class PersonService {
+             throw changedMeanwhile();
+         }
+         audit.recordOnCommit(entry("PERSON_EDITED", user, person, today)
+-                + (terms != null ? " terms=" + terms : cleared ? " terms=" : ""));
++                + (terms != null ? " terms=" + terms : cleared || termsGiven ? " terms=" : ""));
+         rollup.recordChanges(user, sheetId, before);
+         return person;
+     }
