@@ -26,7 +26,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * The sheet's figures as the screen shows them: each person's claimed, due-total (at most the sheet's cap) and
- * overdue-total, and the sheet's claimed-total, due-total and overdue-total. A change takes them before it alters anything and hands them back after, and
+ * overdue-total, and the sheet's claimed-total, due-total and overdue-total (the sheet's due- and
+ * overdue-totals leave out the highest and lowest person's figure when three or more people have one). A change takes them before it alters anything and hands them back after, and
  * every figure it moved is written to the audit after the change's own lines. Called within the change's
  * transaction.
  */
@@ -100,8 +101,8 @@ public class RollupService {
         Map<String, LocalDate> datesByNumber = datesByNumber(all);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
-        BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
-        BigDecimal overdueTotal = BigDecimal.ZERO.setScale(2);
+        List<BigDecimal> dueFigures = new ArrayList<>();
+        List<BigDecimal> overdueFigures = new ArrayList<>();
         Map<String, List<Rate>> byGrade = ratesByGrade(sheetId);
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
@@ -132,14 +133,21 @@ public class RollupService {
             String personDue = rated || frozen ? due.toPlainString() : NO_RATE;
             claimedTotal = claimedTotal.add(claimed);
             if (rated || frozen) {
-                dueTotal = dueTotal.add(due);
+                dueFigures.add(due);
             }
-            overdueTotal = overdueTotal.add(overdue);
+            overdueFigures.add(overdue);
             figures.put(person.getId(),
                     new Figures(person.getName(), claimed.toPlainString(), personDue, overdue.toPlainString()));
         }
-        return new Snapshot(figures, claimedTotal.toPlainString(), dueTotal.toPlainString(),
-                overdueTotal.toPlainString());
+        return new Snapshot(figures, claimedTotal.toPlainString(), trimmedSum(dueFigures).toPlainString(),
+                trimmedSum(overdueFigures).toPlainString());
+    }
+
+    /** Figures added up, leaving out the single highest and the single lowest when there are three or more. */
+    private static BigDecimal trimmedSum(List<BigDecimal> given) {
+        List<BigDecimal> sorted = given.stream().sorted().toList();
+        List<BigDecimal> kept = sorted.size() < 3 ? sorted : sorted.subList(1, sorted.size() - 1);
+        return kept.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** A person's due-total held to the sheet's cap; none (n/a) is not capped. */

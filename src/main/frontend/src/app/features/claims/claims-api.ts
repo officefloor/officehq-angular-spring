@@ -204,6 +204,13 @@ export function sumAmounts(amounts: string[]): string {
   return fromHundredths(amounts.reduce((sum, a) => sum + hundredths(a), 0n));
 }
 
+/** Amounts added up, leaving out the single highest and the single lowest when there are three or more. */
+export function trimmedSum(amounts: string[]): string {
+  if (amounts.length < 3) return sumAmounts(amounts);
+  const sorted = amounts.map(hundredths).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return fromHundredths(sorted.slice(1, -1).reduce((sum, a) => sum + a, 0n));
+}
+
 // The claims people make on the active sheet, read and changed through the server.
 @Injectable({ providedIn: 'root' })
 export class ClaimsApi {

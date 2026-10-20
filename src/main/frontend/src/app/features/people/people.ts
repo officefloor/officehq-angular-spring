@@ -19,6 +19,7 @@ import {
   isOverdue,
   roundsBy,
   sumAmounts,
+  trimmedSum,
 } from '../claims/claims-api';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOf } from '../periods/periods-api';
@@ -396,8 +397,9 @@ export class People {
     () => new Map([...this.personPeriodDueTotals()].map(([id, byPerson]) => [id, sumAmounts([...byPerson.values()])])),
   );
 
+  /** The sheet's due-total: the people's due-totals (n/a ones skipped) added up, trimmed of the highest and lowest. */
   protected readonly dueTotal = computed(() =>
-    sumAmounts(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
+    trimmedSum(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
   );
   /** Per grade, the people not retired who have it on the sheet's today and their due-totals added up (n/a
    * ones skipped). */
@@ -418,7 +420,8 @@ export class People {
   protected readonly overdueCount = computed(() =>
     this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
   );
-  protected readonly overdueTotal = computed(() => sumAmounts(this.people().map((p) => this.overdueTotalOf(p))));
+  /** The sheet's overdue-total: the people's overdue-totals added up, trimmed of the highest and lowest. */
+  protected readonly overdueTotal = computed(() => trimmedSum(this.people().map((p) => this.overdueTotalOf(p))));
   /** The ids of the claims selected to open together. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** How many claims the last open of the selected ones opened and refused. */
