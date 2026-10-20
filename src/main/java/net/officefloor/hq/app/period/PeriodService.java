@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -66,6 +68,33 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + period.getName()
                 + " from=" + period.getFrom() + " to=" + period.getTo());
         return period;
+    }
+
+    /** Add one period per calendar month from the from-date's month to the to-date's month, each running from
+     * the first to the last day of its month and named yyyy-mm; a month whose name is taken on the sheet, or whose
+     * days overlap one of the sheet's periods, is left out. A to-date before the from-date is refused. */
+    @Transactional
+    public List<Period> generate(String user, String sheetId, LocalDate from, LocalDate to) {
+        sheets.lock(sheetId);
+        if (to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date.");
+        }
+        List<Period> existing = periods.findBySheetIdOrderByFromAsc(sheetId);
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            if (periods.existsBySheetIdAndNameIgnoreCase(sheetId, name)
+                    || existing.stream().anyMatch(p -> p.overlaps(first, last))) {
+                continue;
+            }
+            Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + period.getName()
+                    + " from=" + period.getFrom() + " to=" + period.getTo());
+            made.add(period);
+        }
+        return made;
     }
 
     /** Close a period, fixing each person's due-total for it, and so its own, as they are now; only a role the permission matrix allows may, and closing one already closed is refused. */

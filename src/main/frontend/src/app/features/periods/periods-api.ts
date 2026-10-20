@@ -43,6 +43,11 @@ export class PeriodsApi {
     return this.http.post<Period>(this.url(sheetId), form, { headers: this.headers() });
   }
 
+  /** One period per calendar month from the from-date's month to the to-date's; the ones made, by from-date. */
+  generate(sheetId: string, from: string, to: string): Observable<Period[]> {
+    return this.http.post<Period[]>(`${this.url(sheetId)}/generate`, { from, to }, { headers: this.headers() });
+  }
+
   close(sheetId: string, id: number): Observable<Period> {
     return this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() });
   }

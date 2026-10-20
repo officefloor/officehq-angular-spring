@@ -26,6 +26,19 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       @if (formError(); as e) {
         <p role="alert" data-testid="period-form-error">{{ e }}</p>
       }
+      <form [formGroup]="generateForm" (ngSubmit)="generate()" data-testid="period-generate-form">
+        <label for="period-generate-from">Months from</label>
+        <input id="period-generate-from" data-testid="period-generate-from" type="date" formControlName="from" />
+        <label for="period-generate-to">To</label>
+        <input id="period-generate-to" data-testid="period-generate-to" type="date" formControlName="to" />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+      </form>
+      @if (generateError(); as e) {
+        <p role="alert" data-testid="period-generate-error">{{ e }}</p>
+      }
+      @if (generated() !== null) {
+        <p role="status">Periods made: <span data-testid="period-generated">{{ generated() }}</span></p>
+      }
       <table data-testid="period-list">
         <thead>
           <tr>
@@ -95,8 +108,52 @@ export class Periods {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly generateError = signal<string | null>(null);
+  /** How many periods the last generate made; null before one, or after one is refused. */
+  protected readonly generated = signal<number | null>(null);
+  private generating = false;
+  protected readonly generateForm = new FormGroup({
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.formError.set(null));
+    this.generateForm.valueChanges.subscribe(() => this.generateError.set(null));
+  }
+
+  protected generate(): void {
+    if (this.generating) return;
+    this.generateError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) {
+      this.generateError.set('Load a sheet first.');
+      return;
+    }
+    const value = this.generateForm.getRawValue();
+    if (!DATE.test(value.from) || !DATE.test(value.to)) {
+      this.generated.set(null);
+      this.generateError.set('Pick a from and a to date.');
+      return;
+    }
+    if (value.to < value.from) {
+      this.generated.set(null);
+      this.generateError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.generating = true;
+    this.api.generate(sheetId, value.from, value.to).subscribe({
+      next: (made) => {
+        this.generating = false;
+        if (this.session.sheetId() === sheetId) made.forEach((p) => this.saved.emit(p));
+        this.generated.set(made.length);
+      },
+      error: () => {
+        this.generating = false;
+        this.generated.set(null);
+        this.generateError.set('Could not generate those periods.');
+      },
+    });
   }
 
   protected close(period: Period): void {

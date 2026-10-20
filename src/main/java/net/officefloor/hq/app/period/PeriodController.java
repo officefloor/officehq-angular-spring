@@ -24,6 +24,9 @@ public class PeriodController {
     /** The from and to dates are both inclusive. */
     public record PeriodForm(@NotBlank @Size(max = 200) String name, @NotNull LocalDate from, @NotNull LocalDate to) {}
 
+    /** Both dates are inclusive. */
+    public record GenerateForm(@NotNull LocalDate from, @NotNull LocalDate to) {}
+
     /** A closed period carries the due-total it closed at, and each person's, by person id (a person with none
      * has 0.00); an open one neither. */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal,
@@ -54,6 +57,13 @@ public class PeriodController {
     public PeriodView add(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody PeriodForm form) {
         return PeriodView.of(service.add(user, sheetId, form.name(), form.from(), form.to()));
+    }
+
+    /** The periods made, by from-date. */
+    @PostMapping("/generate")
+    public List<PeriodView> generate(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @Valid @RequestBody GenerateForm form) {
+        return service.generate(user, sheetId, form.from(), form.to()).stream().map(PeriodView::of).toList();
     }
 
     @PostMapping("/{id}/close")
