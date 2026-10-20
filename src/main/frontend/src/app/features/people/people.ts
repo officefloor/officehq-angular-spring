@@ -33,6 +33,10 @@ import { SheetPolicyDate } from '../settings/sheet-policy-date';
 import { NO_RATE, Rate, RatesApi, fromHundredths, hundredths, rateOn } from '../rates/rates-api';
 import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
 
+/** The days up to and including the sheet's today in which an OPEN or PENDING claim that counts makes its person
+ * active. */
+const ACTIVE_DAYS = 30;
+
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
 // claims, what they have claimed (its OPEN, PENDING and SETTLED claims, though OPEN and PENDING ones dated within one of
@@ -158,6 +162,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
             <th scope="col">Watched</th>
+            <th scope="col">Active</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -196,6 +201,7 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
               <td data-testid="person-patrons">{{ patronNames(p) }}</td>
               <td data-testid="person-backing">{{ backing(p) }}</td>
               <td data-testid="person-watched">{{ watchedShown(p) ? 'yes' : 'no' }}</td>
+              <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -405,13 +411,13 @@ export class People {
   protected readonly dueTotal = computed(() =>
     trimmedSum(this.people().map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE)),
   );
-  /** Per grade, the people not retired who have it on the sheet's today and their due-totals added up (n/a
-   * ones skipped). */
+  /** Per grade, the people not retired who have it on the sheet's today, their due-totals added up (n/a
+   * ones skipped), and how many of them are active. */
   protected readonly gradeSummary = computed<GradeSummary[]>(() =>
     this.grades.map((grade) => {
       const on = this.people().filter((p) => !p.retiredFrom && this.gradeToday(p) === grade);
       const dueTotal = sumAmounts(on.map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE));
-      return { grade, count: on.length, dueTotal };
+      return { grade, count: on.length, dueTotal, active: on.filter((p) => this.isActive(p)).length };
     }),
   );
   /** How many of the sheet's claims have each status. */
@@ -564,6 +570,17 @@ export class People {
     const total = this.uncappedDueTotal(person);
     if (total === NO_RATE) return '0.00';
     return fromHundredths(hundredths(total) - hundredths(this.personDueTotal(person)));
+  }
+
+  /** Whether the person is active: they have an OPEN or PENDING claim that counts dated within the 30 days up
+   * to and including the sheet's today. */
+  protected isActive(person: Person): boolean {
+    const today = this.session.today();
+    if (today === null) return false;
+    const from = new Date(Date.parse(today) - (ACTIVE_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+    return this.claimsOf(person.id).some(
+      (c) => isOpen(c) && this.countsLive(c) && c.date >= from && c.date <= today,
+    );
   }
 
   /** The person's claims that count and are overdue. */

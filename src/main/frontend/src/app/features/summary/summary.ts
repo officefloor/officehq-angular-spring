@@ -5,15 +5,17 @@ import { Period } from '../periods/periods-api';
 /** The statuses the summary counts claims by, in the order shown. */
 export const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
-/** One grade's line: how many people not retired have it today, and their due-totals added up. */
+/** One grade's line: how many people not retired have it today, their due-totals added up, and how many of
+ * them are active. */
 export interface GradeSummary {
   grade: Grade;
   count: number;
   dueTotal: string;
+  active: number;
 }
 
 // The sheet at a glance, from the same figures the list shows: per grade, the people on it today (retired
-// people excluded) and their due-totals added up; per period, its due-total; per status, how many claims have it.
+// people excluded), their due-totals added up and how many of them are active; per period, its due-total; per status, how many claims have it.
 @Component({
   selector: 'app-summary',
   template: `
@@ -26,6 +28,7 @@ export interface GradeSummary {
             <th scope="col">Grade</th>
             <th scope="col">People</th>
             <th scope="col">Due</th>
+            <th scope="col">Active</th>
           </tr>
         </thead>
         <tbody>
@@ -34,6 +37,7 @@ export interface GradeSummary {
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>

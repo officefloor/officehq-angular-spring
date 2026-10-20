@@ -101,7 +101,7 @@ public class PersonController {
     public PersonView update(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id, @Valid @RequestBody PersonForm form) {
         return view(user, sheetId, service.update(user, sheetId, id, form.name(), form.grade(), form.gradeFrom(),
-                form.termsDays(), form.version()));
+                form.termsDays(), form.terms() != null, form.version()));
     }
 
     public record RetireForm(LocalDate from) {}

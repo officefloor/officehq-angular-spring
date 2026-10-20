@@ -72,11 +72,12 @@ public class PersonService {
      * Saves changes to a person. When {@code version} is given it is the version the editor loaded,
      * and the save is refused if the person has been saved since. The grade is recorded from {@code gradeFrom},
      * the sheet's today when none is given, keeping the grades the person has from other dates. The person's own
-     * terms are set to {@code terms}, null for none; the record names them when given, or when cleared.
+     * terms are set to {@code terms}, null for none; the record names them when given, or when cleared or
+     * {@code termsGiven} blank.
      */
     @Transactional
     public Person update(String user, String sheetId, Long id, String name, String grade, LocalDate gradeFrom,
-            Integer terms, Long version) {
+            Integer terms, boolean termsGiven, Long version) {
         LocalDate today = sheetService.today(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
@@ -96,7 +97,7 @@ public class PersonService {
             throw changedMeanwhile();
         }
         audit.recordOnCommit(entry("PERSON_EDITED", user, person, today)
-                + (terms != null ? " terms=" + terms : cleared ? " terms=" : ""));
+                + (terms != null ? " terms=" + terms : cleared || termsGiven ? " terms=" : ""));
         rollup.recordChanges(user, sheetId, before);
         return person;
     }
