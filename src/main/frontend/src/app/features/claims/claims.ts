@@ -299,9 +299,9 @@ export class Claims {
     });
   }
 
-  /** A settled claim shows the due it was settled at; any other is due at the rate the grade its person has on
-   * the claim's date has now in force on that date, and at least the sheet's floor, plus its late charge when
-   * overdue. */
+  /** A settled claim shows the due it was settled at; any other is the greater of the sheet's floor and its
+   * figure (bound by a statement, or at the rate its grade has on the claim's date) plus its late charge when
+   * overdue; see {@link claimDue}. */
   protected due(claim: Claim): string {
     return claimDue(claim, this.rates(), gradeOn(this.grades(), claim.date), this.floor.on(), this.late(),
       roundsBy(claim, this.claims()));

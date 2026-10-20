@@ -44,7 +44,8 @@ public class RollupService {
     public record Snapshot(Map<Long, Figures> people, String claimedTotal, String dueTotal, String overdueTotal) {}
 
     /** What a claim's late charge goes by: the sheet's today (none when there is no such sheet) and the sheet,
-     * for its late percent in force on each 30-day boundary of a claim's due-by and its floor in force on a claim's date; and the date its rounding goes by, the policy
+     * for its late percent in force on each 30-day boundary of a claim's due-by and its floor in force on a claim's date
+     * (applied last, to the figure plus its late charge); and the date its rounding goes by, the policy
      * date or else the sheet's today. */
     private record Lateness(LocalDate today, Sheet sheet, LocalDate policyDate) {
 
@@ -211,27 +212,27 @@ public class RollupService {
     }
 
     /** The figure a claim has now: what it was settled at, else what its person's last statement bound it to
-     * (while not PENDING), else what is due at the rate of the grade its person has on its date, raised to the sheet's floor in force on its date; none
-     * when that is n/a. */
+     * (while not PENDING), else what is due at the rate of the grade its person has on its date (the floor is
+     * not applied to it); none when that is n/a. */
     public BigDecimal figureOf(Claim claim, Person person) {
         Lateness late = latenessOf(claim.getSheetId());
-        return figureOf(claim, gradeRates(claim, person), late.floor(claim), late.rounding(roundsBy(claim)));
+        return figureOf(claim, gradeRates(claim, person), late.rounding(roundsBy(claim)));
     }
 
-    /** What is due on a claim now: its figure, plus the late charge an overdue claim has on it; none when the
-     * figure is n/a. A settled claim's due is the figure it was settled at, the charge it had then frozen in. */
+    /** What is due on a claim now: the greater of the floor in force on its date and its figure plus the late
+     * charge an overdue claim has on it; none when the figure is n/a. A settled claim's due is the figure it was
+     * settled at, frozen; a correction's is its figure (no floor, no charge). */
     public BigDecimal dueOf(Claim claim, Person person) {
         return dueOf(claim, gradeRates(claim, person), latenessOf(claim.getSheetId()), roundsBy(claim));
     }
 
-    /** What would be due on a claim today as an OPEN claim bound by no statement: its live figure at the rate its
-     * grade has on its date, raised to the sheet's floor in force on its date, plus the late charge it would have; none when that is
-     * n/a. Re-settling freezes a claim at this. */
+    /** What would be due on a claim today as an OPEN claim bound by no statement: the greater of the sheet's
+     * floor in force on its date and its live figure at the rate its grade has on its date plus the late charge
+     * it would have; none when that is n/a. Re-settling freezes a claim at this. */
     public BigDecimal openDueOf(Claim claim, Person person) {
         Lateness late = latenessOf(claim.getSheetId());
         RoundingMode rounding = late.rounding(roundsBy(claim));
-        BigDecimal figure = liveDueOf(claim, gradeRates(claim, person), late.floor(claim), rounding);
-        return figure == null ? null : figure.add(lateCharge(claim, true, figure, late, rounding));
+        return floored(claim, liveDueOf(claim, gradeRates(claim, person), rounding), true, late, rounding);
     }
 
     /** The date a claim's rounding goes by: a correction's is the date of the claim it corrects, any other's its
@@ -299,9 +300,21 @@ public class RollupService {
     }
 
     private static BigDecimal dueOf(Claim claim, List<Rate> gradeRates, Lateness late, LocalDate roundsBy) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
         RoundingMode rounding = late.rounding(roundsBy);
-        BigDecimal figure = figureOf(claim, gradeRates, late.floor(claim), rounding);
-        return figure == null ? null : figure.add(lateCharge(claim, claim.getStatus().isOpen(), figure, late, rounding));
+        return floored(claim, figureOf(claim, gradeRates, rounding), claim.getStatus().isOpen(), late, rounding);
+    }
+
+    /** A live due: the greater of the floor in force on the claim's date and its figure plus its late charge; a
+     * correction's is its figure alone (no floor, no charge); none when the figure is n/a. */
+    private static BigDecimal floored(Claim claim, BigDecimal figure, boolean open, Lateness late,
+            RoundingMode rounding) {
+        if (figure == null || claim.isCorrection()) {
+            return figure;
+        }
+        return figure.add(lateCharge(claim, open, figure, late, rounding)).max(late.floor(claim).setScale(2));
     }
 
     /**
@@ -327,21 +340,19 @@ public class RollupService {
         return charge;
     }
 
-    private static BigDecimal figureOf(Claim claim, List<Rate> gradeRates, BigDecimal floor, RoundingMode rounding) {
+    private static BigDecimal figureOf(Claim claim, List<Rate> gradeRates, RoundingMode rounding) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return bound(claim) ? claim.getStatedDue() : liveDueOf(claim, gradeRates, floor, rounding);
+        return bound(claim) ? claim.getStatedDue() : liveDueOf(claim, gradeRates, rounding);
     }
 
-    /** What is due on a claim at the rate its grade has in force on the claim's date, rounded to two decimals as
-     * the claim rounds, and at least the floor in force on its date (a correction has no floor); none when no rate of the grade applies
-     * then. */
-    private static BigDecimal liveDueOf(Claim claim, List<Rate> gradeRates, BigDecimal floor, RoundingMode rounding) {
+    /** The rate figure of a claim: what is due at the rate its grade has in force on the claim's date, rounded to
+     * two decimals as the claim rounds (no floor); none when no rate of the grade applies then. */
+    private static BigDecimal liveDueOf(Claim claim, List<Rate> gradeRates, RoundingMode rounding) {
         BigDecimal amount = claim.getAmount();
         return Rate.inForce(gradeRates, claim.getDate())
                 .map(r -> amount.multiply(r.getRate()).divide(BigDecimal.valueOf(100), 2, rounding))
-                .map(due -> claim.isCorrection() ? due : due.max(floor.setScale(2)))
                 .orElse(null);
     }
 

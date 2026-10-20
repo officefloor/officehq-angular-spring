@@ -121,11 +121,12 @@ function roundsHalfUp(date: string, late: Lateness): boolean {
 /** The days in each period an overdue claim gains the late percent for. */
 const LATE_PERIOD_DAYS = 30;
 
-/** A settled claim's due is the figure it was settled at (its late charge frozen in); a claim bound by its
- * person's last statement (and not PENDING) has the figure it was bound to; any other has the figure due at the rate `grade`, the
- * one its person has on the claim's date, has now in force on that date, and at least the sheet's floor in force on that date (n/a
- * when there is no rate). An overdue claim's due adds its late charge to its figure. Live figures round by the
- * date `roundsBy` (see {@link roundsBy}). */
+/** A settled claim's due is the figure it was settled at (its late charge frozen in). Any other's figure is the
+ * one its person's last statement bound it to (when bound and not PENDING), else the figure due at the rate
+ * `grade`, the one its person has on the claim's date, has now in force on that date (n/a when there is no rate);
+ * its due is the greater of the sheet's floor in force on its date and that figure plus its late charge when
+ * overdue. A correction's due is its figure alone (no floor, no charge). Live figures round by the date
+ * `roundsBy` (see {@link roundsBy}). */
 export function claimDue(
   claim: Claim,
   rates: readonly Rate[],
@@ -138,14 +139,9 @@ export function claimDue(
   const halfUp = roundsHalfUp(roundsBy, late);
   const figure = bound(claim)
     ? (claim.statedDue ?? NO_RATE)
-    : correctionFloored(claim, dueOf(claim.amount, grade && rateOn(rates, grade, claim.date), halfUp), floor(claim.date));
-  if (figure === NO_RATE) return figure;
-  return sumAmounts([figure, lateCharge(claim, figure, late, halfUp)]);
-}
-
-/** A due raised to the sheet's floor, except a correction's, which has no floor. */
-function correctionFloored(claim: Claim, due: string, floor: string): string {
-  return isCorrection(claim) ? due : floored(due, floor);
+    : dueOf(claim.amount, grade && rateOn(rates, grade, claim.date), halfUp);
+  if (figure === NO_RATE || isCorrection(claim)) return figure;
+  return floored(sumAmounts([figure, lateCharge(claim, figure, late, halfUp)]), floor(claim.date));
 }
 
 /** The late charge on an overdue claim: for each full 30 days it is overdue, the late percent in force on that boundary

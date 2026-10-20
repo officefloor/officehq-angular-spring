@@ -177,8 +177,8 @@ public class SettingService {
         return value;
     }
 
-    /** Set the sheet's floor from a date (the sheet's today when none); it moves every live due below it of a
-     * claim dated from then until a later one, and the figures it moves are written after. */
+    /** Set the sheet's floor from a date (the sheet's today when none); it moves every live due (figure plus late
+     * charge) below it of a claim dated from then until a later one, and the figures it moves are written after. */
     @Transactional
     public BigDecimal setFloor(String user, String sheetId, BigDecimal floor, LocalDate from) {
         BigDecimal value = floor.setScale(2);
