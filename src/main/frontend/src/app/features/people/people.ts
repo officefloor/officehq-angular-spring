@@ -37,6 +37,9 @@ import { Grade, PeopleApi, Person, gradeOn, heldOn } from './people-api';
  * active. */
 const ACTIVE_DAYS = 30;
 
+/** The days up to and including the sheet's today in which a patron's SETTLED claims count toward backing. */
+const BACKING_DAYS = 90;
+
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
 // claims, what they have claimed (its OPEN, PENDING and SETTLED claims, though OPEN and PENDING ones dated within one of
@@ -606,9 +609,20 @@ export class People {
       .join(', ');
   }
 
-  /** The person's backing: their patrons' due-totals added up (n/a ones skipped), 0.00 with no patrons. */
+  /** The person's backing: the settled figures of their patrons' SETTLED claims dated within the 90 days up to and
+   * including the sheet's today added up (n/a ones skipped), 0.00 with none. */
   protected backing(person: Person): string {
-    return sumAmounts(this.patronsOf(person).map((p) => this.personDueTotal(p)).filter((d) => d !== NO_RATE));
+    const today = this.session.today();
+    if (today === null) return '0.00';
+    const from = new Date(Date.parse(today) - (BACKING_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+    return sumAmounts(
+      this.patronsOf(person).flatMap((p) =>
+        this.claimsOf(p.id)
+          .filter((c) => c.status === 'SETTLED' && c.date >= from && c.date <= today)
+          .map((c) => this.claimDue(c, p))
+          .filter((d) => d !== NO_RATE),
+      ),
+    );
   }
 
   private patronsOf(person: Person): Person[] {
