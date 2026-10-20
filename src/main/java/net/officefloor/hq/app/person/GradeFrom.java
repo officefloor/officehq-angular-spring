@@ -19,11 +19,21 @@ public class GradeFrom {
     @Column(name = "grade_from")
     private LocalDate from;
 
+    /** The sheet's today when the grade was recorded; none when not kept. */
+    @Column(name = "made_on")
+    private LocalDate madeOn;
+
     protected GradeFrom() {}
 
-    public GradeFrom(String grade, LocalDate from) {
+    public GradeFrom(String grade, LocalDate from, LocalDate madeOn) {
         this.grade = grade;
         this.from = from;
+        this.madeOn = madeOn;
+    }
+
+    /** Whether the grade was recorded while the sheet's today was on or before a date (one not kept was). */
+    public boolean madeBy(LocalDate date) {
+        return madeOn == null || !madeOn.isAfter(date);
     }
 
     public String getGrade() {

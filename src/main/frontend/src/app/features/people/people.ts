@@ -228,11 +228,19 @@ const BACKING_DAYS = 90;
                 >
                   Edit
                 </button>
+                <label [for]="'person-statement-asof-' + p.id">Statement as of</label>
+                <input
+                  type="date"
+                  [id]="'person-statement-asof-' + p.id"
+                  data-testid="person-statement-asof"
+                  #statementAsOf
+                  (input)="personError.set(null)"
+                />
                 <button
                   type="button"
                   data-testid="person-statement"
                   [attr.aria-label]="'Take statement for ' + p.name"
-                  (click)="statement(p)"
+                  (click)="statement(p, statementAsOf)"
                 >
                   Statement
                 </button>
@@ -802,17 +810,19 @@ export class People {
     });
   }
 
-  /** Take a statement for the person, then re-read the sheet's claims, which it binds or unbinds. */
-  protected statement(person: Person): void {
+  /** Take a statement for the person, as of the date entered beside it (blank: now), then re-read the sheet's
+   * claims, which it binds or unbinds; the date entry is cleared once it is taken. */
+  protected statement(person: Person, asOf: HTMLInputElement): void {
     this.personError.set(null);
     this.patronError.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     this.api
-      .statement(sheetId, person.id)
+      .statement(sheetId, person.id, asOf.value || null)
       .pipe(switchMap((p) => forkJoin({ person: of(p), claims: this.claimsApi.list(sheetId) })))
       .subscribe({
         next: ({ person: p, claims }) => {
+          asOf.value = '';
           if (this.session.sheetId() !== sheetId) return;
           this.claims.set(claims);
           this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
@@ -820,7 +830,12 @@ export class People {
         error: (e: HttpErrorResponse) =>
           this.personError.set({
             id: person.id,
-            message: e.status === 404 ? 'That person is no longer on this sheet.' : 'Could not take that statement.',
+            message:
+              e.status === 404
+                ? 'That person is no longer on this sheet.'
+                : asOf.value
+                  ? 'Could not take that statement: the date must be on or before the sheet\'s today, with the person on the sheet then.'
+                  : 'Could not take that statement.',
           }),
       });
   }

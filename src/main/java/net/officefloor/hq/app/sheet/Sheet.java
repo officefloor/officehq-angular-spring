@@ -139,10 +139,31 @@ public class Sheet {
                 .orElse(starting);
     }
 
-    /** Record the value a dated setting has from a date, replacing one already recorded from that date. */
+    /** Record the value a dated setting has from a date, on the sheet's today, replacing one already recorded from
+     * that date. */
     public void record(String key, LocalDate from, BigDecimal value) {
         dated.removeIf(d -> d.getKey().equals(key) && Objects.equals(d.getFrom(), from));
-        dated.add(new SettingFrom(key, from, value));
+        dated.add(new SettingFrom(key, from, value, today));
+    }
+
+    /**
+     * The sheet as it stood at the end of a date, never saved: that date is its today, and its dated settings are
+     * only those recorded while its today was on or before it (one kept without that date counts).
+     */
+    public Sheet asOf(LocalDate date) {
+        Sheet then = new Sheet();
+        then.id = id;
+        then.createdBy = createdBy;
+        then.createdAt = createdAt;
+        then.today = date;
+        then.lastClaimNumber = lastClaimNumber;
+        then.dated = new ArrayList<>(dated.stream().filter(d -> d.madeBy(date)).toList());
+        then.policyDate = policyDate;
+        then.periodNumberingFrom = periodNumberingFrom;
+        then.graceDays = graceDays;
+        then.permissions = new HashMap<>(permissions);
+        then.archived = archived;
+        return then;
     }
 
     /** The highest due a clerk may settle in force on the sheet's today; none means no limit. */

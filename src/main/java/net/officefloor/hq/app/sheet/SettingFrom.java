@@ -24,12 +24,22 @@ public class SettingFrom {
     @Column(name = "setting_value", precision = 12, scale = 2)
     private BigDecimal value;
 
+    /** The sheet's today when the value was recorded; none when not kept. */
+    @Column(name = "made_on")
+    private LocalDate madeOn;
+
     protected SettingFrom() {}
 
-    public SettingFrom(String key, LocalDate from, BigDecimal value) {
+    public SettingFrom(String key, LocalDate from, BigDecimal value, LocalDate madeOn) {
         this.key = key;
         this.from = from;
         this.value = value;
+        this.madeOn = madeOn;
+    }
+
+    /** Whether the value was recorded while the sheet's today was on or before a date (one not kept was). */
+    public boolean madeBy(LocalDate date) {
+        return madeOn == null || !madeOn.isAfter(date);
     }
 
     public String getKey() {

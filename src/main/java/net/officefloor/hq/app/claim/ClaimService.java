@@ -407,7 +407,7 @@ public class ClaimService {
         Person person = requirePerson(sheetId, claim.getPersonId());
         Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(claim.getAmount().subtract(amount));
-        claim.unbind();
+        claim.unbind(today);
         LocalDate dated = claim.getDate();
         LocalDate dueBy = dueBy(sheetId, person, dated);
         Claim fresh = new Claim(sheetId, person.getId(), amount, dated, dueBy, claim.getNote());
@@ -490,7 +490,7 @@ public class ClaimService {
         }
         Snapshot before = rollup.snapshot(sheetId);
         claim.setPersonId(to.getId());
-        claim.unbind();
+        claim.unbind(sheets.today(sheetId));
         claims.flush();
         audit.recordOnCommit(entry("CLAIM_REASSIGNED", user, to, claim) + " from=" + from.getName() + " to="
                 + to.getName());

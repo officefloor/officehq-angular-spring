@@ -59,7 +59,7 @@ public class PersonService {
         String trimmed = name.trim();
         requireNameFree(sheetId, trimmed, null);
         Snapshot before = rollup.snapshot(sheetId);
-        Person fresh = new Person(sheetId, trimmed, grade);
+        Person fresh = new Person(sheetId, trimmed, grade, sheetService.today(sheetId));
         fresh.setTerms(terms);
         Person person = people.saveAndFlush(fresh);
         audit.recordOnCommit(entry("PERSON_ADDED", user, person, sheetService.today(sheetId))
@@ -88,7 +88,7 @@ public class PersonService {
         requireNameFree(sheetId, trimmed, id);
         Snapshot before = rollup.snapshot(sheetId);
         person.setName(trimmed);
-        person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        person.setGrade(grade, gradeFrom != null ? gradeFrom : today, today);
         boolean cleared = terms == null && person.getTerms() != null;
         person.setTerms(terms);
         try {
@@ -110,7 +110,7 @@ public class PersonService {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         Snapshot before = rollup.snapshot(sheetId);
-        person.setRetiredFrom(date);
+        person.retire(date, sheetService.today(sheetId));
         people.flush();
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " from=" + date);
@@ -130,7 +130,7 @@ public class PersonService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A hold cannot end before it starts.");
         }
         Snapshot before = rollup.snapshot(sheetId);
-        person.addHold(date, to);
+        person.addHold(date, to, sheetService.today(sheetId));
         people.flush();
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " from=" + date);

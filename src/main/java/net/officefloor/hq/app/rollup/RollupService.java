@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -19,6 +20,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateLog;
+import net.officefloor.hq.app.rate.RateLogRepository;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -78,14 +81,16 @@ public class RollupService {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final RateRepository rates;
+    private final RateLogRepository rateLog;
     private final SheetRepository sheets;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
-            SheetRepository sheets, Audit audit) {
+            RateLogRepository rateLog, SheetRepository sheets, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
+        this.rateLog = rateLog;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -142,6 +147,66 @@ public class RollupService {
         }
         return new Snapshot(figures, claimedTotal.toPlainString(), trimmedSum(dueFigures).toPlainString(),
                 trimmedSum(overdueFigures).toPlainString());
+    }
+
+    /** What a person's claims came to at the end of a date: the figure (none when n/a) of each claim that counted
+     * then, by claim id, and their due-total that day (none when n/a). */
+    public record AsOf(Map<Long, BigDecimal> figures, BigDecimal dueTotal) {}
+
+    /**
+     * A person's claims as they stood at the end of a date: every change made while the sheet's today was on or
+     * before it counts and every later one does not, and that date stands in for the sheet's today (the grade and
+     * rate in force, the floor, late charges, holds, retirement and the cap). Each claim that counted then has the
+     * figure it had then (what it was settled at, else what a statement in force then bound it to, else its live
+     * figure), and the due-total is their dues then, late charges included, held to the cap then.
+     */
+    public AsOf asOf(Person person, List<Claim> theirs, LocalDate date) {
+        Sheet sheet = sheets.findById(person.getSheetId()).orElseThrow().asOf(date);
+        Lateness late = Lateness.of(sheet);
+        Person then = person.asOf(date);
+        Map<String, List<Rate>> byGrade = ratesByGradeAsOf(person.getSheetId(), date);
+        Map<String, LocalDate> datesByNumber = datesByNumber(claims.findBySheetIdOrderByIdDesc(person.getSheetId()));
+        Map<Long, BigDecimal> figures = new LinkedHashMap<>();
+        List<Claim> counted = new ArrayList<>();
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        boolean fixed = false;
+        for (Claim claim : theirs) {
+            Claim was = claim.asOf(date);
+            if (was == null || !counts(was, then, date)) {
+                continue;
+            }
+            List<Rate> gradeRates = ratesOn(then, was.getDate(), byGrade);
+            LocalDate roundsBy = roundsBy(was, datesByNumber);
+            BigDecimal due = dueOf(was, gradeRates, late, roundsBy);
+            figures.put(claim.getId(), figureOf(was, gradeRates, late.rounding(roundsBy)));
+            counted.add(was);
+            fixed |= due != null;
+            if (due != null) {
+                total = total.add(due.setScale(2));
+            }
+        }
+        boolean rated = rated(then, counted, date, byGrade);
+        return new AsOf(figures, sheet.capped(rated || fixed ? total : null));
+    }
+
+    /** The sheet's rates by grade as they stood at the end of a date: of each grade and from-date, the last one set
+     * while the sheet's today was on or before it. A sheet with no rate logged goes by the rates it has now. */
+    private Map<String, List<Rate>> ratesByGradeAsOf(String sheetId, LocalDate date) {
+        List<RateLog> logged = rateLog.findBySheetIdOrderByIdAsc(sheetId);
+        if (logged.isEmpty()) {
+            return ratesByGrade(sheetId);
+        }
+        Map<List<Object>, Rate> last = new LinkedHashMap<>();
+        for (RateLog line : logged) {
+            if (!line.getMadeOn().isAfter(date)) {
+                last.put(Arrays.asList(line.getGrade(), line.getFrom()), line.toRate());
+            }
+        }
+        Map<String, List<Rate>> by = new HashMap<>();
+        for (Rate rate : last.values()) {
+            by.computeIfAbsent(rate.getGrade(), k -> new ArrayList<>()).add(rate);
+        }
+        return by;
     }
 
     /** Figures added up, leaving out the single highest and the single lowest when there are three or more. */

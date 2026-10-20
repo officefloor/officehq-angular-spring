@@ -66,7 +66,7 @@ public class PersonController {
                     person.getTerms(), person.getVersion(),
                     summary != null ? summary.count() : 0,
                     last == null ? null : last.getDueTotal() != null ? last.getDueTotal().toPlainString() : "n/a",
-                    last != null ? last.getTakenOn() : null, person.getRetiredFrom(), person.isHeld(),
+                    last != null ? last.getStatementDate() : null, person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFrom(), h.getTo())).toList(),
                     patrons.getOrDefault(person.getId(), List.of()), watched.contains(person.getId()));
         }
@@ -141,11 +141,13 @@ public class PersonController {
         return view(user, sheetId, service.watch(user, sheetId, id, form.watched()));
     }
 
-    /** Take a statement for the person. */
+    public record StatementForm(LocalDate asOf) {}
+
+    /** Take a statement for the person, as of a date when one is given, else now. */
     @PostMapping("/{id}/statement")
     public PersonView statement(@RequestHeader("X-User") String user, @PathVariable String sheetId,
-            @PathVariable Long id) {
-        return view(user, sheetId, statements.take(user, sheetId, id));
+            @PathVariable Long id, @RequestBody(required = false) StatementForm form) {
+        return view(user, sheetId, statements.take(user, sheetId, id, form != null ? form.asOf() : null));
     }
 
     /** Cancel the person's last statement. */

@@ -111,6 +111,13 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<StatusLogLine> statusLog = new ArrayList<>();
 
+    /** The claim's binding log, oldest first: one line each time a statement bound it or left it unbound. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "claim_binding_log", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<BindingLogLine> bindingLog = new ArrayList<>();
+
     /** The numbers the claim had before it was re-dated into another period's sequence; none is given out again. */
     @ElementCollection(fetch = FetchType.EAGER)
     @Fetch(FetchMode.SUBSELECT)
@@ -238,14 +245,18 @@ public class Claim {
         return statedDue;
     }
 
-    /** Bind the claim to a figure (none for n/a). */
-    public void bind(BigDecimal due) {
+    /** Bind the claim to a figure (none for n/a), logged on the sheet's today. */
+    public void bind(BigDecimal due, LocalDate on) {
         this.stated = true;
         this.statedDue = due;
+        bindingLog.add(new BindingLogLine(on, true, due));
     }
 
-    /** Leave the claim unbound, live again. */
-    public void unbind() {
+    /** Leave the claim unbound, live again, logged on the sheet's today. */
+    public void unbind(LocalDate on) {
+        if (stated) {
+            bindingLog.add(new BindingLogLine(on, false, null));
+        }
         this.stated = false;
         this.statedDue = null;
     }
@@ -336,5 +347,50 @@ public class Claim {
     /** Add a line to the status log for the status the claim has now. */
     public void logStatus(String by, LocalDate on, String due) {
         statusLog.add(new StatusLogLine(status, by, on, due));
+    }
+
+    /**
+     * The claim as it stood at the end of a date, never saved; none when it was added after it. It has the status
+     * its status log gives then, the due it was settled at by then (a SETTLED line's due) and the binding its binding
+     * log gives then (unbound before its first line). A claim with no log keeps what it has now.
+     */
+    public Claim asOf(LocalDate end) {
+        ClaimStatus then = statusAt(end);
+        if (then == null) {
+            return null;
+        }
+        Claim copy = new Claim(sheetId, personId, amount, date, dueBy, note);
+        copy.id = id;
+        copy.status = then;
+        copy.number = number;
+        copy.openedBy = openedBy;
+        copy.corrects = corrects;
+        copy.deferredUntil = deferredUntil;
+        copy.splitFrom = splitFrom;
+        copy.proofs = proofs;
+        copy.lateEntry = lateEntry;
+        copy.statusLog = new ArrayList<>(statusLog);
+        copy.settledDue = settledDue;
+        if (!statusLog.isEmpty()) {
+            copy.settledDue = null;
+            for (StatusLogLine line : statusLog) {
+                if (!line.getOn().isAfter(end) && line.getStatus() == ClaimStatus.SETTLED) {
+                    copy.settledDue = "n/a".equals(line.getDue()) ? null : new BigDecimal(line.getDue());
+                }
+            }
+        }
+        copy.stated = stated;
+        copy.statedDue = statedDue;
+        if (!bindingLog.isEmpty()) {
+            copy.stated = false;
+            copy.statedDue = null;
+            for (BindingLogLine line : bindingLog) {
+                if (!line.getOn().isAfter(end)) {
+                    copy.stated = line.isStated();
+                    copy.statedDue = line.getStatedDue();
+                }
+            }
+        }
+        return copy;
     }
 }

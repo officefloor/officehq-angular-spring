@@ -17,12 +17,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class RateService {
 
     private final RateRepository rates;
+    private final RateLogRepository log;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
+    public RateService(RateRepository rates, RateLogRepository log, SheetService sheets, RollupService rollup,
+            Audit audit) {
         this.rates = rates;
+        this.log = log;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -38,10 +41,10 @@ public class RateService {
     }
 
     /** Set the rate for a grade from a from-date (none: from the beginning of time) through a to-date (none: with
-     * no end), replacing any it had from that date. A to-date before the from-date is refused. */
+     * no end), replacing any it had from that date; each rate set is logged with the sheet's today. A to-date before the from-date is refused. */
     @Transactional
     public Rate set(String user, String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
-        sheets.today(sheetId); // the sheet must exist
+        LocalDate today = sheets.today(sheetId);
         if (to != null && from != null && to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The to-date is before the from-date");
         }
@@ -55,6 +58,7 @@ public class RateService {
             rate.setTo(to);
             rates.flush();
         }
+        log.saveAndFlush(new RateLog(rate, today));
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade
                 + " rate=" + value.toPlainString() + (from != null ? " from=" + from : "")
                 + (to != null ? " to=" + to : ""));

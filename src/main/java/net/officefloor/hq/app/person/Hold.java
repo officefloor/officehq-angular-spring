@@ -19,11 +19,21 @@ public class Hold {
     @Column(name = "hold_to")
     private LocalDate to;
 
+    /** The sheet's today when the hold was added; none when not kept. */
+    @Column(name = "made_on")
+    private LocalDate madeOn;
+
     protected Hold() {}
 
-    public Hold(LocalDate from, LocalDate to) {
+    public Hold(LocalDate from, LocalDate to, LocalDate madeOn) {
         this.from = from;
         this.to = to;
+        this.madeOn = madeOn;
+    }
+
+    /** Whether the hold was added while the sheet's today was on or before a date (one not kept was). */
+    public boolean madeBy(LocalDate date) {
+        return madeOn == null || !madeOn.isAfter(date);
     }
 
     public LocalDate getFrom() {

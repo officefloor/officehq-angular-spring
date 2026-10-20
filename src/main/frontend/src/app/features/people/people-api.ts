@@ -47,7 +47,8 @@ export interface Person {
   version: number;
   /** How many statements were taken for the person. */
   statementCount: number;
-  /** The last statement's due-total ("n/a" when it was), and the sheet's today when it was taken; null before
+  /** The last statement's due-total ("n/a" when it was), and its date (the date it was taken as of, else the
+   * sheet's today when it was taken); null before
    * the first. */
   statedTotal: string | null;
   statementDate: string | null;
@@ -106,9 +107,9 @@ export class PeopleApi {
     return this.http.put<Person>(`${this.url(sheetId)}/${id}`, form, { headers: this.headers() });
   }
 
-  /** Take a statement for the person. */
-  statement(sheetId: string, id: number): Observable<Person> {
-    return this.http.post<Person>(`${this.url(sheetId)}/${id}/statement`, null, { headers: this.headers() });
+  /** Take a statement for the person, as of a date (null: now). */
+  statement(sheetId: string, id: number, asOf: string | null = null): Observable<Person> {
+    return this.http.post<Person>(`${this.url(sheetId)}/${id}/statement`, { asOf }, { headers: this.headers() });
   }
 
   /** Cancel the person's last statement. */
