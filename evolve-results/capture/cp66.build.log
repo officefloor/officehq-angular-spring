@@ -1,0 +1,318 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+": "A", "pct": "33.33"})).toBe(true);
+          |                                                                      ^
+      746 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "20.00"})).toBe(true);
+      747 |     expect(await ui.setRate(pg_uma, {"grade": "C", "pct": "7.50"})).toBe(true);
+      748 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "20.00", "from": "2026-03-01", "to": "2026-03-25"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp63_person-terms.spec.ts:745:70
+
+
+[1A[2K[241/252] [chromium] › cp64_floor-after-late.spec.ts:6:7 › floor after late › floor after late
+[1A[2K  55) [chromium] › cp64_floor-after-late.spec.ts:6:7 › floor after late › floor after late ─────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       8 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       9 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      12 |     await ui.setSetting(pg_uma, "terms", "5");
+      13 |     await ui.setSetting(pg_uma, "late-pct", "10.00");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp64_floor-after-late.spec.ts:10:70
+
+
+[1A[2K[242/252] [chromium] › cp64_floor-after-late.spec.ts:100:7 › floor after late › floor after late scenario 1
+[1A[2K  56) [chromium] › cp64_floor-after-late.spec.ts:100:7 › floor after late › floor after late scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      102 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      103 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 104 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      105 |     await ui.setSetting(pg_uma, "terms", "7");
+      106 |     await ui.setSetting(pg_uma, "period-numbering-from", "2026-03-01");
+      107 |     await ui.setSetting(pg_uma, "proof-threshold", "1.00");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp64_floor-after-late.spec.ts:104:56
+
+
+[1A[2K[243/252] [chromium] › cp64_floor-after-late.spec.ts:389:7 › floor after late › floor after late scenario 2
+[1A[2K  57) [chromium] › cp64_floor-after-late.spec.ts:389:7 › floor after late › floor after late scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      391 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      392 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 393 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+          |                                                        ^
+      394 |     await ui.setSetting(pg_uma, "floor", "2.00");
+      395 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      396 |     await ui.setSetting(pg_uma, "policy-date", "2026-03-15");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp64_floor-after-late.spec.ts:393:56
+
+
+[1A[2K[244/252] [chromium] › cp64_floor-after-late.spec.ts:703:7 › floor after late › floor after late scenario 3
+[1A[2K  58) [chromium] › cp64_floor-after-late.spec.ts:703:7 › floor after late › floor after late scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      705 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      706 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 707 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      708 |     await ui.setSetting(pg_uma, "terms", "10");
+      709 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      710 |     await ui.setSetting(pg_uma, "terms-C", "20");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp64_floor-after-late.spec.ts:707:56
+
+
+[1A[2K[245/252] [chromium] › cp65_void-settled.spec.ts:6:7 › void settled › void settled
+[1A[2K  59) [chromium] › cp65_void-settled.spec.ts:6:7 › void settled › void settled ─────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       8 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       9 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      12 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+      13 |     expect(await ui.addPeriod(pg_uma, {"name": "P1", "from": "2026-03-01", "to": "2026-03-05"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp65_void-settled.spec.ts:10:70
+
+
+[1A[2K[246/252] [chromium] › cp65_void-settled.spec.ts:94:7 › void settled › void settled scenario 1
+[1A[2K  60) [chromium] › cp65_void-settled.spec.ts:94:7 › void settled › void settled scenario 1 ─────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       96 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       97 |     await ui.setToday(pg_uma, "2026-03-20");
+    >  98 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+          |                                                        ^
+       99 |     await ui.setSetting(pg_uma, "clerk-limit", "1.50");
+      100 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      101 |     await ui.setSetting(pg_uma, "period-numbering-from", "2026-03-01");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp65_void-settled.spec.ts:98:56
+
+
+[1A[2K[247/252] [chromium] › cp65_void-settled.spec.ts:356:7 › void settled › void settled scenario 2
+[1A[2K  61) [chromium] › cp65_void-settled.spec.ts:356:7 › void settled › void settled scenario 2 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      358 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      359 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 360 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      361 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      362 |     await ui.setSetting(pg_uma, "policy-date", "2026-03-05");
+      363 |     await ui.setSetting(pg_uma, "terms-A", "3");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp65_void-settled.spec.ts:360:56
+
+
+[1A[2K[248/252] [chromium] › cp65_void-settled.spec.ts:588:7 › void settled › void settled scenario 3
+[1A[2K  62) [chromium] › cp65_void-settled.spec.ts:588:7 › void settled › void settled scenario 3 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      590 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      591 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 592 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      593 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      594 |     await ui.setSetting(pg_uma, "period-numbering-from", "2026-03-01");
+      595 |     await ui.setSetting(pg_uma, "terms-B", "20");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp65_void-settled.spec.ts:592:56
+
+
+[1A[2K[249/252] [chromium] › cp66_redate-claim.spec.ts:6:7 › redate claim › redate claim
+[1A[2K  63) [chromium] › cp66_redate-claim.spec.ts:6:7 › redate claim › redate claim ─────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       8 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       9 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      12 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+      13 |     await ui.setSetting(pg_uma, "period-numbering-from", "2026-03-01");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp66_redate-claim.spec.ts:10:70
+
+
+[1A[2K[250/252] [chromium] › cp66_redate-claim.spec.ts:116:7 › redate claim › redate claim scenario 1
+[1A[2K  64) [chromium] › cp66_redate-claim.spec.ts:116:7 › redate claim › redate claim scenario 1 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      118 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      119 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 120 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      121 |     await ui.setSetting(pg_uma, "terms", "30");
+      122 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      123 |     await ui.setSetting(pg_uma, "terms-B", "3");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp66_redate-claim.spec.ts:120:56
+
+
+[1A[2K[251/252] [chromium] › cp66_redate-claim.spec.ts:367:7 › redate claim › redate claim scenario 2
+[1A[2K  65) [chromium] › cp66_redate-claim.spec.ts:367:7 › redate claim › redate claim scenario 2 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      375 |     await ui.setSetting(pg_uma, "cap", "2.00");
+      376 |     await ui.setSetting(pg_uma, "perm-void", "clerk");
+    > 377 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "12.50"})).toBe(true);
+          |                                                                      ^
+      378 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "33.33"})).toBe(true);
+      379 |     expect(await ui.setRate(pg_uma, {"grade": "C", "pct": "12.50"})).toBe(true);
+      380 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "7.50", "from": "2026-03-10"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp66_redate-claim.spec.ts:377:70
+
+
+[1A[2K[252/252] [chromium] › cp66_redate-claim.spec.ts:673:7 › redate claim › redate claim scenario 3
+[1A[2K  66) [chromium] › cp66_redate-claim.spec.ts:673:7 › redate claim › redate claim scenario 3 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      675 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      676 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 677 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      678 |     await ui.setSetting(pg_uma, "floor", "0.50");
+      679 |     await ui.setSetting(pg_uma, "policy-date", "2026-03-15");
+      680 |     await ui.setSetting(pg_uma, "terms-A", "3");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp66_redate-claim.spec.ts:677:56
+
+
+[1A[2K  Slow test file: [chromium] › cp27_patrons-and-backing.spec.ts (56.9s)
+  Slow test file: [chromium] › cp25_due-by-and-overdue.spec.ts (45.6s)
+  Slow test file: [chromium] › cp18_close-period.spec.ts (41.9s)
+  Slow test file: [chromium] › cp49_paste-claims.spec.ts (40.1s)
+  Slow test file: [chromium] › cp40_hold-interval.spec.ts (39.8s)
+  Consider splitting slow test files to speed up parallel execution
+  66 failed
+    [chromium] › cp34_bulk-open.spec.ts:55:7 › bulk open › bulk open scenario 1 ────────────────────
+    [chromium] › cp50_deferred-claims.spec.ts:776:7 › deferred claims › deferred claims scenario 3 ─
+    [chromium] › cp51_proofs.spec.ts:6:7 › proofs › proofs ─────────────────────────────────────────
+    [chromium] › cp51_proofs.spec.ts:87:7 › proofs › proofs scenario 1 ─────────────────────────────
+    [chromium] › cp51_proofs.spec.ts:347:7 › proofs › proofs scenario 2 ────────────────────────────
+    [chromium] › cp51_proofs.spec.ts:709:7 › proofs › proofs scenario 3 ────────────────────────────
+    [chromium] › cp52_period-status-as-of-end.spec.ts:6:7 › period status as of end › period status as of end 
+    [chromium] › cp52_period-status-as-of-end.spec.ts:126:7 › period status as of end › period status as of end scenario 1 
+    [chromium] › cp52_period-status-as-of-end.spec.ts:498:7 › period status as of end › period status as of end scenario 2 
+    [chromium] › cp52_period-status-as-of-end.spec.ts:812:7 › period status as of end › period status as of end scenario 3 
+    [chromium] › cp53_permission-matrix.spec.ts:6:7 › permission matrix › permission matrix ────────
+    [chromium] › cp53_permission-matrix.spec.ts:97:7 › permission matrix › permission matrix scenario 1 
+    [chromium] › cp53_permission-matrix.spec.ts:348:7 › permission matrix › permission matrix scenario 2 
+    [chromium] › cp53_permission-matrix.spec.ts:683:7 › permission matrix › permission matrix scenario 3 
+    [chromium] › cp54_viewer-role.spec.ts:6:7 › viewer role › viewer role ──────────────────────────
+    [chromium] › cp54_viewer-role.spec.ts:78:7 › viewer role › viewer role scenario 1 ──────────────
+    [chromium] › cp54_viewer-role.spec.ts:291:7 › viewer role › viewer role scenario 2 ─────────────
+    [chromium] › cp54_viewer-role.spec.ts:613:7 › viewer role › viewer role scenario 3 ─────────────
+    [chromium] › cp55_auto-close.spec.ts:6:7 › auto close › auto close ─────────────────────────────
+    [chromium] › cp55_auto-close.spec.ts:95:7 › auto close › auto close scenario 1 ─────────────────
+    [chromium] › cp55_auto-close.spec.ts:367:7 › auto close › auto close scenario 2 ────────────────
+    [chromium] › cp55_auto-close.spec.ts:614:7 › auto close › auto close scenario 3 ────────────────
+    [chromium] › cp56_late-per-boundary.spec.ts:6:7 › late per boundary › late per boundary ────────
+    [chromium] › cp56_late-per-boundary.spec.ts:84:7 › late per boundary › late per boundary scenario 1 
+    [chromium] › cp56_late-per-boundary.spec.ts:395:7 › late per boundary › late per boundary scenario 2 
+    [chromium] › cp56_late-per-boundary.spec.ts:674:7 › late per boundary › late per boundary scenario 3 
+    [chromium] › cp57_split-claim.spec.ts:6:7 › split claim › split claim ──────────────────────────
+    [chromium] › cp57_split-claim.spec.ts:142:7 › split claim › split claim scenario 1 ─────────────
+    [chromium] › cp57_split-claim.spec.ts:464:7 › split claim › split claim scenario 2 ─────────────
+    [chromium] › cp57_split-claim.spec.ts:752:7 › split claim › split claim scenario 3 ─────────────
+    [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify ───────────
+    [chromium] › cp58_watch-and-notify.spec.ts:98:7 › watch and notify › watch and notify scenario 1 
+    [chromium] › cp58_watch-and-notify.spec.ts:358:7 › watch and notify › watch and notify scenario 2 
+    [chromium] › cp58_watch-and-notify.spec.ts:694:7 › watch and notify › watch and notify scenario 3 
+    [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ───────────
+    [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1 
+    [chromium] › cp59_period-templates.spec.ts:332:7 › period templates › period templates scenario 2 
+    [chromium] › cp59_period-templates.spec.ts:604:7 › period templates › period templates scenario 3 
+    [chromium] › cp60_trimmed-totals.spec.ts:6:7 › trimmed totals › trimmed totals ─────────────────
+    [chromium] › cp60_trimmed-totals.spec.ts:175:7 › trimmed totals › trimmed totals scenario 1 ────
+    [chromium] › cp60_trimmed-totals.spec.ts:427:7 › trimmed totals › trimmed totals scenario 2 ────
+    [chromium] › cp60_trimmed-totals.spec.ts:751:7 › trimmed totals › trimmed totals scenario 3 ────
+    [chromium] › cp61_delegation.spec.ts:6:7 › delegation › delegation ─────────────────────────────
+    [chromium] › cp61_delegation.spec.ts:76:7 › delegation › delegation scenario 1 ─────────────────
+    [chromium] › cp61_delegation.spec.ts:429:7 › delegation › delegation scenario 2 ────────────────
+    [chromium] › cp61_delegation.spec.ts:689:7 › delegation › delegation scenario 3 ────────────────
+    [chromium] › cp62_archive-sheet.spec.ts:6:7 › archive sheet › archive sheet ────────────────────
+    [chromium] › cp62_archive-sheet.spec.ts:74:7 › archive sheet › archive sheet scenario 1 ────────
+    [chromium] › cp62_archive-sheet.spec.ts:357:7 › archive sheet › archive sheet scenario 2 ───────
+    [chromium] › cp62_archive-sheet.spec.ts:649:7 › archive sheet › archive sheet scenario 3 ───────
+    [chromium] › cp63_person-terms.spec.ts:6:7 › person terms › person terms ───────────────────────
+    [chromium] › cp63_person-terms.spec.ts:84:7 › person terms › person terms scenario 1 ───────────
+    [chromium] › cp63_person-terms.spec.ts:359:7 › person terms › person terms scenario 2 ──────────
+    [chromium] › cp63_person-terms.spec.ts:737:7 › person terms › person terms scenario 3 ──────────
+    [chromium] › cp64_floor-after-late.spec.ts:6:7 › floor after late › floor after late ───────────
+    [chromium] › cp64_floor-after-late.spec.ts:100:7 › floor after late › floor after late scenario 1 
+    [chromium] › cp64_floor-after-late.spec.ts:389:7 › floor after late › floor after late scenario 2 
+    [chromium] › cp64_floor-after-late.spec.ts:703:7 › floor after late › floor after late scenario 3 
+    [chromium] › cp65_void-settled.spec.ts:6:7 › void settled › void settled ───────────────────────
+    [chromium] › cp65_void-settled.spec.ts:94:7 › void settled › void settled scenario 1 ───────────
+    [chromium] › cp65_void-settled.spec.ts:356:7 › void settled › void settled scenario 2 ──────────
+    [chromium] › cp65_void-settled.spec.ts:588:7 › void settled › void settled scenario 3 ──────────
+    [chromium] › cp66_redate-claim.spec.ts:6:7 › redate claim › redate claim ───────────────────────
+    [chromium] › cp66_redate-claim.spec.ts:116:7 › redate claim › redate claim scenario 1 ──────────
+    [chromium] › cp66_redate-claim.spec.ts:367:7 › redate claim › redate claim scenario 2 ──────────
+    [chromium] › cp66_redate-claim.spec.ts:673:7 › redate claim › redate claim scenario 3 ──────────
+  186 passed (27.5m)
