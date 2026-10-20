@@ -29,7 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/sheets/{sheetId}")
 public class SettingController {
 
-    /** The role is clerk or steward. */
+    /** The role is clerk, steward or viewer. */
     public record RoleForm(@NotBlank @Size(max = 100) String user, @NotNull String role) {}
 
     public record RoleView(String user, String role) {
@@ -148,7 +148,7 @@ public class SettingController {
     public RoleView setRole(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody RoleForm form) {
         Role role = Role.of(form.role().trim()).orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "A role is clerk or steward."));
+                () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "A role is clerk, steward or viewer."));
         return RoleView.of(service.setRole(user, sheetId, form.user().trim(), role));
     }
 

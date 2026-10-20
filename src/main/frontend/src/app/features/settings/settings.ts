@@ -244,7 +244,7 @@ export class Settings {
   private readonly policyDate = inject(SheetPolicyDate);
   private readonly cap = inject(SheetCap);
 
-  protected readonly roleNames = ROLES.join(' or ');
+  protected readonly roleNames = `${ROLES.slice(0, -1).join(', ')} or ${ROLES[ROLES.length - 1]}`;
   protected readonly grades = GRADES;
   protected readonly permissions = PERMISSIONS;
   protected readonly roles = signal<RoleGiven[]>([]);

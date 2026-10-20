@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
 import { Dated } from './dated';
 
 /** The roles a user name can have on a sheet; any name without one is a clerk. */
-export const ROLES = ['clerk', 'steward'] as const;
+export const ROLES = ['clerk', 'steward', 'viewer'] as const;
 export type Role = (typeof ROLES)[number];
 
 export interface RoleGiven {
