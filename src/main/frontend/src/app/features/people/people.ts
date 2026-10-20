@@ -367,6 +367,9 @@ export class People {
   });
   /** Each person's holds, by id: their OPEN and PENDING claims dated within one, unless bound, count in no total. */
   private readonly holdsById = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
+  /** Each person's retired-from date, by id: from the sheet's today on or after it, their OPEN and PENDING claims,
+   * unless bound, count in no total. */
+  private readonly retiredById = computed(() => new Map(this.people().map((p) => [p.id, p.retiredFrom])));
   protected readonly claimedTotal = computed(() =>
     sumAmounts(this.claims().filter((c) => this.countsLive(c)).map((c) => c.amount)),
   );
@@ -671,25 +674,38 @@ export class People {
   }
 
   /** Whether a claim counts in the live totals: it counts, is not deferred on the sheet's today, and is not an OPEN
-   * or PENDING claim dated within one of its person's holds and not bound by a statement. */
+   * or PENDING claim not bound by a statement that is dated within one of its person's holds or whose person is
+   * retired on the sheet's today. */
   private countsLive(claim: Claim): boolean {
     return (
       counts(claim) &&
       !isDeferred(claim, this.session.today()) &&
-      !(isOpen(claim) && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
+      !(isOpen(claim) && !bound(claim) && this.leftOut(claim))
     );
   }
 
   /** Whether a claim counts toward a period ending on a date: by the status it had at the end of that day, it is
    * OPEN, PENDING or SETTLED (one added after it is not), and the live rules leave it in: it is not deferred on
-   * the sheet's today, and not OPEN or PENDING now, dated within one of its person's holds and not bound. */
+   * the sheet's today, and not OPEN or PENDING now and not bound, dated within one of its person's holds or with its
+   * person retired on the sheet's today. */
   private countsAt(claim: Claim, end: string): boolean {
     const then = statusAt(claim, end);
     const openThen = then === 'OPEN' || then === 'PENDING';
     return (
       (openThen || then === 'SETTLED') &&
       !isDeferred(claim, this.session.today()) &&
-      !(isOpen(claim) && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
+      !(isOpen(claim) && !bound(claim) && this.leftOut(claim))
+    );
+  }
+
+  /** Whether a claim's person keeps it out of the live totals while it is OPEN or PENDING and not bound: it is dated
+   * within one of their holds, or their retirement date is reached on the sheet's today. */
+  private leftOut(claim: Claim): boolean {
+    const today = this.session.today();
+    const retiredFrom = this.retiredById().get(claim.personId);
+    return (
+      heldOn(this.holdsById().get(claim.personId) ?? [], claim.date) ||
+      (!!retiredFrom && !!today && retiredFrom <= today)
     );
   }
 

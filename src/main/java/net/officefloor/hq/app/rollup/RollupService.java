@@ -375,24 +375,30 @@ public class RollupService {
 
     /** Whether a claim counts toward a period ending on a date: by the status it had at the end of that day, only
      * an OPEN, PENDING or SETTLED one does (one added after it does not); one OPEN or PENDING now, dated
-     * within one of its person's holds, does not unless it is bound by a statement, and one deferred on the
-     * sheet's today does not. */
+     * within one of its person's holds or of a person retired on the sheet's today, does not unless it is bound by
+     * a statement, and one deferred on the sheet's today does not. */
     public static boolean countsAt(Claim claim, Person person, LocalDate today, LocalDate end) {
         ClaimStatus then = claim.statusAt(end);
         if (then == null) {
             return false;
         }
-        return (then.isOpen() && (bound(claim) || !claim.getStatus().isOpen() || !person.heldOn(claim.getDate()))
+        return (then.isOpen() && (bound(claim) || !claim.getStatus().isOpen() || !leftOut(claim, person, today))
                 && !claim.deferredOn(today))
                 || then == ClaimStatus.SETTLED;
     }
 
     /** Only OPEN, PENDING and SETTLED claims count toward what is claimed and due; an OPEN or PENDING one dated
-     * within one of its person's holds does not, unless it is bound by a statement, and one deferred on the
-     * sheet's today does not. */
+     * within one of its person's holds, or of a person retired on the sheet's today, does not, unless it is bound
+     * by a statement, and one deferred on the sheet's today does not. */
     public static boolean counts(Claim claim, Person person, LocalDate today) {
-        return (claim.getStatus().isOpen() && (bound(claim) || !person.heldOn(claim.getDate()))
+        return (claim.getStatus().isOpen() && (bound(claim) || !leftOut(claim, person, today))
                 && !claim.deferredOn(today))
                 || claim.getStatus() == ClaimStatus.SETTLED;
+    }
+
+    /** Whether an OPEN or PENDING claim not bound by a statement is left out of the live totals: it is dated within
+     * one of its person's holds, or its person is retired on the sheet's today. */
+    private static boolean leftOut(Claim claim, Person person, LocalDate today) {
+        return person.heldOn(claim.getDate()) || person.retiredBy(today);
     }
 }

@@ -102,16 +102,19 @@ public class PersonService {
         return person;
     }
 
-    /** Retire the person from a date, the sheet's today when none is given; claims dated after it are refused. */
+    /** Retire the person from a date, the sheet's today when none is given; claims dated after it are refused; from
+     * the sheet's today on or after it, their OPEN and PENDING claims not bound by a statement count in no live total. */
     @Transactional
     public Person retire(String user, String sheetId, Long id, LocalDate from) {
         LocalDate date = from != null ? from : sheetService.today(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
+        Snapshot before = rollup.snapshot(sheetId);
         person.setRetiredFrom(date);
         people.flush();
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " from=" + date);
+        rollup.recordChanges(user, sheetId, before);
         return person;
     }
 

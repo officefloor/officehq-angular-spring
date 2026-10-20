@@ -138,6 +138,11 @@ public class Person {
         holds.add(new Hold(from, to));
     }
 
+    /** Whether the person's retirement date is reached on a date (the date is on or after it). */
+    public boolean retiredBy(LocalDate date) {
+        return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
+    }
+
     /** Whether a claim dated {@code date} is after the person's retirement. */
     public boolean retiredOn(LocalDate date) {
         return retiredFrom != null && date.isAfter(retiredFrom);
