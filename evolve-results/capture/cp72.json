@@ -1,0 +1,2335 @@
+{
+  "checkpoint": 72,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "a182a9a5215ea58588d65d156592e11f80686585"
+  },
+  "checkpoint_id": "cp72_retired-leave-totals",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    21,
+    25,
+    28,
+    29,
+    31,
+    38,
+    39,
+    40,
+    43,
+    44,
+    46,
+    49,
+    50,
+    52,
+    53,
+    55,
+    61,
+    64,
+    66,
+    67,
+    68
+  ],
+  "replaced_tests": [
+    "cp21_retire.spec.ts::retire",
+    "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 1",
+    "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 3",
+    "cp28_grade-dated.spec.ts::grade dated scenario 2",
+    "cp29_reopen-period.spec.ts::reopen period scenario 3",
+    "cp31_summary.spec.ts::summary scenario 2",
+    "cp38_terms-per-grade.spec.ts::terms per grade scenario 1",
+    "cp39_claim-log.spec.ts::claim log scenario 1",
+    "cp40_hold-interval.spec.ts::hold interval scenario 3",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp44_rollup-overdue.spec.ts::rollup overdue scenario 3",
+    "cp46_re-settle.spec.ts::re settle scenario 3",
+    "cp49_paste-claims.spec.ts::paste claims",
+    "cp49_paste-claims.spec.ts::paste claims scenario 3",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 1",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 1",
+    "cp55_auto-close.spec.ts::auto close scenario 1",
+    "cp61_delegation.spec.ts::delegation scenario 1",
+    "cp64_floor-after-late.spec.ts::floor after late scenario 2",
+    "cp66_redate-claim.spec.ts::redate claim scenario 1",
+    "cp67_active-people.spec.ts::active people",
+    "cp67_active-people.spec.ts::active people scenario 2",
+    "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2"
+  ],
+  "request": {
+    "spec": "From the day a person's retirement date is reached (the sheet's today on or after it), their\nOPEN and PENDING claims leave every live total, as a hold's would; their SETTLED claims still\ncount, and a claim bound by a statement stays in the totals. Retiring, and a change of the sheet's\ntoday that reaches a retirement date, moves figures like any other change.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFrom the day a person's retirement date is reached (the sheet's today on or after it), their\nOPEN and PENDING claims leave every live total, as a hold's would; their SETTLED claims still\ncount, and a claim bound by a statement stays in the totals. Retiring, and a change of the sheet's\ntoday that reaches a retirement date, moves figures like any other change.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "85469b3e9e324865dc89147d546bbc3065287f11",
+  "reset_sha": "",
+  "preagent_sha": "f410a996a42e684db602440dc6d7e8f19afd3700",
+  "prev_sha": "f410a996a42e684db602440dc6d7e8f19afd3700",
+  "base_sha": "a182a9a5215ea58588d65d156592e11f80686585",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3057676,
+    "input_tokens": 52,
+    "output_tokens": 13413,
+    "cache_read_tokens": 1709978,
+    "cache_creation_tokens": 86913,
+    "num_turns": 27,
+    "duration_ms": 387274,
+    "duration_api_ms": 138702,
+    "model": "claude-opus-5-5",
+    "session_id": "0790bd89-fe17-4841-a954-2c32de9e6835",
+    "stop_reason": "success",
+    "result_text": "I've made the change, and 3 of the 4 tests pass. Scenario 2 fails on every run, at a settings step that has nothing to do with retirement; I didn't work around it.\n\n**What changed**\n- **Server rule** (`rollup/RollupService.java`): both counting rules (`counts` and `countsAt`) now treat retirement like a hold. Once the sheet's today is on or after the person's retirement date, their OPEN and PENDING claims drop out of every live total, unless a statement binds them. SETTLED claims still count. The check is in one new helper, `leftOut`, plus `Person.retiredBy(date)`. Statements use the same rule, so they also leave these claims out.\n- **Retiring now records moved figures** (`person/PersonService.java`): `retire` takes the figures before and after, like the hold action does. If a retirement takes effect at once, the audit gets the usual `ROLLUP`/`TOTALS` lines. A retirement dated in the future writes them later, when a change of the sheet's today reaches it (that path already recorded moved figures).\n- **Front end** (`features/people/people.ts`): the screen's totals apply the same rule, so what is shown matches the server.\n\n**Test results** (`bin/e2e`)\n- \u2713 retired leave totals: screen figures and the full audit sequence both match.\n- \u2713 scenario 1 and \u2713 scenario 3.\n- \u2718 scenario 2, at `acceptance.spec.ts:471`: `expect(await ui.setSettingTry(pg_vic, \"late-pct\", \"10.00\")).toBe(false)`.\n\n**Why scenario 2 fails**\nThe app does refuse the save. I ran a throwaway copy of the scenario, since deleted: the user, signed in as a viewer, gets \"Could not save the settings.\" and nothing is written.\n\nThe problem is in the test helper. `setSettingTry` treats the save as successful as soon as `setting-late-pct-current` shows the typed value, and it checks that before it looks for an error. Late percent is already 10.00 on this sheet, so the helper reports success straight away. The only way the app could make this step pass is to stop showing the real current value during a save. That would be gaming the test, so I didn't do it.\n\nFixing it means changing `e2e/support/ui.ts` or the spec, which I'm not allowed to edit. Whoever owns the test should either use a value different from the current one in that step, or have the helper check for the error first.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3057676,
+        "num_turns": 27,
+        "duration_ms": 387274,
+        "duration_api_ms": 138702,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp72.agent.jsonl",
+  "agent_diff_file": "cp72.agent.diff",
+  "build_log_file": "cp72.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 276,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp05_claims.spec.ts::claims scenario 1": true,
+      "cp05_claims.spec.ts::claims scenario 2": true,
+      "cp05_claims.spec.ts::claims scenario 3": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp06_audit.spec.ts::audit scenario 1": true,
+      "cp06_audit.spec.ts::audit scenario 2": true,
+      "cp06_audit.spec.ts::audit scenario 3": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 1": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 2": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 3": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp08_workflow.spec.ts::workflow scenario 1": true,
+      "cp08_workflow.spec.ts::workflow scenario 2": true,
+      "cp08_workflow.spec.ts::workflow scenario 3": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp09_numbering.spec.ts::numbering scenario 1": true,
+      "cp09_numbering.spec.ts::numbering scenario 2": true,
+      "cp09_numbering.spec.ts::numbering scenario 3": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 2": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3": true,
+      "cp12_half-even.spec.ts::half even": true,
+      "cp12_half-even.spec.ts::half even scenario 1": true,
+      "cp12_half-even.spec.ts::half even scenario 2": true,
+      "cp12_half-even.spec.ts::half even scenario 3": true,
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 1": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 2": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 3": true,
+      "cp14_edit-conflict.spec.ts::edit conflict": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 1": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 2": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 3": true,
+      "cp15_statements.spec.ts::statements": true,
+      "cp15_statements.spec.ts::statements scenario 1": true,
+      "cp15_statements.spec.ts::statements scenario 2": true,
+      "cp15_statements.spec.ts::statements scenario 3": true,
+      "cp16_rollup-audit.spec.ts::rollup audit": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 1": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 2": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 3": true,
+      "cp17_periods.spec.ts::periods": true,
+      "cp17_periods.spec.ts::periods scenario 1": true,
+      "cp17_periods.spec.ts::periods scenario 2": true,
+      "cp17_periods.spec.ts::periods scenario 3": true,
+      "cp18_close-period.spec.ts::close period": true,
+      "cp18_close-period.spec.ts::close period scenario 1": true,
+      "cp18_close-period.spec.ts::close period scenario 2": true,
+      "cp18_close-period.spec.ts::close period scenario 3": true,
+      "cp19_quick-add.spec.ts::quick add": true,
+      "cp19_quick-add.spec.ts::quick add scenario 1": true,
+      "cp19_quick-add.spec.ts::quick add scenario 2": true,
+      "cp19_quick-add.spec.ts::quick add scenario 3": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 2": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 3": true,
+      "cp21_retire.spec.ts::retire": true,
+      "cp21_retire.spec.ts::retire scenario 1": true,
+      "cp21_retire.spec.ts::retire scenario 2": true,
+      "cp21_retire.spec.ts::retire scenario 3": true,
+      "cp22_hold.spec.ts::hold": true,
+      "cp22_hold.spec.ts::hold scenario 1": true,
+      "cp22_hold.spec.ts::hold scenario 2": true,
+      "cp22_hold.spec.ts::hold scenario 3": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 1": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 3": true,
+      "cp24_floor.spec.ts::floor": true,
+      "cp24_floor.spec.ts::floor scenario 1": true,
+      "cp24_floor.spec.ts::floor scenario 2": true,
+      "cp24_floor.spec.ts::floor scenario 3": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 1": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 2": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 3": true,
+      "cp26_late-charge.spec.ts::late charge": true,
+      "cp26_late-charge.spec.ts::late charge scenario 1": true,
+      "cp26_late-charge.spec.ts::late charge scenario 2": true,
+      "cp26_late-charge.spec.ts::late charge scenario 3": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 1": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 3": true,
+      "cp28_grade-dated.spec.ts::grade dated": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 1": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 2": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 3": true,
+      "cp29_reopen-period.spec.ts::reopen period": true,
+      "cp29_reopen-period.spec.ts::reopen period scenario 1": true,
+      "cp29_reopen-period.spec.ts::reopen period scenario 2": true,
+      "cp29_reopen-period.spec.ts::reopen period scenario 3": true,
+      "cp30_corrections.spec.ts::corrections": true,
+      "cp30_corrections.spec.ts::corrections scenario 1": true,
+      "cp30_corrections.spec.ts::corrections scenario 2": true,
+      "cp30_corrections.spec.ts::corrections scenario 3": true,
+      "cp31_summary.spec.ts::summary": true,
+      "cp31_summary.spec.ts::summary scenario 1": true,
+      "cp31_summary.spec.ts::summary scenario 2": true,
+      "cp31_summary.spec.ts::summary scenario 3": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 2": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 3": true,
+      "cp33_export-people.spec.ts::export people": true,
+      "cp33_export-people.spec.ts::export people scenario 1": true,
+      "cp33_export-people.spec.ts::export people scenario 2": true,
+      "cp33_export-people.spec.ts::export people scenario 3": true,
+      "cp34_bulk-open.spec.ts::bulk open": true,
+      "cp34_bulk-open.spec.ts::bulk open scenario 1": true,
+      "cp34_bulk-open.spec.ts::bulk open scenario 2": true,
+      "cp34_bulk-open.spec.ts::bulk open scenario 3": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period scenario 1": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period scenario 2": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period scenario 3": true,
+      "cp36_approvals.spec.ts::approvals": true,
+      "cp36_approvals.spec.ts::approvals scenario 1": true,
+      "cp36_approvals.spec.ts::approvals scenario 2": true,
+      "cp36_approvals.spec.ts::approvals scenario 3": true,
+      "cp37_reassign-claim.spec.ts::reassign claim": true,
+      "cp37_reassign-claim.spec.ts::reassign claim scenario 1": true,
+      "cp37_reassign-claim.spec.ts::reassign claim scenario 2": true,
+      "cp37_reassign-claim.spec.ts::reassign claim scenario 3": true,
+      "cp38_terms-per-grade.spec.ts::terms per grade": true,
+      "cp38_terms-per-grade.spec.ts::terms per grade scenario 1": true,
+      "cp38_terms-per-grade.spec.ts::terms per grade scenario 2": true,
+      "cp38_terms-per-grade.spec.ts::terms per grade scenario 3": true,
+      "cp39_claim-log.spec.ts::claim log": true,
+      "cp39_claim-log.spec.ts::claim log scenario 1": true,
+      "cp39_claim-log.spec.ts::claim log scenario 2": true,
+      "cp39_claim-log.spec.ts::claim log scenario 3": true,
+      "cp40_hold-interval.spec.ts::hold interval": true,
+      "cp40_hold-interval.spec.ts::hold interval scenario 1": true,
+      "cp40_hold-interval.spec.ts::hold interval scenario 2": true,
+      "cp40_hold-interval.spec.ts::hold interval scenario 3": true,
+      "cp41_header-counters.spec.ts::header counters": true,
+      "cp41_header-counters.spec.ts::header counters scenario 1": true,
+      "cp41_header-counters.spec.ts::header counters scenario 2": true,
+      "cp41_header-counters.spec.ts::header counters scenario 3": true,
+      "cp42_rate-end-dates.spec.ts::rate end dates": true,
+      "cp42_rate-end-dates.spec.ts::rate end dates scenario 1": true,
+      "cp42_rate-end-dates.spec.ts::rate end dates scenario 2": true,
+      "cp42_rate-end-dates.spec.ts::rate end dates scenario 3": true,
+      "cp43_cap.spec.ts::cap": true,
+      "cp43_cap.spec.ts::cap scenario 1": true,
+      "cp43_cap.spec.ts::cap scenario 2": true,
+      "cp43_cap.spec.ts::cap scenario 3": true,
+      "cp44_rollup-overdue.spec.ts::rollup overdue": true,
+      "cp44_rollup-overdue.spec.ts::rollup overdue scenario 1": false,
+      "cp44_rollup-overdue.spec.ts::rollup overdue scenario 2": true,
+      "cp44_rollup-overdue.spec.ts::rollup overdue scenario 3": true,
+      "cp45_bulk-settle.spec.ts::bulk settle": true,
+      "cp45_bulk-settle.spec.ts::bulk settle scenario 1": true,
+      "cp45_bulk-settle.spec.ts::bulk settle scenario 2": true,
+      "cp45_bulk-settle.spec.ts::bulk settle scenario 3": true,
+      "cp46_re-settle.spec.ts::re settle": true,
+      "cp46_re-settle.spec.ts::re settle scenario 1": true,
+      "cp46_re-settle.spec.ts::re settle scenario 2": true,
+      "cp46_re-settle.spec.ts::re settle scenario 3": true,
+      "cp47_person-period-figures.spec.ts::person period figures": true,
+      "cp47_person-period-figures.spec.ts::person period figures scenario 1": true,
+      "cp47_person-period-figures.spec.ts::person period figures scenario 2": true,
+      "cp47_person-period-figures.spec.ts::person period figures scenario 3": true,
+      "cp48_dated-settings.spec.ts::dated settings": true,
+      "cp48_dated-settings.spec.ts::dated settings scenario 1": true,
+      "cp48_dated-settings.spec.ts::dated settings scenario 2": true,
+      "cp48_dated-settings.spec.ts::dated settings scenario 3": true,
+      "cp49_paste-claims.spec.ts::paste claims": true,
+      "cp49_paste-claims.spec.ts::paste claims scenario 1": true,
+      "cp49_paste-claims.spec.ts::paste claims scenario 2": true,
+      "cp49_paste-claims.spec.ts::paste claims scenario 3": true,
+      "cp50_deferred-claims.spec.ts::deferred claims": true,
+      "cp50_deferred-claims.spec.ts::deferred claims scenario 1": true,
+      "cp50_deferred-claims.spec.ts::deferred claims scenario 2": true,
+      "cp50_deferred-claims.spec.ts::deferred claims scenario 3": true,
+      "cp51_proofs.spec.ts::proofs": true,
+      "cp51_proofs.spec.ts::proofs scenario 1": true,
+      "cp51_proofs.spec.ts::proofs scenario 2": true,
+      "cp51_proofs.spec.ts::proofs scenario 3": false,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end": false,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 1": false,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2": false,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3": false,
+      "cp53_permission-matrix.spec.ts::permission matrix": false,
+      "cp53_permission-matrix.spec.ts::permission matrix scenario 1": false,
+      "cp53_permission-matrix.spec.ts::permission matrix scenario 2": false,
+      "cp53_permission-matrix.spec.ts::permission matrix scenario 3": false,
+      "cp54_viewer-role.spec.ts::viewer role": false,
+      "cp54_viewer-role.spec.ts::viewer role scenario 1": false,
+      "cp54_viewer-role.spec.ts::viewer role scenario 2": false,
+      "cp54_viewer-role.spec.ts::viewer role scenario 3": false,
+      "cp55_auto-close.spec.ts::auto close": false,
+      "cp55_auto-close.spec.ts::auto close scenario 1": false,
+      "cp55_auto-close.spec.ts::auto close scenario 2": false,
+      "cp55_auto-close.spec.ts::auto close scenario 3": false,
+      "cp56_late-per-boundary.spec.ts::late per boundary": false,
+      "cp56_late-per-boundary.spec.ts::late per boundary scenario 1": false,
+      "cp56_late-per-boundary.spec.ts::late per boundary scenario 2": false,
+      "cp56_late-per-boundary.spec.ts::late per boundary scenario 3": false,
+      "cp57_split-claim.spec.ts::split claim": false,
+      "cp57_split-claim.spec.ts::split claim scenario 1": false,
+      "cp57_split-claim.spec.ts::split claim scenario 2": false,
+      "cp57_split-claim.spec.ts::split claim scenario 3": false,
+      "cp58_watch-and-notify.spec.ts::watch and notify": false,
+      "cp58_watch-and-notify.spec.ts::watch and notify scenario 1": false,
+      "cp58_watch-and-notify.spec.ts::watch and notify scenario 2": false,
+      "cp58_watch-and-notify.spec.ts::watch and notify scenario 3": false,
+      "cp59_period-templates.spec.ts::period templates": false,
+      "cp59_period-templates.spec.ts::period templates scenario 1": false,
+      "cp59_period-templates.spec.ts::period templates scenario 2": false,
+      "cp59_period-templates.spec.ts::period templates scenario 3": false,
+      "cp60_trimmed-totals.spec.ts::trimmed totals": false,
+      "cp60_trimmed-totals.spec.ts::trimmed totals scenario 1": false,
+      "cp60_trimmed-totals.spec.ts::trimmed totals scenario 2": false,
+      "cp60_trimmed-totals.spec.ts::trimmed totals scenario 3": false,
+      "cp61_delegation.spec.ts::delegation": false,
+      "cp61_delegation.spec.ts::delegation scenario 1": false,
+      "cp61_delegation.spec.ts::delegation scenario 2": false,
+      "cp61_delegation.spec.ts::delegation scenario 3": false,
+      "cp62_archive-sheet.spec.ts::archive sheet": false,
+      "cp62_archive-sheet.spec.ts::archive sheet scenario 1": false,
+      "cp62_archive-sheet.spec.ts::archive sheet scenario 2": false,
+      "cp62_archive-sheet.spec.ts::archive sheet scenario 3": false,
+      "cp63_person-terms.spec.ts::person terms": false,
+      "cp63_person-terms.spec.ts::person terms scenario 1": false,
+      "cp63_person-terms.spec.ts::person terms scenario 2": false,
+      "cp63_person-terms.spec.ts::person terms scenario 3": false,
+      "cp64_floor-after-late.spec.ts::floor after late": false,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 1": false,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 2": false,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 3": false,
+      "cp65_void-settled.spec.ts::void settled": false,
+      "cp65_void-settled.spec.ts::void settled scenario 1": false,
+      "cp65_void-settled.spec.ts::void settled scenario 2": false,
+      "cp65_void-settled.spec.ts::void settled scenario 3": false,
+      "cp66_redate-claim.spec.ts::redate claim": false,
+      "cp66_redate-claim.spec.ts::redate claim scenario 1": false,
+      "cp66_redate-claim.spec.ts::redate claim scenario 2": false,
+      "cp66_redate-claim.spec.ts::redate claim scenario 3": false,
+      "cp67_active-people.spec.ts::active people": false,
+      "cp67_active-people.spec.ts::active people scenario 1": false,
+      "cp67_active-people.spec.ts::active people scenario 2": false,
+      "cp67_active-people.spec.ts::active people scenario 3": false,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled": false,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 1": false,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2": false,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 3": false,
+      "cp69_claim-lock.spec.ts::claim lock": false,
+      "cp69_claim-lock.spec.ts::claim lock scenario 1": false,
+      "cp69_claim-lock.spec.ts::claim lock scenario 2": false,
+      "cp69_claim-lock.spec.ts::claim lock scenario 3": false,
+      "cp70_soft-close.spec.ts::soft close": false,
+      "cp70_soft-close.spec.ts::soft close scenario 1": false,
+      "cp70_soft-close.spec.ts::soft close scenario 2": false,
+      "cp70_soft-close.spec.ts::soft close scenario 3": false,
+      "cp71_cancel-statement.spec.ts::cancel statement": false,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 1": false,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 2": false,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 3": false,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals": false,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 1": false,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 2": false,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2108,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1511,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5882,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7686,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6157,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5067,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4759,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5405,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5597,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5597,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5255,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3024,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5949,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5394,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6306,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8619,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7742,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6752,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8661,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3209,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8320,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6499,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7687,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2348,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5467,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6859,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3309,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6218,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6750,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7051,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1965,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5265,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6749,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5931,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6548,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6044,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6865,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5594,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4646,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7415,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6461,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3960,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8053,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5083,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3699,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6897,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6264,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6257,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8782,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6125,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6467,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6764,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11123,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10046,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13689,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8382,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3802,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5355,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7784,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5745,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1930,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6979,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5824,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6754,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4693,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5777,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8223,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8355,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3293,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8789,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9240,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7560,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9030,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5878,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7495,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6653,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4382,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9578,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9917,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5833,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2882,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6957,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17521,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18515,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4038,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6384,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14628,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10313,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7326,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13502,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11172,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23793,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2733,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7838,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8460,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7404,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7533,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8666,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7422,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7191,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7927,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8613,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9991,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7834,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3749,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11555,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9873,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9081,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6234,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9581,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10466,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6028,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 1745,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5752,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6800,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2630,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7671,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8327,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13772,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3456,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7784,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7430,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6449,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_approvals.spec.ts::approvals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9436,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_approvals.spec.ts::approvals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12091,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_approvals.spec.ts::approvals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9005,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_approvals.spec.ts::approvals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5958,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_reassign-claim.spec.ts::reassign claim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8006,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_reassign-claim.spec.ts::reassign claim scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5868,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_reassign-claim.spec.ts::reassign claim scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11932,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_reassign-claim.spec.ts::reassign claim scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9580,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_terms-per-grade.spec.ts::terms per grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2982,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_terms-per-grade.spec.ts::terms per grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8100,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_terms-per-grade.spec.ts::terms per grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12012,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_terms-per-grade.spec.ts::terms per grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11207,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2806,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8316,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5734,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9344,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_hold-interval.spec.ts::hold interval",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4016,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_hold-interval.spec.ts::hold interval scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7380,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_hold-interval.spec.ts::hold interval scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21153,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_hold-interval.spec.ts::hold interval scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7430,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_header-counters.spec.ts::header counters",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3810,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_header-counters.spec.ts::header counters scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7094,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_header-counters.spec.ts::header counters scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6596,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_header-counters.spec.ts::header counters scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6455,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_rate-end-dates.spec.ts::rate end dates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5435,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_rate-end-dates.spec.ts::rate end dates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7194,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_rate-end-dates.spec.ts::rate end dates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12619,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_rate-end-dates.spec.ts::rate end dates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15401,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_cap.spec.ts::cap",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4403,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_cap.spec.ts::cap scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10082,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_cap.spec.ts::cap scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8780,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_cap.spec.ts::cap scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10955,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_rollup-overdue.spec.ts::rollup overdue",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3643,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_rollup-overdue.spec.ts::rollup overdue scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 7971,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-376')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveCount with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-376')\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\u001b[2m  -   locator resolved to 1 element\u001b[22m\n\u001b[2m  -   unexpected value \"1\"\u001b[22m\n\n\n  94 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n  95 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n> 96 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_ada)).toHaveCount(0);\n     |                                                             ^\n  97 |     await expect(pg_uma.getByTestId(\"rollup-claimed-total\")).toHaveText(\"0.00\");\n  98 |     await expect(pg_uma.getByTestId(\"rollup-due-total\")).toHaveText(\"0.00\");\n  99 |     await expect(pg_uma.getByTestId(\"rollup-overdue-count\")).toHaveText(\"0\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp44_rollup-overdue.spec.ts:96:61 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-376"
+      },
+      {
+        "test_id": "cp44_rollup-overdue.spec.ts::rollup overdue scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5896,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_rollup-overdue.spec.ts::rollup overdue scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5769,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_bulk-settle.spec.ts::bulk settle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5518,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_bulk-settle.spec.ts::bulk settle scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8772,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_bulk-settle.spec.ts::bulk settle scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6531,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_bulk-settle.spec.ts::bulk settle scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10317,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_re-settle.spec.ts::re settle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11349,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_re-settle.spec.ts::re settle scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7852,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_re-settle.spec.ts::re settle scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8713,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_re-settle.spec.ts::re settle scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7223,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_person-period-figures.spec.ts::person period figures",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4821,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_person-period-figures.spec.ts::person period figures scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10127,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_person-period-figures.spec.ts::person period figures scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11731,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_person-period-figures.spec.ts::person period figures scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_dated-settings.spec.ts::dated settings",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11417,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_dated-settings.spec.ts::dated settings scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5716,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_dated-settings.spec.ts::dated settings scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6934,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_dated-settings.spec.ts::dated settings scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6677,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_paste-claims.spec.ts::paste claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14899,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_paste-claims.spec.ts::paste claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7600,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_paste-claims.spec.ts::paste claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8306,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_paste-claims.spec.ts::paste claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13334,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_deferred-claims.spec.ts::deferred claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13135,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_deferred-claims.spec.ts::deferred claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7570,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_deferred-claims.spec.ts::deferred claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11562,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_deferred-claims.spec.ts::deferred claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10530,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_proofs.spec.ts::proofs",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13295,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_proofs.spec.ts::proofs scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7509,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_proofs.spec.ts::proofs scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12379,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_proofs.spec.ts::proofs scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2573,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  711 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  712 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 713 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  714 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  715 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n  716 |     await ui.setSetting(pg_uma, \"late-pct\", \"10.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp51_proofs.spec.ts:713:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2596,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-01\", \"to\": \"2026-03-10\"})).toBe(true);\n  13 |     const c_ada_0 = ui.must(await ui.addClaim(pg_uma, p_ada, {\"amount\": \"10.00\", \"date\": \"2026-03-05\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp52_period-status-as-of-end.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2650,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  128 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  129 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 130 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  131 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  132 |     await ui.setSetting(pg_uma, \"terms-A\", \"20\");\n  133 |     await ui.setSetting(pg_uma, \"cap\", \"2.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp52_period-status-as-of-end.spec.ts:130:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2615,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  500 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  501 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 502 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  503 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  504 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  505 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp52_period-status-as-of-end.spec.ts:502:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3110,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  818 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  819 |     await ui.setSetting(pg_uma, \"terms-B\", \"20\");\n> 820 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n      |                                                                      ^\n  821 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"12.50\"})).toBe(true);\n  822 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"10.00\"})).toBe(true);\n  823 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\", \"from\": \"2026-03-10\", \"to\": \"2026-03-25\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp52_period-status-as-of-end.spec.ts:820:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp53_permission-matrix.spec.ts::permission matrix",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2478,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n  13 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-02-01\", \"to\": \"2026-02-10\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp53_permission-matrix.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp53_permission-matrix.spec.ts::permission matrix scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2915,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  102 |     await ui.setSetting(pg_uma, \"late-pct\", \"10.00\");\n  103 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-05\");\n> 104 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"12.50\"})).toBe(true);\n      |                                                                      ^\n  105 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"33.33\"})).toBe(true);\n  106 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"10.00\"})).toBe(true);\n  107 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-01\", \"to\": \"2026-03-15\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp53_permission-matrix.spec.ts:104:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp53_permission-matrix.spec.ts::permission matrix scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3048,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  357 |     await ui.setSetting(pg_uma, \"cap\", \"2.00\");\n  358 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"1.00\");\n> 359 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n      |                                                                      ^\n  360 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  361 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"7.50\"})).toBe(true);\n  362 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"20.00\", \"from\": \"2026-03-16\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp53_permission-matrix.spec.ts:359:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp53_permission-matrix.spec.ts::permission matrix scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2631,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  687 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  688 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 689 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  690 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  691 |     await ui.setSetting(pg_uma, \"terms\", \"30\");\n  692 |     await ui.setSetting(pg_uma, \"late-pct\", \"10.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp53_permission-matrix.spec.ts:689:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp54_viewer-role.spec.ts::viewer role",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2463,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"wes\", \"viewer\")).toBe(true);\n  13 |     expect(await ui.setRole(pg_uma, \"vic\", \"boss\")).toBe(false);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp54_viewer-role.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp54_viewer-role.spec.ts::viewer role scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2629,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  80 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  81 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 82 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n     |                                                        ^\n  83 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  84 |     await ui.setSetting(pg_uma, \"terms\", \"10\");\n  85 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp54_viewer-role.spec.ts:82:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp54_viewer-role.spec.ts::viewer role scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3084,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  298 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n  299 |     await ui.setSetting(pg_uma, \"cap\", \"2.00\");\n> 300 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"33.33\"})).toBe(true);\n      |                                                                      ^\n  301 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"12.50\"})).toBe(true);\n  302 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"7.50\"})).toBe(true);\n  303 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-01\", \"to\": \"2026-03-15\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp54_viewer-role.spec.ts:300:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp54_viewer-role.spec.ts::viewer role scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2599,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  615 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  616 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 617 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  618 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-15\");\n  619 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n  620 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"5.00\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp54_viewer-role.spec.ts:617:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp55_auto-close.spec.ts::auto close",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2618,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     await ui.setSetting(pg_uma, \"terms\", \"1\");\n  13 |     await ui.setSetting(pg_uma, \"grace-days\", \"2\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp55_auto-close.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp55_auto-close.spec.ts::auto close scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3093,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  102 |     await ui.setSetting(pg_uma, \"terms-A\", \"3\");\n  103 |     await ui.setSetting(pg_uma, \"perm-void\", \"clerk\");\n> 104 |     expect(await ui.setRole(pg_uma, \"wes\", \"viewer\")).toBe(true);\n      |                                                       ^\n  105 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\"})).toBe(true);\n  106 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"7.50\"})).toBe(true);\n  107 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"33.33\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp55_auto-close.spec.ts:104:55 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp55_auto-close.spec.ts::auto close scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3236,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  375 |     await ui.setSetting(pg_uma, \"cap\", \"5.00\");\n  376 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"3.00\");\n> 377 |     expect(await ui.setRole(pg_uma, \"vic\", \"viewer\")).toBe(true);\n      |                                                       ^\n  378 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"12.50\"})).toBe(true);\n  379 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"12.50\"})).toBe(true);\n  380 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"20.00\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp55_auto-close.spec.ts:377:55 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp55_auto-close.spec.ts::auto close scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2487,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  616 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  617 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 618 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  619 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  620 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  621 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp55_auto-close.spec.ts:618:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp56_late-per-boundary.spec.ts::late per boundary",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2629,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     await ui.setSetting(pg_uma, \"terms\", \"5\");\n  13 |     await ui.setSetting(pg_uma, \"late-pct\", \"10.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp56_late-per-boundary.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp56_late-per-boundary.spec.ts::late per boundary scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2629,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  86 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  87 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 88 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n     |                                                        ^\n  89 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-05\");\n  90 |     await ui.setSetting(pg_uma, \"cap\", \"5.00\");\n  91 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"3.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp56_late-per-boundary.spec.ts:88:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp56_late-per-boundary.spec.ts::late per boundary scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2654,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  397 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  398 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 399 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  400 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  401 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  402 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-05\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp56_late-per-boundary.spec.ts:399:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp56_late-per-boundary.spec.ts::late per boundary scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2618,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  676 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  677 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 678 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  679 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  680 |     await ui.setSetting(pg_uma, \"terms\", \"30\");\n  681 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp56_late-per-boundary.spec.ts:678:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp57_split-claim.spec.ts::split claim",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2607,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n  13 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp57_split-claim.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp57_split-claim.spec.ts::split claim scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3168,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  149 |     await ui.setSetting(pg_uma, \"terms-C\", \"3\");\n  150 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"3.00\");\n> 151 |     expect(await ui.setRole(pg_uma, \"vic\", \"viewer\")).toBe(true);\n      |                                                       ^\n  152 |     await ui.setSetting(pg_uma, \"grace-days\", \"0\");\n  153 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\"})).toBe(true);\n  154 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"7.50\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp57_split-claim.spec.ts:151:55 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp57_split-claim.spec.ts::split claim scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2530,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  466 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  467 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 468 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  469 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  470 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"1.00\");\n  471 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp57_split-claim.spec.ts:468:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp57_split-claim.spec.ts::split claim scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3204,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  759 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n  760 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"1.00\");\n> 761 |     expect(await ui.setRole(pg_uma, \"vic\", \"viewer\")).toBe(true);\n      |                                                       ^\n  762 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"7.50\"})).toBe(true);\n  763 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"10.00\"})).toBe(true);\n  764 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\", \"from\": \"2026-03-10\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp57_split-claim.spec.ts:761:55 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp58_watch-and-notify.spec.ts::watch and notify",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2609,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ben\", \"grade\": \"B\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp58_watch-and-notify.spec.ts::watch and notify scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2582,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  100 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  101 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 102 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  103 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  104 |     await ui.setSetting(pg_uma, \"late-pct\", \"10.00\");\n  105 |     await ui.setSetting(pg_uma, \"perm-open\", \"clerk\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:102:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp58_watch-and-notify.spec.ts::watch and notify scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2633,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  360 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  361 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 362 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  363 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  364 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n  365 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-15\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:362:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp58_watch-and-notify.spec.ts::watch and notify scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2628,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  696 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  697 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 698 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  699 |     await ui.setSetting(pg_uma, \"terms\", \"30\");\n  700 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  701 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"33.33\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:698:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp59_period-templates.spec.ts::period templates",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2634,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-05\", \"to\": \"2026-03-08\"})).toBe(true);\n  13 |     expect(await ui.generatePeriods(pg_uma, \"2026-02-15\", \"2026-04-10\")).toBe(2);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp59_period-templates.spec.ts::period templates scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2579,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  105 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  106 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 107 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  108 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  109 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  110 |     await ui.setSetting(pg_uma, \"terms\", \"10\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:107:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp59_period-templates.spec.ts::period templates scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2627,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  334 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  335 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 336 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  337 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  338 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n  339 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:336:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp59_period-templates.spec.ts::period templates scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2665,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  606 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  607 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 608 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  609 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  610 |     await ui.setSetting(pg_uma, \"terms-C\", \"3\");\n  611 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"3.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:608:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp60_trimmed-totals.spec.ts::trimmed totals",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2579,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ben\", \"grade\": \"B\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp60_trimmed-totals.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp60_trimmed-totals.spec.ts::trimmed totals scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2670,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  177 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  178 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 179 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  180 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  181 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  182 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp60_trimmed-totals.spec.ts:179:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp60_trimmed-totals.spec.ts::trimmed totals scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3041,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  433 |     await ui.setSetting(pg_uma, \"perm-settle\", \"steward\");\n  434 |     await ui.setSetting(pg_uma, \"grace-days\", \"0\");\n> 435 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"5.00\"})).toBe(true);\n      |                                                                     ^\n  436 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"12.50\"})).toBe(true);\n  437 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-01\", \"to\": \"2026-03-15\"})).toBe(true);\n  438 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P2\", \"from\": \"2026-03-16\", \"to\": \"2026-03-31\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp60_trimmed-totals.spec.ts:435:69 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp60_trimmed-totals.spec.ts::trimmed totals scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2625,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  753 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  754 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 755 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  756 |     await ui.setSetting(pg_uma, \"terms\", \"10\");\n  757 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  758 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-05\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp60_trimmed-totals.spec.ts:755:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp61_delegation.spec.ts::delegation",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2611,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n  13 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp61_delegation.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp61_delegation.spec.ts::delegation scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2585,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  78 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  79 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 80 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n     |                                                        ^\n  81 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  82 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  83 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp61_delegation.spec.ts:80:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp61_delegation.spec.ts::delegation scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3058,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  431 |     await ui.setSetting(pg_uma, \"cap\", \"5.00\");\n  432 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"1.00\");\n> 433 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"33.33\"})).toBe(true);\n      |                                                                      ^\n  434 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"5.00\"})).toBe(true);\n  435 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\", \"from\": \"2026-03-10\"})).toBe(true);\n  436 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-01\", \"to\": \"2026-03-15\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp61_delegation.spec.ts:433:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp61_delegation.spec.ts::delegation scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2985,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  691 |     await ui.setSetting(pg_uma, \"terms\", \"30\");\n  692 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"1.00\");\n> 693 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"7.50\"})).toBe(true);\n      |                                                                     ^\n  694 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"12.50\"})).toBe(true);\n  695 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-01\", \"to\": \"2026-03-15\"})).toBe(true);\n  696 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P2\", \"from\": \"2026-03-16\", \"to\": \"2026-03-31\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp61_delegation.spec.ts:693:69 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp62_archive-sheet.spec.ts::archive sheet",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2630,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n  13 |     const c_ada_0 = ui.must(await ui.addClaim(pg_uma, p_ada, {\"amount\": \"10.00\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp62_archive-sheet.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp62_archive-sheet.spec.ts::archive sheet scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2663,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  76 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  77 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 78 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n     |                                                        ^\n  79 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n  80 |     await ui.setSetting(pg_uma, \"terms-B\", \"3\");\n  81 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"3.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp62_archive-sheet.spec.ts:78:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp62_archive-sheet.spec.ts::archive sheet scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2988,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  363 |     await ui.setSetting(pg_uma, \"terms-B\", \"20\");\n  364 |     await ui.setSetting(pg_uma, \"grace-days\", \"3\");\n> 365 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"12.50\"})).toBe(true);\n      |                                                                      ^\n  366 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"12.50\"})).toBe(true);\n  367 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"5.00\"})).toBe(true);\n  368 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"10.00\", \"from\": \"2026-03-16\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp62_archive-sheet.spec.ts:365:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp62_archive-sheet.spec.ts::archive sheet scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2576,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  651 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  652 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 653 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  654 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  655 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n  656 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp62_archive-sheet.spec.ts:653:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp63_person-terms.spec.ts::person terms",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2587,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"12.50\"})).toBe(true);\n  12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ben\", \"grade\": \"B\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp63_person-terms.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp63_person-terms.spec.ts::person terms scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3841,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  93 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"3.00\");\n  94 |     await ui.setSetting(pg_uma, \"grace-days\", \"0\");\n> 95 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\"})).toBe(true);\n     |                                                                      ^\n  96 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  97 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\", \"from\": \"2026-03-16\"})).toBe(true);\n  98 |     const p_cam = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Cam\", \"grade\": \"A\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp63_person-terms.spec.ts:95:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp63_person-terms.spec.ts::person terms scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3089,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  367 |     await ui.setSetting(pg_uma, \"terms-B\", \"3\");\n  368 |     await ui.setSetting(pg_uma, \"cap\", \"5.00\");\n> 369 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"12.50\"})).toBe(true);\n      |                                                                      ^\n  370 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"7.50\"})).toBe(true);\n  371 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"33.33\"})).toBe(true);\n  372 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\", \"from\": \"2026-03-01\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp63_person-terms.spec.ts:369:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp63_person-terms.spec.ts::person terms scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3095,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  743 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"1.00\");\n  744 |     await ui.setSetting(pg_uma, \"grace-days\", \"0\");\n> 745 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"33.33\"})).toBe(true);\n      |                                                                      ^\n  746 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  747 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"7.50\"})).toBe(true);\n  748 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\", \"from\": \"2026-03-01\", \"to\": \"2026-03-25\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp63_person-terms.spec.ts:745:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2636,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     await ui.setSetting(pg_uma, \"terms\", \"5\");\n  13 |     await ui.setSetting(pg_uma, \"late-pct\", \"10.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp64_floor-after-late.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2627,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  102 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  103 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 104 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  105 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n  106 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n  107 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"1.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp64_floor-after-late.spec.ts:104:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2636,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  391 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  392 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 393 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  394 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  395 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  396 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-15\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp64_floor-after-late.spec.ts:393:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2639,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  703 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  704 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 705 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  706 |     await ui.setSetting(pg_uma, \"terms\", \"10\");\n  707 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  708 |     await ui.setSetting(pg_uma, \"terms-C\", \"20\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp64_floor-after-late.spec.ts:705:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2626,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n  13 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-01\", \"to\": \"2026-03-05\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp65_void-settled.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2594,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   96 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   97 |     await ui.setToday(pg_uma, \"2026-03-20\");\n>  98 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n   99 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  100 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  101 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp65_void-settled.spec.ts:98:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2613,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  358 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  359 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 360 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  361 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  362 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-05\");\n  363 |     await ui.setSetting(pg_uma, \"terms-A\", \"3\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp65_void-settled.spec.ts:360:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2595,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  590 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  591 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 592 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  593 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  594 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n  595 |     await ui.setSetting(pg_uma, \"terms-B\", \"20\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp65_void-settled.spec.ts:592:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp66_redate-claim.spec.ts::redate claim",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2494,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n  13 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp66_redate-claim.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp66_redate-claim.spec.ts::redate claim scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2606,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  118 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  119 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 120 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  121 |     await ui.setSetting(pg_uma, \"terms\", \"30\");\n  122 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  123 |     await ui.setSetting(pg_uma, \"terms-B\", \"3\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp66_redate-claim.spec.ts:120:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp66_redate-claim.spec.ts::redate claim scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2996,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  373 |     await ui.setSetting(pg_uma, \"cap\", \"2.00\");\n  374 |     await ui.setSetting(pg_uma, \"perm-void\", \"clerk\");\n> 375 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"12.50\"})).toBe(true);\n      |                                                                      ^\n  376 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"33.33\"})).toBe(true);\n  377 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"12.50\"})).toBe(true);\n  378 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"7.50\", \"from\": \"2026-03-10\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp66_redate-claim.spec.ts:375:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp66_redate-claim.spec.ts::redate claim scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2629,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  673 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  674 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 675 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  676 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  677 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-15\");\n  678 |     await ui.setSetting(pg_uma, \"terms-A\", \"3\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp66_redate-claim.spec.ts:675:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2636,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"12.50\"})).toBe(true);\n  12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ben\", \"grade\": \"B\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp67_active-people.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2487,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  120 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  121 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 122 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  123 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  124 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n  125 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-05\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp67_active-people.spec.ts:122:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2844,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  477 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  478 |     await ui.setSetting(pg_uma, \"cap\", \"2.00\");\n> 479 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n      |                                                                      ^\n  480 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"7.50\"})).toBe(true);\n  481 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"33.33\"})).toBe(true);\n  482 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"12.50\", \"from\": \"2026-03-10\", \"to\": \"2026-03-25\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp67_active-people.spec.ts:479:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2635,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  758 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  759 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 760 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  761 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n  762 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n  763 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-15\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp67_active-people.spec.ts:760:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2582,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ben\", \"grade\": \"B\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp68_backing-recent-settled.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2636,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   98 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   99 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 100 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  101 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  102 |     await ui.setSetting(pg_uma, \"terms\", \"10\");\n  103 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp68_backing-recent-settled.spec.ts:100:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2582,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  423 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  424 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 425 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  426 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n  427 |     await ui.setSetting(pg_uma, \"late-pct\", \"10.00\");\n  428 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp68_backing-recent-settled.spec.ts:425:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3010,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  720 |     await ui.setSetting(pg_uma, \"cap\", \"2.00\");\n  721 |     await ui.setSetting(pg_uma, \"proof-threshold\", \"1.00\");\n> 722 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\"})).toBe(true);\n      |                                                                      ^\n  723 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  724 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"33.33\"})).toBe(true);\n  725 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"33.33\", \"from\": \"2026-03-01\", \"to\": \"2026-03-25\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp68_backing-recent-settled.spec.ts:722:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp69_claim-lock.spec.ts::claim lock",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2610,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"wes\", \"viewer\")).toBe(true);\n  13 |     const c_ada_0 = ui.must(await ui.addClaim(pg_uma, p_ada, {\"amount\": \"10.00\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp69_claim-lock.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp69_claim-lock.spec.ts::claim lock scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3105,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  78 |     await ui.setSetting(pg_uma, \"period-numbering-from\", \"2026-03-01\");\n  79 |     await ui.setSetting(pg_uma, \"terms-A\", \"3\");\n> 80 |     expect(await ui.setRole(pg_uma, \"wes\", \"viewer\")).toBe(true);\n     |                                                       ^\n  81 |     await ui.setSetting(pg_uma, \"grace-days\", \"3\");\n  82 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"20.00\"})).toBe(true);\n  83 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"5.00\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp69_claim-lock.spec.ts:80:55 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp69_claim-lock.spec.ts::claim lock scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2514,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  394 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  395 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 396 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  397 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  398 |     await ui.setSetting(pg_uma, \"terms\", \"30\");\n  399 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-05\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp69_claim-lock.spec.ts:396:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp69_claim-lock.spec.ts::claim lock scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 3051,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  776 |     await ui.setSetting(pg_uma, \"terms-A\", \"3\");\n  777 |     await ui.setSetting(pg_uma, \"cap\", \"5.00\");\n> 778 |     expect(await ui.setRole(pg_uma, \"vic\", \"viewer\")).toBe(true);\n      |                                                       ^\n  779 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"33.33\"})).toBe(true);\n  780 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  781 |     expect(await ui.setRate(pg_uma, {\"grade\": \"C\", \"pct\": \"12.50\", \"from\": \"2026-03-01\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp69_claim-lock.spec.ts:778:55 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp70_soft-close.spec.ts::soft close",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2571,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n  13 |     expect(await ui.addPeriod(pg_uma, {\"name\": \"P1\", \"from\": \"2026-03-01\", \"to\": \"2026-03-10\"})).toBe(true);\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp70_soft-close.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp70_soft-close.spec.ts::soft close scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2593,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  111 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  112 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 113 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  114 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  115 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  116 |     await ui.setSetting(pg_uma, \"terms\", \"30\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp70_soft-close.spec.ts:113:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp70_soft-close.spec.ts::soft close scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2593,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  379 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  380 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 381 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  382 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  383 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  384 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp70_soft-close.spec.ts:381:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp70_soft-close.spec.ts::soft close scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2629,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  722 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  723 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 724 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  725 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  726 |     await ui.setSetting(pg_uma, \"terms-C\", \"3\");\n  727 |     await ui.setSetting(pg_uma, \"cap\", \"2.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp70_soft-close.spec.ts:724:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2516,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  12 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n  13 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp71_cancel-statement.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2621,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  107 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  108 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 109 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  110 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  111 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  112 |     await ui.setSetting(pg_uma, \"terms-B\", \"3\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp71_cancel-statement.spec.ts:109:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2463,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  309 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  310 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 311 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  312 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  313 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  314 |     await ui.setSetting(pg_uma, \"terms\", \"7\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp71_cancel-statement.spec.ts:311:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2579,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  671 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  672 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 673 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  674 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  675 |     await ui.setSetting(pg_uma, \"floor\", \"2.00\");\n  676 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp71_cancel-statement.spec.ts:673:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2636,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   8 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n   9 |     await ui.setToday(pg_uma, \"2026-03-10\");\n> 10 |     expect(await ui.setRate(pg_uma, {\"grade\": \"A\", \"pct\": \"10.00\"})).toBe(true);\n     |                                                                      ^\n  11 |     expect(await ui.setRate(pg_uma, {\"grade\": \"B\", \"pct\": \"20.00\"})).toBe(true);\n  12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ada\", \"grade\": \"A\"}));\n  13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {\"name\": \"Ben\", \"grade\": \"B\"}));\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp72_retired-leave-totals.spec.ts:10:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2634,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  149 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  150 |     await ui.setToday(pg_uma, \"2026-03-20\");\n> 151 |     expect(await ui.setRole(pg_uma, \"vic\", \"steward\")).toBe(true);\n      |                                                        ^\n  152 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"3.00\");\n  153 |     await ui.setSetting(pg_uma, \"floor\", \"0.50\");\n  154 |     await ui.setSetting(pg_uma, \"late-pct\", \"5.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp72_retired-leave-totals.spec.ts:151:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2592,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  418 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  419 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 420 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  421 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  422 |     await ui.setSetting(pg_uma, \"terms\", \"10\");\n  423 |     await ui.setSetting(pg_uma, \"late-pct\", \"10.00\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp72_retired-leave-totals.spec.ts:420:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 2619,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  619 |     const pg_uma = await ui.userPage(browser, \"uma\", sheet);\n  620 |     await ui.setToday(pg_uma, \"2026-04-05\");\n> 621 |     expect(await ui.setRole(pg_uma, \"wes\", \"steward\")).toBe(true);\n      |                                                        ^\n  622 |     await ui.setSetting(pg_uma, \"clerk-limit\", \"1.50\");\n  623 |     await ui.setSetting(pg_uma, \"terms\", \"10\");\n  624 |     await ui.setSetting(pg_uma, \"policy-date\", \"2026-03-15\");\n\n    at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp72_retired-leave-totals.spec.ts:621:56 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 2,
+    "seed_contract": null
+  },
+  "probe": {
+    "probe_cost_usd": 1.3784547999999999,
+    "probe_input_tokens": 26,
+    "probe_cache_read_tokens": 906134,
+    "probe_recall": 0.5569620253164557,
+    "probe_text": "I read the code without changing anything. Server paths are under `src/main/java/net/officefloor/hq/app/` and front-end paths under `src/main/frontend/src/app/features/`.\n\n## 1. Figures and the rules behind them\n\n### Figures shown for a claim (`claims/claims.ts`)\n| testid | Figure | Where it comes from |\n|---|---|---|\n| `claim-number` | `number` | Given when the claim is opened (see Numbering). It is kept when the claim is voided. A re-dated claim may get a new one, and the old one goes into `formerNumbers` and is never given out again. |\n| `claim-amount` | `amount` | Two decimals. A negative amount makes it a **correction** (`isCorrection`). |\n| `claim-date` | `date` | Defaults to the sheet's `today`. |\n| `claim-due` | `claimDue()` (TS) / `RollupService.dueOf()` (Java) | See \"How due is worked out\". |\n| `claim-due-by` | `dueBy` | Fixed when the claim is added: `ClaimService.dueBy` = date + the person's own `terms`, else the grade's terms in force on the claim date (`Sheet.termsFor`), else the sheet's `terms` on that date (starting value 14). Re-dating and reassigning never change it. A split-off claim gets a fresh one. |\n| `claim-overdue` | `isOverdue` / `overdue` | The claim is OPEN or PENDING, `dueBy < today`, and it is not deferred. |\n| `claim-stated` | `stated` | Bound by a statement. |\n| `claim-status` | `ClaimStatus` | DRAFT, OPEN, PENDING, SETTLED or VOID. |\n| `claim-opened-by`, `claim-corrects`, `claim-split-from` | | |\n| `claim-deferred` / `claim-deferred-until` | `deferredOn(today)` | The claim is open and `today < deferredUntil`. |\n| `claim-proofs` | `proofs` | |\n| `claim-late-entry` | `lateEntry` | Set when the claim is added while its period is soft-closed. |\n| `claim-log-line` | `StatusLogLine` | Status, who, the sheet's today, and the due at that moment (or \"n/a\"). |\n\n### Figures shown for a person (`people/people.ts`)\n- `person-claimed`: the sum of the amounts of claims that pass `countsLive`.\n- `person-due-total`: `personDueTotal` = `uncappedDueTotal` held to the **cap**. The total is \"n/a\" when no grade has a rate (see `rated` below) and no counted claim has a figure.\n- `person-excess`: the uncapped total minus the capped one. This is computed on the screen only.\n- `person-overdue-count` / `person-overdue-total`: counted claims that are overdue, and the sum of their dues (\"n/a\" dues skipped).\n- `person-period-<name>-due-total`: for an open period, the live dues of claims that pass `countsAt(period.to)`. For a closed period, the frozen `personTotals` (0.00 if the person had none).\n- `person-grade`: `gradeOn(today)`.\n- `person-terms`.\n- `person-statement-count`, `person-stated-total` (the capped total at the last statement, or \"n/a\"), `person-statement-date`.\n- `person-retired` / `person-retired-from`, `person-hold` / `person-hold-line`.\n- `person-active`: the person has an open claim that counts, dated in the 30 days up to today (`ACTIVE_DAYS`). Screen only.\n- `person-backing`: the frozen dues of the patrons' SETTLED claims dated in the 90 days up to today (`BACKING_DAYS`). Screen only.\n- `person-watched`, `person-patrons`.\n\n### Sheet-level figures\n- **Rollup:** `rollup-claimed-total` is a plain sum. `rollup-due-total` and `rollup-overdue-total` use `trimmedSum`: when there are 3 or more people, it leaves out the single highest and lowest. \"n/a\" due-totals are skipped. `rollup-overdue-count` is the number of overdue claims.\n- **Header:** `header-due-total` and `header-overdue-total` are the same trimmed totals. There are also `header-people-count` (includes retired people) and `header-claims-<STATUS>-count` (all claims, with no counting rule applied).\n- **Summary:**\n  - `summary-grade-X-count / -due-total / -active`: these exclude anyone with *any* `retiredFrom`, even a future one, and the due-total is **not** trimmed.\n  - `summary-period-X-due-total` and `period-due-total`: the sum of the people's period totals.\n  - `summary-status-X-count`.\n\n### Which claims count\n- **`counts` (live):** OPEN, PENDING or SETTLED, with three exceptions:\n  - An open claim is left out when it is **deferred** on today.\n  - An open claim that is not `bound` is left out (`leftOut`) when it is dated inside one of its person's **holds** (`Hold.covers`, inclusive, can be open-ended).\n  - It is also left out when its person is **retired by today** (`retiredBy`: today \u2265 `retiredFrom`).\n- **`countsAt(end)` (periods):** uses `statusAt(end)`, the status from the status log as of the period's last day. A claim added after that day doesn't count. The same hold, retirement and deferral exclusions apply.\n- DRAFT and VOID never count. Voiding a SETTLED claim takes its frozen figure out of every total.\n\n### How due is worked out and rounded\n1. **Figure** (`figureOf`):\n   - The `settledDue` if there is one.\n   - Otherwise, if `bound` (stated and not PENDING), the `statedDue`.\n   - Otherwise `liveDueOf` = amount \u00d7 the rate \u00f7 100. The rate is the one in force on the **claim date** for the grade the person had **on the claim date** (`Rate.inForce`: latest from-date \u2264 date, and date \u2264 to-date). With no such rate the figure is \"n/a\".\n2. **Late charge** (`lateCharge`): only for open, non-deferred claims that are not corrections.\n   - For each full 30 days past `dueBy` (`LATE_PERIOD_DAYS`), the figure \u00d7 the `latePctOn(boundary)` in force on that boundary date (dueBy + 30k days).\n   - Each charge is rounded separately.\n   - It is never bound by a statement; it keeps following today.\n3. **Floor** (`floored`): due = max(`floorOn(claim.date)`, figure + late charge). The starting floor is 1.00. It is applied on top of stated figures too, and to DRAFT claims (no late charge).\n4. **Corrections** get no floor and no late charge, and must name a SETTLED claim of the same person (`correctedBy`).\n5. **Rounding:** the date a claim rounds by (`roundsBy`) is its own date, or for a correction the date of the claim it corrects.\n   - Before the `policyDate`: `HALF_UP`.\n   - Otherwise: `HALF_EVEN`.\n   - With no policy date, the sheet's today is used (`roundingDate`).\n   - The front end does the same in integer hundredths (`dueOf` in `rates-api.ts`).\n6. **Person total:**\n   - `rated`: whether the grade the person has today, or the grade on any counted claim's date, has a rate in force **today**. If not rated and no counted claim has a figure, the total is \"n/a\".\n   - The total is held to the `getCap()` in force **today**.\n\n### What is frozen, and when\n- **Settle or approve:** `settledDue` = the due at that moment, late charge included. If the due is \"n/a\" it stays live.\n- **`resettle`** (steward only): re-freezes at `openDueOf`, the due today as if OPEN and unbound.\n- **Statement (`take`):** `bind`s each counted claim to its figure (no late charge, no floor), unbinds the rest, and records the capped due-total.\n  - PENDING claims show their live figure; if rejected, they are bound again.\n  - `split` and `reassign` unbind.\n  - `cancel` (steward only) unbinds everything and does not restore the previous statement's bindings.\n- **Period close:** `Period.close` freezes `personTotals` (from `RollupService.dueTotals`) and `closedTotal`.\n  - **Hard close:** any change to a claim dated in the period is refused (`requireOpen`, HTTP 423), including add, edit, status changes, defer, split, proof, reassign, and re-dating into or out of it.\n  - **Soft close:** totals are frozen but claims can still change. New claims dated in it get `lateEntry` and a `LATE_ENTRY` audit line.\n  - `closeLapsed`: when today changes, open periods with to-date + `graceDays` < today are hard-closed (`auto=yes`).\n  - `reopen` makes the totals live again.\n- **Status log:** each line keeps the due at that moment as text.\n\n### What a date decides\nThe sheet's own `today` (never the clock) decides:\n- overdue status and late charges\n- deferral\n- holds and retirement in the totals\n- the `rated` check\n- the cap and the clerk limit (both read on today)\n- whether a role delegation is in force (`Delegation.covers`)\n- `numbersByPeriod` (today \u2265 `periodNumberingFrom`)\n- lock lapse (a lock lasts only while `lockedOn == today`)\n- the 7-day window to void a settled claim\n- active and backing windows\n- grace-day auto-close\n\nThe **claim date** decides:\n- the grade (`gradeOn`) and the rate\n- the floor\n- the terms, and so `dueBy`\n- `proofThresholdOn`\n- the period it belongs to, and so its number\n\nRetirement: claims dated **after** `retiredFrom` are refused (`retiredOn`) when added, edited, re-dated or reassigned to that person.\n\n### Status rules and who may do what\n- **Status moves** (`ClaimStatus.canBecome`): DRAFT\u2192OPEN; OPEN\u2192SETTLED or PENDING; DRAFT, OPEN or PENDING\u2192VOID. Only a DRAFT can be edited or locked.\n- **Roles** (`Role`): CLERK (the default), STEWARD, VIEWER. `roleOf` also counts as STEWARD anyone with a delegation in force today.\n- **Permission matrix** (`Permission`, overridable per sheet):\n  - OPEN, SETTLE, VOID and CLOSE: clerk and steward.\n  - REASSIGN and REOPEN: steward only.\n- **Always steward only** (`requireSteward`): approve, reject (needs a reason), resettle, redate, void a SETTLED claim within `VOID_SETTLED_DAYS` = 7 days, cancel a statement, archive.\n- **Delegating** needs a steward in their own right.\n- **Clerk limit** (`maySettle`): a clerk settling a due above the limit sends the claim to PENDING instead.\n- **Four eyes:** whoever opened a claim cannot settle or approve it.\n- **Proof** (`requireProof`): a due above the threshold on the claim date needs at least one proof before it can be settled or approved.\n- **Edit locks:** a claim being edited by someone else refuses edits and locks.\n- **Viewer** (`ViewerGuard`) and **archived sheet** (`ArchiveGuard`): every write is refused. The bulk open/settle actions are let through so each claim is refused and counted as refused.\n- **No role check at all** on: setting roles, settings, rates, today, adding or editing people, holds, retirement, statements, periods. So any clerk can make themselves a steward.\n\n### Imports and other actions\n- **`PasteService.paste`:** each line is `name,amount,date,note` and adds a DRAFT via `ClaimService.add`.\n  - All lines are checked first.\n  - It is all-or-nothing: one bad line, or one refused by `add`, adds nothing.\n  - Blank lines are skipped. The name must already exist. Corrections can't be imported because there is no \"corrects\" field.\n- **`QuickAddService`:** creates the person as grade \"A\" if new, then adds a DRAFT dated today. It is one transaction.\n- **Hold (`PersonService.hold`):** from defaults to today; the to-date may not be before the from-date. It only removes *unbound* open claims dated in the hold from the totals.\n- **Defer:** OPEN claims only, to a date after today.\n- **Split:** OPEN claims, not deferred, 0 < amount < the claim's amount. The new claim is OPEN with the next number.\n- **Re-date:** OPEN or PENDING claims; `dueBy` and any binding are kept.\n- **Numbering** (`nextNumber`): the sheet-wide counter, or with period numbering `<period>-<n>`, or `X-<n>` for a claim in no period.\n\n### Where screen and server disagree, or are surprising\n- The grade summary leaves out people retired on a *future* date, but the person list and the totals treat them as active.\n- Reassigning a claim keeps a `dueBy` worked out from the *previous* person's terms.\n- `RollupService.snapshot`'s local `frozen` actually means \"has any figure\", not \"settled\".\n\n## 2. How hard was it to follow\n\nIt is scattered and tangled. The core due and total rules are written twice: once in Java (`RollupService`, for the audit, statements and period closes) and again by hand in TypeScript (`claims-api.ts`, `rates-api.ts`, `people.ts`), with comments like \"Like the screen\" keeping them in step. The rest is spread across `Claim`, `ClaimStatus`, `Sheet`, `Person`, `ClaimService`, `SettingService`, `PeriodService` and two interceptors, and some figures (excess, active, backing) exist only on the screen. A new developer would need to read about a dozen files on both sides to be sure of any one number."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
