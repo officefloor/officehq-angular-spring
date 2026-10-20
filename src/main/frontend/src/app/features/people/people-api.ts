@@ -111,6 +111,11 @@ export class PeopleApi {
     return this.http.post<Person>(`${this.url(sheetId)}/${id}/statement`, null, { headers: this.headers() });
   }
 
+  /** Cancel the person's last statement. */
+  unstate(sheetId: string, id: number): Observable<Person> {
+    return this.http.delete<Person>(`${this.url(sheetId)}/${id}/statement`, { headers: this.headers() });
+  }
+
   /** Retire the person from a date, the sheet's today when none is given. */
   retire(sheetId: string, id: number, from: string | null): Observable<Person> {
     return this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from }, { headers: this.headers() });

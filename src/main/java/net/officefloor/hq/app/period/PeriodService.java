@@ -141,7 +141,7 @@ public class PeriodService {
         }
         LocalDate today = sheet.getToday();
         return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
-                .filter(p -> !p.isHardClosed() && p.getTo().plusDays(graceDays).isBefore(today))
+                .filter(p -> !p.isClosed() && p.getTo().plusDays(graceDays).isBefore(today))
                 .sorted(Comparator.comparing(Period::getTo))
                 .map(p -> closeNow(user, sheetId, p, true))
                 .toList();

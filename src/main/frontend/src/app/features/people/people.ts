@@ -238,6 +238,14 @@ const BACKING_DAYS = 90;
                 </button>
                 <button
                   type="button"
+                  data-testid="person-unstate"
+                  [attr.aria-label]="'Cancel last statement for ' + p.name"
+                  (click)="unstate(p)"
+                >
+                  Cancel statement
+                </button>
+                <button
+                  type="button"
                   data-testid="person-watch"
                   [attr.aria-label]="'Watch or unwatch ' + p.name"
                   [attr.aria-pressed]="watchedShown(p)"
@@ -342,11 +350,14 @@ export class People {
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen opens, and kept as it is by loading a sheet. */
   protected readonly showRetired = signal(false);
-  /** The people listed: everyone, or only those not retired unless retired people are shown. Totals count
-   * everyone either way. */
-  protected readonly shownPeople = computed(() =>
-    this.showRetired() ? this.people() : this.people().filter((p) => !p.retiredFrom),
-  );
+  /** The people listed: everyone, or only those not retired on the sheet's today (one retired from a later date
+   * is still listed) unless retired people are shown. Totals count everyone either way. */
+  protected readonly shownPeople = computed(() => {
+    const today = this.session.today() ?? '';
+    return this.showRetired()
+      ? this.people()
+      : this.people().filter((p) => !p.retiredFrom || p.retiredFrom > today);
+  });
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -794,6 +805,32 @@ export class People {
           this.personError.set({
             id: person.id,
             message: e.status === 404 ? 'That person is no longer on this sheet.' : 'Could not take that statement.',
+          }),
+      });
+  }
+
+  /** Cancel the person's last statement (a steward only), then re-read the sheet's claims, which are live again. */
+  protected unstate(person: Person): void {
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.api
+      .unstate(sheetId, person.id)
+      .pipe(switchMap((p) => forkJoin({ person: of(p), claims: this.claimsApi.list(sheetId) })))
+      .subscribe({
+        next: ({ person: p, claims }) => {
+          if (this.session.sheetId() !== sheetId) return;
+          this.claims.set(claims);
+          this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
+        },
+        error: (e: HttpErrorResponse) =>
+          this.personError.set({
+            id: person.id,
+            message:
+              e.status === 404
+                ? 'That person is no longer on this sheet.'
+                : 'Could not cancel that statement: only a steward can, and only a statement that was taken.',
           }),
       });
   }

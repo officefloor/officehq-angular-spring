@@ -13,6 +13,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.statement.StatementService.Summary;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -145,6 +146,13 @@ public class PersonController {
     public PersonView statement(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @PathVariable Long id) {
         return view(user, sheetId, statements.take(user, sheetId, id));
+    }
+
+    /** Cancel the person's last statement. */
+    @DeleteMapping("/{id}/statement")
+    public PersonView unstate(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id) {
+        return view(user, sheetId, statements.cancel(user, sheetId, id));
     }
 
     private PersonView view(String user, String sheetId, Person person) {
