@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
-import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, map, tap } from 'rxjs';
+import { DestroyRef, Injectable, computed, inject, linkedSignal, signal } from '@angular/core';
+import { Observable, map, of, switchMap, tap } from 'rxjs';
+import { AsOf } from './as-of';
 
 interface User {
   name: string;
@@ -19,12 +20,21 @@ interface SheetView {
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
+  private readonly asOfDate = inject(AsOf);
 
   private readonly _user = signal<string | null>(null);
   private readonly _sheetId = signal<string | null>(null);
   readonly user = this._user.asReadonly();
   private readonly _today = signal<string | null>(null);
   readonly sheetId = this._sheetId.asReadonly();
+  private readonly _sheetLoad = signal<{ id: string } | null>(null);
+  /** The active sheet each time it is loaded (again), so features re-read its data; null while none is. */
+  readonly sheetLoad = this._sheetLoad.asReadonly();
+  /** The date this screen shows the sheet as of, or null for as it is now. The sheet's today reads that date
+   * while it is set. */
+  readonly asOf = this.asOfDate.date;
+  /** The as-of date the active sheet was last loaded with. */
+  private readonly _loadedAsOf = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd). Date-dependent features use this, never the clock. */
   readonly today = this._today.asReadonly();
   private readonly _archived = signal<boolean | null>(null);
@@ -40,6 +50,12 @@ export class Session {
   private readonly pending = signal<ReadonlySet<symbol>>(new Set());
   /** The active sheet once every feature has read its data for it; null until then. */
   readonly loadedSheetId = computed(() => (this.pending().size === 0 ? this._sheetId() : null));
+  /** The date the sheet on screen is shown as of (null: as it is now): it moves once every feature has read the
+   * sheet so. */
+  readonly shownAsOf = linkedSignal<{ done: boolean; asOf: string | null }, string | null>({
+    source: () => ({ done: this.pending().size === 0, asOf: this._loadedAsOf() }),
+    computation: (src, prev) => (src.done ? src.asOf : (prev?.value ?? null)),
+  });
 
   /** Register a feature that reads each sheet's data when it is loaded, for as long as it lives; it calls the
    * function returned once it has read the data for a sheet id. One registered while a sheet is active is
@@ -65,6 +81,9 @@ export class Session {
         this._user.set(n);
         this.pending.set(new Set());
         this._sheetId.set(null);
+        this._sheetLoad.set(null);
+        this.asOfDate.set(null);
+        this._loadedAsOf.set(null);
         this._today.set(null);
         this._archived.set(null);
         this._role.set(null);
@@ -72,19 +91,34 @@ export class Session {
     );
   }
 
+  /** Load a sheet; while an as-of date is set, it is then read as it stood at the end of that date. */
   loadSheet(id: string): Observable<string> {
-    return this.http
-      .post<SheetView>('/api/sheets/load', { id }, { headers: { 'X-User': this._user() ?? '' } })
-      .pipe(
-        tap((s) => {
-          this.pending.set(new Set(this.loaders));
-          this._sheetId.set(s.id);
-          this._today.set(s.today);
-          this._archived.set(s.archived);
-          this._role.set(s.role ?? null);
-        }),
-        map((s) => s.id),
-      );
+    const headers = { 'X-User': this._user() ?? '' };
+    return this.http.post<SheetView>('/api/sheets/load', { id }, { headers }).pipe(
+      switchMap((s) =>
+        this.asOfDate.date()
+          ? this.http
+              .get<SheetView>(`/api/sheets/${encodeURIComponent(s.id)}`, { headers })
+              .pipe(map((then) => ({ ...then, role: s.role })))
+          : of(s),
+      ),
+      tap((s) => {
+        this.pending.set(new Set(this.loaders));
+        this._sheetId.set(s.id);
+        this._sheetLoad.set({ id: s.id });
+        this._loadedAsOf.set(this.asOfDate.date());
+        this._today.set(s.today);
+        this._archived.set(s.archived);
+        this._role.set(s.role ?? null);
+      }),
+      map((s) => s.id),
+    );
+  }
+
+  /** Show the active sheet as of a date (null: as it is now), on this screen only, and read it again so. */
+  setAsOf(date: string | null): Observable<string> {
+    this.asOfDate.set(date);
+    return this.loadSheet(this._sheetId() ?? '');
   }
 
   setToday(today: string): Observable<string> {

@@ -58,8 +58,10 @@ export class Delegations {
     this.form.valueChanges.subscribe(() => this.error.set(null));
     // Re-read the sheet's delegations from the store each time a sheet is loaded.
     const loaded = this.session.registerLoader(inject(DestroyRef));
-    toObservable(this.session.sheetId)
-      .pipe(switchMap((id) => (id ? this.api.list(id) : of([] as Delegation[])).pipe(map((ds) => ({ id, ds })))))
+    toObservable(this.session.sheetLoad)
+      .pipe(
+        map((l) => l?.id ?? null),
+        switchMap((id) => (id ? this.api.list(id) : of([] as Delegation[])).pipe(map((ds) => ({ id, ds })))))
       .subscribe(({ id, ds }) => {
         this.delegations.set(ds);
         this.error.set(null);

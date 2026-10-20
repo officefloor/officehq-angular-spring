@@ -342,8 +342,9 @@ export class Settings {
       });
     // Re-read the sheet's settings from the store each time a sheet is loaded.
     const loaded = this.session.registerLoader(inject(DestroyRef));
-    toObservable(this.session.sheetId)
+    toObservable(this.session.sheetLoad)
       .pipe(
+        map((l) => l?.id ?? null),
         switchMap((id) =>
           id
             ? forkJoin({ id: of(id), roles: this.api.roles(id), settings: this.api.get(id) })

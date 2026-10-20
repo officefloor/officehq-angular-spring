@@ -3,7 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { forkJoin, of, switchMap } from 'rxjs';
+import { forkJoin, map, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
 import {
@@ -518,8 +518,9 @@ export class People {
     });
     // Re-read the sheet's people and their claims from the store each time a sheet is loaded.
     const loaded = this.session.registerLoader(inject(DestroyRef));
-    toObservable(this.session.sheetId)
+    toObservable(this.session.sheetLoad)
       .pipe(
+        map((l) => l?.id ?? null),
         switchMap((id) =>
           id
             ? forkJoin({
@@ -827,7 +828,7 @@ export class People {
           this.claims.set(claims);
           this.people.update((ps) => ps.map((x) => (x.id === p.id ? p : x)));
         },
-        error: (e: HttpErrorResponse) =>
+        error: (e: HttpErrorResponse) => {
           this.personError.set({
             id: person.id,
             message:
@@ -836,7 +837,10 @@ export class People {
                 : asOf.value
                   ? 'Could not take that statement: the date must be on or before the sheet\'s today, with the person on the sheet then.'
                   : 'Could not take that statement.',
-          }),
+          });
+          // The date was for this statement only: the next is taken now unless a date is entered again.
+          asOf.value = '';
+        },
       });
   }
 

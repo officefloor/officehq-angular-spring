@@ -70,7 +70,9 @@ public class SheetService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
     }
 
-    private Sheet find(String id) {
+    /** The sheet with this id; none is refused. */
+    @Transactional(readOnly = true)
+    public Sheet find(String id) {
         return sheets.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
     }

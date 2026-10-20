@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import net.officefloor.hq.app.setting.SettingService;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -49,6 +50,14 @@ public class SheetController {
     @PostMapping("/load")
     public SheetView load(@RequestHeader("X-User") String user, @Valid @RequestBody LoadSheet request) {
         Sheet sheet = service.load(request.id(), user);
+        return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(),
+                settings.roleOf(sheet.getId(), user.trim()).code());
+    }
+
+    /** The sheet as it is loaded, re-read from the store (as of a date, when the screen shows it so). */
+    @GetMapping("/{id}")
+    public SheetView view(@RequestHeader("X-User") String user, @PathVariable String id) {
+        Sheet sheet = service.find(id);
         return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(),
                 settings.roleOf(sheet.getId(), user.trim()).code());
     }

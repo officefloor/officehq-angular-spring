@@ -47,6 +47,18 @@ import { Session } from '../../core/session';
           @if (changeError(); as e) {
             <p role="alert" data-testid="sheet-error">{{ e }}</p>
           }
+          <p>
+            As of: <strong data-testid="sheet-asof">{{ session.shownAsOf() ?? '' }}</strong>
+          </p>
+          <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()">
+            <label for="asof-date">Show the sheet as of</label>
+            <input id="asof-date" type="date" data-testid="asof-date" formControlName="date" />
+            <button type="submit" data-testid="asof-set">Set as of</button>
+            <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+          </form>
+          @if (asOfError(); as e) {
+            <p role="alert" data-testid="asof-error">{{ e }}</p>
+          }
         }
       } @else {
         <form [formGroup]="signInForm" (ngSubmit)="signIn()">
@@ -69,17 +81,20 @@ export class SessionBar {
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly changeError = signal<string | null>(null);
+  protected readonly asOfForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
+  protected readonly asOfError = signal<string | null>(null);
   protected readonly archivedText = computed(() => {
     const a = this.session.archived();
     return a === null ? '' : a ? 'yes' : 'no';
   });
   /** The forms whose submit is waiting on the server; another submit of one is ignored until it answers. */
-  private readonly submitting = new Set<'signIn' | 'sheet' | 'today' | 'archive'>();
+  private readonly submitting = new Set<'signIn' | 'sheet' | 'today' | 'archive' | 'asOf'>();
 
   constructor() {
     this.signInForm.valueChanges.subscribe(() => this.signInError.set(null));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.todayForm.valueChanges.subscribe(() => this.changeError.set(null));
+    this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(null));
   }
 
   protected signIn(): void {
@@ -149,8 +164,40 @@ export class SessionBar {
     });
   }
 
+  /** Show the sheet on this screen as of the date entered. */
+  protected setAsOf(): void {
+    this.asOfError.set(null);
+    const date = this.asOfForm.getRawValue().date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.asOfError.set('Pick a date to show the sheet as of.');
+      return;
+    }
+    this.showAsOf(date);
+  }
+
+  /** Show the sheet on this screen as it is now. */
+  protected clearAsOf(): void {
+    this.asOfError.set(null);
+    this.showAsOf(null);
+  }
+
+  private showAsOf(date: string | null): void {
+    this.changeError.set(null);
+    if (!this.begin('asOf')) return;
+    this.session.setAsOf(date).subscribe({
+      next: () => {
+        this.submitting.delete('asOf');
+        this.todayForm.setValue({ today: this.session.today() ?? '' }, { emitEvent: false });
+      },
+      error: () => {
+        this.submitting.delete('asOf');
+        this.asOfError.set('Could not show the sheet as of that date.');
+      },
+    });
+  }
+
   /** Marks the form as submitting; false when a submit of it is already waiting on the server. */
-  private begin(form: 'signIn' | 'sheet' | 'today' | 'archive'): boolean {
+  private begin(form: 'signIn' | 'sheet' | 'today' | 'archive' | 'asOf'): boolean {
     if (this.submitting.has(form)) return false;
     this.submitting.add(form);
     return true;
