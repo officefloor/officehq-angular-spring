@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -22,27 +23,34 @@ public class SheetController {
 
     public record SetToday(@NotNull LocalDate today) {}
 
-    public record SheetView(String id, LocalDate today, boolean archived) {
+    /** A loaded sheet also shows the role the user loading it has on it ("clerk", "steward" or "viewer"); no
+     * role otherwise. */
+    public record SheetView(String id, LocalDate today, boolean archived, String role) {
 
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), null);
         }
     }
 
     private final SheetService service;
     private final TodayService todays;
     private final ArchiveService archives;
+    private final SettingService settings;
 
-    public SheetController(SheetService service, TodayService todays, ArchiveService archives) {
+    public SheetController(SheetService service, TodayService todays, ArchiveService archives,
+            SettingService settings) {
         this.service = service;
         this.todays = todays;
         this.archives = archives;
+        this.settings = settings;
     }
 
     /** Load a sheet by id, starting it empty when it was never loaded before. */
     @PostMapping("/load")
     public SheetView load(@RequestHeader("X-User") String user, @Valid @RequestBody LoadSheet request) {
-        return SheetView.of(service.load(request.id(), user));
+        Sheet sheet = service.load(request.id(), user);
+        return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(),
+                settings.roleOf(sheet.getId(), user.trim()).code());
     }
 
     /** Change the sheet's today. */

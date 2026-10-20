@@ -92,6 +92,14 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** Who has the claim's editor open; none when no one has. */
+    @Column(name = "locked_by")
+    private String lockedBy;
+
+    /** The sheet's today when the editor was opened; the lock lapses once the sheet's today is another. */
+    @Column(name = "locked_on")
+    private LocalDate lockedOn;
+
     /** The claim's status log, oldest first: one line per status it has had, from the DRAFT it was added as. */
     @ElementCollection(fetch = FetchType.EAGER)
     @Fetch(FetchMode.SUBSELECT)
@@ -267,6 +275,30 @@ public class Claim {
     /** Raise the claim's proofs count by one. */
     public void addProof() {
         proofs++;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public LocalDate getLockedOn() {
+        return lockedOn;
+    }
+
+    /** Who holds the claim's lock on the sheet's today; none when no one does, or the lock has lapsed. */
+    public String lockHolderOn(LocalDate today) {
+        return lockedBy != null && lockedOn != null && lockedOn.equals(today) ? lockedBy : null;
+    }
+
+    /** Lock the claim for the user, from the sheet's today. */
+    public void lock(String user, LocalDate today) {
+        this.lockedBy = user;
+        this.lockedOn = today;
+    }
+
+    public void unlock() {
+        this.lockedBy = null;
+        this.lockedOn = null;
     }
 
     public List<StatusLogLine> getStatusLog() {

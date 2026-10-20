@@ -37,6 +37,16 @@ export interface Claim {
   proofs: number;
   /** For a claim split off another, the number of the claim it was split from; null otherwise. */
   splitFrom: string | null;
+  /** Who has the claim's editor open; null when no one has. The lock lapses once the sheet's today is other than
+   * {@link lockedOn}. */
+  lockedBy: string | null;
+  /** The sheet's today (yyyy-mm-dd) when the editor was opened; null when no one has it open. */
+  lockedOn: string | null;
+}
+
+/** Who holds the claim's lock on the sheet's today; null when no one does, or the lock has lapsed. */
+export function lockHolder(claim: Claim, today: string | null): string | null {
+  return claim.lockedBy !== null && claim.lockedOn === today ? claim.lockedBy : null;
 }
 
 /** What a split did: the claim split, with what it keeps, and the new claim split off it. */
@@ -226,6 +236,16 @@ export class ClaimsApi {
 
   update(sheetId: string, id: number, form: ClaimForm): Observable<Claim> {
     return this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}`, form, { headers: this.headers() });
+  }
+
+  /** Open a claim's editor: it is locked for this user until saved or cancelled, or the sheet's today changes. */
+  lock(sheetId: string, id: number): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/lock`, null, { headers: this.headers() });
+  }
+
+  /** Cancel a claim's editor: this user's lock on it is released. */
+  unlock(sheetId: string, id: number): Observable<Claim> {
+    return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/unlock`, null, { headers: this.headers() });
   }
 
   changeStatus(sheetId: string, id: number, action: ClaimAction): Observable<Claim> {

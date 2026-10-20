@@ -35,11 +35,11 @@ public class ClaimController {
      * at its person's last statement (none when that was n/a); a correction shows the number it corrects; and the
      * date it is due by, fixed when it was added; and its status log, oldest first; and the date it is deferred
      * until, while it is deferred; and how many proofs it has; and, for a claim split off another, that claim's
-     * number. */
+     * number; and who has its editor open, and the sheet's today when they opened it, while they do. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String due, String openedBy, boolean stated, String statedDue,
             String corrects, LocalDate dueBy, List<StatusLogView> statusLog, LocalDate deferredUntil,
-            int proofs, String splitFrom) {
+            int proofs, String splitFrom, String lockedBy, LocalDate lockedOn) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -50,7 +50,7 @@ public class ClaimController {
                     claim.getStatedDue() != null ? claim.getStatedDue().setScale(2).toPlainString() : null,
                     claim.getCorrects(), claim.getDueBy(),
                     claim.getStatusLog().stream().map(StatusLogView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.getLockedOn());
         }
     }
 
@@ -114,6 +114,17 @@ public class ClaimController {
             @PathVariable Long id, @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.update(user, sheetId, id, new BigDecimal(form.amount()), form.date(), form.note(),
                 form.corrects()));
+    }
+
+    @PostMapping("/claims/{id}/lock")
+    public ClaimView lock(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id) {
+        return ClaimView.of(service.lock(user, sheetId, id));
+    }
+
+    @PostMapping("/claims/{id}/unlock")
+    public ClaimView unlock(@RequestHeader("X-User") String user, @PathVariable String sheetId,
+            @PathVariable Long id) {
+        return ClaimView.of(service.unlock(user, sheetId, id));
     }
 
     @PostMapping("/claims/{id}/open")

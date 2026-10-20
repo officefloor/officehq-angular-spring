@@ -10,6 +10,8 @@ interface SheetView {
   id: string;
   today: string;
   archived: boolean;
+  /** The signed-in user's role on the sheet; given only when it is loaded. */
+  role?: string | null;
 }
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet, so
@@ -29,6 +31,10 @@ export class Session {
   /** Whether the active sheet is archived; null while it is not known (an archive is waiting on the server, or
    * was refused, until the sheet is loaded again). An archived sheet refuses every change. */
   readonly archived = this._archived.asReadonly();
+  private readonly _role = signal<string | null>(null);
+  /** The signed-in user's role on the active sheet as it was loaded ("clerk", "steward" or "viewer"); null while
+   * no sheet is loaded. A viewer changes nothing. */
+  readonly role = this._role.asReadonly();
   /** The features that read a sheet's data when it is loaded, and those still reading the active one's. */
   private readonly loaders = new Set<symbol>();
   private readonly pending = signal<ReadonlySet<symbol>>(new Set());
@@ -61,6 +67,7 @@ export class Session {
         this._sheetId.set(null);
         this._today.set(null);
         this._archived.set(null);
+        this._role.set(null);
       }),
     );
   }
@@ -74,6 +81,7 @@ export class Session {
           this._sheetId.set(s.id);
           this._today.set(s.today);
           this._archived.set(s.archived);
+          this._role.set(s.role ?? null);
         }),
         map((s) => s.id),
       );

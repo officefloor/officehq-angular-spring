@@ -96,10 +96,13 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can be edited.");
         }
         requireOpenPeriod(sheetId, claim.getDate());
+        requireNotLockedByOther(user, today, claim);
         requireOpenPeriod(sheetId, date != null ? date : today);
         requireNotRetired(requirePerson(sheetId, claim.getPersonId()), date != null ? date : today);
         String corrected = correctedBy(sheetId, claim.getPersonId(), amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
+        // Saving the editor releases its lock.
+        claim.unlock();
         claim.setAmount(amount);
         claim.setCorrects(corrected);
         claim.setDate(date != null ? date : today);
@@ -108,6 +111,52 @@ public class ClaimService {
         audit.recordOnCommit(entry("CLAIM_EDITED", user, requirePerson(sheetId, claim.getPersonId()), claim));
         rollup.recordChanges(user, sheetId, before);
         return claim;
+    }
+
+    /** Open a claim's editor: the claim is locked for the user until the editor is saved or cancelled, or the
+     * sheet's today changes. A claim that cannot be edited (not a draft, or dated in a closed period), or that
+     * another user has locked, is refused and takes no lock. Opening it releases the user's lock on any other
+     * claim of the same person, whose editor it replaces. */
+    @Transactional
+    public Claim lock(String user, String sheetId, Long id) {
+        LocalDate today = sheets.today(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft claim can be edited.");
+        }
+        requireOpenPeriod(sheetId, claim.getDate());
+        requireNotLockedByOther(user, today, claim);
+        for (Claim other : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (!other.getId().equals(id) && other.getPersonId().equals(claim.getPersonId())
+                    && user.equals(other.getLockedBy())) {
+                other.unlock();
+            }
+        }
+        claim.lock(user, today);
+        claims.flush();
+        return claim;
+    }
+
+    /** Cancel a claim's editor: the user's lock on it is released. A lock another user holds is left as it is. */
+    @Transactional
+    public Claim unlock(String user, String sheetId, Long id) {
+        sheets.today(sheetId); // the sheet must exist
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        if (user.equals(claim.getLockedBy())) {
+            claim.unlock();
+            claims.flush();
+        }
+        return claim;
+    }
+
+    /** Refuse a change to a claim whose editor another user has open on the sheet's today. */
+    private static void requireNotLockedByOther(String user, LocalDate today, Claim claim) {
+        String holder = claim.lockHolderOn(today);
+        if (holder != null && !holder.equals(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is being edited by " + holder + ".");
+        }
     }
 
     /** Move a claim to another status; a change its status does not allow, or of a claim dated in a closed

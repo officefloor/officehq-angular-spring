@@ -8,7 +8,18 @@ import { Period, periodOf } from '../periods/periods-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
-import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, isDeferred, isOverdue, roundsBy } from './claims-api';
+import {
+  Claim,
+  ClaimAction,
+  ClaimsApi,
+  Lateness,
+  claimDue,
+  isDeferred,
+  isOverdue,
+  lockHolder,
+  roundsBy,
+} from './claims-api';
+import { ClaimEditors } from './claim-editors';
 
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 /** A claim's number: the sheet-wide one, or a period's, <period name>-<n> (X-<n> in no period). */
@@ -45,7 +56,7 @@ const SPLIT_AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
       @if (editingId() !== null) {
-        <button type="button" data-testid="claim-form-cancel" (click)="reset()">Cancel</button>
+        <button type="button" data-testid="claim-form-cancel" (click)="cancel()">Cancel</button>
       }
     </form>
     @if (formError(); as e) {
@@ -121,6 +132,16 @@ const SPLIT_AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
                 >
                   Edit
                 </button>
+                @if (editingId() === c.id) {
+                  <button
+                    type="button"
+                    data-testid="claim-cancel"
+                    [attr.aria-label]="'Cancel editing claim of ' + c.amount + ' on ' + c.date"
+                    (click)="cancel()"
+                  >
+                    Cancel
+                  </button>
+                }
                 @for (a of actions; track a.action) {
                   <button
                     type="button"
@@ -245,6 +266,7 @@ const SPLIT_AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 export class Claims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
+  private readonly editors = inject(ClaimEditors);
   private readonly floor = inject(SheetFloor);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
@@ -313,6 +335,16 @@ export class Claims {
         if (this.editingId() === null && !this.form.controls.date.dirty) {
           this.form.controls.date.setValue(today, { emitEvent: false });
         }
+      });
+    });
+    // An editor left open is open again when the sheet is loaded again.
+    effect(() => {
+      const claims = this.claims();
+      untracked(() => {
+        if (this.editingId() !== null) return;
+        const id = this.editors.get(this.session.user(), this.session.sheetId(), this.personId());
+        const claim = claims.find((c) => c.id === id && c.status === 'DRAFT');
+        if (claim) this.fill(claim);
       });
     });
   }
@@ -649,6 +681,8 @@ export class Claims {
     });
   }
 
+  /** Open the claim's editor, locking the claim for other users. A claim that cannot be edited, or that another
+   * user has locked, is refused on its row and takes no lock; the server has the last word. */
   protected edit(claim: Claim): void {
     this.claimError.set(null);
     if (claim.status !== 'DRAFT') {
@@ -662,7 +696,45 @@ export class Claims {
       this.claimError.set({ id: claim.id, message: 'That claim is dated in a closed period.' });
       return;
     }
+    if (this.session.role() === 'viewer') {
+      this.claimError.set({ id: claim.id, message: 'A viewer cannot edit a claim.' });
+      return;
+    }
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.fill(claim);
+    // Another user's lock refuses it, though the editor is open: saving it is refused until the lock is gone.
+    const holder = lockHolder(claim, this.session.today());
+    if (holder !== null && holder !== this.session.user()) {
+      this.claimError.set({ id: claim.id, message: `${holder} is editing that claim.` });
+      return;
+    }
+    this.api.lock(sheetId, claim.id).subscribe({
+      next: (c) => {
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      // The editor stays open; saving it is refused while the claim stays locked, and always for a viewer.
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 403
+              ? 'A viewer cannot edit a claim.'
+              : e.status === 423
+              ? 'That claim is dated in a closed period.'
+              : e.status === 409
+              ? 'Someone else is editing that claim, or it is no longer a draft.'
+              : e.status === 404
+                ? 'That claim is no longer on this sheet.'
+                : 'Could not open that claim\'s editor.',
+        }),
+    });
+  }
+
+  /** Fill the form with the claim's values, as its editor. */
+  private fill(claim: Claim): void {
     this.editingId.set(claim.id);
+    this.editors.set(this.session.user(), this.session.sheetId(), this.personId(), claim.id);
     this.form.setValue(
       { amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' },
       { emitEvent: false },
@@ -670,8 +742,24 @@ export class Claims {
     this.formError.set(null);
   }
 
+  /** Close the claim's editor without saving, releasing its lock. */
+  protected cancel(): void {
+    const id = this.editingId();
+    const sheetId = this.session.sheetId();
+    this.reset();
+    if (id === null || !sheetId) return;
+    if (this.claimError()?.id === id) this.claimError.set(null);
+    this.api.unlock(sheetId, id).subscribe({
+      next: (c) => {
+        if (this.session.sheetId() === sheetId) this.saved.emit(c);
+      },
+      error: () => undefined,
+    });
+  }
+
   protected reset(): void {
     this.editingId.set(null);
+    this.editors.set(this.session.user(), this.session.sheetId(), this.personId(), null);
     this.form.reset(
       { amount: '', date: this.session.today() ?? '', note: '', corrects: '' },
       { emitEvent: false },
@@ -727,7 +815,7 @@ export class Claims {
               : e.status === 423
               ? 'That claim is dated in a closed period.'
               : e.status === 409
-                ? 'Only a draft claim can be edited. To change it, void it and add a new one.'
+                ? 'Only a draft claim can be edited, and not while someone else is editing it.'
                 : 'Could not save that claim.',
         );
       },
