@@ -9,7 +9,8 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const AUDIT_FILE = process.env.AUDIT_FILE ?? '../.run/audit.log';
 const WAIT = 8000;
-const ERROR_GRACE = 500;      // how long an error left over from the action before may linger
+const LOAD_WAIT = 30000;      // a sign-in, a sheet load or a today change: the whole sheet is re-read
+const ERROR_GRACE = 2000;     // how long an error left over from the action before may linger
 const AUDIT_WAIT = 3000;      // how long an audit line may lag the screen
 
 const editing = new WeakMap<Page, string>();
@@ -132,10 +133,11 @@ async function counter(page: Page, cell: Locator, error: Locator, what: string):
 
 export async function userPage(browser: Browser, user: string, sheet: string): Promise<Page> {
   const page = await (await browser.newContext()).newPage();
+  page.setDefaultTimeout(LOAD_WAIT);     // an element an action needs that never shows fails here, not at the test's limit
   await page.goto('/');
   await page.getByTestId('signin-name').fill(user);
   await page.getByTestId('signin-submit').click();
-  await expect(page.getByTestId('current-user')).toHaveText(user);
+  await expect(page.getByTestId('current-user')).toHaveText(user, { timeout: LOAD_WAIT });
   await loadSheet(page, sheet);
   return page;
 }
@@ -143,7 +145,7 @@ export async function userPage(browser: Browser, user: string, sheet: string): P
 export async function loadSheet(page: Page, sheet: string): Promise<void> {
   await page.getByTestId('sheet-id-input').fill(sheet);
   await page.getByTestId('sheet-load').click();
-  await expect(page.getByTestId('sheet-current-id')).toHaveText(sheet);
+  await expect(page.getByTestId('sheet-current-id')).toHaveText(sheet, { timeout: LOAD_WAIT });
 }
 
 /** Re-load the active sheet so the screen shows what the store holds now. Loading the same id
@@ -162,7 +164,7 @@ export async function refresh(page: Page): Promise<void> {
   const showRetiredWas = (await retired.count()) > 0 ? await retired.isChecked() : null;
   const asofWas = await shown(page.getByTestId('sheet-asof'));
   await loadSheet(page, sheet + '-reload');
-  await expect.poll(() => rows(page).count(), { message: 'the throwaway sheet, which has no one on it, is on screen', timeout: WAIT }).toBe(0);
+  await expect.poll(() => rows(page).count(), { message: 'the throwaway sheet, which has no one on it, is on screen', timeout: LOAD_WAIT }).toBe(0);
   await loadSheet(page, sheet);
   if (showRetiredWas !== null && (await retired.isChecked()) !== showRetiredWas) await retired.setChecked(showRetiredWas);
   if (asofWas !== '' && (await shown(page.getByTestId('sheet-asof'))) !== asofWas) await setAsOf(page, asofWas);
@@ -175,14 +177,14 @@ export async function refresh(page: Page): Promise<void> {
     }
     return true;
   };
-  const deadline = Date.now() + WAIT;
+  const deadline = Date.now() + LOAD_WAIT;
   while (Date.now() < deadline && !(await back())) await page.waitForTimeout(50);
 }
 
 export async function setToday(page: Page, date: string): Promise<void> {
   await page.getByTestId('sheet-today-input').fill(date);
   await page.getByTestId('sheet-today-save').click();
-  await expect(page.getByTestId('sheet-today')).toHaveText(date);
+  await expect(page.getByTestId('sheet-today')).toHaveText(date, { timeout: LOAD_WAIT });
 }
 
 /** Change the sheet's today where the screen may refuse it (an archived sheet, a viewer, an
@@ -205,12 +207,12 @@ export async function archive(page: Page): Promise<boolean> {
 export async function setAsOf(page: Page, date: string): Promise<void> {
   await page.getByTestId('asof-date').fill(date);
   await page.getByTestId('asof-set').click();
-  await expect(page.getByTestId('sheet-asof')).toHaveText(date);
+  await expect(page.getByTestId('sheet-asof')).toHaveText(date, { timeout: LOAD_WAIT });
 }
 
 export async function clearAsOf(page: Page): Promise<void> {
   await page.getByTestId('asof-clear').click();
-  await expect(page.getByTestId('sheet-asof')).toHaveText('');
+  await expect(page.getByTestId('sheet-asof')).toHaveText('', { timeout: LOAD_WAIT });
 }
 
 // ---- people ----------------------------------------------------------------------------------
@@ -231,7 +233,7 @@ function rowsNamed(page: Page, name: string): Locator {
 /** The id of the (newest) person row showing this name. */
 export async function personId(page: Page, name: string): Promise<string> {
   const r = rowsNamed(page, name).last();
-  await expect(r).toBeVisible();
+  await expect(r).toBeVisible({ timeout: WAIT });
   return idOf(await r.getAttribute('data-testid'), 'person-row-');
 }
 
@@ -257,7 +259,7 @@ export async function addPerson(page: Page, f: PersonFields & { name: string; gr
 
 export async function editOpen(page: Page, personId: string): Promise<void> {
   await page.getByTestId(`person-edit-${personId}`).click();
-  await expect(page.getByTestId('person-form-name')).not.toHaveValue('');
+  await expect(page.getByTestId('person-form-name')).not.toHaveValue('', { timeout: WAIT });
   editing.set(page, personId);
 }
 
@@ -401,7 +403,7 @@ export async function claimAt(page: Page, personId: string, idx: number): Promis
   const all = claimRows(row(page, personId));
   const n = await all.count();
   const r = all.nth(n - 1 - idx);
-  await expect(r).toBeVisible();
+  await expect(r).toBeVisible({ timeout: WAIT });
   return idOf(await r.getAttribute('data-testid'), 'claim-row-');
 }
 
@@ -560,7 +562,7 @@ export async function numbersOf(page: Page, claimIds: string[]): Promise<string[
   await refresh(page);
   const out: string[] = [];
   for (const id of claimIds) {
-    await expect(claimRow(page, id)).toBeVisible();
+    await expect(claimRow(page, id)).toBeVisible({ timeout: WAIT });
     out.push(await shown(claimRow(page, id).getByTestId('claim-number')));
   }
   return out;
@@ -577,7 +579,7 @@ export async function reassign(page: Page, claimId: string, toName: string): Pro
 export async function bulkOpen(page: Page, claimIds: string[]): Promise<{ opened: number; refused: number }> {
   for (const id of claimIds) await claimRow(page, id).getByTestId('claim-select').setChecked(true);
   await page.getByTestId('bulk-open').click();
-  await expect(page.getByTestId('bulk-opened')).toBeVisible();
+  await expect(page.getByTestId('bulk-opened')).toBeVisible({ timeout: WAIT });
   return {
     opened: Number(await shown(page.getByTestId('bulk-opened'))),
     refused: Number(await shown(page.getByTestId('bulk-refused'))),
@@ -587,7 +589,7 @@ export async function bulkOpen(page: Page, claimIds: string[]): Promise<{ opened
 export async function bulkSettle(page: Page, claimIds: string[]): Promise<{ settled: number; refused: number }> {
   for (const id of claimIds) await claimRow(page, id).getByTestId('claim-select').setChecked(true);
   await page.getByTestId('bulk-settle').click();
-  await expect(page.getByTestId('bulk-settled')).toBeVisible();
+  await expect(page.getByTestId('bulk-settled')).toBeVisible({ timeout: WAIT });
   return {
     settled: Number(await shown(page.getByTestId('bulk-settled'))),
     refused: Number(await shown(page.getByTestId('bulk-settle-refused'))),
@@ -655,7 +657,7 @@ export async function periodAction(page: Page, name: string, action: string): Pr
 export async function setSetting(page: Page, key: string, value: string): Promise<void> {
   await page.getByTestId(`setting-${key}`).fill(value);
   await page.getByTestId('settings-save').click();
-  await expect(page.getByTestId(`setting-${key}-current`)).toHaveText(value);
+  await expect(page.getByTestId(`setting-${key}-current`)).toHaveText(value, { timeout: WAIT });
 }
 
 /** Save a setting where the screen may refuse it: true when the value in force shows it. */

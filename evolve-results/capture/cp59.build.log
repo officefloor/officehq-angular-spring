@@ -1,0 +1,492 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts  (attempt 1, exit 1)
+ffective dated › rates effective dated scenario 2 
+    [chromium] › cp11_rates-effective-dated.spec.ts:412:7 › rates effective dated › rates effective dated scenario 3 
+    [chromium] › cp12_half-even.spec.ts:6:7 › half even › half even ────────────────────────────────
+    [chromium] › cp12_half-even.spec.ts:26:7 › half even › half even scenario 1 ────────────────────
+    [chromium] › cp12_half-even.spec.ts:150:7 › half even › half even scenario 2 ───────────────────
+    [chromium] › cp12_half-even.spec.ts:332:7 › half even › half even scenario 3 ───────────────────
+    [chromium] › cp13_four-eyes.spec.ts:6:7 › four eyes › four eyes ────────────────────────────────
+    [chromium] › cp13_four-eyes.spec.ts:43:7 › four eyes › four eyes scenario 1 ────────────────────
+    [chromium] › cp13_four-eyes.spec.ts:185:7 › four eyes › four eyes scenario 2 ───────────────────
+    [chromium] › cp13_four-eyes.spec.ts:351:7 › four eyes › four eyes scenario 3 ───────────────────
+    [chromium] › cp14_edit-conflict.spec.ts:6:7 › edit conflict › edit conflict ────────────────────
+    [chromium] › cp14_edit-conflict.spec.ts:34:7 › edit conflict › edit conflict scenario 1 ────────
+    [chromium] › cp14_edit-conflict.spec.ts:184:7 › edit conflict › edit conflict scenario 2 ───────
+    [chromium] › cp14_edit-conflict.spec.ts:355:7 › edit conflict › edit conflict scenario 3 ───────
+    [chromium] › cp15_statements.spec.ts:6:7 › statements › statements ─────────────────────────────
+    [chromium] › cp15_statements.spec.ts:104:7 › statements › statements scenario 1 ────────────────
+    [chromium] › cp15_statements.spec.ts:340:7 › statements › statements scenario 2 ────────────────
+    [chromium] › cp15_statements.spec.ts:514:7 › statements › statements scenario 3 ────────────────
+    [chromium] › cp16_rollup-audit.spec.ts:6:7 › rollup audit › rollup audit ───────────────────────
+    [chromium] › cp16_rollup-audit.spec.ts:79:7 › rollup audit › rollup audit scenario 1 ───────────
+    [chromium] › cp16_rollup-audit.spec.ts:263:7 › rollup audit › rollup audit scenario 2 ──────────
+    [chromium] › cp16_rollup-audit.spec.ts:427:7 › rollup audit › rollup audit scenario 3 ──────────
+    [chromium] › cp17_periods.spec.ts:6:7 › periods › periods ──────────────────────────────────────
+    [chromium] › cp17_periods.spec.ts:52:7 › periods › periods scenario 1 ──────────────────────────
+    [chromium] › cp17_periods.spec.ts:215:7 › periods › periods scenario 2 ─────────────────────────
+    [chromium] › cp17_periods.spec.ts:378:7 › periods › periods scenario 3 ─────────────────────────
+    [chromium] › cp18_close-period.spec.ts:6:7 › close period › close period ───────────────────────
+    [chromium] › cp18_close-period.spec.ts:61:7 › close period › close period scenario 1 ───────────
+    [chromium] › cp18_close-period.spec.ts:184:7 › close period › close period scenario 2 ──────────
+    [chromium] › cp18_close-period.spec.ts:316:7 › close period › close period scenario 3 ──────────
+    [chromium] › cp19_quick-add.spec.ts:6:7 › quick add › quick add ────────────────────────────────
+    [chromium] › cp19_quick-add.spec.ts:48:7 › quick add › quick add scenario 1 ────────────────────
+    [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2 ───────────────────
+    [chromium] › cp19_quick-add.spec.ts:394:7 › quick add › quick add scenario 3 ───────────────────
+    [chromium] › cp20_open-claims-immutable.spec.ts:6:7 › open claims immutable › open claims immutable 
+    [chromium] › cp20_open-claims-immutable.spec.ts:45:7 › open claims immutable › open claims immutable scenario 1 
+    [chromium] › cp20_open-claims-immutable.spec.ts:306:7 › open claims immutable › open claims immutable scenario 2 
+    [chromium] › cp20_open-claims-immutable.spec.ts:469:7 › open claims immutable › open claims immutable scenario 3 
+    [chromium] › cp21_retire.spec.ts:6:7 › retire › retire ─────────────────────────────────────────
+    [chromium] › cp21_retire.spec.ts:61:7 › retire › retire scenario 1 ─────────────────────────────
+    [chromium] › cp21_retire.spec.ts:180:7 › retire › retire scenario 2 ────────────────────────────
+    [chromium] › cp21_retire.spec.ts:369:7 › retire › retire scenario 3 ────────────────────────────
+    [chromium] › cp22_hold.spec.ts:6:7 › hold › hold ───────────────────────────────────────────────
+    [chromium] › cp22_hold.spec.ts:63:7 › hold › hold scenario 1 ───────────────────────────────────
+    [chromium] › cp22_hold.spec.ts:262:7 › hold › hold scenario 2 ──────────────────────────────────
+    [chromium] › cp22_hold.spec.ts:397:7 › hold › hold scenario 3 ──────────────────────────────────
+    [chromium] › cp23_roles-and-clerk-limit.spec.ts:6:7 › roles and clerk limit › roles and clerk limit 
+    [chromium] › cp23_roles-and-clerk-limit.spec.ts:72:7 › roles and clerk limit › roles and clerk limit scenario 1 
+    [chromium] › cp23_roles-and-clerk-limit.spec.ts:222:7 › roles and clerk limit › roles and clerk limit scenario 2 
+    [chromium] › cp23_roles-and-clerk-limit.spec.ts:386:7 › roles and clerk limit › roles and clerk limit scenario 3 
+    [chromium] › cp24_floor.spec.ts:6:7 › floor › floor ────────────────────────────────────────────
+    [chromium] › cp24_floor.spec.ts:98:7 › floor › floor scenario 1 ────────────────────────────────
+    [chromium] › cp24_floor.spec.ts:260:7 › floor › floor scenario 2 ───────────────────────────────
+    [chromium] › cp24_floor.spec.ts:408:7 › floor › floor scenario 3 ───────────────────────────────
+    [chromium] › cp25_due-by-and-overdue.spec.ts:6:7 › due by and overdue › due by and overdue ─────
+    [chromium] › cp25_due-by-and-overdue.spec.ts:84:7 › due by and overdue › due by and overdue scenario 1 
+    [chromium] › cp25_due-by-and-overdue.spec.ts:300:7 › due by and overdue › due by and overdue scenario 2 
+    [chromium] › cp25_due-by-and-overdue.spec.ts:453:7 › due by and overdue › due by and overdue scenario 3 
+    [chromium] › cp26_late-charge.spec.ts:6:7 › late charge › late charge ──────────────────────────
+    [chromium] › cp26_late-charge.spec.ts:86:7 › late charge › late charge scenario 1 ──────────────
+    [chromium] › cp26_late-charge.spec.ts:283:7 › late charge › late charge scenario 2 ─────────────
+    [chromium] › cp26_late-charge.spec.ts:445:7 › late charge › late charge scenario 3 ─────────────
+    [chromium] › cp27_patrons-and-backing.spec.ts:6:7 › patrons and backing › patrons and backing ──
+    [chromium] › cp27_patrons-and-backing.spec.ts:74:7 › patrons and backing › patrons and backing scenario 1 
+    [chromium] › cp27_patrons-and-backing.spec.ts:247:7 › patrons and backing › patrons and backing scenario 2 
+    [chromium] › cp27_patrons-and-backing.spec.ts:426:7 › patrons and backing › patrons and backing scenario 3 
+    [chromium] › cp28_grade-dated.spec.ts:6:7 › grade dated › grade dated ──────────────────────────
+    [chromium] › cp28_grade-dated.spec.ts:66:7 › grade dated › grade dated scenario 1 ──────────────
+    [chromium] › cp28_grade-dated.spec.ts:225:7 › grade dated › grade dated scenario 2 ─────────────
+    [chromium] › cp28_grade-dated.spec.ts:422:7 › grade dated › grade dated scenario 3 ─────────────
+    [chromium] › cp29_reopen-period.spec.ts:6:7 › reopen period › reopen period ────────────────────
+    [chromium] › cp29_reopen-period.spec.ts:76:7 › reopen period › reopen period scenario 1 ────────
+    [chromium] › cp29_reopen-period.spec.ts:241:7 › reopen period › reopen period scenario 2 ───────
+    [chromium] › cp29_reopen-period.spec.ts:388:7 › reopen period › reopen period scenario 3 ───────
+    [chromium] › cp30_corrections.spec.ts:6:7 › corrections › corrections ──────────────────────────
+    [chromium] › cp30_corrections.spec.ts:70:7 › corrections › corrections scenario 1 ──────────────
+    [chromium] › cp30_corrections.spec.ts:283:7 › corrections › corrections scenario 2 ─────────────
+    [chromium] › cp30_corrections.spec.ts:489:7 › corrections › corrections scenario 3 ─────────────
+    [chromium] › cp31_summary.spec.ts:6:7 › summary › summary ──────────────────────────────────────
+    [chromium] › cp31_summary.spec.ts:51:7 › summary › summary scenario 1 ──────────────────────────
+    [chromium] › cp31_summary.spec.ts:213:7 › summary › summary scenario 2 ─────────────────────────
+    [chromium] › cp31_summary.spec.ts:397:7 › summary › summary scenario 3 ─────────────────────────
+    [chromium] › cp32_rounding-policy-date.spec.ts:6:7 › rounding policy date › rounding policy date 
+    [chromium] › cp32_rounding-policy-date.spec.ts:121:7 › rounding policy date › rounding policy date scenario 1 
+    [chromium] › cp32_rounding-policy-date.spec.ts:405:7 › rounding policy date › rounding policy date scenario 2 
+    [chromium] › cp32_rounding-policy-date.spec.ts:618:7 › rounding policy date › rounding policy date scenario 3 
+    [chromium] › cp33_export-people.spec.ts:6:7 › export people › export people ────────────────────
+    [chromium] › cp33_export-people.spec.ts:22:7 › export people › export people scenario 1 ────────
+    [chromium] › cp33_export-people.spec.ts:250:7 › export people › export people scenario 2 ───────
+    [chromium] › cp33_export-people.spec.ts:459:7 › export people › export people scenario 3 ───────
+    [chromium] › cp34_bulk-open.spec.ts:6:7 › bulk open › bulk open ────────────────────────────────
+    [chromium] › cp34_bulk-open.spec.ts:55:7 › bulk open › bulk open scenario 1 ────────────────────
+    [chromium] › cp34_bulk-open.spec.ts:299:7 › bulk open › bulk open scenario 2 ───────────────────
+    [chromium] › cp34_bulk-open.spec.ts:484:7 › bulk open › bulk open scenario 3 ───────────────────
+    [chromium] › cp35_numbering-per-period.spec.ts:6:7 › numbering per period › numbering per period 
+    [chromium] › cp35_numbering-per-period.spec.ts:77:7 › numbering per period › numbering per period scenario 1 
+    [chromium] › cp35_numbering-per-period.spec.ts:381:7 › numbering per period › numbering per period scenario 2 
+    [chromium] › cp35_numbering-per-period.spec.ts:652:7 › numbering per period › numbering per period scenario 3 
+    [chromium] › cp36_approvals.spec.ts:6:7 › approvals › approvals ────────────────────────────────
+    [chromium] › cp36_approvals.spec.ts:99:7 › approvals › approvals scenario 1 ────────────────────
+    [chromium] › cp36_approvals.spec.ts:248:7 › approvals › approvals scenario 2 ───────────────────
+    [chromium] › cp36_approvals.spec.ts:534:7 › approvals › approvals scenario 3 ───────────────────
+    [chromium] › cp37_reassign-claim.spec.ts:6:7 › reassign claim › reassign claim ─────────────────
+    [chromium] › cp37_reassign-claim.spec.ts:76:7 › reassign claim › reassign claim scenario 1 ─────
+    [chromium] › cp37_reassign-claim.spec.ts:287:7 › reassign claim › reassign claim scenario 2 ────
+    [chromium] › cp37_reassign-claim.spec.ts:508:7 › reassign claim › reassign claim scenario 3 ────
+    [chromium] › cp38_terms-per-grade.spec.ts:6:7 › terms per grade › terms per grade ──────────────
+    [chromium] › cp38_terms-per-grade.spec.ts:61:7 › terms per grade › terms per grade scenario 1 ──
+    [chromium] › cp38_terms-per-grade.spec.ts:282:7 › terms per grade › terms per grade scenario 2 ─
+    [chromium] › cp38_terms-per-grade.spec.ts:535:7 › terms per grade › terms per grade scenario 3 ─
+    [chromium] › cp39_claim-log.spec.ts:6:7 › claim log › claim log ────────────────────────────────
+    [chromium] › cp39_claim-log.spec.ts:31:7 › claim log › claim log scenario 1 ────────────────────
+    [chromium] › cp39_claim-log.spec.ts:326:7 › claim log › claim log scenario 2 ───────────────────
+    [chromium] › cp39_claim-log.spec.ts:515:7 › claim log › claim log scenario 3 ───────────────────
+    [chromium] › cp40_hold-interval.spec.ts:6:7 › hold interval › hold interval ────────────────────
+    [chromium] › cp40_hold-interval.spec.ts:90:7 › hold interval › hold interval scenario 1 ────────
+    [chromium] › cp40_hold-interval.spec.ts:392:7 › hold interval › hold interval scenario 2 ───────
+    [chromium] › cp40_hold-interval.spec.ts:616:7 › hold interval › hold interval scenario 3 ───────
+    [chromium] › cp41_header-counters.spec.ts:6:7 › header counters › header counters ──────────────
+    [chromium] › cp41_header-counters.spec.ts:108:7 › header counters › header counters scenario 1 ─
+    [chromium] › cp41_header-counters.spec.ts:363:7 › header counters › header counters scenario 2 ─
+    [chromium] › cp41_header-counters.spec.ts:633:7 › header counters › header counters scenario 3 ─
+    [chromium] › cp42_rate-end-dates.spec.ts:6:7 › rate end dates › rate end dates ─────────────────
+    [chromium] › cp42_rate-end-dates.spec.ts:81:7 › rate end dates › rate end dates scenario 1 ─────
+    [chromium] › cp42_rate-end-dates.spec.ts:337:7 › rate end dates › rate end dates scenario 2 ────
+    [chromium] › cp42_rate-end-dates.spec.ts:644:7 › rate end dates › rate end dates scenario 3 ────
+    [chromium] › cp43_cap.spec.ts:6:7 › cap › cap ──────────────────────────────────────────────────
+    [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1 ─────────────────────────────────────
+    [chromium] › cp43_cap.spec.ts:324:7 › cap › cap scenario 2 ─────────────────────────────────────
+    [chromium] › cp43_cap.spec.ts:612:7 › cap › cap scenario 3 ─────────────────────────────────────
+    [chromium] › cp44_rollup-overdue.spec.ts:6:7 › rollup overdue › rollup overdue ─────────────────
+    [chromium] › cp44_rollup-overdue.spec.ts:73:7 › rollup overdue › rollup overdue scenario 1 ─────
+    [chromium] › cp44_rollup-overdue.spec.ts:268:7 › rollup overdue › rollup overdue scenario 2 ────
+    [chromium] › cp44_rollup-overdue.spec.ts:539:7 › rollup overdue › rollup overdue scenario 3 ────
+    [chromium] › cp45_bulk-settle.spec.ts:6:7 › bulk settle › bulk settle ──────────────────────────
+    [chromium] › cp45_bulk-settle.spec.ts:104:7 › bulk settle › bulk settle scenario 1 ─────────────
+    [chromium] › cp45_bulk-settle.spec.ts:373:7 › bulk settle › bulk settle scenario 2 ─────────────
+    [chromium] › cp45_bulk-settle.spec.ts:546:7 › bulk settle › bulk settle scenario 3 ─────────────
+    [chromium] › cp46_re-settle.spec.ts:6:7 › re settle › re settle ────────────────────────────────
+    [chromium] › cp46_re-settle.spec.ts:108:7 › re settle › re settle scenario 1 ───────────────────
+    [chromium] › cp46_re-settle.spec.ts:385:7 › re settle › re settle scenario 2 ───────────────────
+    [chromium] › cp46_re-settle.spec.ts:673:7 › re settle › re settle scenario 3 ───────────────────
+    [chromium] › cp47_person-period-figures.spec.ts:6:7 › person period figures › person period figures 
+    [chromium] › cp47_person-period-figures.spec.ts:122:7 › person period figures › person period figures scenario 1 
+    [chromium] › cp47_person-period-figures.spec.ts:461:7 › person period figures › person period figures scenario 2 
+    [chromium] › cp47_person-period-figures.spec.ts:725:7 › person period figures › person period figures scenario 3 
+    [chromium] › cp48_dated-settings.spec.ts:6:7 › dated settings › dated settings ─────────────────
+    [chromium] › cp48_dated-settings.spec.ts:132:7 › dated settings › dated settings scenario 1 ────
+    [chromium] › cp48_dated-settings.spec.ts:426:7 › dated settings › dated settings scenario 2 ────
+    [chromium] › cp48_dated-settings.spec.ts:709:7 › dated settings › dated settings scenario 3 ────
+    [chromium] › cp49_paste-claims.spec.ts:6:7 › paste claims › paste claims ───────────────────────
+    [chromium] › cp49_paste-claims.spec.ts:79:7 › paste claims › paste claims scenario 1 ───────────
+    [chromium] › cp49_paste-claims.spec.ts:364:7 › paste claims › paste claims scenario 2 ──────────
+    [chromium] › cp49_paste-claims.spec.ts:705:7 › paste claims › paste claims scenario 3 ──────────
+    [chromium] › cp50_deferred-claims.spec.ts:6:7 › deferred claims › deferred claims ──────────────
+    [chromium] › cp50_deferred-claims.spec.ts:134:7 › deferred claims › deferred claims scenario 1 ─
+    [chromium] › cp50_deferred-claims.spec.ts:372:7 › deferred claims › deferred claims scenario 2 ─
+    [chromium] › cp50_deferred-claims.spec.ts:776:7 › deferred claims › deferred claims scenario 3 ─
+    [chromium] › cp51_proofs.spec.ts:6:7 › proofs › proofs ─────────────────────────────────────────
+    [chromium] › cp51_proofs.spec.ts:87:7 › proofs › proofs scenario 1 ─────────────────────────────
+    [chromium] › cp51_proofs.spec.ts:349:7 › proofs › proofs scenario 2 ────────────────────────────
+    [chromium] › cp51_proofs.spec.ts:711:7 › proofs › proofs scenario 3 ────────────────────────────
+    [chromium] › cp52_period-status-as-of-end.spec.ts:6:7 › period status as of end › period status as of end 
+    [chromium] › cp52_period-status-as-of-end.spec.ts:126:7 › period status as of end › period status as of end scenario 1 
+    [chromium] › cp52_period-status-as-of-end.spec.ts:498:7 › period status as of end › period status as of end scenario 2 
+    [chromium] › cp52_period-status-as-of-end.spec.ts:812:7 › period status as of end › period status as of end scenario 3 
+    [chromium] › cp53_permission-matrix.spec.ts:6:7 › permission matrix › permission matrix ────────
+    [chromium] › cp53_permission-matrix.spec.ts:97:7 › permission matrix › permission matrix scenario 1 
+    [chromium] › cp53_permission-matrix.spec.ts:349:7 › permission matrix › permission matrix scenario 2 
+    [chromium] › cp53_permission-matrix.spec.ts:685:7 › permission matrix › permission matrix scenario 3 
+    [chromium] › cp54_viewer-role.spec.ts:6:7 › viewer role › viewer role ──────────────────────────
+    [chromium] › cp54_viewer-role.spec.ts:78:7 › viewer role › viewer role scenario 1 ──────────────
+    [chromium] › cp54_viewer-role.spec.ts:291:7 › viewer role › viewer role scenario 2 ─────────────
+    [chromium] › cp54_viewer-role.spec.ts:613:7 › viewer role › viewer role scenario 3 ─────────────
+    [chromium] › cp55_auto-close.spec.ts:6:7 › auto close › auto close ─────────────────────────────
+    [chromium] › cp55_auto-close.spec.ts:95:7 › auto close › auto close scenario 1 ─────────────────
+    [chromium] › cp55_auto-close.spec.ts:367:7 › auto close › auto close scenario 2 ────────────────
+    [chromium] › cp55_auto-close.spec.ts:614:7 › auto close › auto close scenario 3 ────────────────
+    [chromium] › cp56_late-per-boundary.spec.ts:6:7 › late per boundary › late per boundary ────────
+    [chromium] › cp56_late-per-boundary.spec.ts:84:7 › late per boundary › late per boundary scenario 1 
+    [chromium] › cp56_late-per-boundary.spec.ts:395:7 › late per boundary › late per boundary scenario 2 
+    [chromium] › cp56_late-per-boundary.spec.ts:674:7 › late per boundary › late per boundary scenario 3 
+    [chromium] › cp57_split-claim.spec.ts:6:7 › split claim › split claim ──────────────────────────
+    [chromium] › cp57_split-claim.spec.ts:142:7 › split claim › split claim scenario 1 ─────────────
+    [chromium] › cp57_split-claim.spec.ts:464:7 › split claim › split claim scenario 2 ─────────────
+    [chromium] › cp57_split-claim.spec.ts:752:7 › split claim › split claim scenario 3 ─────────────
+    [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify ───────────
+    [chromium] › cp58_watch-and-notify.spec.ts:98:7 › watch and notify › watch and notify scenario 1 
+    [chromium] › cp58_watch-and-notify.spec.ts:359:7 › watch and notify › watch and notify scenario 2 
+    [chromium] › cp58_watch-and-notify.spec.ts:695:7 › watch and notify › watch and notify scenario 3 
+    [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ───────────
+    [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1 
+    [chromium] › cp59_period-templates.spec.ts:332:7 › period templates › period templates scenario 2 
+    [chromium] › cp59_period-templates.spec.ts:604:7 › period templates › period templates scenario 3 
+  5 passed (3.1m)
+
+[gate attempt 1] app was no longer healthy after the run — it died mid-gate
+$ npx playwright test --reporter=json --workers=1 --output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts  (attempt 2, exit 1)
+.spec.ts:6:7 › terms per grade › terms per grade
+[1A[2K[138/224] [chromium] › cp38_terms-per-grade.spec.ts:61:7 › terms per grade › terms per grade scenario 1
+[1A[2K[139/224] [chromium] › cp38_terms-per-grade.spec.ts:282:7 › terms per grade › terms per grade scenario 2
+[1A[2K[140/224] [chromium] › cp38_terms-per-grade.spec.ts:535:7 › terms per grade › terms per grade scenario 3
+[1A[2K[141/224] [chromium] › cp39_claim-log.spec.ts:6:7 › claim log › claim log
+[1A[2K[142/224] [chromium] › cp39_claim-log.spec.ts:31:7 › claim log › claim log scenario 1
+[1A[2K[143/224] [chromium] › cp39_claim-log.spec.ts:326:7 › claim log › claim log scenario 2
+[1A[2K[144/224] [chromium] › cp39_claim-log.spec.ts:515:7 › claim log › claim log scenario 3
+[1A[2K[145/224] [chromium] › cp40_hold-interval.spec.ts:6:7 › hold interval › hold interval
+[1A[2K[146/224] [chromium] › cp40_hold-interval.spec.ts:90:7 › hold interval › hold interval scenario 1
+[1A[2K[147/224] [chromium] › cp40_hold-interval.spec.ts:392:7 › hold interval › hold interval scenario 2
+[1A[2K[148/224] [chromium] › cp40_hold-interval.spec.ts:616:7 › hold interval › hold interval scenario 3
+[1A[2K[149/224] [chromium] › cp41_header-counters.spec.ts:6:7 › header counters › header counters
+[1A[2K[150/224] [chromium] › cp41_header-counters.spec.ts:108:7 › header counters › header counters scenario 1
+[1A[2K[151/224] [chromium] › cp41_header-counters.spec.ts:363:7 › header counters › header counters scenario 2
+[1A[2K[152/224] [chromium] › cp41_header-counters.spec.ts:633:7 › header counters › header counters scenario 3
+[1A[2K[153/224] [chromium] › cp42_rate-end-dates.spec.ts:6:7 › rate end dates › rate end dates
+[1A[2K[154/224] [chromium] › cp42_rate-end-dates.spec.ts:81:7 › rate end dates › rate end dates scenario 1
+[1A[2K[155/224] [chromium] › cp42_rate-end-dates.spec.ts:337:7 › rate end dates › rate end dates scenario 2
+[1A[2K[156/224] [chromium] › cp42_rate-end-dates.spec.ts:644:7 › rate end dates › rate end dates scenario 3
+[1A[2K[157/224] [chromium] › cp43_cap.spec.ts:6:7 › cap › cap
+[1A[2K[158/224] [chromium] › cp43_cap.spec.ts:118:7 › cap › cap scenario 1
+[1A[2K[159/224] [chromium] › cp43_cap.spec.ts:324:7 › cap › cap scenario 2
+[1A[2K[160/224] [chromium] › cp43_cap.spec.ts:612:7 › cap › cap scenario 3
+[1A[2K[161/224] [chromium] › cp44_rollup-overdue.spec.ts:6:7 › rollup overdue › rollup overdue
+[1A[2K[162/224] [chromium] › cp44_rollup-overdue.spec.ts:73:7 › rollup overdue › rollup overdue scenario 1
+[1A[2K[163/224] [chromium] › cp44_rollup-overdue.spec.ts:268:7 › rollup overdue › rollup overdue scenario 2
+[1A[2K[164/224] [chromium] › cp44_rollup-overdue.spec.ts:539:7 › rollup overdue › rollup overdue scenario 3
+[1A[2K[165/224] [chromium] › cp45_bulk-settle.spec.ts:6:7 › bulk settle › bulk settle
+[1A[2K[166/224] [chromium] › cp45_bulk-settle.spec.ts:104:7 › bulk settle › bulk settle scenario 1
+[1A[2K[167/224] [chromium] › cp45_bulk-settle.spec.ts:373:7 › bulk settle › bulk settle scenario 2
+[1A[2K[168/224] [chromium] › cp45_bulk-settle.spec.ts:546:7 › bulk settle › bulk settle scenario 3
+[1A[2K[169/224] [chromium] › cp46_re-settle.spec.ts:6:7 › re settle › re settle
+[1A[2K[170/224] [chromium] › cp46_re-settle.spec.ts:108:7 › re settle › re settle scenario 1
+[1A[2K[171/224] [chromium] › cp46_re-settle.spec.ts:385:7 › re settle › re settle scenario 2
+[1A[2K[172/224] [chromium] › cp46_re-settle.spec.ts:673:7 › re settle › re settle scenario 3
+[1A[2K[173/224] [chromium] › cp47_person-period-figures.spec.ts:6:7 › person period figures › person period figures
+[1A[2K[174/224] [chromium] › cp47_person-period-figures.spec.ts:122:7 › person period figures › person period figures scenario 1
+[1A[2K[175/224] [chromium] › cp47_person-period-figures.spec.ts:461:7 › person period figures › person period figures scenario 2
+[1A[2K[176/224] [chromium] › cp47_person-period-figures.spec.ts:725:7 › person period figures › person period figures scenario 3
+[1A[2K[177/224] [chromium] › cp48_dated-settings.spec.ts:6:7 › dated settings › dated settings
+[1A[2K[178/224] [chromium] › cp48_dated-settings.spec.ts:132:7 › dated settings › dated settings scenario 1
+[1A[2K[179/224] [chromium] › cp48_dated-settings.spec.ts:426:7 › dated settings › dated settings scenario 2
+[1A[2K[180/224] [chromium] › cp48_dated-settings.spec.ts:709:7 › dated settings › dated settings scenario 3
+[1A[2K[181/224] [chromium] › cp49_paste-claims.spec.ts:6:7 › paste claims › paste claims
+[1A[2K[182/224] [chromium] › cp49_paste-claims.spec.ts:79:7 › paste claims › paste claims scenario 1
+[1A[2K[183/224] [chromium] › cp49_paste-claims.spec.ts:364:7 › paste claims › paste claims scenario 2
+[1A[2K[184/224] [chromium] › cp49_paste-claims.spec.ts:705:7 › paste claims › paste claims scenario 3
+[1A[2K[185/224] [chromium] › cp50_deferred-claims.spec.ts:6:7 › deferred claims › deferred claims
+[1A[2K[186/224] [chromium] › cp50_deferred-claims.spec.ts:134:7 › deferred claims › deferred claims scenario 1
+[1A[2K[187/224] [chromium] › cp50_deferred-claims.spec.ts:372:7 › deferred claims › deferred claims scenario 2
+[1A[2K[188/224] [chromium] › cp50_deferred-claims.spec.ts:776:7 › deferred claims › deferred claims scenario 3
+[1A[2K[189/224] [chromium] › cp51_proofs.spec.ts:6:7 › proofs › proofs
+[1A[2K[190/224] [chromium] › cp51_proofs.spec.ts:87:7 › proofs › proofs scenario 1
+[1A[2K[191/224] [chromium] › cp51_proofs.spec.ts:349:7 › proofs › proofs scenario 2
+[1A[2K[192/224] [chromium] › cp51_proofs.spec.ts:711:7 › proofs › proofs scenario 3
+[1A[2K[193/224] [chromium] › cp52_period-status-as-of-end.spec.ts:6:7 › period status as of end › period status as of end
+[1A[2K[194/224] [chromium] › cp52_period-status-as-of-end.spec.ts:126:7 › period status as of end › period status as of end scenario 1
+[1A[2K[195/224] [chromium] › cp52_period-status-as-of-end.spec.ts:498:7 › period status as of end › period status as of end scenario 2
+[1A[2K[196/224] [chromium] › cp52_period-status-as-of-end.spec.ts:812:7 › period status as of end › period status as of end scenario 3
+[1A[2K[197/224] [chromium] › cp53_permission-matrix.spec.ts:6:7 › permission matrix › permission matrix
+[1A[2K[198/224] [chromium] › cp53_permission-matrix.spec.ts:97:7 › permission matrix › permission matrix scenario 1
+[1A[2K[199/224] [chromium] › cp53_permission-matrix.spec.ts:349:7 › permission matrix › permission matrix scenario 2
+[1A[2K[200/224] [chromium] › cp53_permission-matrix.spec.ts:685:7 › permission matrix › permission matrix scenario 3
+[1A[2K[201/224] [chromium] › cp54_viewer-role.spec.ts:6:7 › viewer role › viewer role
+[1A[2K[202/224] [chromium] › cp54_viewer-role.spec.ts:78:7 › viewer role › viewer role scenario 1
+[1A[2K[203/224] [chromium] › cp54_viewer-role.spec.ts:291:7 › viewer role › viewer role scenario 2
+[1A[2K[204/224] [chromium] › cp54_viewer-role.spec.ts:613:7 › viewer role › viewer role scenario 3
+[1A[2K[205/224] [chromium] › cp55_auto-close.spec.ts:6:7 › auto close › auto close
+[1A[2K[206/224] [chromium] › cp55_auto-close.spec.ts:95:7 › auto close › auto close scenario 1
+[1A[2K[207/224] [chromium] › cp55_auto-close.spec.ts:367:7 › auto close › auto close scenario 2
+[1A[2K[208/224] [chromium] › cp55_auto-close.spec.ts:614:7 › auto close › auto close scenario 3
+[1A[2K[209/224] [chromium] › cp56_late-per-boundary.spec.ts:6:7 › late per boundary › late per boundary
+[1A[2K[210/224] [chromium] › cp56_late-per-boundary.spec.ts:84:7 › late per boundary › late per boundary scenario 1
+[1A[2K[211/224] [chromium] › cp56_late-per-boundary.spec.ts:395:7 › late per boundary › late per boundary scenario 2
+[1A[2K[212/224] [chromium] › cp56_late-per-boundary.spec.ts:674:7 › late per boundary › late per boundary scenario 3
+[1A[2K[213/224] [chromium] › cp57_split-claim.spec.ts:6:7 › split claim › split claim
+[1A[2K[214/224] [chromium] › cp57_split-claim.spec.ts:142:7 › split claim › split claim scenario 1
+[1A[2K[215/224] [chromium] › cp57_split-claim.spec.ts:464:7 › split claim › split claim scenario 2
+[1A[2K  2) [chromium] › cp57_split-claim.spec.ts:464:7 › split claim › split claim scenario 2 ────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      509 |     expect(await ui.statement(pg_vic, p_cam)).toBe(true);
+      510 |     expect(await ui.retire(pg_vic, p_cam, "2026-03-20")).toBe(true);
+    > 511 |     expect(await ui.statement(pg_vic, p_ben)).toBe(true);
+          |                                               ^
+      512 |     await ui.showRetired(pg_vic, true);
+      513 |     const c_cam_0 = ui.must(await ui.addClaim(pg_vic, p_cam, {"amount": "0.04", "date": "2026-03-05"}));
+      514 |     const c_ben_1 = ui.must(await ui.addClaim(pg_vic, p_ben, {"amount": "3.33", "date": "2026-03-01"}));
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp57_split-claim.spec.ts:511:47
+
+
+[1A[2K[216/224] [chromium] › cp57_split-claim.spec.ts:752:7 › split claim › split claim scenario 3
+[1A[2K  3) [chromium] › cp57_split-claim.spec.ts:752:7 › split claim › split claim scenario 3 ────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      759 |     await ui.setSetting(pg_uma, "period-numbering-from", "2026-03-01");
+      760 |     await ui.setSetting(pg_uma, "proof-threshold", "1.00");
+    > 761 |     expect(await ui.setRole(pg_uma, "vic", "viewer")).toBe(true);
+          |                                                       ^
+      762 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "7.50"})).toBe(true);
+      763 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "10.00"})).toBe(true);
+      764 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "20.00", "from": "2026-03-10"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp57_split-claim.spec.ts:761:55
+
+
+[1A[2K[217/224] [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify
+[1A[2K  4) [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       8 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       9 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "20.00"})).toBe(true);
+      12 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      13 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {"name": "Ben", "grade": "B"}));
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:10:70
+
+
+[1A[2K[218/224] [chromium] › cp58_watch-and-notify.spec.ts:98:7 › watch and notify › watch and notify scenario 1
+[1A[2K  5) [chromium] › cp58_watch-and-notify.spec.ts:98:7 › watch and notify › watch and notify scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      100 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      101 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 102 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      103 |     await ui.setSetting(pg_uma, "clerk-limit", "3.00");
+      104 |     await ui.setSetting(pg_uma, "late-pct", "10.00");
+      105 |     await ui.setSetting(pg_uma, "perm-open", "clerk");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:102:56
+
+
+[1A[2K[219/224] [chromium] › cp58_watch-and-notify.spec.ts:359:7 › watch and notify › watch and notify scenario 2
+[1A[2K  6) [chromium] › cp58_watch-and-notify.spec.ts:359:7 › watch and notify › watch and notify scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      361 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      362 |     await ui.setToday(pg_uma, "2026-03-20");
+    > 363 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+          |                                                        ^
+      364 |     await ui.setSetting(pg_uma, "floor", "2.00");
+      365 |     await ui.setSetting(pg_uma, "terms", "7");
+      366 |     await ui.setSetting(pg_uma, "policy-date", "2026-03-15");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:363:56
+
+
+[1A[2K[220/224] [chromium] › cp58_watch-and-notify.spec.ts:695:7 › watch and notify › watch and notify scenario 3
+[1A[2K  7) [chromium] › cp58_watch-and-notify.spec.ts:695:7 › watch and notify › watch and notify scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      697 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      698 |     await ui.setToday(pg_uma, "2026-04-05");
+    > 699 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      700 |     await ui.setSetting(pg_uma, "terms", "30");
+      701 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+      702 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "33.33"})).toBe(true);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp58_watch-and-notify.spec.ts:699:56
+
+
+[1A[2K[221/224] [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates
+[1A[2K  8) [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       8 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+       9 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 10 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "10.00"})).toBe(true);
+         |                                                                      ^
+      11 |     const p_ada = ui.must(await ui.addPerson(pg_uma, {"name": "Ada", "grade": "A"}));
+      12 |     expect(await ui.addPeriod(pg_uma, {"name": "P1", "from": "2026-03-05", "to": "2026-03-08"})).toBe(true);
+      13 |     expect(await ui.generatePeriods(pg_uma, "2026-02-15", "2026-04-10")).toBe(2);
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:10:70
+
+
+[1A[2K[222/224] [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1
+[1A[2K  9) [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      105 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      106 |     await ui.setToday(pg_uma, "2026-03-20");
+    > 107 |     expect(await ui.setRole(pg_uma, "vic", "steward")).toBe(true);
+          |                                                        ^
+      108 |     await ui.setSetting(pg_uma, "clerk-limit", "3.00");
+      109 |     await ui.setSetting(pg_uma, "floor", "0.50");
+      110 |     await ui.setSetting(pg_uma, "terms", "10");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:107:56
+
+
+[1A[2K[223/224] [chromium] › cp59_period-templates.spec.ts:332:7 › period templates › period templates scenario 2
+[1A[2K  10) [chromium] › cp59_period-templates.spec.ts:332:7 › period templates › period templates scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      334 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      335 |     await ui.setToday(pg_uma, "2026-03-10");
+    > 336 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      337 |     await ui.setSetting(pg_uma, "clerk-limit", "1.50");
+      338 |     await ui.setSetting(pg_uma, "terms", "7");
+      339 |     await ui.setSetting(pg_uma, "late-pct", "5.00");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:336:56
+
+
+[1A[2K[224/224] [chromium] › cp59_period-templates.spec.ts:604:7 › period templates › period templates scenario 3
+[1A[2K  11) [chromium] › cp59_period-templates.spec.ts:604:7 › period templates › period templates scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      606 |     const pg_uma = await ui.userPage(browser, "uma", sheet);
+      607 |     await ui.setToday(pg_uma, "2026-03-20");
+    > 608 |     expect(await ui.setRole(pg_uma, "wes", "steward")).toBe(true);
+          |                                                        ^
+      609 |     await ui.setSetting(pg_uma, "clerk-limit", "3.00");
+      610 |     await ui.setSetting(pg_uma, "terms-C", "3");
+      611 |     await ui.setSetting(pg_uma, "proof-threshold", "3.00");
+
+        at /home/daniel/ui-work/202610192149/just-solve-chain1/e2e/specs/cp59_period-templates.spec.ts:608:56
+
+
+[1A[2K  Slow test file: [chromium] › cp53_permission-matrix.spec.ts (49.2s)
+  Slow test file: [chromium] › cp55_auto-close.spec.ts (36.2s)
+  Slow test file: [chromium] › cp56_late-per-boundary.spec.ts (34.1s)
+  Slow test file: [chromium] › cp54_viewer-role.spec.ts (32.0s)
+  Slow test file: [chromium] › cp27_patrons-and-backing.spec.ts (31.3s)
+  Consider splitting slow test files to speed up parallel execution
+  11 failed
+    [chromium] › cp36_approvals.spec.ts:248:7 › approvals › approvals scenario 2 ───────────────────
+    [chromium] › cp57_split-claim.spec.ts:464:7 › split claim › split claim scenario 2 ─────────────
+    [chromium] › cp57_split-claim.spec.ts:752:7 › split claim › split claim scenario 3 ─────────────
+    [chromium] › cp58_watch-and-notify.spec.ts:6:7 › watch and notify › watch and notify ───────────
+    [chromium] › cp58_watch-and-notify.spec.ts:98:7 › watch and notify › watch and notify scenario 1 
+    [chromium] › cp58_watch-and-notify.spec.ts:359:7 › watch and notify › watch and notify scenario 2 
+    [chromium] › cp58_watch-and-notify.spec.ts:695:7 › watch and notify › watch and notify scenario 3 
+    [chromium] › cp59_period-templates.spec.ts:6:7 › period templates › period templates ───────────
+    [chromium] › cp59_period-templates.spec.ts:103:7 › period templates › period templates scenario 1 
+    [chromium] › cp59_period-templates.spec.ts:332:7 › period templates › period templates scenario 2 
+    [chromium] › cp59_period-templates.spec.ts:604:7 › period templates › period templates scenario 3 
+  213 passed (26.7m)
