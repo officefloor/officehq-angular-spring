@@ -13,6 +13,8 @@ import { Claim, ClaimAction, ClaimsApi, Lateness, claimDue, isDeferred, isOverdu
 const AMOUNT = /^-?\d{1,10}(\.\d{1,2})?$/;
 /** A claim's number: the sheet-wide one, or a period's, <period name>-<n> (X-<n> in no period). */
 const NUMBER = /^\S{1,255}$/;
+/** An amount split off a claim: a positive number with up to two decimals. */
+const SPLIT_AMOUNT = /^\d{1,10}(\.\d{1,2})?$/;
 
 // One person's claims, newest first, and the one form that adds a claim for them or, once a
 // claim's editor is opened, saves changes to it.
@@ -70,6 +72,7 @@ const NUMBER = /^\S{1,255}$/;
             <th scope="col">Deferred</th>
             <th scope="col">Deferred until</th>
             <th scope="col">Proofs</th>
+            <th scope="col">Split from</th>
             <th scope="col">Status log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -101,6 +104,7 @@ const NUMBER = /^\S{1,255}$/;
               <td data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
               <td data-testid="claim-proofs">{{ c.proofs }}</td>
+              <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
               <td>
                 <ol data-testid="claim-log">
                   @for (l of c.statusLog; track $index) {
@@ -174,6 +178,23 @@ const NUMBER = /^\S{1,255}$/;
                   (click)="defer(c)"
                 >
                   Defer
+                </button>
+                <label class="visually-hidden" [for]="'claim-split-amount-' + c.id">Amount to split off</label>
+                <input
+                  [id]="'claim-split-amount-' + c.id"
+                  data-testid="claim-split-amount"
+                  inputmode="decimal"
+                  placeholder="Split amount"
+                  [value]="splitAmounts().get(c.id) ?? ''"
+                  (input)="splitAmountChange(c.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-split"
+                  [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date"
+                  (click)="split(c)"
+                >
+                  Split
                 </button>
                 <label class="visually-hidden" [for]="'claim-reassign-to-' + c.id">Move to</label>
                 <select
@@ -254,6 +275,8 @@ export class Claims {
   protected readonly rejectReasons = signal<ReadonlyMap<number, string>>(new Map());
   /** The date picked to defer each claim until, by id. */
   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The amount typed to split off each claim, by id. */
+  protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** Whether a submit is waiting on the server; another submit is ignored until it answers. */
   private submitting = false;
   protected readonly form = new FormGroup({
@@ -421,6 +444,51 @@ export class Claims {
               : e.status === 404
                 ? 'That claim is no longer on this sheet.'
                 : 'Could not defer that claim.',
+        }),
+    });
+  }
+
+  protected splitAmountChange(id: number, amount: string): void {
+    if (this.claimError()?.id === id) this.claimError.set(null);
+    this.splitAmounts.update((m) => new Map(m).set(id, amount));
+  }
+
+  /** Split the amount typed on its row (more than 0.00, less than its amount) off an OPEN claim: the claim keeps
+   * the rest and a new OPEN claim is listed with the amount split off. */
+  protected split(claim: Claim): void {
+    this.claimError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const amount = (this.splitAmounts().get(claim.id) ?? '').trim();
+    if (!SPLIT_AMOUNT.test(amount)) {
+      this.claimError.set({ id: claim.id, message: 'Type the amount to split off, e.g. 5.00.' });
+      return;
+    }
+    this.api.split(sheetId, claim.id, amount).subscribe({
+      next: ({ claim: kept, into }) => {
+        this.splitAmounts.update((m) => {
+          const next = new Map(m);
+          next.delete(claim.id);
+          return next;
+        });
+        if (this.session.sheetId() === sheetId) {
+          this.saved.emit(kept);
+          this.saved.emit(into);
+        }
+      },
+      error: (e: HttpErrorResponse) =>
+        this.claimError.set({
+          id: claim.id,
+          message:
+            e.status === 423
+              ? 'That claim is dated in a closed period.'
+              : e.status === 409
+              ? 'Only an open claim that is not deferred can be split.'
+              : e.status === 400
+              ? 'Split off more than 0.00 and less than the claim\'s amount.'
+              : e.status === 404
+                ? 'That claim is no longer on this sheet.'
+                : 'Could not split that claim.',
         }),
     });
   }

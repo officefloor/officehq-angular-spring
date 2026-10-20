@@ -34,11 +34,12 @@ public class ClaimController {
      * until it is settled; it shows who opened it, if anyone did, and whether it is bound to the figure it had
      * at its person's last statement (none when that was n/a); a correction shows the number it corrects; and the
      * date it is due by, fixed when it was added; and its status log, oldest first; and the date it is deferred
-     * until, while it is deferred; and how many proofs it has. */
+     * until, while it is deferred; and how many proofs it has; and, for a claim split off another, that claim's
+     * number. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String due, String openedBy, boolean stated, String statedDue,
             String corrects, LocalDate dueBy, List<StatusLogView> statusLog, LocalDate deferredUntil,
-            int proofs) {
+            int proofs, String splitFrom) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -49,7 +50,7 @@ public class ClaimController {
                     claim.getStatedDue() != null ? claim.getStatedDue().setScale(2).toPlainString() : null,
                     claim.getCorrects(), claim.getDueBy(),
                     claim.getStatusLog().stream().map(StatusLogView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs());
+                    claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -80,6 +81,12 @@ public class ClaimController {
 
     /** The date an OPEN claim is deferred until. */
     public record DeferForm(@NotNull LocalDate until) {}
+
+    /** The amount split off an OPEN claim: a number with up to two decimals. */
+    public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String amount) {}
+
+    /** The claim split, with what it keeps, and the new claim split off it. */
+    public record SplitView(ClaimView claim, ClaimView into) {}
 
     private final ClaimService service;
 
@@ -159,6 +166,13 @@ public class ClaimController {
     public ClaimView defer(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
             @Valid @RequestBody DeferForm form) {
         return ClaimView.of(service.defer(user, sheetId, id, form.until()));
+    }
+
+    @PostMapping("/claims/{id}/split")
+    public SplitView split(@RequestHeader("X-User") String user, @PathVariable String sheetId, @PathVariable Long id,
+            @Valid @RequestBody SplitForm form) {
+        ClaimService.Split split = service.split(user, sheetId, id, new BigDecimal(form.amount()));
+        return new SplitView(ClaimView.of(split.claim()), ClaimView.of(split.into()));
     }
 
     @PostMapping("/claims/{id}/proof")

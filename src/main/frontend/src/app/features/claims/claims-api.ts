@@ -35,6 +35,14 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has. */
   proofs: number;
+  /** For a claim split off another, the number of the claim it was split from; null otherwise. */
+  splitFrom: string | null;
+}
+
+/** What a split did: the claim split, with what it keeps, and the new claim split off it. */
+export interface Split {
+  claim: Claim;
+  into: Claim;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today (yyyy-mm-dd) then, and the
@@ -223,6 +231,11 @@ export class ClaimsApi {
   /** Defer an OPEN claim until a date after the sheet's today. */
   defer(sheetId: string, id: number, until: string): Observable<Claim> {
     return this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/defer`, { until }, { headers: this.headers() });
+  }
+
+  /** Split an amount (more than 0.00, less than its amount) off an OPEN claim into a new OPEN claim. */
+  split(sheetId: string, id: number, amount: string): Observable<Split> {
+    return this.http.post<Split>(`${this.url(sheetId)}/claims/${id}/split`, { amount }, { headers: this.headers() });
   }
 
   /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */

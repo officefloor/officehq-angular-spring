@@ -248,6 +248,54 @@ public class ClaimService {
         return claim;
     }
 
+    /** Split an amount off an OPEN claim: more than 0.00 and less than its amount. The claim keeps the rest and
+     * loses any figure a statement bound it to; a new OPEN claim of the amount split off, with the same date and
+     * note, takes the next number, is opened by the user, has its due-by fixed now from the terms in force on the
+     * date, and names the claim it was split from. A claim that is not OPEN (PENDING, settled, ...), is deferred,
+     * or is dated in a closed period, is refused. */
+    @Transactional
+    public Split split(String user, String sheetId, Long id, BigDecimal amount) {
+        LocalDate today = sheets.today(sheetId);
+        // Locking the sheet before taking the number numbers claims one at a time; a refused split rolls back and
+        // gives the number back.
+        sheets.lock(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
+        requireOpenPeriod(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an OPEN claim can be split.");
+        }
+        if (claim.deferredOn(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + ".");
+        }
+        if (amount.signum() <= 0 || amount.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The amount split off is more than 0.00 and less than the claim's amount.");
+        }
+        Person person = requirePerson(sheetId, claim.getPersonId());
+        Snapshot before = rollup.snapshot(sheetId);
+        claim.setAmount(claim.getAmount().subtract(amount));
+        claim.unbind();
+        LocalDate dated = claim.getDate();
+        LocalDate dueBy = dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated), dated));
+        Claim fresh = new Claim(sheetId, person.getId(), amount, dated, dueBy, claim.getNote());
+        fresh.setSplitFrom(claim.getNumber());
+        fresh.setStatus(ClaimStatus.OPEN);
+        fresh.setNumber(nextNumber(sheetId, fresh));
+        fresh.setOpenedBy(user);
+        Claim split = claims.saveAndFlush(fresh);
+        logStatus(user, today, split, person);
+        claims.flush();
+        audit.recordOnCommit(entry("CLAIM_SPLIT", user, person, claim) + " into=" + split.getNumber());
+        audit.recordOnCommit(entry("CLAIM_OPENED", user, person, split));
+        rollup.recordChanges(user, sheetId, before);
+        return new Split(claim, split);
+    }
+
+    /** What a split did: the claim split, with what it keeps, and the new claim split off it. */
+    public record Split(Claim claim, Claim into) {}
+
     /** Raise a claim's proofs count by one; a SETTLED or VOID claim, or one dated in a closed period, is
      * refused. */
     @Transactional

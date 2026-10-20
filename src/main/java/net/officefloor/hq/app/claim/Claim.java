@@ -82,6 +82,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The number of the claim this one was split off; none for any other claim. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** How many proofs the claim has; 0 until one is added. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -225,6 +229,14 @@ public class Claim {
      * deferred until. Such a claim counts in no total, is not overdue and cannot be settled. */
     public boolean deferredOn(LocalDate today) {
         return status.isOpen() && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    public void setSplitFrom(String splitFrom) {
+        this.splitFrom = splitFrom;
     }
 
     public int getProofs() {
