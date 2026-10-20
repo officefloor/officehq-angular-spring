@@ -7,13 +7,16 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /** A sheet, kept by the id typed to load it. */
@@ -66,6 +69,14 @@ public class Sheet {
      * means off. */
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
+
+    /** The sheet's permission matrix: by action (e.g. "open"), the roles that may take it, comma separated; an
+     * action not in it keeps the standing rule. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "action")
+    @Column(name = "roles", nullable = false)
+    private Map<String, String> permissions = new HashMap<>();
 
     protected Sheet() {}
 
@@ -168,6 +179,20 @@ public class Sheet {
     /** The late percent in force on the sheet's today. */
     public BigDecimal getLatePct() {
         return latePctOn(today);
+    }
+
+    /** The roles the sheet gives an action, comma separated; none when it keeps the standing rule. */
+    public String getPermission(String action) {
+        return permissions.get(action);
+    }
+
+    /** Give an action the roles that may take it, comma separated; none (or blank) for the standing rule. */
+    public void setPermission(String action, String roles) {
+        if (roles == null || roles.isEmpty()) {
+            permissions.remove(action);
+        } else {
+            permissions.put(action, roles);
+        }
     }
 
     public LocalDate getPolicyDate() {

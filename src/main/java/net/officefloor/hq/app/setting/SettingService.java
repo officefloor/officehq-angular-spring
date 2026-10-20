@@ -2,6 +2,7 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -64,7 +65,8 @@ public class SettingService {
     }
 
     /** Save the settings given, the clerk limit, the floor, the terms, each grade's terms (in the order given),
-     * the late percent then the policy date, the period numbering date, the cap and the proof threshold together; a
+     * the late percent then the policy date, the period numbering date, the cap, the proof threshold and the
+     * permission matrix (each action in the order given) together; a
      * setting not given (null) is left as it is, and an empty clerk limit, grade's terms, policy date, period
      * numbering date, cap or proof threshold removes it. A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
      * from the sheet's today when none is given. */
@@ -72,7 +74,7 @@ public class SettingService {
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
             Integer terms, Map<String, Optional<Integer>> gradeTerms, BigDecimal latePct,
             Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom, Optional<BigDecimal> cap,
-            Optional<BigDecimal> proofThreshold, Map<String, LocalDate> froms) {
+            Optional<BigDecimal> proofThreshold, Map<String, LocalDate> froms, Map<Permission, List<Role>> permissions) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null), froms.get(Sheet.CLERK_LIMIT));
         }
@@ -99,6 +101,7 @@ public class SettingService {
         if (proofThreshold != null) {
             setProofThreshold(user, sheetId, proofThreshold.orElse(null), froms.get(Sheet.PROOF_THRESHOLD));
         }
+        permissions.forEach((action, given) -> setPermission(user, sheetId, action, given));
     }
 
     /** The sheet, for the values its dated settings have. */
@@ -221,6 +224,38 @@ public class SettingService {
         record(user, sheetId, Sheet.PROOF_THRESHOLD, from, value, value != null ? value.toPlainString() : "",
                 false);
         return value;
+    }
+
+    /** Give an action the roles that may take it, none (empty) to keep the standing rule; not dated, and it moves
+     * no figure. */
+    @Transactional
+    public List<Role> setPermission(String user, String sheetId, Permission action, List<Role> given) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        String shown = String.join(",", given.stream().map(Role::code).toList());
+        sheet.setPermission(action.code(), shown);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=" + action.key() + " value="
+                + shown);
+        return given;
+    }
+
+    /** The roles the sheet gives an action, comma separated; blank when it keeps the standing rule. */
+    public static String permissionOf(Sheet sheet, Permission action) {
+        String roles = sheet.getPermission(action.code());
+        return roles != null ? roles : "";
+    }
+
+    /** Refuse an action the user's role is not allowed by the sheet's permission matrix, or by the standing rule
+     * when the sheet gives the action no roles of its own. */
+    @Transactional(readOnly = true)
+    public void requirePermitted(String sheetId, String user, Permission action) {
+        String given = find(sheetId).getPermission(action.code());
+        List<Role> allowed = given == null ? action.standing()
+                : Arrays.stream(given.split(",")).map(Role::of).flatMap(Optional::stream).toList();
+        if (!allowed.contains(roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role cannot " + action.doing() + ".");
+        }
     }
 
     /** Refuse settling or approving a claim dated on a date, with this due and proofs count, when its due is

@@ -17,6 +17,10 @@ export interface RoleGiven {
 export const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold'] as const;
 export type DatedKey = (typeof DATED_KEYS)[number];
 
+/** The actions of the permission matrix, in the order they are shown. */
+export const PERMISSIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
 /** The settings in force on the sheet's today; `dated` has, for each setting that carries a figure, every value
  * recorded for it by from-date. */
 export interface Settings {
@@ -44,9 +48,11 @@ export interface Settings {
    * none. */
   proofThreshold: string | null;
   dated: Record<DatedKey, Dated[]>;
+  /** By action, the roles that may take it, comma separated; blank keeps the standing rule. */
+  permissions: Record<Permission, string>;
 }
 
-// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap and its proof threshold (those that carry a figure dated), read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap, its proof threshold (those that carry a figure dated) and its permission matrix, read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -72,7 +78,9 @@ export class SettingsApi {
     settings: { clerkLimit?: string; floor?: string; terms?: string; termsA?: string; termsB?: string;
       termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string;
       proofThreshold?: string; clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
-      termsCFrom?: string; latePctFrom?: string; capFrom?: string; proofThresholdFrom?: string; },
+      termsCFrom?: string; latePctFrom?: string; capFrom?: string; proofThresholdFrom?: string;
+      permOpen?: string; permSettle?: string; permVoid?: string; permReassign?: string; permClose?: string;
+      permReopen?: string; },
   ): Observable<Settings> {
     return this.http.put<Settings>(`${this.url(sheetId)}/settings`, settings, { headers: this.headers() });
   }

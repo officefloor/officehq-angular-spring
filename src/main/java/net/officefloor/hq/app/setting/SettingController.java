@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +46,8 @@ public class SettingController {
      * off. The cap has up to two decimals, 0.00 or more; blank means no cap. The proof threshold has up to two
      * decimals, 0.00 or more; blank means none. A setting
      * left out (null) is left as it is. Each setting that carries a figure has a from-date (yyyy-mm-dd) its value
-     * is recorded from; blank or left out means the sheet's today. */
+     * is recorded from; blank or left out means the sheet's today. Each permission (open, settle, void, reassign,
+     * close, reopen) is the roles that may take the action, comma separated; blank keeps the standing rule. */
     public record SettingsForm(@Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String clerkLimit,
             @Pattern(regexp = "\\d{1,10}(\\.\\d{1,2})?") String floor,
             @Pattern(regexp = "\\d{1,5}") String terms,
@@ -65,7 +67,13 @@ public class SettingController {
             @Pattern(regexp = DATE) String termsCFrom,
             @Pattern(regexp = DATE) String latePctFrom,
             @Pattern(regexp = DATE) String capFrom,
-            @Pattern(regexp = DATE) String proofThresholdFrom) {}
+            @Pattern(regexp = DATE) String proofThresholdFrom,
+            @Size(max = 100) String permOpen,
+            @Size(max = 100) String permSettle,
+            @Size(max = 100) String permVoid,
+            @Size(max = 100) String permReassign,
+            @Size(max = 100) String permClose,
+            @Size(max = 100) String permReopen) {}
 
     /** A from-date as typed: blank, or yyyy-mm-dd. */
     private static final String DATE = "|\\d{4}-\\d{2}-\\d{2}";
@@ -78,10 +86,11 @@ public class SettingController {
      * terms are the days after its date a claim is due by; each grade's terms are null when it uses the sheet's. The late percent is shown with two decimals. The policy date is null when there is none (the sheet's
      * today is used). The period numbering date is null when it is off. The cap is shown with two decimals,
      * null when there is none; so is the proof threshold. Each of these that carries a figure is the value in force on the sheet's today;
-     * {@code dated} has, by key, every value recorded for it by from-date. */
+     * {@code dated} has, by key, every value recorded for it by from-date. {@code permissions} has, by action, the
+     * roles that may take it, comma separated, blank for the standing rule. */
     public record SettingsView(String clerkLimit, String floor, int terms, Integer termsA, Integer termsB,
             Integer termsC, String latePct, String policyDate, String periodNumberingFrom, String cap,
-            String proofThreshold, Map<String, List<DatedView>> dated) {
+            String proofThreshold, Map<String, List<DatedView>> dated, Map<String, String> permissions) {
 
         static SettingsView of(Sheet sheet) {
             BigDecimal clerkLimit = sheet.getClerkLimit();
@@ -95,13 +104,18 @@ public class SettingController {
             for (String grade : GRADES) {
                 dated.put(Sheet.gradeTermsKey(grade), history(sheet, Sheet.gradeTermsKey(grade), false));
             }
+            Map<String, String> permissions = new LinkedHashMap<>();
+            for (Permission action : Permission.values()) {
+                permissions.put(action.code(), SettingService.permissionOf(sheet, action));
+            }
             return new SettingsView(clerkLimit != null ? clerkLimit.setScale(2).toPlainString() : null,
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getGradeTerms("A"),
                     sheet.getGradeTerms("B"), sheet.getGradeTerms("C"), sheet.getLatePct().toPlainString(),
                     sheet.getPolicyDate() != null ? sheet.getPolicyDate().toString() : null,
                     sheet.getPeriodNumberingFrom() != null ? sheet.getPeriodNumberingFrom().toString() : null,
                     cap != null ? cap.setScale(2).toPlainString() : null,
-                    proofThreshold != null ? proofThreshold.setScale(2).toPlainString() : null, dated);
+                    proofThreshold != null ? proofThreshold.setScale(2).toPlainString() : null, dated,
+                    permissions);
         }
 
         /** The values recorded for a key by from-date, shown with two decimals when {@code amount}, else as whole
@@ -156,7 +170,7 @@ public class SettingController {
         service.save(user, sheetId, clerkLimit, form.floor() == null ? null : new BigDecimal(form.floor()),
                 form.terms() == null ? null : Integer.valueOf(form.terms()), gradeTerms(form),
                 form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom, cap,
-                proofThreshold, froms(form));
+                proofThreshold, froms(form), permissions(form));
         return view(sheetId);
     }
 
@@ -185,6 +199,41 @@ public class SettingController {
             }
         });
         return froms;
+    }
+
+    /** The permissions given, in action order, each the roles typed (blank keeps the standing rule); an action
+     * left out is left as it is. */
+    private static Map<Permission, List<Role>> permissions(SettingsForm form) {
+        Map<Permission, String> typed = new LinkedHashMap<>();
+        typed.put(Permission.OPEN, form.permOpen());
+        typed.put(Permission.SETTLE, form.permSettle());
+        typed.put(Permission.VOID, form.permVoid());
+        typed.put(Permission.REASSIGN, form.permReassign());
+        typed.put(Permission.CLOSE, form.permClose());
+        typed.put(Permission.REOPEN, form.permReopen());
+        Map<Permission, List<Role>> given = new LinkedHashMap<>();
+        typed.forEach((action, roles) -> {
+            if (roles != null) {
+                given.put(action, rolesOf(roles));
+            }
+        });
+        return given;
+    }
+
+    /** The roles typed, comma separated, each once in the order typed; none when blank. */
+    private static List<Role> rolesOf(String typed) {
+        if (typed.isBlank()) {
+            return List.of();
+        }
+        List<Role> roles = new ArrayList<>();
+        for (String code : typed.split(",", -1)) {
+            Role role = Role.of(code.trim()).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A permission is roles (clerk or steward), comma separated, or blank."));
+            if (!roles.contains(role)) {
+                roles.add(role);
+            }
+        }
+        return roles;
     }
 
     /** The grades' terms given, in grade order: empty when blank (the grade uses the sheet's terms); a grade

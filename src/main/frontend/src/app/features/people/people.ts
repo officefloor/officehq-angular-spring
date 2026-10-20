@@ -616,14 +616,14 @@ export class People {
 
   /** Whether a claim counts toward a period ending on a date: by the status it had at the end of that day, it is
    * OPEN, PENDING or SETTLED (one added after it is not), and the live rules leave it in: it is not deferred on
-   * the sheet's today, and not OPEN or PENDING then, dated within one of its person's holds and not bound. */
+   * the sheet's today, and not OPEN or PENDING now, dated within one of its person's holds and not bound. */
   private countsAt(claim: Claim, end: string): boolean {
     const then = statusAt(claim, end);
     const openThen = then === 'OPEN' || then === 'PENDING';
     return (
       (openThen || then === 'SETTLED') &&
       !isDeferred(claim, this.session.today()) &&
-      !(openThen && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
+      !(isOpen(claim) && !bound(claim) && heldOn(this.holdsById().get(claim.personId) ?? [], claim.date))
     );
   }
 

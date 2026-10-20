@@ -3,7 +3,7 @@ import { toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Subject, catchError, concatMap, forkJoin, map, of, switchMap } from 'rxjs';
 import { Session } from '../../core/session';
-import { DATED_KEYS, DatedKey, ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
+import { DATED_KEYS, DatedKey, PERMISSIONS, Permission, ROLES, RoleGiven, Settings as SheetSettings, SettingsApi } from './settings-api';
 import { valueOn } from './dated';
 import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
@@ -29,6 +29,16 @@ const DATED_FIELDS = {
 } as const satisfies Record<string, DatedKey>;
 type DatedField = keyof typeof DATED_FIELDS;
 type FromField = `${DatedField}From`;
+/** The setting holding each action's roles in the form. */
+const PERMISSION_FIELDS = {
+  open: 'permOpen',
+  settle: 'permSettle',
+  void: 'permVoid',
+  reassign: 'permReassign',
+  close: 'permClose',
+  reopen: 'permReopen',
+} as const satisfies Record<Permission, string>;
+type PermissionField = (typeof PERMISSION_FIELDS)[Permission];
 const LIMIT = /^\d{1,10}(\.\d{1,2})?$/;
 const DAYS = /^\d{1,5}$/;
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
@@ -45,7 +55,7 @@ type SettingsFormValue = {
   periodNumberingFrom: string;
   cap: string;
   proofThreshold: string;
-};
+} & Record<PermissionField, string>;
 
 const NO_SETTINGS: SheetSettings = {
   clerkLimit: null,
@@ -60,6 +70,7 @@ const NO_SETTINGS: SheetSettings = {
   cap: null,
   proofThreshold: null,
   dated: Object.fromEntries(DATED_KEYS.map((k) => [k, []])) as unknown as SheetSettings['dated'],
+  permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, ''])) as Record<Permission, string>,
 };
 
 // The sheet's settings: the role each user name has (clerk unless given another) with the form that
@@ -70,7 +81,8 @@ const NO_SETTINGS: SheetSettings = {
 // for the sheet's today), before which a claim's date rounds half up, on or after half to even, and the period
 // numbering date (blank for off), from which a claim opened is numbered within its period, and the cap (blank
 // for none), the most a person's due-total comes to, and the proof threshold (blank for none), above which a
-// claim's due needs a proof before it is settled or approved. The settings that carry a figure are dated: each is saved
+// claim's due needs a proof before it is settled or approved, and the permission matrix: for each action, the
+// roles that may take it, comma separated (blank for the standing rule). The settings that carry a figure are dated: each is saved
 // from its from-date (blank for the sheet's today), and the value in force on the sheet's today is shown. Saving
 // sends only the settings changed in the form (the clerk limit when none was).
 @Component({
@@ -141,6 +153,10 @@ const NO_SETTINGS: SheetSettings = {
           data-testid="setting-proof-threshold-from"
           formControlName="proofThresholdFrom"
         />
+        @for (p of permissions; track p) {
+          <label [for]="'setting-perm-' + p">Roles that may {{ p }} (comma separated, blank for the standing rule)</label>
+          <input [id]="'setting-perm-' + p" [attr.data-testid]="'setting-perm-' + p" [formControlName]="permissionField(p)" />
+        }
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as e) {
@@ -184,6 +200,12 @@ const NO_SETTINGS: SheetSettings = {
         Proof threshold in force:
         <span data-testid="setting-proof-threshold-current">{{ inForce().proofThreshold ?? '' }}</span>
       </p>
+      @for (p of permissions; track p) {
+        <p>
+          Roles that may {{ p }}:
+          <span [attr.data-testid]="'setting-perm-' + p + '-current'">{{ settings().permissions[p] }}</span>
+        </p>
+      }
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" data-testid="role-form">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -224,6 +246,7 @@ export class Settings {
 
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly grades = GRADES;
+  protected readonly permissions = PERMISSIONS;
   protected readonly roles = signal<RoleGiven[]>([]);
   protected readonly settings = signal<SheetSettings>(NO_SETTINGS);
   /** The value each setting that carries a figure has in force on the sheet's today. */
@@ -280,6 +303,12 @@ export class Settings {
     latePctFrom: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
+    permOpen: new FormControl('', { nonNullable: true }),
+    permSettle: new FormControl('', { nonNullable: true }),
+    permVoid: new FormControl('', { nonNullable: true }),
+    permReassign: new FormControl('', { nonNullable: true }),
+    permClose: new FormControl('', { nonNullable: true }),
+    permReopen: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -360,6 +389,11 @@ export class Settings {
   /** The setting holding a grade's own terms. */
   protected gradeKey(grade: (typeof GRADES)[number]): GradeTermsKey {
     return `terms${grade}`;
+  }
+
+  /** The setting holding an action's roles. */
+  protected permissionField(action: Permission): PermissionField {
+    return PERMISSION_FIELDS[action];
   }
 
   /** Note the setting a person went into last: a save with nothing changed saves that one again. */
@@ -446,6 +480,17 @@ export class Settings {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const permissions: Partial<Record<PermissionField, string>> = {};
+    for (const p of PERMISSIONS) {
+      const key = PERMISSION_FIELDS[p];
+      if (!send(key)) continue;
+      const roles = controls[key].value.trim();
+      if (roles !== '' && !roles.split(',').every((r) => (ROLES as readonly string[]).includes(r.trim()))) {
+        this.settingsError.set(`Type the roles that may ${p} (${this.roleNames}), comma separated, or leave it blank.`);
+        return;
+      }
+      permissions[key] = roles;
+    }
     const froms: Partial<Record<FromField, string>> = {};
     for (const key of Object.keys(DATED_FIELDS) as DatedField[]) {
       const from = fromOf(key);
@@ -466,6 +511,7 @@ export class Settings {
       ...(sendPeriodNumbering ? { periodNumberingFrom } : {}),
       ...(sendCap ? { cap } : {}),
       ...(sendProofThreshold ? { proofThreshold } : {}),
+      ...permissions,
       ...froms,
     };
     this.saves.next({ sheetId, changed, sent: this.settingsForm.getRawValue() });
@@ -491,6 +537,10 @@ export class Settings {
       periodNumberingFrom: s.periodNumberingFrom ?? '',
       cap: s.cap ?? '',
       proofThreshold: s.proofThreshold ?? '',
+      ...(Object.fromEntries(PERMISSIONS.map((p) => [PERMISSION_FIELDS[p], s.permissions[p]])) as Record<
+        PermissionField,
+        string
+      >),
     };
     const controls = this.settingsForm.controls;
     for (const key of Object.keys(shown) as (keyof SettingsFormValue)[]) {

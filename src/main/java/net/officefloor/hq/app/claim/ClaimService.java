@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.rollup.RollupService.Snapshot;
+import net.officefloor.hq.app.setting.Permission;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -125,6 +126,8 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        // Only a role the sheet's permission matrix allows may open, settle or void a claim.
+        settings.requirePermitted(sheetId, user, PERMISSIONS.get(next));
         // A deferred claim cannot be settled until the sheet's today reaches the date it is deferred until.
         if (next == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -278,7 +281,7 @@ public class ClaimService {
         return claim;
     }
 
-    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and
+    /** A user whose role may reassign (a steward by the standing rule) moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and
      * date but loses any figure a statement bound it to: it is live again until its new person's next statement.
      * One dated in a closed period, a correction (which names a settled claim of its own person), or one dated
      * after its new person is retired, is refused. */
@@ -287,7 +290,7 @@ public class ClaimService {
         sheets.today(sheetId); // the sheet must exist
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim."));
-        settings.requireSteward(sheetId, user);
+        settings.requirePermitted(sheetId, user, Permission.REASSIGN);
         requireOpenPeriod(sheetId, claim.getDate());
         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -387,6 +390,12 @@ public class ClaimService {
 
     /** The sequence a claim in no period is numbered in, with period numbering. */
     private static final String NO_PERIOD = "X";
+
+    /** The action of the permission matrix each status a claim is moved to takes. */
+    private static final Map<ClaimStatus, Permission> PERMISSIONS = Map.of(
+            ClaimStatus.OPEN, Permission.OPEN,
+            ClaimStatus.SETTLED, Permission.SETTLE,
+            ClaimStatus.VOID, Permission.VOID);
 
     private static final Map<ClaimStatus, String> EVENTS = Map.of(
             ClaimStatus.OPEN, "CLAIM_OPENED",

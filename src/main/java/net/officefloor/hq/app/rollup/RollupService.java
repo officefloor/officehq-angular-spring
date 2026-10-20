@@ -348,7 +348,7 @@ public class RollupService {
     }
 
     /** Whether a claim counts toward a period ending on a date: by the status it had at the end of that day, only
-     * an OPEN, PENDING or SETTLED one does (one added after it does not); an OPEN or PENDING one then, dated
+     * an OPEN, PENDING or SETTLED one does (one added after it does not); one OPEN or PENDING now, dated
      * within one of its person's holds, does not unless it is bound by a statement, and one deferred on the
      * sheet's today does not. */
     public static boolean countsAt(Claim claim, Person person, LocalDate today, LocalDate end) {
@@ -356,7 +356,8 @@ public class RollupService {
         if (then == null) {
             return false;
         }
-        return (then.isOpen() && (bound(claim) || !person.heldOn(claim.getDate())) && !claim.deferredOn(today))
+        return (then.isOpen() && (bound(claim) || !claim.getStatus().isOpen() || !person.heldOn(claim.getDate()))
+                && !claim.deferredOn(today))
                 || then == ClaimStatus.SETTLED;
     }
 

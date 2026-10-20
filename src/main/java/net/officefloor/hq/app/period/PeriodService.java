@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
-import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.Permission;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -66,13 +66,14 @@ public class PeriodService {
         return period;
     }
 
-    /** Close a period, fixing each person's due-total for it, and so its own, as they are now; closing one already closed is refused. */
+    /** Close a period, fixing each person's due-total for it, and so its own, as they are now; only a role the permission matrix allows may, and closing one already closed is refused. */
     @Transactional
     public Period close(String user, String sheetId, Long id) {
         // Locking the sheet keeps claims from changing while the total is taken.
         sheets.lock(sheetId);
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
+        settings.requirePermitted(sheetId, user, Permission.CLOSE);
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
         }
@@ -83,16 +84,14 @@ public class PeriodService {
         return period;
     }
 
-    /** Reopen a closed period, making its due-total live again; only a steward may, and reopening one that is
+    /** Reopen a closed period, making its due-total live again; only a role the permission matrix allows (a steward by the standing rule) may, and reopening one that is
      * open is refused. */
     @Transactional
     public Period reopen(String user, String sheetId, Long id) {
         sheets.lock(sheetId);
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period."));
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reopen a period.");
-        }
+        settings.requirePermitted(sheetId, user, Permission.REOPEN);
         if (!period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed.");
         }
