@@ -1,0 +1,385 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index cb570592..df142c0b 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -14,7 +14,7 @@ export interface RoleGiven {
+ }
+ 
+ /** The keys of the settings that carry a figure, each dated. */
+-export const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold'] as const;
++export const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
+ export type DatedKey = (typeof DATED_KEYS)[number];
+ 
+ /** The actions of the permission matrix, in the order they are shown. */
+@@ -50,12 +50,14 @@ export interface Settings {
+   /** The days after a period's to-date it is closed when the sheet's today is changed past them; null when
+    * off. */
+   graceDays: number | null;
++  /** The due above which a claim cannot be opened with an empty note, with two decimals; null for none. */
++  noteThreshold: string | null;
+   dated: Record<DatedKey, Dated[]>;
+   /** By action, the roles that may take it, comma separated; blank keeps the standing rule. */
+   permissions: Record<Permission, string>;
+ }
+ 
+-// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap, its proof threshold (those that carry a figure dated), its grace days and its permission matrix, read and changed through the
++// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap, its proof threshold, its note threshold (those that carry a figure dated), its grace days and its permission matrix, read and changed through the
+ // server.
+ @Injectable({ providedIn: 'root' })
+ export class SettingsApi {
+@@ -82,6 +84,7 @@ export class SettingsApi {
+       termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string;
+       proofThreshold?: string; graceDays?: string; clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
+       termsCFrom?: string; latePctFrom?: string; capFrom?: string; proofThresholdFrom?: string;
++      noteThreshold?: string; noteThresholdFrom?: string;
+       permOpen?: string; permSettle?: string; permVoid?: string; permReassign?: string; permClose?: string;
+       permReopen?: string; },
+   ): Observable<Settings> {
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 8ac987e4..4defa639 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -26,6 +26,7 @@ const DATED_FIELDS = {
+   latePct: 'late-pct',
+   cap: 'cap',
+   proofThreshold: 'proof-threshold',
++  noteThreshold: 'note-threshold',
+ } as const satisfies Record<string, DatedKey>;
+ type DatedField = keyof typeof DATED_FIELDS;
+ type FromField = `${DatedField}From`;
+@@ -56,6 +57,7 @@ type SettingsFormValue = {
+   cap: string;
+   proofThreshold: string;
+   graceDays: string;
++  noteThreshold: string;
+ } & Record<PermissionField, string>;
+ 
+ const NO_SETTINGS: SheetSettings = {
+@@ -71,6 +73,7 @@ const NO_SETTINGS: SheetSettings = {
+   cap: null,
+   proofThreshold: null,
+   graceDays: null,
++  noteThreshold: null,
+   dated: Object.fromEntries(DATED_KEYS.map((k) => [k, []])) as unknown as SheetSettings['dated'],
+   permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, ''])) as Record<Permission, string>,
+ };
+@@ -84,7 +87,8 @@ const NO_SETTINGS: SheetSettings = {
+ // numbering date (blank for off), from which a claim opened is numbered within its period, and the cap (blank
+ // for none), the most a person's due-total comes to, and the proof threshold (blank for none), above which a
+ // claim's due needs a proof before it is settled or approved, and the grace days (blank for off), after which an open period
+-// past its to-date is closed when the sheet's today is changed, and the permission matrix: for each action, the
++// past its to-date is closed when the sheet's today is changed, and the note threshold (blank for none), above
++// which a claim's due needs a note before it is opened, and the permission matrix: for each action, the
+ // roles that may take it, comma separated (blank for the standing rule). The settings that carry a figure are dated: each is saved
+ // from its from-date (blank for the sheet's today), and the value in force on the sheet's today is shown. Saving
+ // sends only the settings changed in the form (the clerk limit when none was).
+@@ -156,6 +160,19 @@ const NO_SETTINGS: SheetSettings = {
+           data-testid="setting-proof-threshold-from"
+           formControlName="proofThresholdFrom"
+         />
++        <label for="setting-note-threshold">Note threshold (blank for none)</label>
++        <input
++          id="setting-note-threshold"
++          data-testid="setting-note-threshold"
++          inputmode="decimal"
++          formControlName="noteThreshold"
++        />
++        <label for="setting-note-threshold-from">Note threshold from (yyyy-mm-dd, blank for the sheet's today)</label>
++        <input
++          id="setting-note-threshold-from"
++          data-testid="setting-note-threshold-from"
++          formControlName="noteThresholdFrom"
++        />
+         <label for="setting-grace-days">Grace days (blank for off)</label>
+         <input id="setting-grace-days" data-testid="setting-grace-days" inputmode="numeric" formControlName="graceDays" />
+         @for (p of permissions; track p) {
+@@ -205,6 +222,10 @@ const NO_SETTINGS: SheetSettings = {
+         Proof threshold in force:
+         <span data-testid="setting-proof-threshold-current">{{ inForce().proofThreshold ?? '' }}</span>
+       </p>
++      <p>
++        Note threshold in force:
++        <span data-testid="setting-note-threshold-current">{{ inForce().noteThreshold ?? '' }}</span>
++      </p>
+       <p>
+         Grace days:
+         <span data-testid="setting-grace-days-current">{{ settings().graceDays ?? '' }}</span>
+@@ -273,6 +294,7 @@ export class Settings {
+       latePct: on('late-pct', DEFAULT_LATE_PCT),
+       cap: on('cap', null),
+       proofThreshold: on('proof-threshold', null),
++      noteThreshold: on('note-threshold', null),
+     };
+   });
+   protected readonly roleError = signal<string | null>(null);
+@@ -304,6 +326,7 @@ export class Settings {
+     cap: new FormControl('', { nonNullable: true }),
+     proofThreshold: new FormControl('', { nonNullable: true }),
+     graceDays: new FormControl('', { nonNullable: true }),
++    noteThreshold: new FormControl('', { nonNullable: true }),
+     clerkLimitFrom: new FormControl('', { nonNullable: true }),
+     floorFrom: new FormControl('', { nonNullable: true }),
+     termsFrom: new FormControl('', { nonNullable: true }),
+@@ -313,6 +336,7 @@ export class Settings {
+     latePctFrom: new FormControl('', { nonNullable: true }),
+     capFrom: new FormControl('', { nonNullable: true }),
+     proofThresholdFrom: new FormControl('', { nonNullable: true }),
++    noteThresholdFrom: new FormControl('', { nonNullable: true }),
+     permOpen: new FormControl('', { nonNullable: true }),
+     permSettle: new FormControl('', { nonNullable: true }),
+     permVoid: new FormControl('', { nonNullable: true }),
+@@ -446,6 +470,8 @@ export class Settings {
+     const sendProofThreshold = send('proofThreshold');
+     const graceDays = controls.graceDays.value.trim();
+     const sendGraceDays = send('graceDays');
++    const noteThreshold = controls.noteThreshold.value.trim();
++    const sendNoteThreshold = send('noteThreshold');
+     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+@@ -497,6 +523,10 @@ export class Settings {
+       this.settingsError.set('Type grace days of 0 or more whole days, or leave them blank.');
+       return;
+     }
++    if (sendNoteThreshold && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
++      this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
++      return;
++    }
+     const permissions: Partial<Record<PermissionField, string>> = {};
+     for (const p of PERMISSIONS) {
+       const key = PERMISSION_FIELDS[p];
+@@ -529,6 +559,7 @@ export class Settings {
+       ...(sendCap ? { cap } : {}),
+       ...(sendProofThreshold ? { proofThreshold } : {}),
+       ...(sendGraceDays ? { graceDays } : {}),
++      ...(sendNoteThreshold ? { noteThreshold } : {}),
+       ...permissions,
+       ...froms,
+     };
+@@ -556,6 +587,7 @@ export class Settings {
+       cap: s.cap ?? '',
+       proofThreshold: s.proofThreshold ?? '',
+       graceDays: s.graceDays === null ? '' : String(s.graceDays),
++      noteThreshold: s.noteThreshold ?? '',
+       ...(Object.fromEntries(PERMISSIONS.map((p) => [PERMISSION_FIELDS[p], s.permissions[p]])) as Record<
+         PermissionField,
+         string
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 3e540810..237208f3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -203,6 +203,10 @@ public class ClaimService {
+         BigDecimal due = rollup.dueOf(claim, person);
+         // A claim whose due is above the proof threshold in force on its date needs a proof before it is settled,
+         // whoever settles it, so it never goes PENDING without one.
++        // A claim whose due is above the note threshold in force on its date cannot be opened with an empty note.
++        if (next == ClaimStatus.OPEN) {
++            settings.requireNote(sheetId, claim.getDate(), due, claim.getNote());
++        }
+         if (next == ClaimStatus.SETTLED) {
+             settings.requireProof(sheetId, claim.getDate(), due, claim.getProofs());
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 9faf380d..f103170a 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** A sheet's settings: the role each user name has, its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering date, its cap and its proof threshold. */
++/** A sheet's settings: the role each user name has, its clerk limit, its floor, its terms, its late percent, its policy date, its period numbering date, its cap, its proof threshold and its note threshold. */
+ @RestController
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class SettingController {
+@@ -58,7 +58,7 @@ public class SettingController {
+      * blank means the grade uses the sheet's terms. The late percent has up to two
+      * decimals, 0.00 or more. The policy date is a date (yyyy-mm-dd); blank means the sheet's today. The period numbering date is a date; blank means
+      * off. The cap has up to two decimals, 0.00 or more; blank means no cap. The proof threshold has up to two
+-     * decimals, 0.00 or more; blank means none. The grace days are a whole number of days, 0 or more; blank means
++     * decimals, 0.00 or more; blank means none; so has the note threshold. The grace days are a whole number of days, 0 or more; blank means
+      * off. A setting
+      * left out (null) is left as it is. Each setting that carries a figure has a from-date (yyyy-mm-dd) its value
+      * is recorded from; blank or left out means the sheet's today. Each permission (open, settle, void, reassign,
+@@ -75,6 +75,7 @@ public class SettingController {
+             @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String cap,
+             @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String proofThreshold,
+             @Pattern(regexp = "|\\d{1,5}") String graceDays,
++            @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String noteThreshold,
+             @Pattern(regexp = DATE) String clerkLimitFrom,
+             @Pattern(regexp = DATE) String floorFrom,
+             @Pattern(regexp = DATE) String termsFrom,
+@@ -84,6 +85,7 @@ public class SettingController {
+             @Pattern(regexp = DATE) String latePctFrom,
+             @Pattern(regexp = DATE) String capFrom,
+             @Pattern(regexp = DATE) String proofThresholdFrom,
++            @Pattern(regexp = DATE) String noteThresholdFrom,
+             @Size(max = 100) String permOpen,
+             @Size(max = 100) String permSettle,
+             @Size(max = 100) String permVoid,
+@@ -101,20 +103,22 @@ public class SettingController {
+     /** The clerk limit and floor are shown with two decimals; the clerk limit is null when there is none. The
+      * terms are the days after its date a claim is due by; each grade's terms are null when it uses the sheet's. The late percent is shown with two decimals. The policy date is null when there is none (the sheet's
+      * today is used). The period numbering date is null when it is off. The cap is shown with two decimals,
+-     * null when there is none; so is the proof threshold. The grace days are null when they are off. Each of these that carries a figure is the value in force on the sheet's today;
++     * null when there is none; so are the proof threshold and the note threshold. The grace days are null when they are off. Each of these that carries a figure is the value in force on the sheet's today;
+      * {@code dated} has, by key, every value recorded for it by from-date. {@code permissions} has, by action, the
+      * roles that may take it, comma separated, blank for the standing rule. */
+     public record SettingsView(String clerkLimit, String floor, int terms, Integer termsA, Integer termsB,
+             Integer termsC, String latePct, String policyDate, String periodNumberingFrom, String cap,
+-            String proofThreshold, Integer graceDays, Map<String, List<DatedView>> dated, Map<String, String> permissions) {
++            String proofThreshold, Integer graceDays, String noteThreshold, Map<String, List<DatedView>> dated,
++            Map<String, String> permissions) {
+ 
+         static SettingsView of(Sheet sheet) {
+             BigDecimal clerkLimit = sheet.getClerkLimit();
+             BigDecimal cap = sheet.getCap();
+             BigDecimal proofThreshold = sheet.getProofThreshold();
++            BigDecimal noteThreshold = sheet.getNoteThreshold();
+             Map<String, List<DatedView>> dated = new LinkedHashMap<>();
+             for (String key : List.of(Sheet.CLERK_LIMIT, Sheet.FLOOR, Sheet.TERMS, Sheet.LATE_PCT, Sheet.CAP,
+-                    Sheet.PROOF_THRESHOLD)) {
++                    Sheet.PROOF_THRESHOLD, Sheet.NOTE_THRESHOLD)) {
+                 dated.put(key, history(sheet, key, !key.equals(Sheet.TERMS)));
+             }
+             for (String grade : GRADES) {
+@@ -131,7 +135,8 @@ public class SettingController {
+                     sheet.getPeriodNumberingFrom() != null ? sheet.getPeriodNumberingFrom().toString() : null,
+                     cap != null ? cap.setScale(2).toPlainString() : null,
+                     proofThreshold != null ? proofThreshold.setScale(2).toPlainString() : null,
+-                    sheet.getGraceDays(), dated,
++                    sheet.getGraceDays(),
++                    noteThreshold != null ? noteThreshold.setScale(2).toPlainString() : null, dated,
+                     permissions);
+         }
+ 
+@@ -194,6 +199,7 @@ public class SettingController {
+         Optional<BigDecimal> clerkLimit = amountOrBlank(limit);
+         Optional<BigDecimal> cap = amountOrBlank(form.cap());
+         Optional<BigDecimal> proofThreshold = amountOrBlank(form.proofThreshold());
++        Optional<BigDecimal> noteThreshold = amountOrBlank(form.noteThreshold());
+         Optional<LocalDate> policyDate = dateOrBlank(form.policyDate(), "A policy date is a date, or blank.");
+         Optional<LocalDate> periodNumberingFrom = dateOrBlank(form.periodNumberingFrom(),
+                 "A period numbering date is a date, or blank.");
+@@ -202,7 +208,7 @@ public class SettingController {
+                 form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom, cap,
+                 proofThreshold, form.graceDays() == null ? null
+                         : form.graceDays().isEmpty() ? Optional.empty() : Optional.of(Integer.valueOf(form.graceDays())),
+-                froms(form), permissions(form));
++                noteThreshold, froms(form), permissions(form));
+         return view(sheetId);
+     }
+ 
+@@ -223,6 +229,7 @@ public class SettingController {
+         typed.put(Sheet.LATE_PCT, form.latePctFrom());
+         typed.put(Sheet.CAP, form.capFrom());
+         typed.put(Sheet.PROOF_THRESHOLD, form.proofThresholdFrom());
++        typed.put(Sheet.NOTE_THRESHOLD, form.noteThresholdFrom());
+         Map<String, LocalDate> froms = new LinkedHashMap<>();
+         typed.forEach((key, from) -> {
+             Optional<LocalDate> date = dateOrBlank(from, "A from-date is a date, or blank.");
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index e308c66f..2619b386 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -117,13 +117,14 @@ public class SettingService {
+      * permission matrix (each action in the order given) together; a
+      * setting not given (null) is left as it is, and an empty clerk limit, grade's terms, policy date, period
+      * numbering date, cap, proof threshold or grace days removes it; the grace days are saved after the proof
+-     * threshold. A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
++     * threshold, and the note threshold after them (an empty one removes it). A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
+      * from the sheet's today when none is given. */
+     @Transactional
+     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
+             Integer terms, Map<String, Optional<Integer>> gradeTerms, BigDecimal latePct,
+             Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom, Optional<BigDecimal> cap,
+-            Optional<BigDecimal> proofThreshold, Optional<Integer> graceDays, Map<String, LocalDate> froms,
++            Optional<BigDecimal> proofThreshold, Optional<Integer> graceDays, Optional<BigDecimal> noteThreshold,
++            Map<String, LocalDate> froms,
+             Map<Permission, List<Role>> permissions) {
+         if (clerkLimit != null) {
+             setClerkLimit(user, sheetId, clerkLimit.orElse(null), froms.get(Sheet.CLERK_LIMIT));
+@@ -154,6 +155,9 @@ public class SettingService {
+         if (graceDays != null) {
+             setGraceDays(user, sheetId, graceDays.orElse(null));
+         }
++        if (noteThreshold != null) {
++            setNoteThreshold(user, sheetId, noteThreshold.orElse(null), froms.get(Sheet.NOTE_THRESHOLD));
++        }
+         permissions.forEach((action, given) -> setPermission(user, sheetId, action, given));
+     }
+ 
+@@ -279,6 +283,16 @@ public class SettingService {
+         return value;
+     }
+ 
++    /** Set the sheet's note threshold from a date (the sheet's today when none), none to remove it from then; it
++     * moves no figure, only whether a claim dated from then needs a note to be opened. */
++    @Transactional
++    public BigDecimal setNoteThreshold(String user, String sheetId, BigDecimal threshold, LocalDate from) {
++        BigDecimal value = threshold != null ? threshold.setScale(2) : null;
++        record(user, sheetId, Sheet.NOTE_THRESHOLD, from, value, value != null ? value.toPlainString() : "",
++                false);
++        return value;
++    }
++
+     /** Set the sheet's grace days, none to turn them off; not dated, and they close no period until the sheet's
+      * today is next changed. */
+     @Transactional
+@@ -335,6 +349,17 @@ public class SettingService {
+         }
+     }
+ 
++    /** Refuse opening a claim dated on a date, with this due and note, when its due is above the note threshold
++     * in force on its date and its note is empty; a due of n/a is above no threshold. */
++    @Transactional(readOnly = true)
++    public void requireNote(String sheetId, LocalDate date, BigDecimal due, String note) {
++        BigDecimal threshold = find(sheetId).noteThresholdOn(date);
++        if (threshold != null && due != null && due.compareTo(threshold) > 0 && (note == null || note.isBlank())) {
++            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
++                    "A claim with a due above " + threshold.setScale(2).toPlainString() + " needs a note first.");
++        }
++    }
++
+     /** Record a dated setting's value from a date, the sheet's today when none is given, replacing one recorded
+      * from that date; the audit line carries the from-date only when one was given. When {@code movesFigures},
+      * the figures it moves are written after. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 7ddff18f..09d76d68 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -31,6 +31,7 @@ public class Sheet {
+     public static final String LATE_PCT = "late-pct";
+     public static final String CAP = "cap";
+     public static final String PROOF_THRESHOLD = "proof-threshold";
++    public static final String NOTE_THRESHOLD = "note-threshold";
+ 
+     /** The values a sheet starts with, in force before every from-date. */
+     public static final BigDecimal STARTING_FLOOR = new BigDecimal("1.00");
+@@ -55,7 +56,7 @@ public class Sheet {
+     private int lastClaimNumber;
+ 
+     /** The values of the settings that carry a figure (the clerk limit, the floor, the terms and each grade's,
+-     * the late percent, the cap and the proof threshold), each from its from-date until the next of the same key. */
++     * the late percent, the cap, the proof threshold and the note threshold), each from its from-date until the next of the same key. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "sheet_setting_from", joinColumns = @JoinColumn(name = "sheet_id"))
+     private List<SettingFrom> dated = new ArrayList<>();
+@@ -279,6 +280,17 @@ public class Sheet {
+         return proofThresholdOn(today);
+     }
+ 
++    /** The due above which a claim dated on a date cannot be opened with an empty note, in force on that date;
++     * none means no threshold. */
++    public BigDecimal noteThresholdOn(LocalDate date) {
++        return valueOn(NOTE_THRESHOLD, date, null);
++    }
++
++    /** The note threshold in force on the sheet's today; none means no threshold. */
++    public BigDecimal getNoteThreshold() {
++        return noteThresholdOn(today);
++    }
++
+     /** Whether a claim opened now is numbered within its period: the period numbering date is set and the
+      * sheet's today is on or after it. */
+     public boolean numbersByPeriod() {
