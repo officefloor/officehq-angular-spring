@@ -111,7 +111,7 @@ public class PeriodService {
         return closeNow(user, sheetId, period, false);
     }
 
-    /** Soft-close a period: its due-totals are fixed as by a close, but claims dated in it can still be added and
+    /** Soft-close a period: its due-totals are fixed as by a close, but claims due by in it can still be added and
      * changed. The same roles as may close may; soft-closing one already closed, soft or not, is refused. */
     @Transactional
     public Period softClose(String user, String sheetId, Long id) {
@@ -180,11 +180,11 @@ public class PeriodService {
         return periods.findBySheetIdOrderByFromAsc(sheetId).stream().filter(p -> p.contains(date)).findFirst();
     }
 
-    /** Refuse a change to a claim dated in one of the sheet's closed periods; a soft-closed one allows it. */
+    /** Refuse a change to a claim due by in one of the sheet's closed periods; a soft-closed one allows it. */
     @Transactional(readOnly = true)
     public void requireOpen(String sheetId, LocalDate date) {
         if (periods.findBySheetIdOrderByFromAsc(sheetId).stream().anyMatch(p -> p.isHardClosed() && p.contains(date))) {
-            throw new ResponseStatusException(HttpStatus.LOCKED, "That claim is dated in a closed period.");
+            throw new ResponseStatusException(HttpStatus.LOCKED, "That claim is due by in a closed period.");
         }
     }
 }

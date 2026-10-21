@@ -6,7 +6,7 @@ import { Period, PeriodsApi } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's periods by from-date, each with the due-total of the claims that count dated in it (fixed once
+// The sheet's periods by from-date, each with the due-total of the claims that count due by in it (fixed once
 // it is closed, soft or not) and whether it is closed or soft-closed, and the form that adds one.
 @Component({
   selector: 'app-periods',

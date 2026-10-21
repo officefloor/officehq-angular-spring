@@ -40,7 +40,7 @@ public class Period {
     @Column(name = "closed", nullable = false)
     private boolean closed;
 
-    /** Whether the period is soft-closed: its due-totals are fixed as for a close, but claims dated in it can
+    /** Whether the period is soft-closed: its due-totals are fixed as for a close, but claims due by in it can
      * still change. Only while closed. */
     @Column(name = "soft", nullable = false)
     private boolean soft;
@@ -101,7 +101,7 @@ public class Period {
         return closed && soft;
     }
 
-    /** Whether the period is closed and not soft: no claim dated in it may change. */
+    /** Whether the period is closed and not soft: no claim due by in it may change. */
     public boolean isHardClosed() {
         return closed && !soft;
     }

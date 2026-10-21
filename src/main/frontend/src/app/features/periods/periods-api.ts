@@ -12,7 +12,7 @@ export interface Period {
   to: string;
   /** Closed, soft or not: its figures are fixed. */
   closed: boolean;
-  /** Soft-closed: closed, but claims dated in it can still be added and changed. */
+  /** Soft-closed: closed, but claims due by in it can still be added and changed. */
   soft: boolean;
   /** The due-total fixed when it closed; null while open. */
   closedTotal: string | null;

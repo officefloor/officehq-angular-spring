@@ -221,7 +221,7 @@ public class RollupService {
         return sheets.findById(sheetId).map(s -> s.capped(dueTotal)).orElse(dueTotal);
     }
 
-    /** Each person's due-total of their claims dated from and to, inclusive, that count by the status they had at
+    /** Each person's due-total of their claims due by from and to, inclusive, that count by the status they had at
      * the end of the to-date (see {@link #countsAt}), by person id: the sum of their dues, late charges included, n/a ones skipped;
      * a person with no such due has none. */
     public Map<Long, BigDecimal> dueTotals(String sheetId, LocalDate from, LocalDate to) {
@@ -237,7 +237,7 @@ public class RollupService {
         for (Claim claim : all) {
             Person person = byId.get(claim.getPersonId());
             if (person == null || !countsAt(claim, person, late.today(), to)
-                    || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+                    || claim.getDueBy().isBefore(from) || claim.getDueBy().isAfter(to)) {
                 continue;
             }
             BigDecimal figure = dueOf(claim, ratesOn(person, claim.getDate(), byGrade), late,

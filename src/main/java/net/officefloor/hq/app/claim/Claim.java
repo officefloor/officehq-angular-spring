@@ -100,7 +100,7 @@ public class Claim {
     @Column(name = "locked_on")
     private LocalDate lockedOn;
 
-    /** Whether the claim was added while the period it is dated in was soft-closed. */
+    /** Whether the claim was added while the period its due-by falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 

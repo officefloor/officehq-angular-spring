@@ -431,14 +431,14 @@ export class People {
   /** The sheet's periods by from-date. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total for each person, by period id then person id: the sum of the dues, as shown now,
-   * of the person's claims dated in it that count by the status they had at the end of its last day (n/a ones
+   * of the person's claims due by in it that count by the status they had at the end of its last day (n/a ones
    * skipped), 0.00 with none; a closed period's are the ones
    * fixed when it closed, 0.00 for a person who had none then. */
   protected readonly personPeriodDueTotals = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const dues = new Map<number, Map<number, string[]>>();
     for (const c of this.claims()) {
-      const period = periodOf(this.periods(), c.date);
+      const period = periodOf(this.periods(), c.dueBy);
       const person = byId.get(c.personId);
       if (!period || period.closed || !person || !this.countsAt(c, period.to)) continue;
       const due = this.claimDue(c, person);
@@ -1136,7 +1136,7 @@ export class People {
   private pasteRefusal(e: HttpErrorResponse): string {
     const reason = typeof e.error?.message === 'string' && e.error.message ? ` ${e.error.message}` : '';
     if (e.status === 400) return `Nothing was added.${reason || ' Check each line\'s name, amount and date.'}`;
-    if (e.status === 423) return 'Nothing was added: a line is dated in a closed period.';
+    if (e.status === 423) return 'Nothing was added: a line is due by in a closed period.';
     if (e.status === 422) return 'Nothing was added: a line is dated after its person is retired.';
     return 'Nothing was added: a line could not be added.';
   }

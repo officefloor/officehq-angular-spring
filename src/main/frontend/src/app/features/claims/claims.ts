@@ -373,9 +373,9 @@ export class Claims {
     return isDeferred(claim, this.session.today());
   }
 
-  /** The name of the period the claim's date falls in; empty when it falls in none. */
+  /** The name of the period the claim's due-by falls in; empty when it falls in none. */
   protected periodName(claim: Claim): string {
-    return periodOf(this.periods(), claim.date)?.name ?? '';
+    return periodOf(this.periods(), claim.dueBy)?.name ?? '';
   }
 
   protected changeStatus(claim: Claim, action: ClaimAction): void {
@@ -401,7 +401,7 @@ export class Claims {
               : e.status === 409 && action === 'approve'
               ? 'Only a pending claim can be approved.'
               : e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409 && action === 'settle' && this.deferred(claim)
               ? `That claim is deferred until ${claim.deferredUntil}.`
               : e.status === 409 && action === 'settle' && this.deferred(claim)
@@ -433,7 +433,7 @@ export class Claims {
             e.status === 422
               ? 'Only a steward can re-settle a claim.'
               : e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
               ? 'Only a settled claim can be re-settled.'
               : e.status === 404
@@ -457,7 +457,7 @@ export class Claims {
           id: claim.id,
           message:
             e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
               ? 'A settled or void claim cannot take a proof.'
               : e.status === 404
@@ -496,7 +496,7 @@ export class Claims {
           id: claim.id,
           message:
             e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
               ? 'Only an open claim can be deferred.'
               : e.status === 400
@@ -537,7 +537,7 @@ export class Claims {
           id: claim.id,
           message:
             e.status === 423
-              ? 'That claim, or its new date, is in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
               ? 'Only an open or pending claim can be re-dated.'
               : e.status === 422
@@ -582,7 +582,7 @@ export class Claims {
           id: claim.id,
           message:
             e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
               ? 'Only an open claim that is not deferred can be split.'
               : e.status === 400
@@ -630,7 +630,7 @@ export class Claims {
             e.status === 422
               ? 'Only a steward can move a claim.'
               : e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
               ? 'Only a draft, open or pending claim can be moved, and never a correction.'
               : e.status === 410
@@ -675,7 +675,7 @@ export class Claims {
             e.status === 422
               ? 'Only a steward can reject a pending claim.'
               : e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
               ? 'Only a pending claim can be rejected.'
               : e.status === 404
@@ -698,9 +698,9 @@ export class Claims {
       });
       return;
     }
-    const period = periodOf(this.periods(), claim.date);
+    const period = periodOf(this.periods(), claim.dueBy);
     if (period?.closed && !period.soft) {
-      this.claimError.set({ id: claim.id, message: 'That claim is dated in a closed period.' });
+      this.claimError.set({ id: claim.id, message: 'That claim is due by in a closed period.' });
       return;
     }
     const sheetId = this.session.sheetId();
@@ -729,7 +729,7 @@ export class Claims {
             e.status === 403
               ? 'A viewer cannot edit a claim.'
               : e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
               ? 'Someone else is editing that claim, or it is no longer a draft.'
               : e.status === 404
@@ -821,7 +821,7 @@ export class Claims {
             : e.status === 422
               ? 'That claim is dated after its person is retired.'
               : e.status === 423
-              ? 'That claim is dated in a closed period.'
+              ? 'That claim is due by in a closed period.'
               : e.status === 409
                 ? 'Only a draft claim can be edited, and not while someone else is editing it.'
                 : 'Could not save that claim.',
