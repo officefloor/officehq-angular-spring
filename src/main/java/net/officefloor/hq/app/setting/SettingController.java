@@ -58,7 +58,8 @@ public class SettingController {
      * blank means the grade uses the sheet's terms. The late percent has up to two
      * decimals, 0.00 or more. The policy date is a date (yyyy-mm-dd); blank means the sheet's today. The period numbering date is a date; blank means
      * off. The cap has up to two decimals, 0.00 or more; blank means no cap. The proof threshold has up to two
-     * decimals, 0.00 or more; blank means none; so has the note threshold. The grace days are a whole number of days, 0 or more; blank means
+     * decimals, 0.00 or more; blank means none; so has the note threshold. The entry date is a date; blank means
+     * off. The grace days are a whole number of days, 0 or more; blank means
      * off. A setting
      * left out (null) is left as it is. Each setting that carries a figure has a from-date (yyyy-mm-dd) its value
      * is recorded from; blank or left out means the sheet's today. Each permission (open, settle, void, reassign,
@@ -76,6 +77,7 @@ public class SettingController {
             @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String proofThreshold,
             @Pattern(regexp = "|\\d{1,5}") String graceDays,
             @Pattern(regexp = "|\\d{1,10}(\\.\\d{1,2})?") String noteThreshold,
+            @Pattern(regexp = DATE) String entryDate,
             @Pattern(regexp = DATE) String clerkLimitFrom,
             @Pattern(regexp = DATE) String floorFrom,
             @Pattern(regexp = DATE) String termsFrom,
@@ -103,12 +105,13 @@ public class SettingController {
     /** The clerk limit and floor are shown with two decimals; the clerk limit is null when there is none. The
      * terms are the days after its date a claim is due by; each grade's terms are null when it uses the sheet's. The late percent is shown with two decimals. The policy date is null when there is none (the sheet's
      * today is used). The period numbering date is null when it is off. The cap is shown with two decimals,
-     * null when there is none; so are the proof threshold and the note threshold. The grace days are null when they are off. Each of these that carries a figure is the value in force on the sheet's today;
+     * null when there is none; so are the proof threshold and the note threshold. The grace days are null when they are off; so is the entry date. Each of these that carries a figure is the value in force on the sheet's today;
      * {@code dated} has, by key, every value recorded for it by from-date. {@code permissions} has, by action, the
      * roles that may take it, comma separated, blank for the standing rule. */
     public record SettingsView(String clerkLimit, String floor, int terms, Integer termsA, Integer termsB,
             Integer termsC, String latePct, String policyDate, String periodNumberingFrom, String cap,
-            String proofThreshold, Integer graceDays, String noteThreshold, Map<String, List<DatedView>> dated,
+            String proofThreshold, Integer graceDays, String noteThreshold, String entryDate,
+            Map<String, List<DatedView>> dated,
             Map<String, String> permissions) {
 
         static SettingsView of(Sheet sheet) {
@@ -136,7 +139,8 @@ public class SettingController {
                     cap != null ? cap.setScale(2).toPlainString() : null,
                     proofThreshold != null ? proofThreshold.setScale(2).toPlainString() : null,
                     sheet.getGraceDays(),
-                    noteThreshold != null ? noteThreshold.setScale(2).toPlainString() : null, dated,
+                    noteThreshold != null ? noteThreshold.setScale(2).toPlainString() : null,
+                    sheet.getEntryDate() != null ? sheet.getEntryDate().toString() : null, dated,
                     permissions);
         }
 
@@ -203,12 +207,13 @@ public class SettingController {
         Optional<LocalDate> policyDate = dateOrBlank(form.policyDate(), "A policy date is a date, or blank.");
         Optional<LocalDate> periodNumberingFrom = dateOrBlank(form.periodNumberingFrom(),
                 "A period numbering date is a date, or blank.");
+        Optional<LocalDate> entryDate = dateOrBlank(form.entryDate(), "An entry date is a date, or blank.");
         service.save(user, sheetId, clerkLimit, form.floor() == null ? null : new BigDecimal(form.floor()),
                 form.terms() == null ? null : Integer.valueOf(form.terms()), gradeTerms(form),
                 form.latePct() == null ? null : new BigDecimal(form.latePct()), policyDate, periodNumberingFrom, cap,
                 proofThreshold, form.graceDays() == null ? null
                         : form.graceDays().isEmpty() ? Optional.empty() : Optional.of(Integer.valueOf(form.graceDays())),
-                noteThreshold, froms(form), permissions(form));
+                noteThreshold, entryDate, froms(form), permissions(form));
         return view(sheetId);
     }
 

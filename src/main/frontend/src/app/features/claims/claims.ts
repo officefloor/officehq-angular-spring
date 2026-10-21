@@ -8,6 +8,7 @@ import { Period, periodOf } from '../periods/periods-api';
 import { SheetFloor } from '../settings/sheet-floor';
 import { SheetLatePct } from '../settings/sheet-late-pct';
 import { SheetPolicyDate } from '../settings/sheet-policy-date';
+import { SheetEntryDate } from '../settings/sheet-entry-date';
 import {
   Claim,
   ClaimAction,
@@ -272,6 +273,9 @@ export class Claims {
   private readonly floor = inject(SheetFloor);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
+  private readonly entryDate = inject(SheetEntryDate);
+  /** The date a new claim is dated unless another is picked: the sheet's entry date, else its today. */
+  private readonly defaultDate = computed(() => this.entryDate.value() ?? this.session.today() ?? '');
   /** What a late charge goes by: the sheet's today and late percent; and the policy date rounding goes by. */
   private readonly late = computed<Lateness>(() => ({
     today: this.session.today(),
@@ -330,9 +334,9 @@ export class Claims {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.formError.set(null));
-    // A new claim is dated the sheet's today unless another date is picked.
+    // A new claim is dated the sheet's entry date, else its today, unless another date is picked.
     effect(() => {
-      const today = this.session.today() ?? '';
+      const today = this.defaultDate();
       untracked(() => {
         if (this.editingId() === null && !this.form.controls.date.dirty) {
           this.form.controls.date.setValue(today, { emitEvent: false });
@@ -699,13 +703,14 @@ export class Claims {
       this.claimError.set({ id: claim.id, message: 'That claim is dated in a closed period.' });
       return;
     }
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.fill(claim);
+    // A viewer's editor opens, but it is refused at once: saving it is always refused.
     if (this.session.role() === 'viewer') {
       this.claimError.set({ id: claim.id, message: 'A viewer cannot edit a claim.' });
       return;
     }
-    const sheetId = this.session.sheetId();
-    if (!sheetId) return;
-    this.fill(claim);
     // Another user's lock refuses it, though the editor is open: saving it is refused until the lock is gone.
     const holder = lockHolder(claim, this.session.today());
     if (holder !== null && holder !== this.session.user()) {
@@ -764,7 +769,7 @@ export class Claims {
     this.editingId.set(null);
     this.editors.set(this.session.user(), this.session.sheetId(), this.personId(), null);
     this.form.reset(
-      { amount: '', date: this.session.today() ?? '', note: '', corrects: '' },
+      { amount: '', date: this.defaultDate(), note: '', corrects: '' },
       { emitEvent: false },
     );
     this.formError.set(null);
@@ -806,7 +811,7 @@ export class Claims {
       },
       error: (e: HttpErrorResponse) => {
         this.submitting = false;
-        // A refused new claim is dropped: the form starts afresh, dated the sheet's today, under its error.
+        // A refused new claim is dropped: the form starts afresh, dated the sheet's entry date or today, under its error.
         if (id === null) this.reset();
         this.formError.set(
           e.status === 400

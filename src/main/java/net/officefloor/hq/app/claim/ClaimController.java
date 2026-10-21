@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** The amount is a number with up to two decimals, negative for a correction, which names by number the
-     * settled claim it corrects; no date means the sheet's today. */
+     * settled claim it corrects; no date means the sheet's entry date, or its today when none. */
     public record ClaimForm(
             @NotNull @Pattern(regexp = "-?\\d{1,10}(\\.\\d{1,2})?") String amount,
             LocalDate date,

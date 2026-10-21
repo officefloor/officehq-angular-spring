@@ -60,18 +60,19 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
-    /** Add a claim for a person; a claim without a date is dated the sheet's today. One dated in a closed period
-     * is refused, one dated in a soft-closed period is a late entry, and so is a correction that does not name a settled claim of the same person. */
+    /** Add a claim for a person; a claim without a date is dated the sheet's entry date, or its today when it has
+     * none. One dated in a closed period is refused, one dated in a soft-closed period is a late entry, and so is a
+     * correction that does not name a settled claim of the same person. */
     @Transactional
     public Claim add(String user, String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
         LocalDate today = sheets.today(sheetId);
+        LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
         Person person = requirePerson(sheetId, personId);
-        requireNotRetired(person, date != null ? date : today);
-        requireOpenPeriod(sheetId, date != null ? date : today);
+        requireNotRetired(person, dated);
+        requireOpenPeriod(sheetId, dated);
         String corrected = correctedBy(sheetId, personId, amount, corrects);
         Snapshot before = rollup.snapshot(sheetId);
-        LocalDate dated = date != null ? date : today;
         LocalDate dueBy = dueBy(sheetId, person, dated);
         Claim fresh = new Claim(sheetId, personId, amount, dated, dueBy, noteOf(note));
         fresh.setCorrects(corrected);

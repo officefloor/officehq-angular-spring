@@ -9,6 +9,7 @@ import { DEFAULT_FLOOR, SheetFloor } from './sheet-floor';
 import { DEFAULT_LATE_PCT, SheetLatePct } from './sheet-late-pct';
 import { SheetCap } from './sheet-cap';
 import { SheetPolicyDate } from './sheet-policy-date';
+import { SheetEntryDate } from './sheet-entry-date';
 
 /** The terms a sheet starts with, in days. */
 const DEFAULT_TERMS = 14;
@@ -58,6 +59,7 @@ type SettingsFormValue = {
   proofThreshold: string;
   graceDays: string;
   noteThreshold: string;
+  entryDate: string;
 } & Record<PermissionField, string>;
 
 const NO_SETTINGS: SheetSettings = {
@@ -74,6 +76,7 @@ const NO_SETTINGS: SheetSettings = {
   proofThreshold: null,
   graceDays: null,
   noteThreshold: null,
+  entryDate: null,
   dated: Object.fromEntries(DATED_KEYS.map((k) => [k, []])) as unknown as SheetSettings['dated'],
   permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, ''])) as Record<Permission, string>,
 };
@@ -173,6 +176,8 @@ const NO_SETTINGS: SheetSettings = {
           data-testid="setting-note-threshold-from"
           formControlName="noteThresholdFrom"
         />
+        <label for="setting-entry-date">Entry date (yyyy-mm-dd, blank for off)</label>
+        <input id="setting-entry-date" data-testid="setting-entry-date" formControlName="entryDate" />
         <label for="setting-grace-days">Grace days (blank for off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" inputmode="numeric" formControlName="graceDays" />
         @for (p of permissions; track p) {
@@ -227,6 +232,10 @@ const NO_SETTINGS: SheetSettings = {
         <span data-testid="setting-note-threshold-current">{{ inForce().noteThreshold ?? '' }}</span>
       </p>
       <p>
+        Entry date:
+        <span data-testid="setting-entry-date-current">{{ settings().entryDate ?? '' }}</span>
+      </p>
+      <p>
         Grace days:
         <span data-testid="setting-grace-days-current">{{ settings().graceDays ?? '' }}</span>
       </p>
@@ -272,6 +281,7 @@ export class Settings {
   private readonly floor = inject(SheetFloor);
   private readonly latePct = inject(SheetLatePct);
   private readonly policyDate = inject(SheetPolicyDate);
+  private readonly entryDate = inject(SheetEntryDate);
   private readonly cap = inject(SheetCap);
 
   protected readonly roleNames = `${ROLES.slice(0, -1).join(', ')} or ${ROLES[ROLES.length - 1]}`;
@@ -327,6 +337,7 @@ export class Settings {
     proofThreshold: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
     noteThreshold: new FormControl('', { nonNullable: true }),
+    entryDate: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
@@ -444,6 +455,10 @@ export class Settings {
       this.settingsError.set('Load a sheet first.');
       return;
     }
+    if (this.session.role() === 'viewer') {
+      this.settingsError.set('A viewer cannot change settings.');
+      return;
+    }
     const controls = this.settingsForm.controls;
     // With nothing changed, the setting last gone into is saved again as it is.
     const unchanged = !this.settingsForm.dirty;
@@ -472,6 +487,8 @@ export class Settings {
     const sendGraceDays = send('graceDays');
     const noteThreshold = controls.noteThreshold.value.trim();
     const sendNoteThreshold = send('noteThreshold');
+    const entryDate = controls.entryDate.value.trim();
+    const sendEntryDate = send('entryDate');
     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -527,6 +544,10 @@ export class Settings {
       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    if (sendEntryDate && entryDate !== '' && !(DATE.test(entryDate) && !isNaN(Date.parse(entryDate)))) {
+      this.settingsError.set('Type an entry date as yyyy-mm-dd, or leave it blank.');
+      return;
+    }
     const permissions: Partial<Record<PermissionField, string>> = {};
     for (const p of PERMISSIONS) {
       const key = PERMISSION_FIELDS[p];
@@ -560,6 +581,7 @@ export class Settings {
       ...(sendProofThreshold ? { proofThreshold } : {}),
       ...(sendGraceDays ? { graceDays } : {}),
       ...(sendNoteThreshold ? { noteThreshold } : {}),
+      ...(sendEntryDate ? { entryDate } : {}),
       ...permissions,
       ...froms,
     };
@@ -573,6 +595,7 @@ export class Settings {
     this.floor.set(s.dated.floor);
     this.latePct.set(s.dated['late-pct']);
     this.policyDate.set(s.policyDate);
+    this.entryDate.set(s.entryDate);
     this.cap.set(s.dated.cap);
     const shown: SettingsFormValue = {
       clerkLimit: s.clerkLimit ?? '',
@@ -588,6 +611,7 @@ export class Settings {
       proofThreshold: s.proofThreshold ?? '',
       graceDays: s.graceDays === null ? '' : String(s.graceDays),
       noteThreshold: s.noteThreshold ?? '',
+      entryDate: s.entryDate ?? '',
       ...(Object.fromEntries(PERMISSIONS.map((p) => [PERMISSION_FIELDS[p], s.permissions[p]])) as Record<
         PermissionField,
         string

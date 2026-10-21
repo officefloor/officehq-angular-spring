@@ -38,6 +38,12 @@ public class SheetService {
         return find(id).getToday();
     }
 
+    /** The date a new claim given no date is dated: the sheet's entry date, or its today when there is none. */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String id) {
+        return find(id).entryDateOrToday();
+    }
+
     /**
      * Give out the sheet's next claim number. The sheet stays locked until the calling transaction
      * ends, so claims opened at the same moment get different numbers, and a rolled back

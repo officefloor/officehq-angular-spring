@@ -71,6 +71,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** While a date, a new claim given no date is dated it instead of the sheet's today; none means off. */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** When the sheet's today is changed, every open period whose to-date plus these days is before it is
      * closed; none means off. */
     @Column(name = "grace_days")
@@ -161,6 +165,7 @@ public class Sheet {
         then.dated = new ArrayList<>(dated.stream().filter(d -> d.madeBy(date)).toList());
         then.policyDate = policyDate;
         then.periodNumberingFrom = periodNumberingFrom;
+        then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.permissions = new HashMap<>(permissions);
         then.archived = archived;
@@ -248,6 +253,19 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
+    }
+
+    /** The date a new claim given no date is dated: the entry date, or the sheet's today when there is none. */
+    public LocalDate entryDateOrToday() {
+        return entryDate != null ? entryDate : today;
     }
 
     public Integer getGraceDays() {

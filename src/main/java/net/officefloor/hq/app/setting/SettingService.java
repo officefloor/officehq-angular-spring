@@ -117,14 +117,14 @@ public class SettingService {
      * permission matrix (each action in the order given) together; a
      * setting not given (null) is left as it is, and an empty clerk limit, grade's terms, policy date, period
      * numbering date, cap, proof threshold or grace days removes it; the grace days are saved after the proof
-     * threshold, and the note threshold after them (an empty one removes it). A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
+     * threshold, and the note threshold after them (an empty one removes it), then the entry date (an empty one turns it off). A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
      * from the sheet's today when none is given. */
     @Transactional
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
             Integer terms, Map<String, Optional<Integer>> gradeTerms, BigDecimal latePct,
             Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom, Optional<BigDecimal> cap,
             Optional<BigDecimal> proofThreshold, Optional<Integer> graceDays, Optional<BigDecimal> noteThreshold,
-            Map<String, LocalDate> froms,
+            Optional<LocalDate> entryDate, Map<String, LocalDate> froms,
             Map<Permission, List<Role>> permissions) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null), froms.get(Sheet.CLERK_LIMIT));
@@ -157,6 +157,9 @@ public class SettingService {
         }
         if (noteThreshold != null) {
             setNoteThreshold(user, sheetId, noteThreshold.orElse(null), froms.get(Sheet.NOTE_THRESHOLD));
+        }
+        if (entryDate != null) {
+            setEntryDate(user, sheetId, entryDate.orElse(null));
         }
         permissions.forEach((action, given) -> setPermission(user, sheetId, action, given));
     }
@@ -262,6 +265,18 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=period-numbering-from value="
                 + (from != null ? from.toString() : ""));
         return from;
+    }
+
+    /** Set the sheet's entry date, none to turn it off; it dates only claims added from now on. */
+    @Transactional
+    public LocalDate setEntryDate(String user, String sheetId, LocalDate entryDate) {
+        sheets.lock(sheetId);
+        Sheet sheet = find(sheetId);
+        sheet.setEntryDate(entryDate);
+        sheetRepository.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=entry-date value="
+                + (entryDate != null ? entryDate.toString() : ""));
+        return entryDate;
     }
 
     /** Set the sheet's cap from a date (the sheet's today when none), none to remove it from then; it moves

@@ -27,7 +27,7 @@ public class QuickAddService {
         this.claimService = claimService;
     }
 
-    /** Add a draft claim dated the sheet's today with an empty note for the named person, creating them with
+    /** Add a draft claim dated the sheet's entry date (its today when none) with an empty note for the named person, creating them with
      * grade A first when the name is not on the sheet. It is one change: a refused claim leaves no new person. */
     @Transactional
     public Added add(String user, String sheetId, String name, BigDecimal amount) {

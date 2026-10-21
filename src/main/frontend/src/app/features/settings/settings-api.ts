@@ -52,6 +52,8 @@ export interface Settings {
   graceDays: number | null;
   /** The due above which a claim cannot be opened with an empty note, with two decimals; null for none. */
   noteThreshold: string | null;
+  /** The date (yyyy-mm-dd) a new claim is dated by default instead of the sheet's today; null when off. */
+  entryDate: string | null;
   dated: Record<DatedKey, Dated[]>;
   /** By action, the roles that may take it, comma separated; blank keeps the standing rule. */
   permissions: Record<Permission, string>;
@@ -84,7 +86,7 @@ export class SettingsApi {
       termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string;
       proofThreshold?: string; graceDays?: string; clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
       termsCFrom?: string; latePctFrom?: string; capFrom?: string; proofThresholdFrom?: string;
-      noteThreshold?: string; noteThresholdFrom?: string;
+      noteThreshold?: string; noteThresholdFrom?: string; entryDate?: string;
       permOpen?: string; permSettle?: string; permVoid?: string; permReassign?: string; permClose?: string;
       permReopen?: string; },
   ): Observable<Settings> {

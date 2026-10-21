@@ -34,7 +34,7 @@ public class PasteService {
     }
 
     /** Add a draft claim per line of name,amount,date,note, in order, as the claim form would add it: the note
-     * may hold commas or be absent, a blank date is the sheet's today, and the name must be on the sheet. Every
+     * may hold commas or be absent, a blank date is the sheet's entry date (its today when none), and the name must be on the sheet. Every
      * line is read first; it is one change, so one line refused (here or by the claim form's rules) adds none.
      * Blank lines are skipped; a box with no line is refused. */
     @Transactional

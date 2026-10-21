@@ -10,6 +10,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementService;
@@ -76,11 +78,14 @@ public class PersonController {
     private final PersonService service;
     private final StatementService statements;
     private final SheetService sheets;
+    private final SettingService settings;
 
-    public PersonController(PersonService service, StatementService statements, SheetService sheets) {
+    public PersonController(PersonService service, StatementService statements, SheetService sheets,
+            SettingService settings) {
         this.service = service;
         this.statements = statements;
         this.sheets = sheets;
+        this.settings = settings;
     }
 
     @GetMapping
@@ -111,10 +116,14 @@ public class PersonController {
 
     public record GradedAllView(int graded, List<PersonView> people) {}
 
-    /** Give the selected people a grade together, from a date, the sheet's today when none is given. */
+    /** Give the selected people a grade together, from a date, the sheet's today when none is given. A viewer
+     * changes no one: every person is refused, and none is counted as changed. */
     @PostMapping("/grade")
     public GradedAllView gradeAll(@RequestHeader("X-User") String user, @PathVariable String sheetId,
             @Valid @RequestBody GradeAllForm form) {
+        if (settings.roleOf(sheetId, user.trim()) == Role.VIEWER) {
+            return new GradedAllView(0, List.of());
+        }
         List<Person> graded = service.grade(user, sheetId, form.ids(), form.grade(), form.from());
         return new GradedAllView(graded.size(), graded.stream().map(p -> view(user, sheetId, p)).toList());
     }
