@@ -26,7 +26,8 @@ public class TodayService {
         this.rollup = rollup;
     }
 
-    /** Change the sheet's today; it writes no line of its own. Every open period past the sheet's grace days is
+    /** Change the sheet's today; when the date moves, one SNAPSHOT line is first written per person
+     * with their due-total on the day being left. Every open period past the sheet's grace days is
      * then closed, each writing its line, and then the figures the change moves are written. */
     @Transactional
     public Sheet setToday(String user, String id, LocalDate today) {
@@ -34,6 +35,9 @@ public class TodayService {
         Sheet sheet = sheets.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
         Snapshot before = rollup.snapshot(id);
+        if (!today.equals(sheet.getToday())) {
+            rollup.recordSnapshot(user, id, before);
+        }
         sheet.setToday(today);
         sheets.flush();
         periods.closeLapsed(user, id);

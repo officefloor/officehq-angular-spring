@@ -249,6 +249,15 @@ public class RollupService {
         return totals;
     }
 
+    /** Write to the audit, once the change commits, one SNAPSHOT line for each person in {@code snapshot}, in
+     * the order they were added, with the due-total it holds. */
+    public void recordSnapshot(String user, String sheetId, Snapshot snapshot) {
+        String prefix = " sheet=" + sheetId + " by=" + user;
+        for (Figures figures : snapshot.people().values()) {
+            audit.recordOnCommit("SNAPSHOT" + prefix + " name=" + figures.name() + " due-total=" + figures.dueTotal());
+        }
+    }
+
     /**
      * Write to the audit, once the change commits, one ROLLUP line for each person whose figures moved since
      * {@code before} (a person new since then counts as moved), in the order they were added, then a TOTALS

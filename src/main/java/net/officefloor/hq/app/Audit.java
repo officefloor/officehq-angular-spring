@@ -59,7 +59,12 @@ public class Audit {
      * {@code for=<the steward who delegated>}.
      */
     public void recordOnCommit(String record) {
-        String entry = record + delegated(record);
+        recordOnCommit(record, "");
+    }
+
+    /** As {@link #recordOnCommit(String)}, with {@code trailing} fields written after any {@code for=<steward>}. */
+    public void recordOnCommit(String record, String trailing) {
+        String entry = record + delegated(record) + trailing;
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             record(entry);
             return;

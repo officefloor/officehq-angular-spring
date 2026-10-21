@@ -96,8 +96,8 @@ public class PersonService {
         } catch (ObjectOptimisticLockingFailureException e) {
             throw changedMeanwhile();
         }
-        audit.recordOnCommit(entry("PERSON_EDITED", user, person, today)
-                + (terms != null ? " terms=" + terms : cleared || termsGiven ? " terms=" : ""));
+        audit.recordOnCommit(entry("PERSON_EDITED", user, person, today),
+                (terms != null ? " terms=" + terms : cleared || termsGiven ? " terms=" : ""));
         rollup.recordChanges(user, sheetId, before);
         return person;
     }
