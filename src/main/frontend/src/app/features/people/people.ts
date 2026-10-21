@@ -40,6 +40,9 @@ const ACTIVE_DAYS = 30;
 /** The days up to and including the sheet's today in which a patron's SETTLED claims count toward backing. */
 const BACKING_DAYS = 90;
 
+/** The age buckets of a person's dues, by the most days old a claim in each can be (the last has no end). */
+const AGE_BUCKETS = [30, 60] as const;
+
 // The people on the active sheet, in the order they were added, and the one form that adds a
 // person or, once a person's editor is opened, saves changes to them. Each person's row lists their
 // claims, what they have claimed (its OPEN, PENDING and SETTLED claims, though OPEN and PENDING ones dated within one of
@@ -177,6 +180,9 @@ const BACKING_DAYS = 90;
             <th scope="col">On hold</th>
             <th scope="col">Overdue</th>
             <th scope="col">Overdue total</th>
+            <th scope="col">Aged 0–30</th>
+            <th scope="col">Aged 31–60</th>
+            <th scope="col">Aged 61+</th>
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
             <th scope="col">Watched</th>
@@ -225,6 +231,10 @@ const BACKING_DAYS = 90;
               </td>
               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
+              @let aged = agedOf(p);
+              <td data-testid="person-aged-0-30">{{ aged[0] }}</td>
+              <td data-testid="person-aged-31-60">{{ aged[1] }}</td>
+              <td data-testid="person-aged-61">{{ aged[2] }}</td>
               <td data-testid="person-patrons">{{ patronNames(p) }}</td>
               <td data-testid="person-backing">{{ backing(p) }}</td>
               <td data-testid="person-watched">{{ watchedShown(p) ? 'yes' : 'no' }}</td>
@@ -661,6 +671,25 @@ export class People {
         .map((c) => this.claimDue(c, person))
         .filter((d) => d !== NO_RATE),
     );
+  }
+
+  /** The sum of the dues of the person's OPEN and PENDING claims that count (n/a ones skipped), split by the
+   * claim's age on the sheet's today, the days from its date: 0 to 30, 31 to 60 and 61 or more. A claim dated
+   * after today is 0 to 30 days old. Each 0.00 with none. */
+  protected agedOf(person: Person): [string, string, string] {
+    const today = this.session.today();
+    const buckets: [string[], string[], string[]] = [[], [], []];
+    if (today !== null) {
+      for (const c of this.claimsOf(person.id)) {
+        if (!isOpen(c) || !this.countsLive(c)) continue;
+        const due = this.claimDue(c, person);
+        if (due === NO_RATE) continue;
+        const age = Math.round((Date.parse(today) - Date.parse(c.date)) / 86_400_000);
+        const at = AGE_BUCKETS.findIndex((most) => age <= most);
+        buckets[at < 0 ? AGE_BUCKETS.length : at].push(due);
+      }
+    }
+    return [sumAmounts(buckets[0]), sumAmounts(buckets[1]), sumAmounts(buckets[2])];
   }
 
   /** The names of the person's patrons, sorted, comma and space separated. */
