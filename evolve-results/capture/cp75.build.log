@@ -1,0 +1,10 @@
+$ bin/build  (attempt 1)
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+[playwright launch/timeout] Command '['npx', 'playwright', 'test', '--reporter=json', '--workers=1', '--output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts']' timed out after 1800 seconds
+[gate attempt 1] playwright failed to launch/timed out: Command '['npx', 'playwright', 'test', '--reporter=json', '--workers=1', '--output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts']' timed out after 1800 seconds
+[playwright launch/timeout] Command '['npx', 'playwright', 'test', '--reporter=json', '--workers=1', '--output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts']' timed out after 1800 seconds
+[gate attempt 2] playwright failed to launch/timed out: Command '['npx', 'playwright', 'test', '--reporter=json', '--workers=1', '--output=/home/daniel/ui-work/202610192149/just-solve-chain1/.run/pw-artifacts']' timed out after 1800 seconds
