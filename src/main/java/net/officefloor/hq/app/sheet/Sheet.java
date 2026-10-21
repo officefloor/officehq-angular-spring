@@ -31,6 +31,7 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    public static final String NOTE_THRESHOLD = "note-threshold";
 
     /** The values a sheet starts with, in force before every from-date. */
     public static final BigDecimal STARTING_FLOOR = new BigDecimal("1.00");
@@ -55,7 +56,7 @@ public class Sheet {
     private int lastClaimNumber;
 
     /** The values of the settings that carry a figure (the clerk limit, the floor, the terms and each grade's,
-     * the late percent, the cap and the proof threshold), each from its from-date until the next of the same key. */
+     * the late percent, the cap, the proof threshold and the note threshold), each from its from-date until the next of the same key. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting_from", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<SettingFrom> dated = new ArrayList<>();
@@ -277,6 +278,17 @@ public class Sheet {
     /** The proof threshold in force on the sheet's today; none means no threshold. */
     public BigDecimal getProofThreshold() {
         return proofThresholdOn(today);
+    }
+
+    /** The due above which a claim dated on a date cannot be opened with an empty note, in force on that date;
+     * none means no threshold. */
+    public BigDecimal noteThresholdOn(LocalDate date) {
+        return valueOn(NOTE_THRESHOLD, date, null);
+    }
+
+    /** The note threshold in force on the sheet's today; none means no threshold. */
+    public BigDecimal getNoteThreshold() {
+        return noteThresholdOn(today);
     }
 
     /** Whether a claim opened now is numbered within its period: the period numbering date is set and the

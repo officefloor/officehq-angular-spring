@@ -117,13 +117,14 @@ public class SettingService {
      * permission matrix (each action in the order given) together; a
      * setting not given (null) is left as it is, and an empty clerk limit, grade's terms, policy date, period
      * numbering date, cap, proof threshold or grace days removes it; the grace days are saved after the proof
-     * threshold. A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
+     * threshold, and the note threshold after them (an empty one removes it). A setting that carries a figure is recorded from its from-date in {@code froms}, by key, or
      * from the sheet's today when none is given. */
     @Transactional
     public void save(String user, String sheetId, Optional<BigDecimal> clerkLimit, BigDecimal floor,
             Integer terms, Map<String, Optional<Integer>> gradeTerms, BigDecimal latePct,
             Optional<LocalDate> policyDate, Optional<LocalDate> periodNumberingFrom, Optional<BigDecimal> cap,
-            Optional<BigDecimal> proofThreshold, Optional<Integer> graceDays, Map<String, LocalDate> froms,
+            Optional<BigDecimal> proofThreshold, Optional<Integer> graceDays, Optional<BigDecimal> noteThreshold,
+            Map<String, LocalDate> froms,
             Map<Permission, List<Role>> permissions) {
         if (clerkLimit != null) {
             setClerkLimit(user, sheetId, clerkLimit.orElse(null), froms.get(Sheet.CLERK_LIMIT));
@@ -153,6 +154,9 @@ public class SettingService {
         }
         if (graceDays != null) {
             setGraceDays(user, sheetId, graceDays.orElse(null));
+        }
+        if (noteThreshold != null) {
+            setNoteThreshold(user, sheetId, noteThreshold.orElse(null), froms.get(Sheet.NOTE_THRESHOLD));
         }
         permissions.forEach((action, given) -> setPermission(user, sheetId, action, given));
     }
@@ -279,6 +283,16 @@ public class SettingService {
         return value;
     }
 
+    /** Set the sheet's note threshold from a date (the sheet's today when none), none to remove it from then; it
+     * moves no figure, only whether a claim dated from then needs a note to be opened. */
+    @Transactional
+    public BigDecimal setNoteThreshold(String user, String sheetId, BigDecimal threshold, LocalDate from) {
+        BigDecimal value = threshold != null ? threshold.setScale(2) : null;
+        record(user, sheetId, Sheet.NOTE_THRESHOLD, from, value, value != null ? value.toPlainString() : "",
+                false);
+        return value;
+    }
+
     /** Set the sheet's grace days, none to turn them off; not dated, and they close no period until the sheet's
      * today is next changed. */
     @Transactional
@@ -332,6 +346,17 @@ public class SettingService {
         if (threshold != null && due != null && due.compareTo(threshold) > 0 && proofs == 0) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
                     "A claim with a due above " + threshold.setScale(2).toPlainString() + " needs a proof first.");
+        }
+    }
+
+    /** Refuse opening a claim dated on a date, with this due and note, when its due is above the note threshold
+     * in force on its date and its note is empty; a due of n/a is above no threshold. */
+    @Transactional(readOnly = true)
+    public void requireNote(String sheetId, LocalDate date, BigDecimal due, String note) {
+        BigDecimal threshold = find(sheetId).noteThresholdOn(date);
+        if (threshold != null && due != null && due.compareTo(threshold) > 0 && (note == null || note.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
+                    "A claim with a due above " + threshold.setScale(2).toPlainString() + " needs a note first.");
         }
     }
 

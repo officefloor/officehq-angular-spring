@@ -14,7 +14,7 @@ export interface RoleGiven {
 }
 
 /** The keys of the settings that carry a figure, each dated. */
-export const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold'] as const;
+export const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
 export type DatedKey = (typeof DATED_KEYS)[number];
 
 /** The actions of the permission matrix, in the order they are shown. */
@@ -50,12 +50,14 @@ export interface Settings {
   /** The days after a period's to-date it is closed when the sheet's today is changed past them; null when
    * off. */
   graceDays: number | null;
+  /** The due above which a claim cannot be opened with an empty note, with two decimals; null for none. */
+  noteThreshold: string | null;
   dated: Record<DatedKey, Dated[]>;
   /** By action, the roles that may take it, comma separated; blank keeps the standing rule. */
   permissions: Record<Permission, string>;
 }
 
-// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap, its proof threshold (those that carry a figure dated), its grace days and its permission matrix, read and changed through the
+// A sheet's settings: the role each user name has, its clerk limit, its floor, its terms and each grade's, its late percent, its policy date, its period numbering date, its cap, its proof threshold, its note threshold (those that carry a figure dated), its grace days and its permission matrix, read and changed through the
 // server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -82,6 +84,7 @@ export class SettingsApi {
       termsC?: string; latePct?: string; policyDate?: string; periodNumberingFrom?: string; cap?: string;
       proofThreshold?: string; graceDays?: string; clerkLimitFrom?: string; floorFrom?: string; termsFrom?: string; termsAFrom?: string; termsBFrom?: string;
       termsCFrom?: string; latePctFrom?: string; capFrom?: string; proofThresholdFrom?: string;
+      noteThreshold?: string; noteThresholdFrom?: string;
       permOpen?: string; permSettle?: string; permVoid?: string; permReassign?: string; permClose?: string;
       permReopen?: string; },
   ): Observable<Settings> {

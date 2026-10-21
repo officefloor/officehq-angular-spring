@@ -203,6 +203,10 @@ public class ClaimService {
         BigDecimal due = rollup.dueOf(claim, person);
         // A claim whose due is above the proof threshold in force on its date needs a proof before it is settled,
         // whoever settles it, so it never goes PENDING without one.
+        // A claim whose due is above the note threshold in force on its date cannot be opened with an empty note.
+        if (next == ClaimStatus.OPEN) {
+            settings.requireNote(sheetId, claim.getDate(), due, claim.getNote());
+        }
         if (next == ClaimStatus.SETTLED) {
             settings.requireProof(sheetId, claim.getDate(), due, claim.getProofs());
         }

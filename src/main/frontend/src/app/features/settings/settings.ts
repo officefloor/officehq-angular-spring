@@ -26,6 +26,7 @@ const DATED_FIELDS = {
   latePct: 'late-pct',
   cap: 'cap',
   proofThreshold: 'proof-threshold',
+  noteThreshold: 'note-threshold',
 } as const satisfies Record<string, DatedKey>;
 type DatedField = keyof typeof DATED_FIELDS;
 type FromField = `${DatedField}From`;
@@ -56,6 +57,7 @@ type SettingsFormValue = {
   cap: string;
   proofThreshold: string;
   graceDays: string;
+  noteThreshold: string;
 } & Record<PermissionField, string>;
 
 const NO_SETTINGS: SheetSettings = {
@@ -71,6 +73,7 @@ const NO_SETTINGS: SheetSettings = {
   cap: null,
   proofThreshold: null,
   graceDays: null,
+  noteThreshold: null,
   dated: Object.fromEntries(DATED_KEYS.map((k) => [k, []])) as unknown as SheetSettings['dated'],
   permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, ''])) as Record<Permission, string>,
 };
@@ -84,7 +87,8 @@ const NO_SETTINGS: SheetSettings = {
 // numbering date (blank for off), from which a claim opened is numbered within its period, and the cap (blank
 // for none), the most a person's due-total comes to, and the proof threshold (blank for none), above which a
 // claim's due needs a proof before it is settled or approved, and the grace days (blank for off), after which an open period
-// past its to-date is closed when the sheet's today is changed, and the permission matrix: for each action, the
+// past its to-date is closed when the sheet's today is changed, and the note threshold (blank for none), above
+// which a claim's due needs a note before it is opened, and the permission matrix: for each action, the
 // roles that may take it, comma separated (blank for the standing rule). The settings that carry a figure are dated: each is saved
 // from its from-date (blank for the sheet's today), and the value in force on the sheet's today is shown. Saving
 // sends only the settings changed in the form (the clerk limit when none was).
@@ -156,6 +160,19 @@ const NO_SETTINGS: SheetSettings = {
           data-testid="setting-proof-threshold-from"
           formControlName="proofThresholdFrom"
         />
+        <label for="setting-note-threshold">Note threshold (blank for none)</label>
+        <input
+          id="setting-note-threshold"
+          data-testid="setting-note-threshold"
+          inputmode="decimal"
+          formControlName="noteThreshold"
+        />
+        <label for="setting-note-threshold-from">Note threshold from (yyyy-mm-dd, blank for the sheet's today)</label>
+        <input
+          id="setting-note-threshold-from"
+          data-testid="setting-note-threshold-from"
+          formControlName="noteThresholdFrom"
+        />
         <label for="setting-grace-days">Grace days (blank for off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" inputmode="numeric" formControlName="graceDays" />
         @for (p of permissions; track p) {
@@ -204,6 +221,10 @@ const NO_SETTINGS: SheetSettings = {
       <p>
         Proof threshold in force:
         <span data-testid="setting-proof-threshold-current">{{ inForce().proofThreshold ?? '' }}</span>
+      </p>
+      <p>
+        Note threshold in force:
+        <span data-testid="setting-note-threshold-current">{{ inForce().noteThreshold ?? '' }}</span>
       </p>
       <p>
         Grace days:
@@ -273,6 +294,7 @@ export class Settings {
       latePct: on('late-pct', DEFAULT_LATE_PCT),
       cap: on('cap', null),
       proofThreshold: on('proof-threshold', null),
+      noteThreshold: on('note-threshold', null),
     };
   });
   protected readonly roleError = signal<string | null>(null);
@@ -304,6 +326,7 @@ export class Settings {
     cap: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
+    noteThreshold: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
@@ -313,6 +336,7 @@ export class Settings {
     latePctFrom: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
+    noteThresholdFrom: new FormControl('', { nonNullable: true }),
     permOpen: new FormControl('', { nonNullable: true }),
     permSettle: new FormControl('', { nonNullable: true }),
     permVoid: new FormControl('', { nonNullable: true }),
@@ -446,6 +470,8 @@ export class Settings {
     const sendProofThreshold = send('proofThreshold');
     const graceDays = controls.graceDays.value.trim();
     const sendGraceDays = send('graceDays');
+    const noteThreshold = controls.noteThreshold.value.trim();
+    const sendNoteThreshold = send('noteThreshold');
     if (sendLimit && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -497,6 +523,10 @@ export class Settings {
       this.settingsError.set('Type grace days of 0 or more whole days, or leave them blank.');
       return;
     }
+    if (sendNoteThreshold && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
+      this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     const permissions: Partial<Record<PermissionField, string>> = {};
     for (const p of PERMISSIONS) {
       const key = PERMISSION_FIELDS[p];
@@ -529,6 +559,7 @@ export class Settings {
       ...(sendCap ? { cap } : {}),
       ...(sendProofThreshold ? { proofThreshold } : {}),
       ...(sendGraceDays ? { graceDays } : {}),
+      ...(sendNoteThreshold ? { noteThreshold } : {}),
       ...permissions,
       ...froms,
     };
@@ -556,6 +587,7 @@ export class Settings {
       cap: s.cap ?? '',
       proofThreshold: s.proofThreshold ?? '',
       graceDays: s.graceDays === null ? '' : String(s.graceDays),
+      noteThreshold: s.noteThreshold ?? '',
       ...(Object.fromEntries(PERMISSIONS.map((p) => [PERMISSION_FIELDS[p], s.permissions[p]])) as Record<
         PermissionField,
         string
