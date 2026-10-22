@@ -1,0 +1,92 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ec3436d1..e9c9d9d2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -49,6 +49,16 @@ function trimmedCents(figures: number[]): number {
+   return figures.length >= 3 ? total - Math.max(...figures) - Math.min(...figures) : total;
+ }
+ 
++/**
++ * Whether a person is active on the sheet's today: they have an OPEN or PENDING claim that counts in
++ * the live totals (see countsLive), dated within the 30 days up to and including today.
++ */
++function activeOn(claims: ClaimView[], person: PersonView, today: string): boolean {
++  if (today === '') return false;
++  const since = new Date(Date.parse(today) - 29 * 86_400_000).toISOString().slice(0, 10);
++  return claims.some((c) => isOpen(c) && countsLive(c, person, today) && since <= c.date && c.date <= today);
++}
++
+ function csvField(value: string): string {
+   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+ }
+@@ -178,6 +188,7 @@ function csvField(value: string): string {
+             <th scope="col">Overdue</th>
+             <th scope="col">Statements</th>
+             <th scope="col">Retired</th>
++            <th scope="col">Active</th>
+             <th scope="col">On hold</th>
+             <th scope="col">Watched</th>
+             <th scope="col">Patrons</th>
+@@ -218,6 +229,7 @@ function csvField(value: string): string {
+                 <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
+                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+               </td>
++              <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+               <td>
+                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                 <ul>
+@@ -419,6 +431,7 @@ export class People {
+       return {
+         grade,
+         count: on.length,
++        active: on.filter((p) => this.activeOf(p)).length,
+         dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
+       };
+     });
+@@ -560,6 +573,11 @@ export class People {
+     return this.countingOf(personId).reduce((sum, c) => sum + cents(c.amount), 0);
+   }
+ 
++  /** Whether a person is active on the sheet's today (see activeOn). */
++  protected activeOf(person: PersonView): boolean {
++    return activeOn(this.claimsOf(person.id), person, this.today());
++  }
++
+   /** A person's overdue claims that count in the live totals (see countsLive). */
+   protected overdueOf(personId: number): ClaimView[] {
+     return this.countingOf(personId).filter((c) => overdue(c, this.today()));
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 1e0e0ab2..26f16d8e 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,9 +1,13 @@
+ import { Component, input } from '@angular/core';
+ 
+-/** A grade's line: how many people are on it today (retired people left out) and their due-totals added up. */
++/**
++ * A grade's line: how many people are on it today (retired people left out), how many of those are
++ * active, and their due-totals added up.
++ */
+ export interface GradeSummary {
+   grade: string;
+   count: number;
++  active: number;
+   dueTotal: string;
+ }
+ 
+@@ -33,6 +37,7 @@ export interface StatusSummary {
+             <th scope="col">Grade</th>
+             <th scope="col">People</th>
+             <th scope="col">Due</th>
++            <th scope="col">Active</th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -41,6 +46,7 @@ export interface StatusSummary {
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
