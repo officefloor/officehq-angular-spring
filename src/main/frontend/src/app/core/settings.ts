@@ -58,6 +58,8 @@ export interface SettingsView {
   graceHistory: Record<string, DatedValue[]>;
   /** Each grade's proof threshold with two decimals: its claims use it in place of the sheet's; null when none. */
   gradeProofThresholds: Record<Grade, string | null>;
+  /** The pot with two decimals: split among each balanced pool's members as their cuts; null when there is none. */
+  pot: string | null;
   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
   permissions: Record<PermissionAction, string>;
 }
@@ -108,6 +110,9 @@ export const ENTRY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 
 /** Grace days as the form takes them: a whole number of days, or blank for off. */
 export const GRACE_DAYS = /^(\d{1,4})?$/;
+
+/** A pot as the form takes it: up to two decimals, or blank for none. */
+export const POT = /^(\d{1,12}(\.\d{1,2})?)?$/;
 
 /** Terms as the form takes them: a whole number of days. */
 export const TERMS = /^\d{1,4}$/;
@@ -184,6 +189,11 @@ export class SettingsApi {
   /** Set the period-numbering-from date; a blank value turns period numbering off. */
   setPeriodNumberingFrom(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/period-numbering-from`, { value }));
+  }
+
+  /** Set the pot; a blank value means none. */
+  setPot(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/pot`, { value }));
   }
 
   /** Set the grace days; a blank value turns closing periods by themselves off. */

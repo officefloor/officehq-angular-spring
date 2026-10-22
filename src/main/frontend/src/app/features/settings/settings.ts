@@ -1,6 +1,6 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
@@ -212,6 +212,16 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'graceDays')"
           (keydown.backspace)="cleared($event, 'graceDays')"
         />
+        <label for="setting-pot">Pot, split among each balanced pool's members (empty: none)</label>
+        <input
+          id="setting-pot"
+          data-testid="setting-pot"
+          inputmode="decimal"
+          [value]="potInput()"
+          (input)="potInput.set(value($event)); potEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'pot')"
+          (keydown.backspace)="cleared($event, 'pot')"
+        />
         @for (a of permissionActions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; empty: {{ standing[a] }})</label>
           <input
@@ -249,6 +259,7 @@ import { Session } from '../../core/session';
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
+      <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() }}</span></p>
       @for (a of permissionActions; track a) {
         <p>Roles that may {{ a }} in force:
           <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] }}</span></p>
@@ -329,6 +340,7 @@ export class Settings {
   protected readonly entryDateInput = signal('');
   protected readonly graceDays = signal('');
   protected readonly graceDaysInput = signal('');
+  protected readonly potInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
   protected capEdited = false;
@@ -344,6 +356,7 @@ export class Settings {
   protected periodNumberingFromEdited = false;
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
+  protected potEdited = false;
   protected readonly permissionActions = PERMISSION_ACTIONS;
   /** Who may take each action under its standing rule, kept when its entry is blank. */
   protected readonly standing: Record<PermissionAction, string> = {
@@ -439,7 +452,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -459,6 +472,9 @@ export class Settings {
     } else if (setting === 'entryDate') {
       this.entryDateInput.set('');
       this.entryDateEdited = true;
+    } else if (setting === 'pot') {
+      this.potInput.set('');
+      this.potEdited = true;
     } else {
       this.graceDaysInput.set('');
       this.graceDaysEdited = true;
@@ -511,10 +527,11 @@ export class Settings {
     const periodNumberingFrom = this.periodNumberingFromInput().trim();
     const entryDate = this.entryDateInput().trim();
     const graceDays = this.graceDaysInput().trim();
+    const pot = this.potInput().trim();
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -531,6 +548,7 @@ export class Settings {
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
+    const savePot = this.potEdited;
     const savePermissions = PERMISSION_ACTIONS.filter((a) => this.permissionsEdited.has(a))
       .map((a) => ({ action: a, value: this.permissionInput()[a].trim() }));
     const froms = this.fromInput();
@@ -607,6 +625,10 @@ export class Settings {
       this.settingsError.set('Type grace days as a whole number of days, or leave them empty for off.');
       return;
     }
+    if (savePot && !POT.test(pot)) {
+      this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it empty for none.');
+      return;
+    }
     if (savePermissions.some((p) => !PERMISSION.test(p.value))) {
       this.settingsError.set('Type the roles that may take an action as clerk or steward, comma separated, or leave them empty for the standing rule.');
       return;
@@ -626,6 +648,7 @@ export class Settings {
     if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
     if (saveEntryDate) this.entryDateEdited = false;
     if (saveGraceDays) this.graceDaysEdited = false;
+    if (savePot) this.potEdited = false;
     for (const p of savePermissions) this.permissionsEdited.delete(p.action);
     this.fromInput.update((all) => {
       const next = { ...all };
@@ -689,6 +712,11 @@ export class Settings {
           const view = await this.api.setGraceDays(sheet, graceDays);
           this.graceDays.set(view.graceDays?.toString() ?? '');
           if (!this.graceDaysEdited) this.graceDaysInput.set(view.graceDays?.toString() ?? '');
+        }
+        if (savePot) {
+          const view = await this.api.setPot(sheet, pot);
+          this.session.pot.set(view.pot ?? '');
+          if (!this.potEdited) this.potInput.set(view.pot ?? '');
         }
         for (const p of savePermissions) {
           const view = await this.api.setPermission(sheet, p.action, p.value);
@@ -789,6 +817,10 @@ export class Settings {
       this.graceDays.set(settings.graceDays?.toString() ?? '');
       this.graceDaysInput.set(settings.graceDays?.toString() ?? '');
       this.graceDaysEdited = false;
+      // The pot starts at the one in force, so clearing it is a change.
+      this.session.pot.set(settings.pot ?? '');
+      this.potInput.set(settings.pot ?? '');
+      this.potEdited = false;
       // Each action's roles start at those in force, so clearing them is a change.
       this.permissions.set(settings.permissions);
       this.permissionInput.set({ ...settings.permissions });

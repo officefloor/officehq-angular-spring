@@ -7,15 +7,42 @@ import { Session } from '../../core/session';
 /** A share percent: more than 0.00 and at most 100.00, with up to two decimals. */
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 
-/** A pool's line: its total share and whether that is exactly 100.00. */
+/** A pool's line: its total share, whether that is exactly 100.00, and each member's cut by person id. */
 interface PoolLine {
   pool: PoolView;
   total: string;
   balanced: boolean;
+  cuts: Map<number, string>;
+}
+
+/** Cents times a share in hundredths of a percent, over 100: whole cents rounded half to even. */
+function cut(pot: bigint, share: bigint): bigint {
+  const product = pot * share;
+  const whole = product / 10000n;
+  const twice = (product % 10000n) * 2n;
+  return twice > 10000n || (twice === 10000n && whole % 2n === 1n) ? whole + 1n : whole;
+}
+
+/**
+ * Each member's cut of the pot, in cents by person id: their share of it rounded half to even, a retired
+ * member's 0; the remainder goes to the member with the largest share, the earliest added on a tie, so
+ * the cuts total exactly the pot.
+ */
+function cuts(pool: PoolView, pot: string, retired: Set<number>): Map<number, bigint> {
+  const total = BigInt(cents(pot));
+  const shares = pool.members.map((m) => ({ id: m.personId, share: retired.has(m.personId) ? 0 : cents(m.share) }));
+  const all = new Map(shares.map((m) => [m.id, cut(total, BigInt(m.share))]));
+  const largest = shares.reduce((best, m) => (m.share > best.share ? m : best), shares[0]);
+  if (largest) {
+    const remainder = total - [...all.values()].reduce((sum, c) => sum + c, 0n);
+    all.set(largest.id, all.get(largest.id)! + remainder);
+  }
+  return all;
 }
 
 // The sheet's pools, each with its members and their shares, and a form to add one. A member is added
-// from the pool's row; a retired member's share counts as 0.00 toward the pool's total.
+// from the pool's row; a retired member's share counts as 0.00 toward the pool's total. Each member of a
+// balanced pool shows their cut of the sheet's pot.
 @Component({
   selector: 'app-pools',
   template: `
@@ -47,6 +74,7 @@ interface PoolLine {
                 <li [attr.data-testid]="'pool-member-' + line.pool.name + '-' + m.personId">
                   <span data-testid="pool-member-name">{{ m.name }}</span>
                   <span data-testid="pool-share">{{ m.share }}</span>
+                  <span data-testid="pool-cut">{{ line.cuts.get(m.personId) ?? '' }}</span>
                 </li>
               }
             </ul>
@@ -97,12 +125,21 @@ export class Pools {
   protected readonly drafts = signal(new Map<number, { personId: string; share: string }>());
   /** The error shown on each pool's row, by pool id. */
   protected readonly errors = signal(new Map<number, string>());
-  /** Each pool with its total share, a retired member's share counting as 0.00. */
+  /**
+   * Each pool with its total share, a retired member's share counting as 0.00, and, when it is balanced
+   * and the sheet has a pot, each member's cut of the pot.
+   */
   protected readonly lines = computed<PoolLine[]>(() => {
     const retired = new Set(this.people().filter((p) => retiredOn(p, this.today())).map((p) => p.id));
     return this.pools().map((pool) => {
       const total = pool.members.reduce((sum, m) => sum + (retired.has(m.personId) ? 0 : cents(m.share)), 0);
-      return { pool, total: money(total), balanced: total === 10000 };
+      const balanced = total === 10000;
+      const pot = this.session.pot();
+      const shown = new Map<number, string>();
+      if (balanced && pot !== '') {
+        for (const [id, c] of cuts(pool, pot, retired)) shown.set(id, money(Number(c)));
+      }
+      return { pool, total: money(total), balanced, cuts: shown };
     });
   });
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */

@@ -235,6 +235,17 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's pot (null: none), auditing the change. */
+    @Transactional
+    public Sheet setPot(String id, String user, BigDecimal pot) {
+        Sheet sheet = lock(id);
+        sheet.setPot(pot == null ? null : pot.setScale(2, RoundingMode.UNNECESSARY));
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
+                + (saved.getPot() == null ? "" : saved.getPot().toPlainString()));
+        return saved;
+    }
+
     /** Set the roles that may take an action (null: the standing rule), auditing the change. */
     @Transactional
     public Sheet setPermission(String id, String user, String action, String roles) {

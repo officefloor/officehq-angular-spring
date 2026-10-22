@@ -107,6 +107,10 @@ public class Sheet {
     @Column(name = "entry_date")
     private LocalDate entryDate;
 
+    /** The pot: split among each balanced pool's members as their cuts; null for none. Not dated. */
+    @Column(name = "pot")
+    private BigDecimal pot;
+
     /** Archived: everything on the sheet stays visible but nothing on it may change. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -362,6 +366,7 @@ public class Sheet {
         then.periodNumberingFrom = periodNumberingFrom;
         then.graceDays = graceDays;
         then.entryDate = entryDate;
+        then.pot = pot;
         then.archived = archived;
         then.dated = new ArrayList<>(datedThen);
         then.permissions = new HashMap<>(permissions);
@@ -440,6 +445,15 @@ public class Sheet {
 
     public void setEntryDate(LocalDate entryDate) {
         this.entryDate = entryDate;
+    }
+
+    /** The pot as set, with two decimals; null when blank (none). */
+    public BigDecimal getPot() {
+        return pot;
+    }
+
+    public void setPot(BigDecimal pot) {
+        this.pot = pot;
     }
 
     /** The date a new claim with no date of its own is given: the entry date while set, else the sheet's today. */

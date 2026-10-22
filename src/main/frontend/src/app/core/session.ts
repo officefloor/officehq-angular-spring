@@ -45,6 +45,8 @@ export interface SheetView {
   graceHistory: Record<string, DatedValue[]>;
   /** The number of the sheet's last settle batch; null (or absent) when there has been none. */
   lastSettleBatch?: number | null;
+  /** The sheet's pot with two decimals: split among each balanced pool's members as their cuts; null when there is none. */
+  pot?: string | null;
 }
 
 /**
@@ -88,6 +90,8 @@ export class Session {
   readonly policyDate = signal('');
   /** The active sheet's cap in force on its today, with two decimals: a person's due-total is at most it; empty when there is none. */
   readonly cap = signal('');
+  /** The active sheet's pot with two decimals: split among each balanced pool's members as their cuts; empty when there is none. */
+  readonly pot = signal('');
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
   /** The number of the active sheet's last settle batch; null when there has been none. */
@@ -160,6 +164,7 @@ export class Session {
     this.latePctHistory.set(view.latePctHistory);
     this.policyDate.set(view.policyDate ?? '');
     this.cap.set(view.cap ?? '');
+    this.pot.set(view.pot ?? '');
     this.archived.set(view.archived);
     this.graceHistory.set(view.graceHistory ?? {});
     this.lastSettleBatch.set(view.lastSettleBatch ?? null);
