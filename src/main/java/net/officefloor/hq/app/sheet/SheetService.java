@@ -30,6 +30,16 @@ public class SheetService {
         return load(id).getToday();
     }
 
+    /**
+     * Give out the sheet's next claim number, holding the sheet's lock until the caller's
+     * transaction ends so two claims opened at once get different numbers.
+     */
+    @Transactional
+    public int nextClaimNumber(String id) {
+        load(id);
+        return sheets.findLockedById(id).orElseThrow().nextClaimNumber();
+    }
+
     /** Change the sheet's today. */
     @Transactional
     public synchronized Sheet setToday(String id, LocalDate today) {

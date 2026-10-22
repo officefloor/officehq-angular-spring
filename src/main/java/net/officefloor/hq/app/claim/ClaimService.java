@@ -61,12 +61,19 @@ public class ClaimService {
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
+        // Opening takes the sheet's lock before reading the claim, so concurrent opens on the
+        // sheet are serialised: each sees the other's committed claim and number.
+        Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
         Claim claim = claim(sheetId, claimId);
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        Integer had = claim.getNumber();
         claim.become(next);
+        if (next == ClaimStatus.OPEN || next == ClaimStatus.VOID) {
+            claim.number(number);
+        }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
@@ -74,7 +81,8 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audited(event, sheetId, user, person(sheetId, saved.getPersonId()), saved);
+        audited(event, sheetId, user, person(sheetId, saved.getPersonId()), saved,
+                next == ClaimStatus.VOID ? had : saved.getNumber());
         return saved;
     }
 
@@ -88,10 +96,15 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
     }
 
-    /** Record the change to the claim once it is committed. */
+    /** Record the change to the claim once it is committed; a claim with a number carries it. */
     private void audited(String event, String sheetId, String user, Person person, Claim claim) {
+        audited(event, sheetId, user, person, claim, claim.getNumber());
+    }
+
+    private void audited(String event, String sheetId, String user, Person person, Claim claim, Integer number) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
-                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate());
+                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
+                + (number != null ? " number=" + number : ""));
     }
 
     private static BigDecimal money(BigDecimal amount) {

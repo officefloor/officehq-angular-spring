@@ -42,6 +42,10 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
+    /** The sheet's number given to the claim when opened; null while DRAFT and once VOID. */
+    @Column(name = "claim_number")
+    private Integer number;
+
     protected Claim() {
     }
 
@@ -81,9 +85,18 @@ public class Claim {
         return status;
     }
 
+    public Integer getNumber() {
+        return number;
+    }
+
     /** Move the claim to a new status; the caller checks the move is allowed. */
     public void become(ClaimStatus status) {
         this.status = status;
+    }
+
+    /** Give the claim its number (when opened), or clear it (when voided). */
+    public void number(Integer number) {
+        this.number = number;
     }
 
     /** Change the claim's amount, date and note. */

@@ -17,6 +17,8 @@ export interface ClaimView {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** The sheet's number given when the claim was opened; null while DRAFT and once VOID. */
+  number: number | null;
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED claims do. */
