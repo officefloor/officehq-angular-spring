@@ -1,0 +1,119 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index b39828c6..84150b14 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -18,9 +18,9 @@ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+- * The sheet's figures as the screen shows them: what each person has claimed and their due-total,
+- * and the sheet's claimed-total and due-total. A change takes them before it writes and has them
+- * audited after its own records, so every figure it moves is recorded.
++ * The sheet's figures as the screen shows them: what each person has claimed, their due-total and
++ * overdue-total, and the sheet's claimed-total, due-total and overdue-total. A change takes them
++ * before it writes and has them audited after its own records, so every figure it moves is recorded.
+  */
+ @Service
+ public class Rollups {
+@@ -28,16 +28,21 @@ public class Rollups {
+     /** Shown in place of a due-total when the grade has no rate. */
+     private static final String NO_RATE = "n/a";
+ 
+-    /** A person's figures: what they have claimed and their due-total (null when n/a). */
+-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal) {
++    /**
++     * A person's figures: what they have claimed, their due-total (null when n/a) and their
++     * overdue-total (the due of their counting overdue claims).
++     */
++    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
+ 
+         boolean sameAs(Figures other) {
+-            return other != null && same(claimed, other.claimed) && same(dueTotal, other.dueTotal);
++            return other != null && same(claimed, other.claimed) && same(dueTotal, other.dueTotal)
++                    && same(overdueTotal, other.overdueTotal);
+         }
+     }
+ 
+     /** The sheet's figures: each person's by id, in the order they were added, and the sheet's totals. */
+-    public record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal) {
++    public record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
++            BigDecimal overdueTotal) {
+     }
+ 
+     private final PersonRepository people;
+@@ -70,12 +75,14 @@ public class Rollups {
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = zero();
+         BigDecimal dueTotal = zero();
++        BigDecimal overdueTotal = zero();
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of()).stream()
+                     .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated()))
+                     .toList();
+             BigDecimal claimed = zero();
+             BigDecimal due = zero();
++            BigDecimal overdue = zero();
+             boolean figured = false;
+             for (Claim claim : counting) {
+                 claimed = claimed.add(claim.getAmount());
+@@ -83,6 +90,9 @@ public class Rollups {
+                 if (figure != null) {
+                     due = due.add(figure);
+                     figured = true;
++                    if (overdue(claim, today)) {
++                        overdue = overdue.add(figure);
++                    }
+                 }
+             }
+             // As on the screen: n/a when the grade in force today has no rate, unless a claim has a
+@@ -95,18 +105,19 @@ public class Rollups {
+             if (sheet != null) {
+                 due = sheet.capped(due);
+             }
+-            figures.put(person.getId(), new Figures(person.getName(), claimed, due));
++            figures.put(person.getId(), new Figures(person.getName(), claimed, due, overdue));
+             claimedTotal = claimedTotal.add(claimed);
+             if (due != null) {
+                 dueTotal = dueTotal.add(due);
+             }
++            overdueTotal = overdueTotal.add(overdue);
+         }
+-        return new Rollup(figures, claimedTotal, dueTotal);
++        return new Rollup(figures, claimedTotal, dueTotal, overdueTotal);
+     }
+ 
+     /**
+      * Record, once the change commits, one ROLLUP line per person whose figures moved since
+-     * {@code before} (a person new since then counts as moved), then a TOTALS line when the sheet's
++     * {@code before} (a person new since then counts as moved), then a TOTALS line when any of the sheet's
+      * totals moved.
+      */
+     public void audit(String sheetId, String user, Rollup before) {
+@@ -114,16 +125,24 @@ public class Rollups {
+         after.people().forEach((id, figures) -> {
+             if (!figures.sameAs(before.people().get(id))) {
+                 audit.recordOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + figures.name()
+-                        + " claimed=" + figures.claimed().toPlainString() + " due-total=" + shown(figures.dueTotal()));
++                        + " claimed=" + figures.claimed().toPlainString() + " due-total=" + shown(figures.dueTotal())
++                        + " overdue-total=" + figures.overdueTotal().toPlainString());
+             }
+         });
+-        if (!same(after.claimedTotal(), before.claimedTotal()) || !same(after.dueTotal(), before.dueTotal())) {
++        if (!same(after.claimedTotal(), before.claimedTotal()) || !same(after.dueTotal(), before.dueTotal())
++                || !same(after.overdueTotal(), before.overdueTotal())) {
+             audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user
+                     + " claimed-total=" + after.claimedTotal().toPlainString()
+-                    + " due-total=" + after.dueTotal().toPlainString());
++                    + " due-total=" + after.dueTotal().toPlainString()
++                    + " overdue-total=" + after.overdueTotal().toPlainString());
+         }
+     }
+ 
++    /** Whether a claim is overdue: OPEN or PENDING with its due-by before the sheet's today. */
++    private static boolean overdue(Claim claim, LocalDate today) {
++        return today != null && claim.getStatus().isOpen() && claim.getDueBy().isBefore(today);
++    }
++
+     /** Whether two figures are the same amount, or both n/a. */
+     private static boolean same(BigDecimal a, BigDecimal b) {
+         return a == null ? b == null : b != null && a.compareTo(b) == 0;
