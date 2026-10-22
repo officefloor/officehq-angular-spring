@@ -1,0 +1,64 @@
+{
+  "checkpoint": 25,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp25_due-by-and-overdue",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has terms: a number of days (settings, SETTING_CHANGED key=terms value=<days>), 14\nunless changed. A claim's due-by is its date plus the terms in force. A claim is overdue when it\nis OPEN and its due-by is before the sheet's today. Show due-by and overdue yes/no on each claim,\nand per person and for the sheet an overdue count and overdue-total (the due of the overdue\nclaims that count).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has terms: a number of days (settings, SETTING_CHANGED key=terms value=<days>), 14\nunless changed. A claim's due-by is its date plus the terms in force. A claim is overdue when it\nis OPEN and its due-by is before the sheet's today. Show due-by and overdue yes/no on each claim,\nand per person and for the sheet an overdue count and overdue-total (the due of the overdue\nclaims that count).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "268ec087e050fe9a49914e903cf7a3bd92634985",
+  "reset_sha": "",
+  "preagent_sha": "7f89ec795154014475dbd8800f40ab066a2ca276",
+  "prev_sha": "7f89ec795154014475dbd8800f40ab066a2ca276",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9400786,
+    "input_tokens": 40,
+    "output_tokens": 10849,
+    "cache_read_tokens": 897293,
+    "cache_creation_tokens": 67935,
+    "num_turns": 23,
+    "duration_ms": 209230,
+    "duration_api_ms": 99848,
+    "model": "claude-opus-5-5",
+    "session_id": "c3b0c801-a563-42de-bedc-51923f4f4710",
+    "stop_reason": "success",
+    "result_text": "The sheet now has terms, and each claim shows its due-by and whether it's overdue, with overdue counts and totals per person and for the sheet. All 4 acceptance tests pass under `bin/e2e`.\n\n- **Terms setting:** a new `terms` value on the sheet, 14 days unless changed (migration `V20__sheet_terms.sql`). It's set from the Settings form (`setting-terms`, shown in `setting-terms-current`). Saving it writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=terms value=<days>` to the audit file and nothing else, since overdue figures don't appear in the ROLLUP/TOTALS records.\n- **Settings form fix:** before, a save with nothing typed in the floor field also re-saved the clerk limit. A terms-only save would have written an extra clerk-limit audit line, so it now saves only the terms.\n- **Due-by:** the claim's date plus the terms in force (`claim-due-by`).\n- **Overdue:** \"yes\" when the claim is OPEN and its due-by is before the sheet's today, otherwise \"no\" (`claim-overdue`).\n- **Overdue count and total:** shown per person (`person-overdue-count`, `person-overdue-total`) and for the sheet (`rollup-overdue-count`, `rollup-overdue-total`). These include only overdue claims that already count in the claimed and due totals. So an OPEN claim of someone on hold shows as overdue on its own row but isn't added in.\n\n**One change outside the request:** scenario 2 failed on claim editing, which this change didn't touch. The test expects pressing Edit on a claim dated in a closed period to be refused straight away with `claim-error`. The app was opening the editor, and because the amount already showed 3.33, the edit looked as if it had gone through. Edit now refuses such claims on the row, matching the existing rule that no claim in a closed period can change. That fix is in `features/claims/claims.ts`, in `open()`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9400786,
+        "num_turns": 23,
+        "duration_ms": 209230,
+        "duration_api_ms": 99848,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp25.agent.jsonl",
+  "agent_diff_file": "cp25.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
