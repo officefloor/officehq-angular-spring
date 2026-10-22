@@ -97,14 +97,16 @@ public class PersonController {
     private final BulkGradeService bulkGrade;
     private final WatchService watches;
     private final MergeService merges;
+    private final TransferService transfers;
     private final SheetHistory history;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, WatchService watches,
-            MergeService merges, SheetHistory history) {
+            MergeService merges, TransferService transfers, SheetHistory history) {
         this.service = service;
         this.bulkGrade = bulkGrade;
         this.watches = watches;
         this.merges = merges;
+        this.transfers = transfers;
         this.history = history;
     }
 
@@ -221,6 +223,21 @@ public class PersonController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid MergeForm form) {
         return PersonView.of(merges.merge(sheetId, SignedIn.name(user), personId, form.intoId()));
+    }
+
+    /** The sheet a person is transferred to. */
+    public record TransferForm(@NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String toSheetId) {
+    }
+
+    /** Transfer a person to another sheet by its id; a steward only. They leave this sheet. */
+    @PostMapping("/{personId}/transfer")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void transfer(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid TransferForm form) {
+        transfers.transfer(sheetId, SignedIn.name(user), personId, form.toSheetId());
     }
 
     /** The ids of the people on the sheet the signed-in user watches. */

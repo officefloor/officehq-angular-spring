@@ -519,6 +519,21 @@ function csvField(value: string): string {
                 >
                   Merge
                 </button>
+                <label [for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
+                <input
+                  type="text"
+                  [id]="'person-transfer-to-' + p.id"
+                  data-testid="person-transfer-to"
+                  (input)="transferTargets.set(p.id, value($event)); personError.set(null)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-transfer"
+                  [attr.aria-label]="'Transfer ' + p.name + ' to the sheet typed'"
+                  (click)="transfer(p)"
+                >
+                  Transfer
+                </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -725,6 +740,8 @@ export class People {
   protected readonly patronChoices = new Map<number, string>();
   /** The person chosen in each row's merge-into list, by person id. */
   protected readonly mergeChoices = new Map<number, string>();
+  /** The sheet id typed in each row's transfer-to entry, by person id. */
+  protected readonly transferTargets = new Map<number, string>();
   /** The ids of the people the signed-in user watches. */
   protected readonly watched = signal<ReadonlySet<number>>(new Set());
   /** The alias typed on each row, by person id. */
@@ -784,6 +801,7 @@ export class People {
         this.patronError.set(null);
         this.patronChoices.clear();
         this.mergeChoices.clear();
+        this.transferTargets.clear();
         this.aliasDrafts.clear();
         this.selectedClaims.set(new Set());
         this.bulkOpened.set(null);
@@ -1092,6 +1110,40 @@ export class People {
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Only a steward may merge people.'
           : 'The person could not be merged: neither may be retired.',
+      );
+    }
+  }
+
+  /**
+   * Transfer a person to the sheet typed on their row (a steward only): they leave the list, and the
+   * people and claims show what the store holds after it.
+   */
+  protected async transfer(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const toSheetId = (this.transferTargets.get(person.id) ?? '').trim();
+    const refuse = (message: string) => this.personError.set({ id: person.id, message });
+    if (!toSheetId) {
+      refuse('Type the id of the sheet to transfer to.');
+      return;
+    }
+    if (toSheetId === sheet) {
+      refuse('A person cannot be transferred to their own sheet.');
+      return;
+    }
+    try {
+      await this.api.transfer(sheet, person.id, toSheetId);
+      const [people, claims] = await Promise.all([this.api.list(sheet), this.claimsApi.list(sheet)]);
+      if (this.session.sheet() !== sheet) return;
+      this.transferTargets.delete(person.id);
+      this.claims.set(claims);
+      this.people.set(people);
+    } catch (e) {
+      refuse(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward may transfer people.'
+          : 'The person could not be transferred: they may not be retired, and their name, aliases and contact must be free on the other sheet.',
       );
     }
   }

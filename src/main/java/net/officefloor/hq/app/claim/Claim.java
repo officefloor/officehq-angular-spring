@@ -374,6 +374,39 @@ public class Claim {
         this.personId = personId;
     }
 
+    /**
+     * Move the claim with its person to another sheet: its status, dates, note, fixed figures and log
+     * are kept; it loses any figure a statement bound, its reference, its settle batch and any
+     * editor's lock. The caller gives it the other sheet's number.
+     */
+    public void transferTo(String sheetId) {
+        this.sheetId = sheetId;
+        unbind();
+        refer(null);
+        this.settleBatch = null;
+        this.lockedBy = null;
+    }
+
+    /** Name other numbers for the claims this one corrects and was split from, as the map gives them. */
+    public void renumberLinks(java.util.Map<String, String> numbers) {
+        if (corrects != null) {
+            this.corrects = numbers.getOrDefault(corrects, corrects);
+        }
+        if (splitFrom != null) {
+            this.splitFrom = numbers.getOrDefault(splitFrom, splitFrom);
+        }
+    }
+
+    /** The day the claim was first opened, as its status log records it; null when the log has none. */
+    public LocalDate openedOn() {
+        for (ClaimLogLine line : log) {
+            if (line.getStatus() == ClaimStatus.OPEN) {
+                return line.getOn();
+            }
+        }
+        return null;
+    }
+
     /** Leave the claim unbound, its due live again. */
     public void unbind() {
         this.stated = false;

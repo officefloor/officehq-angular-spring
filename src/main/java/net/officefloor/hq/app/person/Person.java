@@ -316,6 +316,19 @@ public class Person {
         aliases.add(new Alias(alias));
     }
 
+    /**
+     * Move the person to another sheet: they keep their grades, terms, contact and aliases, but name
+     * no patrons, have no holds, and no statement is counted for them there.
+     */
+    public void transferTo(String sheetId) {
+        this.sheetId = sheetId;
+        this.patronIds.clear();
+        this.holds.clear();
+        this.statementCount = 0;
+        this.statementTotal = null;
+        this.statementDate = null;
+    }
+
     /** No longer name this person as a patron; false when they were not one. */
     public boolean removePatron(Long patronId) {
         return patronIds.remove(patronId);
