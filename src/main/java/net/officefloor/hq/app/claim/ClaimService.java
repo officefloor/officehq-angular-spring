@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
@@ -56,6 +57,26 @@ public class ClaimService {
         this.sheets = sheets;
         this.rollups = rollups;
         this.audit = audit;
+    }
+
+    /** A settle batch: its number, and the claims it settled, as they are now, in the order given. */
+    public record Batch(int number, List<Claim> claims) {
+    }
+
+    /**
+     * Make the claims a bulk settle settled the sheet's next settle batch: each carries its number.
+     * Nothing is audited.
+     */
+    @Transactional
+    public Batch batch(String sheetId, List<Long> claimIds) {
+        int number = sheets.lock(sheetId).nextSettleBatch();
+        List<Claim> batched = new ArrayList<>();
+        for (Long id : claimIds) {
+            Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow();
+            claim.settledInBatch(number);
+            batched.add(claims.save(claim));
+        }
+        return new Batch(number, batched);
     }
 
     /** The sheet's claims, newest first. */

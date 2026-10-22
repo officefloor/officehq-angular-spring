@@ -115,6 +115,10 @@ public class Sheet {
     @Column(name = "last_unperiod_claim_number", nullable = false)
     private int lastUnperiodClaimNumber;
 
+    /** The last settle batch number the sheet gave out; 0 before any bulk settle settled a claim. */
+    @Column(name = "last_settle_batch", nullable = false)
+    private int lastSettleBatch;
+
     /** The values settings carry from a date; before every from-date a setting has its column's value. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
@@ -451,6 +455,16 @@ public class Sheet {
     /** Give out the sheet's next number for a claim in no period: 1 for the first, then 2, and so on. */
     public int nextUnperiodClaimNumber() {
         return ++lastUnperiodClaimNumber;
+    }
+
+    /** The last settle batch number given out; 0 when there has been none. */
+    public int getLastSettleBatch() {
+        return lastSettleBatch;
+    }
+
+    /** Give out the sheet's next settle batch number: 1 for the first, then 2, and so on. */
+    public int nextSettleBatch() {
+        return ++lastSettleBatch;
     }
 
     /** Give out the sheet's next claim number: 1 for the first, then 2, and so on. */

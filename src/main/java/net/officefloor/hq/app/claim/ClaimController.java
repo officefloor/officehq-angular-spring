@@ -36,13 +36,14 @@ public class ClaimController {
      * and the number of the claim it was split from (null unless it was split off another), and the user whose open
      * editor locks it (null when none does), and the last day it was reminded (null when never), and its
      * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
-     * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never).
+     * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never), and the number of the bulk settle batch that settled
+     * it (null when none did).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
-            String editedBy) {
+            String editedBy, Integer settleBatch) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -53,7 +54,8 @@ public class ClaimController {
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
                     claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason(),
-                    claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy());
+                    claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
+                    claim.getSettleBatch());
         }
     }
 
@@ -134,8 +136,11 @@ public class ClaimController {
     public record BulkSettleForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
     }
 
-    /** What a bulk settle did: the claims settled (or sent PENDING), as they are now, and how many were refused. */
-    public record BulkSettleView(List<ClaimView> settled, int refused) {
+    /**
+     * What a bulk settle did: the claims settled (or sent PENDING), as they are now, how many were
+     * refused, and the number of the batch it was (null when it settled none).
+     */
+    public record BulkSettleView(List<ClaimView> settled, int refused, Integer batch) {
     }
 
     /** The claims selected to be reassigned together, and the person they are moved to. */
@@ -253,7 +258,7 @@ public class ClaimController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid BulkSettleForm form) {
         BulkMoveService.Result result = bulk.settle(sheetId, SignedIn.name(user), form.claimIds());
-        return new BulkSettleView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
+        return new BulkSettleView(result.moved().stream().map(ClaimView::of).toList(), result.refused(), result.batch());
     }
 
     /** Reassign the selected claims to a person together, in list order; those that cannot be moved are refused. */

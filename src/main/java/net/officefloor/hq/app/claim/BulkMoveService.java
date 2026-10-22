@@ -26,8 +26,15 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class BulkMoveService {
 
-    /** What a bulk move did: the claims it moved, in the order it moved them, and how many it refused. */
-    public record Result(List<Claim> moved, int refused) {
+    /**
+     * What a bulk move did: the claims it moved, in the order it moved them, how many it refused, and
+     * the number of the settle batch it was (null unless it is a bulk settle that settled a claim).
+     */
+    public record Result(List<Claim> moved, int refused, Integer batch) {
+
+        Result(List<Claim> moved, int refused) {
+            this(moved, refused, null);
+        }
     }
 
     /** A person's claims newest first: the latest dated first, and of those dated alike the last added. */
@@ -53,10 +60,16 @@ public class BulkMoveService {
 
     /**
      * Settle the selected claims, each as its Settle button would: a claim a clerk sends PENDING
-     * counts as settled.
+     * counts as settled. When it settles at least one, it is the sheet's next settle batch, and each
+     * claim it settled carries that batch's number.
      */
     public Result settle(String sheetId, String user, Collection<Long> claimIds) {
-        return move(sheetId, user, claimIds, ClaimStatus.SETTLED);
+        Result result = move(sheetId, user, claimIds, ClaimStatus.SETTLED);
+        if (result.moved().isEmpty()) {
+            return result;
+        }
+        ClaimService.Batch batch = claims.batch(sheetId, result.moved().stream().map(Claim::getId).toList());
+        return new Result(batch.claims(), result.refused(), batch.number());
     }
 
     /**

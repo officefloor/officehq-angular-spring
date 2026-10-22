@@ -43,6 +43,8 @@ export interface ClaimView {
   openedBy: string | null;
   /** The user who last edited the claim; null (or absent, as kept by an old snapshot) when never. Like the opener, they cannot settle or approve it. */
   editedBy?: string | null;
+  /** The number of the bulk settle batch that settled the claim; null (or absent) when none did. */
+  settleBatch?: number | null;
   /** Whether the claim is bound by its person's last statement to the figure it had then. */
   stated: boolean;
   /** The figure the statement bound the claim to, with two decimals; null when unbound, or when it was n/a. */
@@ -212,6 +214,8 @@ export interface BulkOpenView {
 export interface BulkSettleView {
   settled: ClaimView[];
   refused: number;
+  /** The number of the settle batch it was; null when it settled none. */
+  batch: number | null;
 }
 
 /** What a bulk reassign did: the claims reassigned, as they are now, and how many were refused. */

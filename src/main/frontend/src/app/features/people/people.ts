@@ -183,6 +183,7 @@ function csvField(value: string): string {
       </p>
       <p>
         <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
+        <span>Last batch <span data-testid="bulk-settle-batch">{{ lastSettleBatch() ?? '' }}</span></span>
         @if (bulkSettled(); as result) {
           <span role="status">
             Settled <strong data-testid="bulk-settled">{{ result.settled }}</strong>,
@@ -565,6 +566,8 @@ export class People {
   /** The sheet's cap in whole cents: a person's due-total is at most it; null when there is none. */
   private readonly capCents = computed(() => (this.session.cap() === '' ? null : cents(this.session.cap())));
   /** The sheet's today, on which each grade's rate in force is read. */
+  /** The number of the sheet's last settle batch; null when there has been none. */
+  protected readonly lastSettleBatch = computed(() => this.session.lastSettleBatch());
   protected readonly today = computed(() => this.session.today() ?? '');
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.claimedCents(p.id), 0)),
@@ -1187,6 +1190,7 @@ export class People {
       if (this.session.sheet() !== sheet) return;
       for (const claim of result.settled) this.claimSaved(claim);
       this.selectedClaims.set(new Set());
+      if (result.batch != null) this.session.lastSettleBatch.set(result.batch);
       this.bulkSettled.set({ settled: result.settled.length, refused: result.refused });
     } catch {
       this.bulkSettleError.set('The claims could not be settled.');

@@ -37,14 +37,14 @@ public class SheetController {
     /** What the screen is told about a loaded sheet. */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
-            Map<String, List<DatedValue>> graceHistory) {
+            Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived(),
-                    graceHistory(sheet));
+                    graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
         }
 
         /** Each grade's grace values by from-date, its starting value (none) first. */

@@ -43,6 +43,8 @@ export interface SheetView {
   archived: boolean;
   /** Each grade's grace values by from-date (a value null when none), its starting value (none) first. */
   graceHistory: Record<string, DatedValue[]>;
+  /** The number of the sheet's last settle batch; null (or absent) when there has been none. */
+  lastSettleBatch?: number | null;
 }
 
 /**
@@ -88,6 +90,8 @@ export class Session {
   readonly cap = signal('');
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
+  /** The number of the active sheet's last settle batch; null when there has been none. */
+  readonly lastSettleBatch = signal<number | null>(null);
   /**
    * The date (yyyy-mm-dd) this user's screen shows the sheet as of; empty when none is set. While it
    * is set, every list is read as it stood at the end of that date, it stands in for the sheet's today,
@@ -158,5 +162,6 @@ export class Session {
     this.cap.set(view.cap ?? '');
     this.archived.set(view.archived);
     this.graceHistory.set(view.graceHistory ?? {});
+    this.lastSettleBatch.set(view.lastSettleBatch ?? null);
   }
 }
