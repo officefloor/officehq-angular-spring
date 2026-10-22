@@ -57,6 +57,16 @@ import { Rates } from '../rates/rates';
         }
       </form>
       <app-quick-add (added)="quickAdded($event)" />
+      <p>
+        <input
+          id="show-retired"
+          type="checkbox"
+          data-testid="show-retired"
+          [checked]="showRetired()"
+          (change)="showRetired.set(checked($event))"
+        />
+        <label for="show-retired">Show retired</label>
+      </p>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table>
@@ -67,12 +77,13 @@ import { Rates } from '../rates/rates';
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Statements</th>
+            <th scope="col">Retired</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -82,6 +93,10 @@ import { Rates } from '../rates/rates';
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+              </td>
+              <td>
+                <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
+                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
               <td>
                 <app-claims
@@ -111,6 +126,21 @@ import { Rates } from '../rates/rates';
                 >
                   Statement
                 </button>
+                <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                <input
+                  type="date"
+                  [id]="'person-retire-date-' + p.id"
+                  data-testid="person-retire-date"
+                  (input)="retireDates.set(p.id, value($event)); personError.set(null)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-retire"
+                  [attr.aria-label]="'Retire ' + p.name"
+                  (click)="retire(p)"
+                >
+                  Retire
+                </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -131,6 +161,14 @@ export class People {
 
   protected readonly grades = GRADES;
   protected readonly people = signal<PersonView[]>([]);
+  /** Whether retired people are listed; off when the screen opens, and kept across sheet loads. */
+  protected readonly showRetired = signal(false);
+  /** The people listed: everyone, or only those not retired unless retired people are shown. */
+  protected readonly shownPeople = computed(() =>
+    this.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null),
+  );
+  /** The retire-from date typed on each person's row, by person id; none means the sheet's today. */
+  protected readonly retireDates = new Map<number, string>();
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   private readonly byPerson = computed(() => {
@@ -190,6 +228,7 @@ export class People {
         this.periods.set([]);
         this.reset();
         this.personError.set(null);
+        this.retireDates.clear();
         if (sheet) void this.reload(sheet);
       });
     });
@@ -253,6 +292,21 @@ export class People {
     }
   }
 
+  /** Retire a person from the date typed on their row, or from the sheet's today with none. */
+  protected async retire(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const from = this.retireDates.get(person.id)?.trim() || null;
+    try {
+      const retired = await this.api.retire(sheet, person.id, from);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === retired.id ? retired : p)));
+    } catch {
+      this.personError.set({ id: person.id, message: 'The person could not be retired.' });
+    }
+  }
+
   /** A rate set for a grade, in place of any it had from the same date. */
   protected rateSaved(rate: RateView): void {
     this.rates.update((list) => [...list.filter((r) => !sameSlot(r, rate)), rate]);
@@ -283,6 +337,10 @@ export class People {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected checked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
   }
 
   protected gradeOf(event: Event): Grade {

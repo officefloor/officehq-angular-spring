@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollups;
@@ -62,6 +63,18 @@ public class PersonService {
         Person saved = people.saveAndFlush(person);
         audited("PERSON_EDITED", sheetId, user, saved);
         rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /** Retire a person from a date; with no date, from the sheet's today. */
+    @Transactional
+    public Person retire(String sheetId, String user, long personId, LocalDate from) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        person.retire(from != null ? from : sheets.today(sheetId));
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " from=" + saved.getRetiredFrom());
         return saved;
     }
 

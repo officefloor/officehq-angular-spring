@@ -18,6 +18,8 @@ export interface PersonView {
   statementTotal: string | null;
   /** The sheet's today (yyyy-mm-dd) when the last statement was taken; null when none was. */
   statementDate: string | null;
+  /** The date (yyyy-mm-dd) the person is retired from; null when they are not retired. */
+  retiredFrom: string | null;
 }
 
 /** A statement taken: the person as stated and their claims, newest first. */
@@ -54,6 +56,11 @@ export class PeopleApi {
   /** Take a statement: record the person's due-total and bind their counting claims to their figures. */
   statement(sheet: string, id: number): Promise<StatementView> {
     return firstValueFrom(this.http.post<StatementView>(`${this.url(sheet)}/${id}/statements`, null));
+  }
+
+  /** Retire a person from a date; with none, from the sheet's today. */
+  retire(sheet: string, id: number, from: string | null): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/retire`, { from }));
   }
 
   private url(sheet: string): string {

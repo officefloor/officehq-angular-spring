@@ -58,6 +58,7 @@ public class ClaimService {
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         sheets.lock(sheetId);
         periods.refuseIfClosed(sheetId, dated);
+        refuseIfRetired(person, dated);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, clean(note)));
         audited("CLAIM_ADDED", sheetId, user, person, claim);
         rollups.audit(sheetId, user, before);
@@ -81,6 +82,7 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, claim.getDate());
         if (date != null) {
             periods.refuseIfClosed(sheetId, date);
+            refuseIfRetired(person(sheetId, claim.getPersonId()), date);
         }
         claim.change(money(amount), date != null ? date : claim.getDate(), clean(note));
         Claim saved = claims.saveAndFlush(claim);
@@ -136,6 +138,14 @@ public class ClaimService {
         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
         rollups.audit(sheetId, user, before);
         return saved;
+    }
+
+    /** Refuse a claim dated after its person's retirement. */
+    private static void refuseIfRetired(Person person, LocalDate date) {
+        if (!person.canClaimOn(date)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    person.getName() + " is retired from " + person.getRetiredFrom() + ": a claim cannot be dated after it.");
+        }
     }
 
     private Claim claim(String sheetId, long claimId) {

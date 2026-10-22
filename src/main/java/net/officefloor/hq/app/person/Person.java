@@ -52,6 +52,10 @@ public class Person {
     @Column(name = "statement_date")
     private LocalDate statementDate;
 
+    /** The date the person is retired from; null while they are not retired. */
+    @Column(name = "retired_from")
+    private LocalDate retiredFrom;
+
     protected Person() {
     }
 
@@ -110,6 +114,20 @@ public class Person {
 
     public LocalDate getStatementDate() {
         return statementDate;
+    }
+
+    public LocalDate getRetiredFrom() {
+        return retiredFrom;
+    }
+
+    /** Retire the person from a date: no claim dated after it can be added for them. */
+    public void retire(LocalDate from) {
+        this.retiredFrom = from;
+    }
+
+    /** Whether a claim may be dated on this date: not after the person's retirement. */
+    public boolean canClaimOn(LocalDate date) {
+        return retiredFrom == null || !date.isAfter(retiredFrom);
     }
 
     /** Record a statement taken on a date with its due-total (null when n/a). */

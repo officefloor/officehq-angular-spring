@@ -31,16 +31,17 @@ public class PersonController {
 
     /**
      * What the screen is told about a person, with their statement count, and the last statement's
-     * due-total (null when n/a or none taken) and date (null when none taken).
+     * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
+     * retired from (null when not retired).
      */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statementTotal, LocalDate statementDate) {
+            String statementTotal, LocalDate statementDate, LocalDate retiredFrom) {
 
         public static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     person.getStatementCount(),
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
-                    person.getStatementDate());
+                    person.getStatementDate(), person.getRetiredFrom());
         }
     }
 
@@ -88,6 +89,21 @@ public class PersonController {
         }
         return PersonView.of(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
                 form.grade()));
+    }
+
+    /** The date a person is retired from; with none, the sheet's today. */
+    public record RetireForm(LocalDate from) {
+    }
+
+    /** Retire a person from a date. */
+    @PostMapping("/{personId}/retire")
+    public PersonView retire(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) RetireForm form) {
+        return PersonView.of(service.retire(sheetId, SignedIn.name(user), personId,
+                form == null ? null : form.from()));
     }
 
     /** Someone else saved the person between the version check and the write. */
