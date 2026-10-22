@@ -1,0 +1,64 @@
+{
+  "checkpoint": 35,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp35_numbering-per-period",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a setting, period numbering from (a date; blank means off; SETTING_CHANGED\nkey=period-numbering-from value=<date>). While the setting is a date and the sheet's today is on\nor after it, a claim opened receives a number within its period: <period name>-<n>, counting from 1\nin each period, and a claim in no period is numbered X-<n> in its own sequence. Claims opened\nbefore that keep their sheet-wide numbers, and the sheet-wide sequence continues if the setting\nis cleared.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a setting, period numbering from (a date; blank means off; SETTING_CHANGED\nkey=period-numbering-from value=<date>). While the setting is a date and the sheet's today is on\nor after it, a claim opened receives a number within its period: <period name>-<n>, counting from 1\nin each period, and a claim in no period is numbered X-<n> in its own sequence. Claims opened\nbefore that keep their sheet-wide numbers, and the sheet-wide sequence continues if the setting\nis cleared.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8c4d5b7bde7a587e001699c3d5bcb22930007ba1",
+  "reset_sha": "",
+  "preagent_sha": "4ed1643f3f8d36beec2c1e8647a8cd2171b618f7",
+  "prev_sha": "4ed1643f3f8d36beec2c1e8647a8cd2171b618f7",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0564958,
+    "input_tokens": 38,
+    "output_tokens": 13289,
+    "cache_read_tokens": 982459,
+    "cache_creation_tokens": 74259,
+    "num_turns": 20,
+    "duration_ms": 219220,
+    "duration_api_ms": 168704,
+    "model": "claude-opus-5-5",
+    "session_id": "87f557b4-3b7d-4a50-b649-dbb124b8a4ab",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a \"period numbering from\" setting, and claims opened while it's in force get numbers within their period. `bin/e2e` passes all 4 tests in the spec (the main scenario plus scenarios 1\u20133).\n\n**How it behaves**\n- The setting has an input (`setting-period-numbering-from`) and a \"value in force\" display (`\u2026-current`). Saving it writes `SETTING_CHANGED \u2026 key=period-numbering-from value=<date>` to the audit file, with an empty value when cleared.\n- When a claim is opened, it gets a period number if the setting is a date and the sheet's today is on or after it. The period is the one the claim's date falls in, giving `<period name>-<n>`, counting from 1 in each period. A claim in no period gets `X-<n>` from its own sequence.\n- Otherwise the claim gets the next sheet-wide number. That counter is untouched while period numbering is on, so it carries on where it left off once the setting is cleared (`3` after `1`, `2` in the test).\n\n**What changed**\n- **Stored data:** migration `V26__period_numbering.sql` adds the setting and a counter for `X-` numbers to each sheet, and a counter to each period. A claim's number, and the number a correction names, are now stored as text instead of whole numbers, so a correction can name a number like `X-1`.\n- **Server:** `PeriodService.nextClaimNumber` picks the number while holding the sheet's lock. In `ClaimService.move`, the number is now taken only after the move's checks pass, not before. There's a new `PUT \u2026/settings/period-numbering-from` endpoint, which shares the date parsing with the policy-date endpoint.\n- **Front end:** the new setting is on the settings form, claim numbers and \"corrects\" are handled as text, and the \"corrects\" field accepts both kinds of number.\n\nTwo behaviours you might not assume:\n- A period-numbered claim uses the period's name as it is when the claim is opened.\n- Each counter belongs to its period, not to a prefix. If two periods ever produced the same prefix, the database's unique check on claim numbers would refuse the duplicate.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0564958,
+        "num_turns": 20,
+        "duration_ms": 219220,
+        "duration_api_ms": 168704,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp35.agent.jsonl",
+  "agent_diff_file": "cp35.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
