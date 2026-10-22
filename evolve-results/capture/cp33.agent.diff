@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 19de88a4..ea883db9 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -23,6 +23,11 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
+   return counts(claim) && !(person.held && claim.status === 'OPEN');
+ }
+ 
++/** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
++}
++
+ // The active sheet's people: listed in the order they were added, added and edited through one form,
+ // each with their claims, what they have claimed and what is due (the sum of their claims' due
+ // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
+@@ -89,6 +94,9 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
+         />
+         <label for="show-retired">Show retired</label>
+       </p>
++      <p>
++        <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
++      </p>
+       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong> claims,
+@@ -524,6 +532,25 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Download the people as a CSV file: a header line, then one line per person in list order, retired
++   * people included, with the grade in force on the sheet's today, the retired-from date or nothing, and
++   * the due-total as shown. Each line ends with a line feed.
++   */
++  protected exportCsv(): void {
++    const lines = [
++      ['name', 'grade', 'retired-from', 'due-total'],
++      ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)]),
++    ];
++    const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
++    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
++    const link = document.createElement('a');
++    link.href = url;
++    link.download = `people-${this.session.sheet() ?? 'sheet'}.csv`;
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   /** A rate set for a grade, in place of any it had from the same date. */
+   protected rateSaved(rate: RateView): void {
+     this.rates.update((list) => [...list.filter((r) => !sameSlot(r, rate)), rate]);
