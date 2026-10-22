@@ -41,14 +41,16 @@ public class SheetController {
 
     /** What the screen is told about the sheet's settings: the clerk limit with two decimals, null for none,
      * the floor with two decimals, the terms in days, the late percent with two decimals, and the policy
-     * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off). */
+     * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off), and
+     * each grade's own terms in days, null for none (the sheet's terms). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom) {
+            LocalDate periodNumberingFrom, Integer termsA, Integer termsB, Integer termsC) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(),
-                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom());
+                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), sheet.getGradeTerms("A"),
+                    sheet.getGradeTerms("B"), sheet.getGradeTerms("C"));
         }
     }
 
@@ -62,6 +64,10 @@ public class SheetController {
 
     /** Terms as entered: a whole number of days; they cannot be blank. */
     public record TermsChange(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value) {
+    }
+
+    /** A grade's terms as entered: a whole number of days, or blank (or null) for the sheet's terms. */
+    public record GradeTermsChange(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
     }
 
     /** A late percent as entered: 0.00 or more, up to two decimals; it cannot be blank. */
@@ -138,6 +144,18 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid TermsChange change) {
         return SettingsView.of(service.setTerms(id, SignedIn.name(user), Integer.parseInt(change.value().trim())));
+    }
+
+    /** Change a grade's own terms, in days; a blank value means the grade uses the sheet's terms. */
+    @PutMapping("/{id}/settings/terms-{grade}")
+    public SettingsView setGradeTerms(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GradeTermsChange change) {
+        String value = change.value() == null ? "" : change.value().trim();
+        return SettingsView.of(service.setGradeTerms(id, SignedIn.name(user), grade,
+                value.isEmpty() ? null : Integer.valueOf(value)));
     }
 
     /** Change the sheet's late percent. */

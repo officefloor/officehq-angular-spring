@@ -24,7 +24,18 @@ export interface SettingsView {
   policyDate: string | null;
   /** Period numbering from (yyyy-mm-dd): claims opened on or after it are numbered within their period; null when off. */
   periodNumberingFrom: string | null;
+  /** Each grade's own terms in days; null when the grade uses the sheet's terms. */
+  termsA: number | null;
+  termsB: number | null;
+  termsC: number | null;
 }
+
+/** The grades that can have their own terms. */
+export const GRADES = ['A', 'B', 'C'] as const;
+export type Grade = (typeof GRADES)[number];
+
+/** A grade's terms as the form takes them: a whole number of days, or blank for the sheet's terms. */
+export const GRADE_TERMS = /^(\d{1,4})?$/;
 
 /** A clerk limit as the form takes it: up to two decimals, or blank for no limit. */
 export const LIMIT = /^(\d{1,12}(\.\d{1,2})?)?$/;
@@ -66,6 +77,11 @@ export class SettingsApi {
   /** Set the terms, in days. */
   setTerms(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/terms`, { value }));
+  }
+
+  /** Set a grade's own terms, in days; a blank value means the grade uses the sheet's terms. */
+  setGradeTerms(sheet: string, grade: Grade, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/terms-${grade}`, { value }));
   }
 
   /** Set the late percent. */

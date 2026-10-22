@@ -1,8 +1,8 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
-import { FLOOR, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
+import { FLOOR, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the floor, the terms, the late percent, the policy date and period numbering from) and the roles user names have on it (clerk by default,
+// The sheet's settings (the clerk limit, the floor, the terms and each grade's own terms, the late percent, the policy date and period numbering from) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form.
 @Component({
   selector: 'app-settings',
@@ -34,6 +34,16 @@ import { Session } from '../../core/session';
           [value]="termsInput()"
           (input)="termsInput.set(value($event)); termsEdited = true; settingsError.set(null)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days; empty: the sheet's terms)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            [attr.data-testid]="'setting-terms-' + g"
+            inputmode="numeric"
+            [value]="gradeTermsInput()[g]"
+            (input)="gradeTermsTyped(g, value($event))"
+          />
+        }
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input
           id="setting-late-pct"
@@ -68,6 +78,10 @@ import { Session } from '../../core/session';
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
+      @for (g of grades; track g) {
+        <p>Terms for grade {{ g }} in force:
+          <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</span></p>
+      }
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
@@ -122,6 +136,10 @@ export class Settings {
   protected readonly limit = signal('');
   protected readonly floorInput = signal('');
   protected readonly termsInput = signal('');
+  protected readonly grades = GRADES;
+  /** Each grade's own terms in force; null when it uses the sheet's terms. */
+  protected readonly gradeTerms = signal<Record<Grade, number | null>>({ A: null, B: null, C: null });
+  protected readonly gradeTermsInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly latePctInput = signal('');
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFrom = signal('');
@@ -131,6 +149,7 @@ export class Settings {
   protected floorEdited = false;
   protected termsEdited = false;
   protected latePctEdited = false;
+  protected gradeTermsEdited = new Set<Grade>();
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
   protected readonly roleUser = signal('');
@@ -149,6 +168,7 @@ export class Settings {
       const loads = this.session.loads();
       untracked(() => {
         this.clerkLimit.set(null);
+        this.gradeTerms.set({ A: null, B: null, C: null });
         this.periodNumberingFrom.set('');
         this.roles.set([]);
         this.settingsError.set(null);
@@ -174,6 +194,12 @@ export class Settings {
     this.settingsError.set(null);
   }
 
+  protected gradeTermsTyped(grade: Grade, value: string): void {
+    this.gradeTermsInput.update((all) => ({ ...all, [grade]: value }));
+    this.gradeTermsEdited.add(grade);
+    this.settingsError.set(null);
+  }
+
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
   }
@@ -192,10 +218,12 @@ export class Settings {
     const periodNumberingFrom = this.periodNumberingFromInput().trim();
     const saveLimit =
       this.limitEdited ||
-      (!this.floorEdited && !this.termsEdited && !this.latePctEdited && !this.policyDateEdited &&
+      (!this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
         !this.periodNumberingFromEdited);
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
+    const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g))
+      .map((g) => ({ grade: g, value: this.gradeTermsInput()[g].trim() }));
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
@@ -209,6 +237,10 @@ export class Settings {
     }
     if (saveTerms && !TERMS.test(terms)) {
       this.settingsError.set('Type terms as a whole number of days.');
+      return;
+    }
+    if (saveGradeTerms.some((t) => !GRADE_TERMS.test(t.value))) {
+      this.settingsError.set('Type a grade\'s terms as a whole number of days, or leave them empty for the sheet\'s terms.');
       return;
     }
     if (saveLatePct && !LATE_PCT.test(latePct)) {
@@ -227,6 +259,7 @@ export class Settings {
     if (saveLimit) this.limitEdited = false;
     if (saveFloor) this.floorEdited = false;
     if (saveTerms) this.termsEdited = false;
+    for (const t of saveGradeTerms) this.gradeTermsEdited.delete(t.grade);
     if (saveLatePct) this.latePctEdited = false;
     if (savePolicyDate) this.policyDateEdited = false;
     if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
@@ -243,6 +276,10 @@ export class Settings {
         if (saveTerms) {
           const view = await this.api.setTerms(sheet, terms);
           this.session.terms.set(view.terms);
+        }
+        for (const t of saveGradeTerms) {
+          const view = await this.api.setGradeTerms(sheet, t.grade, t.value);
+          this.gradeTerms.set({ A: view.termsA, B: view.termsB, C: view.termsC });
         }
         if (saveLatePct) {
           const view = await this.api.setLatePct(sheet, latePct);
@@ -305,6 +342,7 @@ export class Settings {
       this.session.floor.set(settings.floor);
       this.session.terms.set(settings.terms);
       this.session.latePct.set(settings.latePct);
+      this.gradeTerms.set({ A: settings.termsA, B: settings.termsB, C: settings.termsC });
       this.session.policyDate.set(settings.policyDate ?? '');
       // The policy date's input starts at the date in force, so clearing it is a change.
       this.policyDateInput.set(settings.policyDate ?? '');

@@ -89,7 +89,7 @@ public class SheetService {
         return saved;
     }
 
-    /** Change the sheet's terms, in days, auditing the change and the figures it moves (late charges). */
+    /** Change the sheet's terms, in days, auditing the change; claims keep their due-by. */
     @Transactional
     public Sheet setTerms(String id, String user, int terms) {
         Sheet sheet = lock(id);
@@ -97,6 +97,20 @@ public class SheetService {
         sheet.setTerms(terms);
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + saved.getTerms());
+        rollups.audit(id, user, before);
+        return saved;
+    }
+
+    /** Change a grade's own terms, in days (null: the sheet's terms), auditing the change. Claims keep their due-by. */
+    @Transactional
+    public Sheet setGradeTerms(String id, String user, String grade, Integer terms) {
+        Sheet sheet = lock(id);
+        Rollups.Rollup before = rollups.take(id);
+        sheet.setGradeTerms(grade, terms);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        Integer value = saved.getGradeTerms(grade);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms-" + grade + " value="
+                + (value == null ? "" : value.toString()));
         rollups.audit(id, user, before);
         return saved;
     }

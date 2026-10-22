@@ -192,20 +192,20 @@ export class Claims {
    * its late charge on top while it is overdue.
    */
   protected dueOf(claim: ClaimView): string {
-    const late = { pct: this.session.latePct(), terms: this.session.terms(), today: this.session.today() ?? '' };
+    const late = { pct: this.session.latePct(), today: this.session.today() ?? '' };
     const halfUp = roundsHalfUp(claim, this.claims(), this.session.policyDate(), late.today);
     const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), cents(this.session.floor()), late, halfUp);
     return figure === null ? NO_RATE : money(figure);
   }
 
-  /** A claim's due-by: its date plus the sheet's terms. */
+  /** A claim's due-by, fixed when it was added. */
   protected dueByOf(claim: ClaimView): string {
-    return dueBy(claim, this.session.terms());
+    return dueBy(claim);
   }
 
   /** Whether a claim is OPEN and due by a date before the sheet's today. */
   protected overdueOf(claim: ClaimView): boolean {
-    return overdue(claim, this.session.terms(), this.session.today() ?? '');
+    return overdue(claim, this.session.today() ?? '');
   }
 
   /** The name of the period a claim's date falls in; empty when it falls in none. */

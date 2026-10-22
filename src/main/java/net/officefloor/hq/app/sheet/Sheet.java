@@ -40,6 +40,18 @@ public class Sheet {
     @Column(name = "terms", nullable = false)
     private int terms = 14;
 
+    /** Grade A's own terms in days; null when it uses the sheet's terms. */
+    @Column(name = "terms_a")
+    private Integer termsA;
+
+    /** Grade B's own terms in days; null when it uses the sheet's terms. */
+    @Column(name = "terms_b")
+    private Integer termsB;
+
+    /** Grade C's own terms in days; null when it uses the sheet's terms. */
+    @Column(name = "terms_c")
+    private Integer termsC;
+
     /** The late percent: an overdue claim's due gains it of its figure for every full 30 days overdue. */
     @Column(name = "late_pct", nullable = false)
     private BigDecimal latePct = new BigDecimal("0.00");
@@ -106,6 +118,31 @@ public class Sheet {
 
     public void setTerms(int terms) {
         this.terms = terms;
+    }
+
+    /** A grade's own terms in days; null when it has none and uses the sheet's terms. */
+    public Integer getGradeTerms(String grade) {
+        return switch (grade) {
+            case "A" -> termsA;
+            case "B" -> termsB;
+            case "C" -> termsC;
+            default -> throw new IllegalArgumentException("No such grade: " + grade);
+        };
+    }
+
+    public void setGradeTerms(String grade, Integer terms) {
+        switch (grade) {
+            case "A" -> termsA = terms;
+            case "B" -> termsB = terms;
+            case "C" -> termsC = terms;
+            default -> throw new IllegalArgumentException("No such grade: " + grade);
+        }
+    }
+
+    /** The terms a grade's claims are due by: its own, else the sheet's. */
+    public int termsFor(String grade) {
+        Integer own = grade == null ? null : getGradeTerms(grade);
+        return own != null ? own : terms;
     }
 
     /** The late percent, with two decimals. */

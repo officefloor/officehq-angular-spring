@@ -76,7 +76,7 @@ public class Dues {
 
     /**
      * A figure with the claim's late charge on top: the sheet's late percent of the figure for every
-     * full 30 days an OPEN or PENDING claim is past its due-by (its date plus the sheet's terms) on the sheet's
+     * full 30 days an OPEN or PENDING claim is past its due-by (fixed when it was added) on the sheet's
      * today, rounded by the claim's date against the policy date. The charge is never bound: it always follows the sheet's today.
      * A correction has no late charge.
      */
@@ -88,7 +88,7 @@ public class Dues {
         if (sheet == null || sheet.getLatePct().signum() == 0) {
             return figure;
         }
-        LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
+        LocalDate dueBy = claim.getDueBy();
         long periods = ChronoUnit.DAYS.between(dueBy, sheet.getToday()) / 30;
         if (periods <= 0) {
             return figure;

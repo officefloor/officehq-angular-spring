@@ -317,8 +317,8 @@ export class People {
   private readonly floorCents = computed(() => cents(this.session.floor()));
   /** The sheet's today, on which each grade's rate in force is read. */
   protected readonly today = computed(() => this.session.today() ?? '');
-  /** What late charges are worked from: the sheet's late percent, terms and today. */
-  private readonly late = computed(() => ({ pct: this.session.latePct(), terms: this.session.terms(), today: this.today() }));
+  /** What late charges are worked from: the sheet's late percent and today. */
+  private readonly late = computed(() => ({ pct: this.session.latePct(), today: this.today() }));
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.claimedCents(p.id), 0)),
   );
@@ -403,7 +403,7 @@ export class People {
 
   /** A person's overdue claims that count in the live totals (see countsLive). */
   protected overdueOf(personId: number): ClaimView[] {
-    return this.countingOf(personId).filter((c) => overdue(c, this.session.terms(), this.today()));
+    return this.countingOf(personId).filter((c) => overdue(c, this.today()));
   }
 
   /** The due of a person's counting overdue claims added up (a claim with no figure adds nothing). */

@@ -23,6 +23,8 @@ export interface ClaimView {
   amount: string;
   /** yyyy-mm-dd */
   date: string;
+  /** yyyy-mm-dd: the date the claim is due by, fixed when it was added from its person's grade's terms. */
+  dueBy: string;
   note: string;
   status: ClaimStatus;
   /**
@@ -55,22 +57,20 @@ export function counts(claim: ClaimView): boolean {
   return isOpen(claim) || claim.status === 'SETTLED';
 }
 
-/** A claim's due-by (yyyy-mm-dd): its date plus the sheet's terms in days. */
-export function dueBy(claim: ClaimView, terms: number): string {
-  const [y, m, d] = claim.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+/** A claim's due-by (yyyy-mm-dd), fixed when it was added. */
+export function dueBy(claim: ClaimView): string {
+  return claim.dueBy;
 }
 
 /** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
-export function overdue(claim: ClaimView, terms: number, today: string): boolean {
-  return isOpen(claim) && today !== '' && dueBy(claim, terms) < today;
+export function overdue(claim: ClaimView, today: string): boolean {
+  return isOpen(claim) && today !== '' && dueBy(claim) < today;
 }
 
-/** What a late charge is worked from: the sheet's late percent, terms and today. */
+/** What a late charge is worked from: the sheet's late percent and today. */
 export interface LateTerms {
   /** The late percent with two decimals. */
   pct: string;
-  terms: number;
   /** The sheet's today (yyyy-mm-dd); empty when none is loaded. */
   today: string;
 }
@@ -91,8 +91,8 @@ export function roundsHalfUp(claim: ClaimView, claims: ClaimView[], policyDate: 
 
 /** How many full 30 days an overdue claim is past its due-by on the sheet's today; 0 when not overdue. */
 export function latePeriods(claim: ClaimView, late: LateTerms): number {
-  if (!overdue(claim, late.terms, late.today)) return 0;
-  const days = (Date.parse(late.today) - Date.parse(dueBy(claim, late.terms))) / 86_400_000;
+  if (!overdue(claim, late.today)) return 0;
+  const days = (Date.parse(late.today) - Date.parse(dueBy(claim))) / 86_400_000;
   return Math.floor(days / 30);
 }
 

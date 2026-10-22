@@ -62,11 +62,11 @@ public class ClaimService {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
-        sheets.lock(sheetId);
+        LocalDate dueBy = dated.plusDays(sheets.lock(sheetId).termsFor(person.gradeOn(dated)));
         periods.refuseIfClosed(sheetId, dated);
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, clean(note), corrects));
+        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, dueBy, clean(note), corrects));
         audited("CLAIM_ADDED", sheetId, user, person, claim);
         rollups.audit(sheetId, user, before);
         return claim;
