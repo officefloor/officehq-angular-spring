@@ -1,0 +1,257 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index c99ca725..3ed9ba78 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -164,6 +164,14 @@ export class PeopleApi {
+   }
+ 
+   /** Retire a person from a date; with none, from the sheet's today. */
++  /**
++   * Retire the selected people from a date (null: the sheet's today) together, each as the row's retire
++   * would, in list order: the people retired.
++   */
++  retireAll(sheet: string, personIds: number[], from: string | null): Promise<PersonView[]> {
++    return firstValueFrom(this.http.post<PersonView[]>(`${this.url(sheet)}/retire`, { personIds, from }));
++  }
++
+   retire(sheet: string, id: number, from: string | null): Promise<PersonView> {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/retire`, { from }));
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a90129f1..b8641103 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -272,6 +272,23 @@ function csvField(value: string): string {
+           <span role="alert" data-testid="person-error">{{ message }}</span>
+         }
+       </form>
++      <form (submit)="retireSelected($event)" aria-label="Retire the selected people">
++        <label for="bulk-retire-date">Retire the selected people from</label>
++        <input
++          type="date"
++          id="bulk-retire-date"
++          data-testid="bulk-retire-date"
++          [value]="bulkRetireDate()"
++          (input)="bulkRetireDate.set(value($event)); bulkRetireError.set(null)"
++        />
++        <button type="submit" data-testid="bulk-retire">Retire selected people</button>
++        @if (bulkRetired() !== null) {
++          <span role="status">Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></span>
++        }
++        @if (bulkRetireError(); as message) {
++          <span role="alert" data-testid="person-error">{{ message }}</span>
++        }
++      </form>
+       <table>
+         <thead>
+           <tr>
+@@ -806,6 +823,11 @@ export class People {
+   /** How many people the last bulk grade changed; null until one is done. */
+   protected readonly bulkGraded = signal<number | null>(null);
+   protected readonly bulkGradeError = signal<string | null>(null);
++  /** The date the selected people are retired from; the sheet's today unless another is typed. */
++  protected readonly bulkRetireDate = linkedSignal(() => this.today());
++  /** How many people the last bulk retire retired; null until one is done. */
++  protected readonly bulkRetired = signal<number | null>(null);
++  protected readonly bulkRetireError = signal<string | null>(null);
+ 
+   constructor() {
+     // A new parent changes the rates a grade with none in force on the sheet falls back to.
+@@ -848,6 +870,9 @@ export class People {
+         this.bulkGraded.set(null);
+         this.bulkGradeError.set(null);
+         this.bulkGradeFrom.set(this.today());
++        this.bulkRetired.set(null);
++        this.bulkRetireError.set(null);
++        this.bulkRetireDate.set(this.today());
+         if (sheet) void this.reload(sheet);
+       });
+     });
+@@ -1370,6 +1395,8 @@ export class People {
+     });
+     this.bulkGraded.set(null);
+     this.bulkGradeError.set(null);
++    this.bulkRetired.set(null);
++    this.bulkRetireError.set(null);
+   }
+ 
+   /**
+@@ -1403,6 +1430,37 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Retire the selected people from the date together: each is retired as the row's retire would, in
++   * list order; how many were retired is shown, and the selection cleared.
++   */
++  protected async retireSelected(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy) return;
++    this.bulkRetired.set(null);
++    this.bulkRetireError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const ids = [...this.selectedPeople()];
++    if (ids.length === 0) {
++      this.bulkRetireError.set('Select the people to retire.');
++      return;
++    }
++    this.busy = true;
++    try {
++      const retired = await this.api.retireAll(sheet, ids, this.bulkRetireDate() || null);
++      if (this.session.sheet() !== sheet) return;
++      this.people.update((list) => list.map((p) => retired.find((r) => r.id === p.id) ?? p));
++      this.selectedPeople.set(new Set());
++      this.bulkRetireDate.set(this.today());
++      this.bulkRetired.set(retired.length);
++    } catch {
++      this.bulkRetireError.set('The people could not be retired.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   /** Tick (on) or clear a claim's checkbox. */
+   protected selectClaim(id: number, on: boolean): void {
+     this.selectedClaims.update((set) => {
+diff --git a/src/main/java/net/officefloor/hq/app/person/BulkRetireService.java b/src/main/java/net/officefloor/hq/app/person/BulkRetireService.java
+new file mode 100644
+index 00000000..45f8b5e2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/BulkRetireService.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.person;
++
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
++import org.springframework.stereotype.Service;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Retiring the selected people together, from a date (null: the sheet's today). Each is retired on its
++ * own, as the row's retire would, in list order: the people by their position. A person who cannot be
++ * retired (or is not on the sheet) is left as they are, writing nothing; the others are still retired.
++ * For a viewer, nobody is retired.
++ */
++@Service
++public class BulkRetireService {
++
++    private final PersonService service;
++    private final PersonRepository people;
++    private final RoleService roles;
++
++    public BulkRetireService(PersonService service, PersonRepository people, RoleService roles) {
++        this.service = service;
++        this.people = people;
++        this.roles = roles;
++    }
++
++    /** Retire the selected people from the date: the people retired, in the order they were retired. */
++    public List<Person> retire(String sheetId, String user, Collection<Long> personIds, LocalDate from) {
++        Set<Long> selected = new HashSet<>(personIds);
++        List<Person> retired = new ArrayList<>();
++        if (Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
++            return retired;
++        }
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            if (!selected.contains(person.getId())) {
++                continue;
++            }
++            try {
++                retired.add(service.retire(sheetId, user, person.getId(), from));
++            } catch (ResponseStatusException refused) {
++                // left as they are: their retire wrote nothing
++            }
++        }
++        return retired;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index a3d485e2..45902634 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -100,6 +100,12 @@ public class PersonController {
+             LocalDate from) {
+     }
+ 
++    /** The people selected to be retired together, and the date they are retired from (none: the sheet's today). */
++    public record BulkRetireForm(
++            @NotNull @Size(min = 1, max = 1000) List<@NotNull Long> personIds,
++            LocalDate from) {
++    }
++
+     /** The import box's text: lines of name,grade,terms,contact. */
+     public record ImportForm(@NotNull @Size(max = 200_000) String text) {
+     }
+@@ -107,16 +113,19 @@ public class PersonController {
+     private final PersonService service;
+     private final ImportService imports;
+     private final BulkGradeService bulkGrade;
++    private final BulkRetireService bulkRetire;
+     private final WatchService watches;
+     private final MergeService merges;
+     private final TransferService transfers;
+     private final SheetHistory history;
+ 
+-    public PersonController(PersonService service, ImportService imports, BulkGradeService bulkGrade, WatchService watches,
++    public PersonController(PersonService service, ImportService imports, BulkGradeService bulkGrade,
++            BulkRetireService bulkRetire, WatchService watches,
+             MergeService merges, TransferService transfers, SheetHistory history) {
+         this.service = service;
+         this.imports = imports;
+         this.bulkGrade = bulkGrade;
++        this.bulkRetire = bulkRetire;
+         this.watches = watches;
+         this.merges = merges;
+         this.transfers = transfers;
+@@ -188,6 +197,16 @@ public class PersonController {
+                 .map(PersonView::of).toList();
+     }
+ 
++    /** Retire the selected people from a date together, each as the row's retire would: the people retired. */
++    @PostMapping("/retire")
++    public List<PersonView> retireAll(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid BulkRetireForm form) {
++        return bulkRetire.retire(sheetId, SignedIn.name(user), form.personIds(), form.from()).stream()
++                .map(PersonView::of).toList();
++    }
++
+     /** Swap a person with the one above them in the list (up) or below them (down). */
+     @PostMapping("/{personId}/move/{direction}")
+     public PersonView move(
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+index 04680a70..6c831cdb 100644
+--- a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+@@ -16,7 +16,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ /**
+  * Refuse every change a viewer asks for on a sheet: any request other than a read, or the loading
+  * of the sheet, is turned away before it reaches its handler, so it writes nothing and audits nothing.
+- * A bulk move and a bulk grade are the exceptions: each reaches its handler, which refuses each claim
++ * A bulk move, a bulk grade and a bulk retire are the exceptions: each reaches its handler, which refuses each claim
+  * or person a viewer selected.
+  */
+ @Configuration
+@@ -30,10 +30,11 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+ 
+     @Override
+     public void addInterceptors(InterceptorRegistry registry) {
+-        // A bulk move answers how many claims it refused, and a bulk grade how many people it changed, so a
+-        // viewer's is let through and refuses each.
++        // A bulk move answers how many claims it refused, and a bulk grade or retire how many people it changed,
++        // so a viewer's is let through and refuses each.
+         registry.addInterceptor(this).addPathPatterns("/api/sheets/*/**").excludePathPatterns("/api/sheets/*/load",
+-                "/api/sheets/*/claims/open", "/api/sheets/*/claims/settle", "/api/sheets/*/people/grade");
++                "/api/sheets/*/claims/open", "/api/sheets/*/claims/settle", "/api/sheets/*/people/grade",
++                "/api/sheets/*/people/retire");
+     }
+ 
+     @Override
