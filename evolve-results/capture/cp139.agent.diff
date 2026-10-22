@@ -1,0 +1,111 @@
+diff --git a/src/main/java/net/officefloor/hq/app/AuditController.java b/src/main/java/net/officefloor/hq/app/AuditController.java
+index eb5b9ccd..ad716453 100644
+--- a/src/main/java/net/officefloor/hq/app/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/AuditController.java
+@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -20,7 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
+ 
+ /**
+  * The audit viewer: the sheet's audit lines as the file holds them, newest first. Filtered by the name
+- * of a person transferred here, the lines about them on the sheet they came from follow, newest first.
++ * of a person, the matching lines of the sheet's descendants follow (each sheet's newest first, sheets by
++ * id); and, for a person transferred here, the lines about them on the sheet they came from, newest first.
+  */
+ @RestController
+ @RequestMapping("/api/sheets/{sheetId}/audit")
+@@ -29,15 +31,18 @@ public class AuditController {
+ 
+     private final Audit audit;
+     private final PersonRepository people;
++    private final SheetRepository sheets;
+ 
+-    public AuditController(Audit audit, PersonRepository people) {
++    public AuditController(Audit audit, PersonRepository people, SheetRepository sheets) {
+         this.audit = audit;
+         this.people = people;
++        this.sheets = sheets;
+     }
+ 
+     /**
+      * The sheet's audit lines, newest first; with a name, only the lines about that person, then, when
+-     * they came from another sheet, that sheet's lines about them by their name or an alias.
++     * descendant sheets' lines about that name (sheets by id), then, when they came from another sheet,
++     * that sheet's lines about them by their name or an alias.
+      */
+     @GetMapping
+     public List<String> lines(
+@@ -47,13 +52,15 @@ public class AuditController {
+         if (name == null || name.isBlank()) {
+             return lines;
+         }
++        List<String> shown = new ArrayList<>(lines);
++        sheets.descendants(sheetId).stream().sorted()
++                .forEach(descendant -> shown.addAll(audit.linesOf(descendant, name)));
+         Optional<Person> person = people.findBySheetIdAndName(sheetId, name);
+         if (person.isEmpty() || person.get().getOriginSheetId() == null) {
+-            return lines;
++            return shown;
+         }
+         Set<String> keys = Stream.concat(Stream.of(person.get().getName()), person.get().getAliases().stream())
+                 .map(Person::keyOf).collect(Collectors.toSet());
+-        List<String> shown = new ArrayList<>(lines);
+         shown.addAll(audit.linesAbout(person.get().getOriginSheetId(), keys));
+         return shown;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dbc031df..ada073d2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -95,7 +95,8 @@ public class ClaimService {
+ 
+     /**
+      * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
+-     * while one is set, else the sheet's today. One dated or due by in a soft-closed period, or that would be
++     * while one is set, else the sheet's today. One given a date in a soft-closed period (with no date given, the
++     * sheet's today in one), or due by in one, or that would be
+      * with the terms in force on the sheet's today, is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
+      * the due-by it would get (the terms-th business day after its date) is inside a closed period, or when it is a correction that does not name a SETTLED claim
+      * of the same person (see {@link #refuseUnlessCorrects}).
+@@ -140,7 +141,9 @@ public class ClaimService {
+         added.refer(referred);
+         List<String> tagged = Claim.tagsOf(tags);
+         added.tag(tagged);
+-        if (periods.softClosedOn(sheetId, dated) || periods.softClosedOn(sheetId, dueBy)
++        // A claim dated by the sheet's entry date is meant to be dated there: it is late by the sheet's today.
++        LocalDate entered = date != null ? date : sheet.getToday();
++        if (periods.softClosedOn(sheetId, entered) || periods.softClosedOn(sheetId, dueBy)
+                 || periods.softClosedOn(sheetId, holidays.dueBy(sheetId, dated, terms(sheet, person, sheet.getToday())))) {
+             added.markLateEntry();
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 54a8601b..b58e679d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -337,11 +337,18 @@ public class PersonController {
+         transfers.transfer(sheetId, SignedIn.name(user), personId, form.toSheetId());
+     }
+ 
+-    /** The ids of the people on the sheet the signed-in user watches. */
++    /**
++     * The ids of the people on the sheet the signed-in user watches; none while the sheet is shown as
++     * of a date, as watches are not kept in the sheet's history.
++     */
+     @GetMapping("/watched")
+     public List<Long> watched(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
++        if (AsOfGuard.date(asOf) != null) {
++            return List.of();
++        }
+         return watches.watched(sheetId, SignedIn.name(user));
+     }
+ 
