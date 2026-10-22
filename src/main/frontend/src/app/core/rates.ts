@@ -1,7 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { ClaimView, LateTerms, cents, isCorrection, latePeriods, money } from './claims';
+import { ClaimView, LateTerms, cents, isCorrection, lateBoundaries, money } from './claims';
+import { valueOn } from './session';
 import { Grade } from './people';
 
 export interface RateView {
@@ -78,8 +79,9 @@ export function due(amountCents: number, pct: string | null): string {
  * A claim's due in whole cents: the due fixed when it was settled (its late charge frozen in), or
  * else its figure — the one its person's last statement bound it to (unless it is PENDING), or else its amount at the rate
  * the grade has in force on the claim's date raised to the floor (in whole cents) when below it —
- * with the late charge on top: the late percent of the figure for every full 30 days the claim
- * is overdue. The floor and late percent given are those in force on the claim's date. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
+ * with the late charge on top: for every full 30 days the claim is overdue, the late percent in force
+ * on that boundary date (its due-by plus 30, 60, 90 ... days) of the figure, each rounded like the
+ * claim, added up. The floor given is the one in force on the claim's date. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
  * charge is never bound by a statement. A correction has no floor and no late charge. Null when there
  * is no figure.
  */
@@ -101,7 +103,9 @@ export function claimDueCents(
     figure = live === null || isCorrection(claim) ? live : Math.max(live, floorCents);
   }
   if (figure === null || isCorrection(claim)) return figure;
-  return figure + dueCents(figure, late.pct, latePeriods(claim, late), halfUp);
+  const charge = lateBoundaries(claim, late)
+    .reduce((sum, on) => sum + dueCents(figure, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
+  return figure + charge;
 }
 
 // The rates for the grades on a sheet, read from and written to the store.

@@ -85,9 +85,9 @@ public class Dues {
     }
 
     /**
-     * A figure with the claim's late charge on top: the late percent in force on the claim's date of the figure for every
-     * full 30 days an OPEN or PENDING claim is past its due-by (fixed when it was added) on the sheet's
-     * today, rounded by the claim's date against the policy date. The charge is never bound: it always follows the sheet's today.
+     * A figure with the claim's late charge on top while an OPEN or PENDING claim is past its due-by
+     * (fixed when it was added) on the sheet's today (see {@link #lateOn}), rounded by the claim's date
+     * against the policy date. The charge is never bound: it always follows the sheet's today.
      * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue).
      */
     private BigDecimal withLate(Claim claim, BigDecimal figure) {
@@ -101,20 +101,26 @@ public class Dues {
         return lateOn(claim, figure);
     }
 
-    /** A figure with the late charge an OPEN claim would have on the sheet's today on top. */
+    /**
+     * A figure with the late charge an OPEN claim would have on the sheet's today on top: for every full
+     * 30 days past its due-by, the late percent in force on that boundary date (the due-by plus 30, 60,
+     * 90 ... days) of the figure, rounded like the claim, the charges added up.
+     */
     private BigDecimal lateOn(Claim claim, BigDecimal figure) {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        BigDecimal latePct = sheet == null ? null : sheet.latePctOn(claim.getDate());
-        if (latePct == null || latePct.signum() == 0) {
+        if (sheet == null) {
             return figure;
         }
         LocalDate dueBy = claim.getDueBy();
         long periods = ChronoUnit.DAYS.between(dueBy, sheet.getToday()) / 30;
-        if (periods <= 0) {
-            return figure;
+        RoundingMode rounding = rounding(claim, sheet);
+        BigDecimal late = BigDecimal.ZERO.setScale(2);
+        for (long period = 1; period <= periods; period++) {
+            BigDecimal latePct = sheet.latePctOn(dueBy.plusDays(30 * period));
+            if (latePct != null && latePct.signum() != 0) {
+                late = late.add(figure.multiply(latePct).movePointLeft(2).setScale(2, rounding));
+            }
         }
-        BigDecimal late = figure.multiply(latePct).multiply(BigDecimal.valueOf(periods))
-                .movePointLeft(2).setScale(2, rounding(claim, sheet));
         return figure.add(late);
     }
 

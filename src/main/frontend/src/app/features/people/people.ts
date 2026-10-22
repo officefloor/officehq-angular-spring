@@ -579,12 +579,12 @@ export class People {
 
   /**
    * A claim's due in whole cents at the grade its person has in force on its date, with the floor
-   * and late percent in force on its date (see claimDueCents).
+   * in force on its date and the late percent on each 30-day boundary (see claimDueCents).
    */
   private dueCents(claim: ClaimView, person: PersonView): number | null {
     const halfUp = roundsHalfUp(claim, this.claimsOf(person.id), this.session.policyDate(), this.today());
     const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
-    const late = { pct: valueOn(this.session.latePctHistory(), claim.date, '0.00'), today: this.today() };
+    const late = { history: this.session.latePctHistory(), today: this.today() };
     return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), floor, late, halfUp);
   }
 

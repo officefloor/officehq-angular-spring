@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import type { DatedValue } from './session';
 
 /**
  * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID. A clerk settling a claim
@@ -108,10 +109,10 @@ export function overdue(claim: ClaimView, today: string): boolean {
   return isOpen(claim) && today !== '' && dueBy(claim) < today && !deferred(claim, today);
 }
 
-/** What a late charge is worked from: the sheet's late percent and today. */
+/** What a late charge is worked from: the sheet's late percent by from-date and its today. */
 export interface LateTerms {
-  /** The late percent with two decimals. */
-  pct: string;
+  /** The late percent's values by from-date (see valueOn). */
+  history: DatedValue[];
   /** The sheet's today (yyyy-mm-dd); empty when none is loaded. */
   today: string;
 }
@@ -135,6 +136,16 @@ export function latePeriods(claim: ClaimView, late: LateTerms): number {
   if (!overdue(claim, late.today)) return 0;
   const days = (Date.parse(late.today) - Date.parse(dueBy(claim))) / 86_400_000;
   return Math.floor(days / 30);
+}
+
+/**
+ * The 30-day boundary dates (yyyy-mm-dd) an overdue claim has passed on the sheet's today: its due-by
+ * plus 30, 60, 90 ... days, one for every full 30 days it is overdue.
+ */
+export function lateBoundaries(claim: ClaimView, late: LateTerms): string[] {
+  const from = Date.parse(dueBy(claim));
+  return Array.from({ length: latePeriods(claim, late) }, (_, i) =>
+    new Date(from + (i + 1) * 30 * 86_400_000).toISOString().slice(0, 10));
 }
 
 /** What a bulk open did: the claims opened, as they are now, and how many were refused. */
