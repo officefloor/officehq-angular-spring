@@ -8,7 +8,7 @@ import { Session, valueOn } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row,
 // moved through their statuses (open, settle, approve, reject with a reason, void, re-settle) from each
-// claim's row, deferred there until a date, and reassigned there to another person.
+// claim's row, deferred there until a date, split there into two, and reassigned there to another person.
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
   settle: 'settled',
@@ -88,6 +88,7 @@ const PAST: Record<ClaimAction, string> = {
           <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
@@ -141,6 +142,22 @@ const PAST: Record<ClaimAction, string> = {
             (click)="defer(c)"
           >
             Defer
+          </button>
+          <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
+          <input
+            [id]="'claim-split-amount-' + c.id"
+            data-testid="claim-split-amount"
+            inputmode="decimal"
+            [value]="splitAmounts()[c.id] ?? ''"
+            (input)="setSplitAmount(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-split"
+            [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date"
+            (click)="split(c)"
+          >
+            Split
           </button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select
@@ -218,6 +235,8 @@ export class Claims {
   protected readonly reassignTo = signal<Record<number, number>>({});
   /** The date entered on each claim's row to defer it until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The amount typed on each claim's row to split off it, by claim id. */
+  protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
 
@@ -333,6 +352,45 @@ export class Claims {
               ? `Period ${period.name} is closed, so its claims cannot be deferred.`
               : 'The claim could not be deferred.',
       });
+    }
+  }
+
+  /** Type the amount to split off a claim; it clears any error left on the claim's row. */
+  protected setSplitAmount(id: number, amount: string): void {
+    this.splitAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Split the amount typed on a claim's row off it into a new OPEN claim; refused with an error on its
+   * row when the amount is not above 0.00 and below the claim's, when the claim is not OPEN or is
+   * deferred, or when it is dated in a closed period.
+   */
+  protected async split(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.splitAmounts()[claim.id] ?? '').trim();
+    const period = periodOn(this.periods(), claim.date);
+    const refuse = (): string =>
+      claim.status !== 'OPEN'
+        ? `A ${claim.status} claim cannot be split; only an OPEN one can.`
+        : deferred(claim, this.session.today() ?? '')
+          ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be split.`
+          : period?.closed
+            ? `Period ${period.name} is closed, so its claims cannot be split.`
+            : `Type an amount above 0.00 and below ${claim.amount} to split off the claim.`;
+    if (!AMOUNT.test(amount) || amount.startsWith('-') || cents(amount) <= 0 || cents(amount) >= cents(claim.amount)) {
+      this.claimError.set({ id: claim.id, message: refuse() });
+      return;
+    }
+    try {
+      const result = await this.api.split(sheet, claim.id, amount);
+      this.saved.emit(result.original);
+      this.saved.emit(result.split);
+      this.splitAmounts.update((amounts) => ({ ...amounts, [claim.id]: '' }));
+    } catch {
+      this.claimError.set({ id: claim.id, message: refuse() });
     }
   }
 

@@ -82,6 +82,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The number of the claim this one was split from; null unless it was split off another. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** How many proofs the claim has; 0 when added. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -227,6 +231,24 @@ public class Claim {
      */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    /**
+     * Split an amount off the claim: it keeps the rest of its amount and loses any figure a statement
+     * bound it to. The new claim, OPEN with the split-off amount, the same date and note, names this
+     * claim's number as the one it was split from; the caller numbers it and records who opened it.
+     */
+    public Claim split(BigDecimal off, LocalDate newDueBy) {
+        Claim split = new Claim(sheetId, personId, off, date, newDueBy, note, null);
+        split.status = ClaimStatus.OPEN;
+        split.splitFrom = number;
+        this.amount = amount.subtract(off);
+        unbind();
+        return split;
     }
 
     public int getProofs() {

@@ -30,11 +30,12 @@ public class ClaimController {
      * opened it (null until opened), and whether it is bound by its person's last statement, with the
      * figure it was bound to (null when unbound, or when it was n/a), and the number of the claim it
      * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
-     * log, oldest first, and the date it is deferred until (null when it was never deferred), and its proofs count.
+     * log, oldest first, and the date it is deferred until (null when it was never deferred), and its proofs count,
+     * and the number of the claim it was split from (null unless it was split off another).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
-            LocalDate deferredUntil, int proofs) {
+            LocalDate deferredUntil, int proofs, String splitFrom) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -43,7 +44,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs());
+                    claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -74,6 +75,14 @@ public class ClaimController {
 
     /** The date an OPEN claim is deferred until. */
     public record DeferForm(@NotNull LocalDate until) {
+    }
+
+    /** The amount split off an OPEN claim: above 0.00, with up to two decimals. */
+    public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
+    }
+
+    /** What a split did: the original claim, as it is now, and the new claim split off it. */
+    public record SplitView(ClaimView original, ClaimView split) {
     }
 
     /** The person a claim is moved to. */
@@ -248,5 +257,16 @@ public class ClaimController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ReassignForm form) {
         return ClaimView.of(service.reassign(sheetId, SignedIn.name(user), claimId, form.personId()));
+    }
+
+    /** Split an amount off an OPEN claim into a new OPEN claim. */
+    @PostMapping("/claims/{claimId}/split")
+    public SplitView split(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid SplitForm form) {
+        ClaimService.Split split = service.split(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()));
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 }

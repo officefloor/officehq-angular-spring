@@ -11,6 +11,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollups;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -329,6 +330,51 @@ public class ClaimService {
                 " from=" + from.getName() + " to=" + to.getName());
         rollups.audit(sheetId, user, before);
         return saved;
+    }
+
+    /** What a split did: the original claim, as it is now, and the new claim split off it. */
+    public record Split(Claim original, Claim split) {
+    }
+
+    /**
+     * Split an amount (above 0.00 and below the claim's amount) off an OPEN claim: it keeps the rest
+     * of its amount and loses any figure a statement bound it to; a new OPEN claim with the split-off
+     * amount, the same date and note, the next number, opened by the user and due by a date fixed now
+     * from the terms in force on its date, names the original's number as the one it was split from.
+     * Refused when the claim is not OPEN, is deferred on the sheet's today, or is dated inside a
+     * closed period.
+     */
+    @Transactional
+    public Split split(String sheetId, String user, long claimId, BigDecimal amount) {
+        Sheet sheet = sheets.lock(sheetId);
+        LocalDate today = sheet.getToday();
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be split; only an OPEN one can.");
+        }
+        if (claim.isDeferredOn(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + ": it cannot be split.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        BigDecimal off = money(amount);
+        if (off.signum() <= 0 || off.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The amount split off must be above 0.00 and below the claim's " + claim.getAmount().toPlainString() + ".");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        LocalDate dueBy = claim.getDate().plusDays(sheet.termsFor(person.gradeOn(claim.getDate()), claim.getDate()));
+        Claim split = claim.split(off, dueBy);
+        split.number(periods.nextClaimNumber(sheetId, split.getDate()));
+        split.openedBy(user);
+        Claim original = claims.saveAndFlush(claim);
+        split = logged(claims.saveAndFlush(split), user, person);
+        audited("CLAIM_SPLIT", sheetId, user, person, original, original.getNumber(), " into=" + split.getNumber());
+        audited("CLAIM_OPENED", sheetId, user, person, split);
+        rollups.audit(sheetId, user, before);
+        return new Split(original, split);
     }
 
     /**
