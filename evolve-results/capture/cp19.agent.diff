@@ -1,0 +1,298 @@
+diff --git a/src/main/frontend/src/app/core/quick-add.ts b/src/main/frontend/src/app/core/quick-add.ts
+new file mode 100644
+index 00000000..5e714558
+--- /dev/null
++++ b/src/main/frontend/src/app/core/quick-add.ts
+@@ -0,0 +1,28 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { ClaimView } from './claims';
++import { PersonView } from './people';
++
++export interface QuickAddForm {
++  /** A person's name; when it is not on the sheet the person is added with grade A. */
++  name: string;
++  amount: string;
++}
++
++/** What a quick-add made: the DRAFT claim, its person, and whether that person was added for it. */
++export interface QuickAddView {
++  person: PersonView;
++  personAdded: boolean;
++  claim: ClaimView;
++}
++
++// The quick-add bar's one change: a person (when new) and a DRAFT claim, written to the store together.
++@Injectable({ providedIn: 'root' })
++export class QuickAddApi {
++  private readonly http = inject(HttpClient);
++
++  add(sheet: string, form: QuickAddForm): Promise<QuickAddView> {
++    return firstValueFrom(this.http.post<QuickAddView>(`/api/sheets/${encodeURIComponent(sheet)}/quick-add`, form));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index cb11f19f..50a12f73 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,10 +3,12 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
+ import { ClaimView, ClaimsApi, cents, counts, money } from '../../core/claims';
+ import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
+ import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
++import { QuickAddView } from '../../core/quick-add';
+ import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { Claims } from '../claims/claims';
+ import { Periods } from '../periods/periods';
++import { QuickAdd } from '../quick-add/quick-add';
+ import { Rates } from '../rates/rates';
+ 
+ // The active sheet's people: listed in the order they were added, added and edited through one form,
+@@ -14,7 +16,7 @@ import { Rates } from '../rates/rates';
+ // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
+ @Component({
+   selector: 'app-people',
+-  imports: [Claims, Periods, Rates],
++  imports: [Claims, Periods, QuickAdd, Rates],
+   template: `
+     <app-rates [rates]="rates()" [today]="today()" (saved)="rateSaved($event)" />
+     <app-periods
+@@ -54,6 +56,7 @@ import { Rates } from '../rates/rates';
+           <p role="alert" data-testid="person-form-error">{{ message }}</p>
+         }
+       </form>
++      <app-quick-add (added)="quickAdded($event)" />
+       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <table>
+@@ -272,6 +275,12 @@ export class People {
+     );
+   }
+ 
++  /** A claim quick-added: its person listed when they were added for it, the claim first as the newest. */
++  protected quickAdded(added: QuickAddView): void {
++    if (added.personAdded) this.people.update((list) => [...list, added.person]);
++    this.claimSaved(added.claim);
++  }
++
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement).value;
+   }
+diff --git a/src/main/frontend/src/app/features/quick-add/quick-add.ts b/src/main/frontend/src/app/features/quick-add/quick-add.ts
+new file mode 100644
+index 00000000..6b8803ca
+--- /dev/null
++++ b/src/main/frontend/src/app/features/quick-add/quick-add.ts
+@@ -0,0 +1,94 @@
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, effect, inject, output, signal, untracked } from '@angular/core';
++import { AMOUNT } from '../../core/claims';
++import { QuickAddApi, QuickAddView } from '../../core/quick-add';
++import { Session } from '../../core/session';
++
++// The quick-add bar: a name and an amount make a DRAFT claim dated the sheet's today with an empty
++// note, adding the person with grade A first when the name is not on the sheet.
++@Component({
++  selector: 'app-quick-add',
++  template: `
++    <form (submit)="save($event)" aria-label="Quick-add a claim">
++      <label for="quick-name">Name</label>
++      <input id="quick-name" data-testid="quick-name" [value]="name()" (input)="name.set(value($event)); error.set(null)" />
++      <label for="quick-amount">Amount</label>
++      <input
++        id="quick-amount"
++        data-testid="quick-amount"
++        inputmode="decimal"
++        [value]="amount()"
++        (input)="amount.set(value($event)); error.set(null)"
++      />
++      <button type="submit" data-testid="quick-submit">Quick add</button>
++      @if (error(); as message) {
++        <p role="alert" data-testid="quick-error">{{ message }}</p>
++      }
++    </form>
++  `,
++})
++export class QuickAdd {
++  private readonly session = inject(Session);
++  private readonly api = inject(QuickAddApi);
++
++  /** A claim quick-added, with its person. */
++  readonly added = output<QuickAddView>();
++
++  protected readonly name = signal('');
++  protected readonly amount = signal('');
++  protected readonly error = signal<string | null>(null);
++  /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private busy = false;
++
++  constructor() {
++    // A sheet load starts the bar afresh.
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      untracked(() => this.reset());
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  private reset(): void {
++    this.name.set('');
++    this.amount.set('');
++    this.error.set(null);
++  }
++
++  protected async save(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy) return;
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const name = this.name();
++    const amount = this.amount().trim();
++    if (!name.trim()) {
++      this.error.set('Type a name for the person.');
++      return;
++    }
++    if (!AMOUNT.test(amount)) {
++      this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
++      return;
++    }
++    this.busy = true;
++    try {
++      const added = await this.api.add(sheet, { name, amount });
++      if (this.session.sheet() !== sheet) return;
++      this.added.emit(added);
++      this.reset();
++    } catch (e) {
++      this.error.set(
++        e instanceof HttpErrorResponse && e.status === 409
++          ? 'That name is already in use on this sheet.'
++          : 'The claim could not be added.',
++      );
++    } finally {
++      this.busy = false;
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+new file mode 100644
+index 00000000..f3add42b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+@@ -0,0 +1,61 @@
++package net.officefloor.hq.app.quickadd;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import net.officefloor.hq.app.SignedIn;
++import net.officefloor.hq.app.claim.ClaimController.ClaimView;
++import net.officefloor.hq.app.person.PersonController.PersonView;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/quick-add")
++@Validated
++public class QuickAddController {
++
++    /** The quick-add bar's values: a person's name, as on the person form, and an amount, as on the claim form. */
++    public record QuickAddForm(
++            @NotBlank @Size(max = 200) String name,
++            @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
++    }
++
++    /** What the screen is told: the claim added, its person, and whether that person was added for it. */
++    public record QuickAddView(PersonView person, boolean personAdded, ClaimView claim) {
++    }
++
++    private final QuickAddService service;
++
++    public QuickAddController(QuickAddService service) {
++        this.service = service;
++    }
++
++    /** Add a DRAFT claim for the named person, adding them first when the name is not on the sheet. */
++    @PostMapping
++    public QuickAddView add(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid QuickAddForm form) {
++        QuickAddService.Added added = service.add(sheetId, SignedIn.name(user), form.name(),
++                new BigDecimal(form.amount()));
++        return new QuickAddView(PersonView.of(added.person()), added.personAdded(), ClaimView.of(added.claim()));
++    }
++
++    /** Another user took the name between the check and the write: the unique index refuses it. */
++    @ExceptionHandler(DataIntegrityViolationException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public void nameTaken() {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+new file mode 100644
+index 00000000..cdd3dac0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.quickadd;
++
++import java.math.BigDecimal;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The quick-add bar: a DRAFT claim of an amount, dated the sheet's today with an empty note, for the
++ * person of a name, who is first added with grade A when the name is not on the sheet. It is one
++ * change: when the claim is refused the person added for it is not kept, and nothing is recorded.
++ */
++@Service
++public class QuickAddService {
++
++    /** The grade a person added by the quick-add bar is given. */
++    static final String GRADE = "A";
++
++    /** What a quick-add made: the claim, for its person, and whether that person was added for it. */
++    public record Added(Person person, boolean personAdded, Claim claim) {
++    }
++
++    private final PersonRepository people;
++    private final PersonService personService;
++    private final ClaimService claimService;
++
++    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService) {
++        this.people = people;
++        this.personService = personService;
++        this.claimService = claimService;
++    }
++
++    @Transactional
++    public Added add(String sheetId, String user, String name, BigDecimal amount) {
++        Person existing = people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name)).orElse(null);
++        Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE);
++        Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "");
++        return new Added(person, existing == null, claim);
++    }
++}
