@@ -7,6 +7,7 @@ import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
+import { Header } from '../header/header';
 import { Periods } from '../periods/periods';
 import { QuickAdd } from '../quick-add/quick-add';
 import { Rates } from '../rates/rates';
@@ -33,8 +34,14 @@ function csvField(value: string): string {
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, QuickAdd, Rates, Summary],
+  imports: [Claims, Header, Periods, QuickAdd, Rates, Summary],
   template: `
+    <app-header
+      [peopleCount]="people().length"
+      [statuses]="statusSummary()"
+      [dueTotal]="dueTotal()"
+      [overdueTotal]="overdueTotal()"
+    />
     <app-rates [rates]="rates()" [today]="today()" (saved)="rateSaved($event)" />
     <app-periods
       [periods]="periods()"
