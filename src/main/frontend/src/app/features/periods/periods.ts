@@ -6,7 +6,7 @@ import { Session } from '../../core/session';
 // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
 // and one form to add a period (a unique name and inclusive from and to dates, overlapping no other).
 // Its due-total is the sum of the people's figures for it. A period can be closed: each person's figure
-// is then the one fixed at closing. A steward can reopen a
+// is then the one fixed at closing. A permitted role (a steward by default) can reopen a
 // closed period, making its due-total live again.
 @Component({
   selector: 'app-periods',
@@ -126,12 +126,18 @@ export class Periods {
     if (!sheet) return;
     try {
       this.closed.emit(await this.api.close(sheet, period.id));
-    } catch {
-      this.periodError.set({ id: period.id, message: 'The period could not be closed.' });
+    } catch (e) {
+      this.periodError.set({
+        id: period.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Your role is not allowed to close a period.'
+            : 'The period could not be closed.',
+      });
     }
   }
 
-  /** Reopen a period; a refusal (not a steward, or not closed) is shown on its row. */
+  /** Reopen a period; a refusal (a role not allowed to, or not closed) is shown on its row. */
   protected async reopen(period: PeriodView): Promise<void> {
     this.periodError.set(null);
     const sheet = this.session.sheet();
@@ -143,7 +149,7 @@ export class Periods {
         id: period.id,
         message:
           e instanceof HttpErrorResponse && e.status === 403
-            ? 'Only a steward can reopen a period.'
+            ? 'Your role is not allowed to reopen a period.'
             : 'The period could not be reopened.',
       });
     }

@@ -111,7 +111,8 @@ public class ClaimService {
      * is never reused. The user who opened a claim
      * is refused when settling it. A clerk settling a claim whose due is above the sheet's clerk limit
      * (a due of n/a is within any limit) sends it PENDING instead, for a steward to approve or reject;
-     * a steward settles any. A claim dated inside a closed period cannot be moved, nor can a claim
+     * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
+     * refused. A claim dated inside a closed period cannot be moved, nor can a claim
      * deferred on the sheet's today be settled.
      */
     @Transactional
@@ -122,6 +123,15 @@ public class ClaimService {
         Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = claim(sheetId, claimId);
         periods.refuseIfClosed(sheetId, claim.getDate());
+        String action = switch (next) {
+            case OPEN -> "open";
+            case SETTLED -> "settle";
+            case VOID -> "void";
+            case PENDING, DRAFT -> throw new IllegalArgumentException("No move to " + next + ".");
+        };
+        if (!roles.permits(sheetId, user, action)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim.");
+        }
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
@@ -287,7 +297,8 @@ public class ClaimService {
     /**
      * Move a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its number and
      * date, and loses any figure a statement bound it to, its due live again until its new person's
-     * next statement. Only a steward reassigns. Refused when the claim is SETTLED or VOID, when it is
+     * next statement. Only a role the sheet's permission matrix allows (a steward by
+     * default) reassigns. Refused when the claim is SETTLED or VOID, when it is
      * dated inside a closed period, when the new person is its own, is retired before its date, or (for
      * a correction) has no SETTLED claim of the number it corrects.
      */
@@ -296,8 +307,8 @@ public class ClaimService {
         sheets.lock(sheetId);
         Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = claim(sheetId, claimId);
-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reassigns a claim.");
+        if (!roles.permits(sheetId, user, "reassign")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not reassign a claim.");
         }
         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

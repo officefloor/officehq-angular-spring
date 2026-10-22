@@ -13,7 +13,6 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -77,8 +76,9 @@ public class PeriodService {
     /**
      * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures,
      * as computed now, of the claims dated in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
-     * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those OPEN or PENDING then and dated
-     * within their person's hold, unless bound by a statement, and those deferred on today. Refused when the period is already closed.
+     * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those still OPEN or PENDING and dated
+     * within their person's hold, unless bound by a statement, and those deferred on today. Refused when the period is already closed, or
+     * for a role the sheet's permission matrix does not allow.
      */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
@@ -86,6 +86,9 @@ public class PeriodService {
         LocalDate today = sheets.lock(sheetId).getToday();
         Period period = periods.findByIdAndSheetId(periodId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
+        if (!roles.permits(sheetId, user, "close")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not close a period.");
+        }
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed.");
         }
@@ -99,7 +102,8 @@ public class PeriodService {
                 continue;
             }
             ClaimStatus then = claim.statusAt(period.getToDate());
-            if (then == null || !person.countsLive(then, claim.getDate(), claim.isStated(), claim.isDeferredOn(today))) {
+            if (then == null || !then.counts() || claim.isDeferredOn(today)
+                    || (claim.getStatus().isOpen() && !claim.isStated() && person.heldOn(claim.getDate()))) {
                 continue;
             }
             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
@@ -116,15 +120,16 @@ public class PeriodService {
 
     /**
      * Reopen a closed period: its due-total is live again, the claims dated in it counting at their
-     * current figures. Refused for anyone but a steward, and when the period is not closed.
+     * current figures. Refused for a role the sheet's permission matrix
+     * does not allow (anyone but a steward by default), and when the period is not closed.
      */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {
         LocalDate today = sheets.lock(sheetId).getToday();
         Period period = periods.findByIdAndSheetId(periodId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reopen a period.");
+        if (!roles.permits(sheetId, user, "reopen")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not reopen a period.");
         }
         if (!period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is not closed.");

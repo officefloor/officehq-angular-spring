@@ -361,7 +361,7 @@ export class Claims {
 
   /**
    * Move a claim to the person chosen on its row; refused with an error on its row when none is
-   * chosen, when the user is not a steward, or when the claim is SETTLED or VOID.
+   * chosen, when the user's role may not reassign, or when the claim is SETTLED or VOID.
    */
   protected async reassign(claim: ClaimView): Promise<void> {
     this.claimError.set(null);
@@ -378,7 +378,7 @@ export class Claims {
       this.claimError.set({
         id: claim.id,
         message: e instanceof HttpErrorResponse && e.status === 403
-          ? 'Only a steward can reassign a claim.'
+          ? 'Your role is not allowed to reassign a claim.'
           : claim.status === 'SETTLED' || claim.status === 'VOID'
             ? `A ${claim.status} claim cannot be reassigned.`
             : 'The claim could not be reassigned to that person.',
@@ -411,9 +411,13 @@ export class Claims {
       const steward = e instanceof HttpErrorResponse && e.status === 403
         && (((action === 'approve' || action === 'reject') && claim.status === 'PENDING')
           || (action === 'resettle' && claim.status === 'SETTLED'));
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403
+        && (action === 'open' || action === 'settle' || action === 'void');
       this.claimError.set({
         id: claim.id,
-        message: action === 'settle' && deferred(claim, this.session.today() ?? '')
+        message: forbidden
+          ? `Your role is not allowed to ${action} a claim.`
+          : action === 'settle' && deferred(claim, this.session.today() ?? '')
           ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be settled before then.`
           : own
             ? `You opened this claim, so someone else must ${action} it.`

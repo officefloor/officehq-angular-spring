@@ -156,4 +156,15 @@ public class SheetService {
                 + (saved.getPeriodNumberingFrom() == null ? "" : saved.getPeriodNumberingFrom().toString()));
         return saved;
     }
+
+    /** Set the roles that may take an action (null: the standing rule), auditing the change. */
+    @Transactional
+    public Sheet setPermission(String id, String user, String action, String roles) {
+        Sheet sheet = lock(id);
+        sheet.setPermission(action, roles);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value="
+                + (roles == null ? "" : roles));
+        return saved;
+    }
 }

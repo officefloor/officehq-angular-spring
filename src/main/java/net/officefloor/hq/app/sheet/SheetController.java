@@ -8,7 +8,10 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -51,7 +54,8 @@ public class SheetController {
      * for none, and the proof threshold with two decimals, null for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer termsA, Integer termsB, Integer termsC, String cap,
-            List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold) {
+            List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+            Map<String, String> permissions) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -60,13 +64,36 @@ public class SheetController {
                     sheet.getGradeTerms("B"), sheet.getGradeTerms("C"),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()),
-                    sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString());
+                    sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
+                    permissions(sheet));
+        }
+
+        /** The roles set for each action of the permission matrix; blank when it keeps its standing rule. */
+        private static Map<String, String> permissions(Sheet sheet) {
+            Map<String, String> all = new TreeMap<>();
+            Sheet.STANDING_PERMISSIONS.keySet().forEach(action -> {
+                String roles = sheet.getPermission(action);
+                all.put(action, roles == null ? "" : roles);
+            });
+            return all;
         }
     }
 
     /** A setting's value as entered: up to two decimals, or blank (or null) for none. */
     public record SettingChange(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
+    }
+
+    /** The roles that may take an action as entered: clerk or steward, comma separated, or blank for the standing rule. */
+    public record PermissionChange(
+            @Size(max = 64) @Pattern(regexp = "\\s*((clerk|steward)\\s*(,\\s*(clerk|steward)\\s*)*)?") String value) {
+
+        /** The roles entered, each once, comma separated; null when blank. */
+        String roles() {
+            String text = value == null ? "" : value.trim();
+            return text.isEmpty() ? null
+                    : String.join(",", Arrays.stream(text.split(",")).map(String::trim).distinct().toList());
+        }
     }
 
     /** A floor as entered: up to two decimals; it cannot be blank. */
@@ -243,5 +270,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid DateChange change) {
         return SettingsView.of(service.setPeriodNumberingFrom(id, SignedIn.name(user), change.date()));
+    }
+
+    /** Set the roles that may take an action of the permission matrix; a blank value keeps its standing rule. */
+    @PutMapping("/{id}/settings/perm-{action}")
+    public SettingsView setPermission(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid PermissionChange change) {
+        return SettingsView.of(service.setPermission(id, SignedIn.name(user), action, change.roles()));
     }
 }

@@ -27,14 +27,16 @@ function countsLive(claim: ClaimView, person: PersonView, today: string): boolea
 }
 
 /**
- * Whether a person's claim counts in a period's live figures: by the live rules, but by the status it
- * had at the end of the period's last day (see statusAt); one added after then does not count.
+ * Whether a person's claim counts in a period's live figures: it counts by the status it had at the
+ * end of the period's last day (see statusAt), one added after then not counting, and is left out,
+ * as in the live totals, when deferred on today or when it is still OPEN or PENDING, unbound by a
+ * statement and dated within one of the person's holds.
  */
 function countsInPeriod(claim: ClaimView, person: PersonView, today: string, period: PeriodView): boolean {
   const then = statusAt(claim, period.to);
   if (then === null) return false;
-  const openThen = then === 'OPEN' || then === 'PENDING';
-  return (openThen || then === 'SETTLED') && !deferred(claim, today) && !(openThen && !claim.stated && heldOn(person, claim.date));
+  const countedThen = then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
+  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && heldOn(person, claim.date));
 }
 
 /** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */

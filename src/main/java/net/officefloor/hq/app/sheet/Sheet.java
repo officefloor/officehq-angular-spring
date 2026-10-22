@@ -5,6 +5,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -14,7 +15,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** A sheet: everything else in the app is kept per sheet. It starts empty when first loaded. */
@@ -29,6 +33,11 @@ public class Sheet {
     public static final String TERMS = "terms";
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+
+    /** The actions the permission matrix covers, each with the roles that may take it under the standing rule. */
+    public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
+            "open", "clerk,steward", "settle", "clerk,steward", "void", "clerk,steward",
+            "reassign", "steward", "close", "clerk,steward", "reopen", "steward");
 
     @Id
     private String id;
@@ -96,6 +105,13 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> dated = new ArrayList<>();
+
+    /** The permission matrix: for an action, the comma separated roles that may take it; an action with none keeps its standing rule. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "action")
+    @Column(name = "roles", nullable = false)
+    private Map<String, String> permissions = new HashMap<>();
 
     protected Sheet() {
     }
@@ -296,5 +312,25 @@ public class Sheet {
     /** Give out the sheet's next claim number: 1 for the first, then 2, and so on. */
     public int nextClaimNumber() {
         return ++lastClaimNumber;
+    }
+
+    /** The roles set for an action, comma separated; null when it keeps its standing rule. */
+    public String getPermission(String action) {
+        return permissions.get(action);
+    }
+
+    /** Set the roles that may take an action (null: the standing rule). */
+    public void setPermission(String action, String roles) {
+        if (roles == null) {
+            permissions.remove(action);
+        } else {
+            permissions.put(action, roles);
+        }
+    }
+
+    /** Whether a role may take an action: the roles set for it, else its standing rule. */
+    public boolean permits(String action, String role) {
+        String roles = permissions.getOrDefault(action, STANDING_PERMISSIONS.get(action));
+        return Arrays.asList(roles.split(",")).contains(role);
     }
 }

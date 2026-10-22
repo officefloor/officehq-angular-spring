@@ -1,11 +1,11 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CAP, DatedKey, FLOOR, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+  CAP, DatedKey, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms and each grade's own terms, the late percent, the policy date and period numbering from) and the roles user names have on it (clerk by default,
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from and the permission matrix) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
 // sheet's today unless one is typed) and shown as in force on the sheet's today.
 @Component({
@@ -143,6 +143,15 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'periodNumberingFrom')"
           (keydown.backspace)="cleared($event, 'periodNumberingFrom')"
         />
+        @for (a of permissionActions; track a) {
+          <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; empty: {{ standing[a] }})</label>
+          <input
+            [id]="'setting-perm-' + a"
+            [attr.data-testid]="'setting-perm-' + a"
+            [value]="permissionInput()[a]"
+            (input)="permissionTyped(a, value($event))"
+          />
+        }
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -160,6 +169,10 @@ import { Session } from '../../core/session';
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
+      @for (a of permissionActions; track a) {
+        <p>Roles that may {{ a }} in force:
+          <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] }}</span></p>
+      }
       <h3>Roles</h3>
       <form (submit)="saveRole($event)" aria-label="Set a role">
         <label for="role-form-user">User</label>
@@ -234,6 +247,16 @@ export class Settings {
   protected gradeTermsEdited = new Set<Grade>();
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
+  protected readonly permissionActions = PERMISSION_ACTIONS;
+  /** Who may take each action under its standing rule, kept when its entry is blank. */
+  protected readonly standing: Record<PermissionAction, string> = {
+    open: 'clerk and steward', settle: 'clerk and steward', void: 'clerk and steward',
+    reassign: 'steward', close: 'clerk and steward', reopen: 'steward',
+  };
+  /** The roles set for each action; blank for its standing rule. */
+  protected readonly permissions = signal<Record<PermissionAction, string>>(Settings.noPermissions());
+  protected readonly permissionInput = signal<Record<PermissionAction, string>>(Settings.noPermissions());
+  protected permissionsEdited = new Set<PermissionAction>();
   protected readonly roleUser = signal('');
   protected readonly roleName = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -247,6 +270,10 @@ export class Settings {
     return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'late-pct': '', 'proof-threshold': '' };
   }
 
+  private static noPermissions(): Record<PermissionAction, string> {
+    return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '' };
+  }
+
   constructor() {
     // Every sheet load re-reads the sheet's settings and roles from the store.
     effect(() => {
@@ -257,6 +284,7 @@ export class Settings {
         this.proofThreshold.set(null);
         this.gradeTerms.set({ A: null, B: null, C: null });
         this.periodNumberingFrom.set('');
+        this.permissions.set(Settings.noPermissions());
         this.roles.set([]);
         this.fromInput.set(Settings.noFroms());
         this.settingsError.set(null);
@@ -322,6 +350,12 @@ export class Settings {
     this.settingsError.set(null);
   }
 
+  protected permissionTyped(action: PermissionAction, value: string): void {
+    this.permissionInput.update((all) => ({ ...all, [action]: value }));
+    this.permissionsEdited.add(action);
+    this.settingsError.set(null);
+  }
+
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
   }
@@ -343,7 +377,7 @@ export class Settings {
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited);
+        !this.periodNumberingFromEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveFloor = this.floorEdited;
@@ -353,6 +387,8 @@ export class Settings {
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
+    const savePermissions = PERMISSION_ACTIONS.filter((a) => this.permissionsEdited.has(a))
+      .map((a) => ({ action: a, value: this.permissionInput()[a].trim() }));
     const froms = this.fromInput();
     const from = (key: DatedKey) => froms[key].trim();
     const savedKeys: DatedKey[] = [
@@ -404,6 +440,10 @@ export class Settings {
       this.settingsError.set('Type the date period numbering is from as yyyy-mm-dd, or leave it empty for off.');
       return;
     }
+    if (savePermissions.some((p) => !PERMISSION.test(p.value))) {
+      this.settingsError.set('Type the roles that may take an action as clerk or steward, comma separated, or leave them empty for the standing rule.');
+      return;
+    }
     // What was typed is taken now: anything typed meanwhile is saved by the next submit.
     if (saveLimit) this.limitEdited = false;
     if (saveCap) this.capEdited = false;
@@ -414,6 +454,7 @@ export class Settings {
     if (saveLatePct) this.latePctEdited = false;
     if (savePolicyDate) this.policyDateEdited = false;
     if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
+    for (const p of savePermissions) this.permissionsEdited.delete(p.action);
     this.fromInput.update((all) => {
       const next = { ...all };
       for (const key of savedKeys) next[key] = '';
@@ -455,6 +496,13 @@ export class Settings {
           const view = await this.api.setPeriodNumberingFrom(sheet, periodNumberingFrom);
           this.periodNumberingFrom.set(view.periodNumberingFrom ?? '');
           if (!this.periodNumberingFromEdited) this.periodNumberingFromInput.set(view.periodNumberingFrom ?? '');
+        }
+        for (const p of savePermissions) {
+          const view = await this.api.setPermission(sheet, p.action, p.value);
+          this.permissions.set(view.permissions);
+          if (!this.permissionsEdited.has(p.action)) {
+            this.permissionInput.update((all) => ({ ...all, [p.action]: view.permissions[p.action] }));
+          }
         }
       } catch {
         this.settingsError.set('The settings could not be saved.');
@@ -533,6 +581,10 @@ export class Settings {
       this.periodNumberingFrom.set(settings.periodNumberingFrom ?? '');
       this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
       this.periodNumberingFromEdited = false;
+      // Each action's roles start at those in force, so clearing them is a change.
+      this.permissions.set(settings.permissions);
+      this.permissionInput.set({ ...settings.permissions });
+      this.permissionsEdited.clear();
       this.roles.set(roles);
     }
   }

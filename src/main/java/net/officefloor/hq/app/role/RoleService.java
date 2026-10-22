@@ -32,6 +32,15 @@ public class RoleService {
         return roles.findBySheetIdAndUserName(sheetId, userName).map(Role::getRole).orElse(Role.CLERK);
     }
 
+    /**
+     * Whether a user name may take an action (open, settle, void, reassign, close or reopen) on the
+     * sheet: its role is among those the sheet's permission matrix sets for it, else its standing rule.
+     */
+    @Transactional(readOnly = true)
+    public boolean permits(String sheetId, String userName, String action) {
+        return sheets.load(sheetId).permits(action, roleOf(sheetId, userName));
+    }
+
     /** Set the role of a user name on the sheet, replacing any it had. */
     @Transactional
     public Role set(String sheetId, String user, String userName, String role) {

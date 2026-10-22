@@ -44,7 +44,16 @@ export interface SettingsView {
   latePctHistory: DatedValue[];
   /** The proof threshold with two decimals: a claim whose due is above it needs a proof to be settled; null when there is none. */
   proofThreshold: string | null;
+  /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
+  permissions: Record<PermissionAction, string>;
 }
+
+/** The actions the permission matrix covers. */
+export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
+
+/** An action's roles as the form takes them: clerk or steward, comma separated, or blank for the standing rule. */
+export const PERMISSION = /^((clerk|steward)\s*(,\s*(clerk|steward)\s*)*)?$/;
 
 /** The grades that can have their own terms. */
 export const GRADES = ['A', 'B', 'C'] as const;
@@ -129,6 +138,11 @@ export class SettingsApi {
   /** Set the period-numbering-from date; a blank value turns period numbering off. */
   setPeriodNumberingFrom(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/period-numbering-from`, { value }));
+  }
+
+  /** Set the roles that may take an action, comma separated; a blank value keeps its standing rule. */
+  setPermission(sheet: string, action: PermissionAction, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/perm-${action}`, { value }));
   }
 
   /** The roles set on the sheet, by user name. */
