@@ -1,0 +1,102 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 9c5bc252..30ef49f2 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -322,6 +322,8 @@ export class Claims {
+   readonly periods = input.required<PeriodView[]>();
+   /** The people on the sheet, any of whom (but this one) a claim may be reassigned to. */
+   readonly people = input.required<{ id: number; name: string }[]>();
++  /** The date the person is retired from; null when they are not retired. */
++  readonly retiredFrom = input<string | null>(null);
+   /** The ids of the claims selected for a bulk action. */
+   readonly selected = input.required<ReadonlySet<number>>();
+   /** A claim's checkbox ticked (on) or cleared. */
+@@ -461,7 +463,8 @@ export class Claims {
+   /**
+    * Open a claim's editor: the claim is locked for other users and the form takes its values. Only a
+    * DRAFT claim can be edited; any other is refused with an error on its row (to change an OPEN claim,
+-   * void it and add a new one), as is one due by in a closed period, both taking no lock. A claim
++   * void it and add a new one), as is one due by in a closed period or dated after its person's
++   * retirement, all taking no lock. A claim
+    * another user's editor holds is refused with an error on its row, the form left on it to save once
+    * the lock is released; a viewer's edit is refused like any of their actions.
+    */
+@@ -485,6 +488,15 @@ export class Claims {
+       this.claimError.set({ id: claim.id, message: `Period ${period.name} is closed, so its claims cannot be edited.` });
+       return;
+     }
++    const retired = this.retiredFrom();
++    if (retired !== null && claim.date > retired) {
++      this.reset();
++      this.claimError.set({
++        id: claim.id,
++        message: `${this.personName()} is retired from ${retired}, so a claim dated after it cannot be edited.`,
++      });
++      return;
++    }
+     const me = this.session.user()?.trim();
+     if (claim.lockedBy !== null && claim.lockedBy !== me) {
+       this.setEditing(claim.id);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c6d07a04..8e93bbf9 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -176,6 +176,7 @@ function csvField(value: string): string {
+       </p>
+       <p>
+         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
++        <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+       </p>
+       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+@@ -450,6 +451,7 @@ function csvField(value: string): string {
+                 <app-claims
+                   [personId]="p.id"
+                   [personName]="p.name"
++                  [retiredFrom]="p.retiredFrom"
+                   [claims]="claimsOf(p.id)"
+                   [grades]="p.grades"
+                   [rates]="rates()"
+@@ -1400,11 +1402,41 @@ export class People {
+       ['name', 'grade', 'retired-from', 'due-total'],
+       ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)]),
+     ];
++    this.download(lines, 'people');
++  }
++
++  /**
++   * Download the claims as a CSV file: a header line, then one line per claim, people in list order
++   * (retired people included) and each person's claims oldest first, with the number, period and due
++   * as shown (an empty number or period, or n/a, as it is). Each line ends with a line feed.
++   */
++  protected exportClaims(): void {
++    const lines = [
++      ['person', 'number', 'date', 'amount', 'due', 'status', 'period'],
++      ...this.people().flatMap((p) =>
++        [...this.claimsOf(p.id)].reverse().map((c) => {
++          const due = this.dueCents(c, p);
++          return [
++            p.name,
++            c.number ?? '',
++            c.date,
++            c.amount,
++            due === null ? NO_RATE : money(due),
++            c.status,
++            periodOn(this.periods(), c.dueBy)?.name ?? '',
++          ];
++        }),
++      ),
++    ];
++    this.download(lines, 'claims');
++  }
++
++  private download(lines: string[][], name: string): void {
+     const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+     const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+     const link = document.createElement('a');
+     link.href = url;
+-    link.download = `people-${this.session.sheet() ?? 'sheet'}.csv`;
++    link.download = `${name}-${this.session.sheet() ?? 'sheet'}.csv`;
+     link.click();
+     setTimeout(() => URL.revokeObjectURL(url));
+   }

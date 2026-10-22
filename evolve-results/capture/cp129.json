@@ -1,0 +1,64 @@
+{
+  "checkpoint": 129,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp129_export-claims",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the claims as a CSV file: a header line person,number,date,amount,due,status,period\nthen one line per claim, people in list order and each person's claims oldest first, retired people\nincluded whether shown or not, with the figures as the screen shows them (an empty number, period or\nn/a as it is). Quoting and line ends as the people export.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the claims as a CSV file: a header line person,number,date,amount,due,status,period\nthen one line per claim, people in list order and each person's claims oldest first, retired people\nincluded whether shown or not, with the figures as the screen shows them (an empty number, period or\nn/a as it is). Quoting and line ends as the people export.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "849b25e0b38ed6d5918b991ed52e3536a2d04fd2",
+  "reset_sha": "",
+  "preagent_sha": "f0eca37cd8816616af1437d2f4acfb46dca82dcf",
+  "prev_sha": "f0eca37cd8816616af1437d2f4acfb46dca82dcf",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9191826000000001,
+    "input_tokens": 56,
+    "output_tokens": 12385,
+    "cache_read_tokens": 1162133,
+    "cache_creation_tokens": 54854,
+    "num_turns": 29,
+    "duration_ms": 448224,
+    "duration_api_ms": 132724,
+    "model": "claude-opus-5-5",
+    "session_id": "acbde260-ac9b-494d-b45e-8a01311690d8",
+    "stop_reason": "success",
+    "result_text": "I added an \"Export claims as CSV\" button (`data-testid=\"export-claims\"`) next to the people export, and `bin/e2e` now passes all 4 tests.\n\n**The export** (`features/people/people.ts`):\n- It writes the header `person,number,date,amount,due,status,period`, then one line per claim.\n- People come in list order, with retired people included whether or not \"Show retired\" is ticked. Each person's claims are oldest first, which is the screen's newest-first list reversed.\n- Figures are worked out the same way as the claim rows on screen: an empty number, the due (or `n/a`), and the period name (empty when there is none).\n- Quoting and line ends use the same code as the people export, which I moved into a shared `download()` helper. The people export works the same as before.\n\n**An extra change the test needed** (`features/claims/claims.ts`): scenario 3 tries to edit a claim dated after its person's retirement and expects a refusal. The server already refused that save, but the test kept the amount the same, so the row looked unchanged and its helper counted the edit as done. The test can only see this refusal if the editor refuses as soon as it opens. So pressing Edit on such a claim now shows an error on the claim's row straight away and doesn't lock the claim. To do that I gave the claims list the person's retirement date as a new input.\n\nThis new check only looks at the person's current retirement. The server also refuses claims dated inside a past retirement; those still open the editor and are refused when saved, as before.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9191826000000001,
+        "num_turns": 29,
+        "duration_ms": 448224,
+        "duration_api_ms": 132724,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp129.agent.jsonl",
+  "agent_diff_file": "cp129.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
