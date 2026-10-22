@@ -1,0 +1,116 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 81a30172..0797aeb3 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -247,9 +247,10 @@ public class PeriodService {
+      * Give out the number for a claim due by a date (its due-by) as it is opened, holding the sheet's lock until
+      * the caller's transaction ends. While the sheet numbers by period (see {@link Sheet#numbersByPeriod})
+      * it is the next within the period the date falls in, {@code <period name>-<n>}, or {@code X-<n>}
+-     * when it falls in none; otherwise it is the next sheet-wide number of the sheet's tree, after the
+-     * last given on any sheet of it. The tree's root is locked too, so the sheets of a tree take their
+-     * numbers one at a time.
++     * when it falls in none; otherwise it is the next sheet-wide number of the sheet's tree within the
++     * fiscal year (by the sheet's fiscal start month) the date falls in, {@code FY<year>-<n>}, after the
++     * last given in that fiscal year on any sheet of it. The tree's root is locked too, so the sheets of
++     * a tree take their numbers one at a time.
+      */
+     @Transactional
+     public String nextClaimNumber(String sheetId, LocalDate date) {
+@@ -257,9 +258,10 @@ public class PeriodService {
+         if (!sheet.numbersByPeriod()) {
+             List<String> tree = sheets.tree(sheetId);
+             sheets.lock(tree.get(0));
++            int year = sheet.fiscalYearOf(date);
+             int lastInTree = tree.stream().filter(id -> !id.equals(sheetId))
+-                    .mapToInt(id -> sheets.load(id).getLastClaimNumber()).max().orElse(0);
+-            return String.valueOf(sheet.nextClaimNumberAfter(lastInTree));
++                    .mapToInt(id -> sheets.load(id).getLastClaimNumberIn(year)).max().orElse(0);
++            return "FY" + year + "-" + sheet.nextClaimNumberIn(year, lastInTree);
+         }
+         return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                 .filter(p -> p.contains(date))
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 7800eda4..28525bb1 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -51,7 +51,7 @@ public class Sheet {
+     @Column(name = "today", nullable = false)
+     private LocalDate today;
+ 
+-    /** The last claim number the sheet gave out; 0 before any claim is opened. */
++    /** The last plain sheet-wide claim number the sheet gave out, before numbering restarted each fiscal year; 0 when none. */
+     @Column(name = "last_claim_number", nullable = false)
+     private int lastClaimNumber;
+ 
+@@ -143,6 +143,13 @@ public class Sheet {
+     @Column(name = "roles", nullable = false)
+     private Map<String, String> permissions = new HashMap<>();
+ 
++    /** The last sheet-wide claim number given out in each fiscal year, by the year it is named after. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "sheet_fiscal_claim_number", joinColumns = @JoinColumn(name = "sheet_id"))
++    @MapKeyColumn(name = "fiscal_year")
++    @Column(name = "last_number", nullable = false)
++    private Map<Integer, Integer> lastFiscalClaimNumbers = new HashMap<>();
++
+     protected Sheet() {
+     }
+ 
+@@ -380,6 +387,7 @@ public class Sheet {
+         then.archived = archived;
+         then.dated = new ArrayList<>(datedThen);
+         then.permissions = new HashMap<>(permissions);
++        then.lastFiscalClaimNumbers = new HashMap<>(lastFiscalClaimNumbers);
+         return then;
+     }
+ 
+@@ -514,20 +522,26 @@ public class Sheet {
+         return ++lastSettleBatch;
+     }
+ 
+-    /** Give out the sheet's next claim number: 1 for the first, then 2, and so on. */
+-    public int nextClaimNumber() {
+-        return ++lastClaimNumber;
+-    }
+-
+     /** The last claim number the sheet gave out; 0 before any claim is opened. */
+     public int getLastClaimNumber() {
+         return lastClaimNumber;
+     }
+ 
+-    /** Give out the next claim number after the last given anywhere in the sheet's tree. */
+-    public int nextClaimNumberAfter(int lastInTree) {
+-        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
+-        return lastClaimNumber;
++    /** The year the fiscal year a date falls in is named after: the calendar year it starts in. */
++    public int fiscalYearOf(LocalDate date) {
++        return date.getMonthValue() >= fiscalStartMonth ? date.getYear() : date.getYear() - 1;
++    }
++
++    /** The last claim number the sheet gave out in a fiscal year; 0 before any. */
++    public int getLastClaimNumberIn(int fiscalYear) {
++        return lastFiscalClaimNumbers.getOrDefault(fiscalYear, 0);
++    }
++
++    /** Give out the next claim number in a fiscal year after the last given in it anywhere in the sheet's tree. */
++    public int nextClaimNumberIn(int fiscalYear, int lastInTree) {
++        int next = Math.max(getLastClaimNumberIn(fiscalYear), lastInTree) + 1;
++        lastFiscalClaimNumbers.put(fiscalYear, next);
++        return next;
+     }
+ 
+     /** The roles set for an action, comma separated; null when it keeps its standing rule. */
+diff --git a/src/main/resources/db/migration/V80__sheet_fiscal_claim_number.sql b/src/main/resources/db/migration/V80__sheet_fiscal_claim_number.sql
+new file mode 100644
+index 00000000..e23be1d9
+--- /dev/null
++++ b/src/main/resources/db/migration/V80__sheet_fiscal_claim_number.sql
+@@ -0,0 +1,8 @@
++-- The last sheet-wide claim number the sheet gave out in each fiscal year, named by the calendar year
++-- the fiscal year starts in. Numbers given before numbering restarted each fiscal year stay as they are.
++CREATE TABLE sheet_fiscal_claim_number (
++    sheet_id    VARCHAR(64) NOT NULL REFERENCES sheet (id),
++    fiscal_year INT NOT NULL,
++    last_number INT NOT NULL
++);
++CREATE UNIQUE INDEX sheet_fiscal_claim_number_year ON sheet_fiscal_claim_number (sheet_id, fiscal_year);
