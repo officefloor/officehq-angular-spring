@@ -28,6 +28,8 @@ export interface SettingsView {
   termsA: number | null;
   termsB: number | null;
   termsC: number | null;
+  /** The cap with two decimals, e.g. "8.00": a person's due-total is at most it; null when there is none. */
+  cap: string | null;
 }
 
 /** The grades that can have their own terms. */
@@ -39,6 +41,9 @@ export const GRADE_TERMS = /^(\d{1,4})?$/;
 
 /** A clerk limit as the form takes it: up to two decimals, or blank for no limit. */
 export const LIMIT = /^(\d{1,12}(\.\d{1,2})?)?$/;
+
+/** A cap as the form takes it: up to two decimals, or blank for no cap. */
+export const CAP = /^(\d{1,12}(\.\d{1,2})?)?$/;
 
 /** A floor as the form takes it: 0.00 or more, with up to two decimals. */
 export const FLOOR = /^\d{1,12}(\.\d{1,2})?$/;
@@ -67,6 +72,11 @@ export class SettingsApi {
   /** Set the clerk limit; a blank value means no limit. */
   setClerkLimit(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/clerk-limit`, { value }));
+  }
+
+  /** Set the cap; a blank value means no cap. */
+  setCap(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/cap`, { value }));
   }
 
   /** Set the floor. */

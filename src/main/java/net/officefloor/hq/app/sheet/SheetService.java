@@ -76,6 +76,19 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's cap (null: no cap), auditing the change and the figures it moves. */
+    @Transactional
+    public Sheet setCap(String id, String user, BigDecimal cap) {
+        Sheet sheet = lock(id);
+        Rollups.Rollup before = rollups.take(id);
+        sheet.setCap(cap == null ? null : cap.setScale(2, RoundingMode.UNNECESSARY));
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=cap value="
+                + (saved.getCap() == null ? "" : saved.getCap().toPlainString()));
+        rollups.audit(id, user, before);
+        return saved;
+    }
+
     /** Change the sheet's floor, auditing the change and the figures it moves. */
     @Transactional
     public Sheet setFloor(String id, String user, BigDecimal floor) {

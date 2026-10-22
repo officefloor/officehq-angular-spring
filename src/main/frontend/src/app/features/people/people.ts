@@ -127,6 +127,7 @@ function csvField(value: string): string {
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Excess</th>
             <th scope="col">Overdue</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
@@ -144,6 +145,7 @@ function csvField(value: string): string {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) }}</td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
                 <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</span></span>
@@ -347,6 +349,8 @@ export class People {
   );
   /** The sheet's floor in whole cents: a claim's live due is at least it. */
   private readonly floorCents = computed(() => cents(this.session.floor()));
+  /** The sheet's cap in whole cents: a person's due-total is at most it; null when there is none. */
+  private readonly capCents = computed(() => (this.session.cap() === '' ? null : cents(this.session.cap())));
   /** The sheet's today, on which each grade's rate in force is read. */
   protected readonly today = computed(() => this.session.today() ?? '');
   /** What late charges are worked from: the sheet's late percent and today. */
@@ -468,12 +472,26 @@ export class People {
   }
 
   /**
-   * A person's due-total in whole cents: the sum of the due figures of their OPEN and SETTLED claims
+   * A person's due-total in whole cents, at most the sheet's cap: the sum of the due figures of their OPEN and SETTLED claims
    * (0 with none; see countsLive). Null (n/a) when the grade they have in force on the sheet's today has no
    * rate, unless a claim has a figure (a fixed one, or one at the grade in force on its own date): then it
    * is the sum of the figures there are.
    */
   private dueTotalCents(person: PersonView): number | null {
+    const sum = this.dueSumCents(person);
+    const cap = this.capCents();
+    return sum !== null && cap !== null && sum > cap ? cap : sum;
+  }
+
+  /** A person's excess: by how much the sum of their figures is above the cap, else 0.00 (n/a is not capped). */
+  protected excessOf(person: PersonView): string {
+    const sum = this.dueSumCents(person);
+    const cap = this.capCents();
+    return money(sum !== null && cap !== null && sum > cap ? sum - cap : 0);
+  }
+
+  /** The sum of a person's due figures in whole cents before the cap, or null (n/a; see dueTotalCents). */
+  private dueSumCents(person: PersonView): number | null {
     const dues = this.countingOf(person.id).map((c) => this.dueCents(c, person));
     if (this.pctOf(this.gradeOf(person)) === null && dues.every((d) => d === null)) return null;
     return dues.reduce<number>((sum, d) => sum + (d ?? 0), 0);

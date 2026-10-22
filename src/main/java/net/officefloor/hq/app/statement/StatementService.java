@@ -81,6 +81,8 @@ public class StatementService {
         if (rates.findInForce(sheetId, person.gradeOn(today), today).isEmpty() && !figured) {
             total = null;
         }
+        // A due-total is at most the sheet's cap.
+        total = sheets.load(sheetId).capped(total);
         person.stated(total, today);
         Person saved = people.saveAndFlush(person);
         List<Claim> bound = claims.saveAllAndFlush(theirs);

@@ -14,6 +14,8 @@ export interface SheetView {
   latePct: string;
   /** The sheet's policy date (yyyy-mm-dd); null when blank, the sheet's today then being the policy date. */
   policyDate: string | null;
+  /** The sheet's cap with two decimals: a person's due-total is at most it; null when there is none. */
+  cap: string | null;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -34,6 +36,8 @@ export class Session {
   readonly latePct = signal('0.00');
   /** The active sheet's policy date (yyyy-mm-dd); empty when blank (the sheet's today is then the policy date). */
   readonly policyDate = signal('');
+  /** The active sheet's cap with two decimals: a person's due-total is at most it; empty when there is none. */
+  readonly cap = signal('');
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -67,5 +71,6 @@ export class Session {
     this.terms.set(view.terms);
     this.latePct.set(view.latePct);
     this.policyDate.set(view.policyDate ?? '');
+    this.cap.set(view.cap ?? '');
   }
 }

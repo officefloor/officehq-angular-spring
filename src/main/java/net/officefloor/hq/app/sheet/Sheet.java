@@ -32,6 +32,10 @@ public class Sheet {
     @Column(name = "clerk_limit")
     private BigDecimal clerkLimit;
 
+    /** The cap: a person's due-total is at most it; null for no cap. */
+    @Column(name = "cap")
+    private BigDecimal cap;
+
     /** The floor: a claim's live due is at least it. */
     @Column(name = "floor", nullable = false)
     private BigDecimal floor = new BigDecimal("1.00");
@@ -100,6 +104,20 @@ public class Sheet {
 
     public void setClerkLimit(BigDecimal clerkLimit) {
         this.clerkLimit = clerkLimit;
+    }
+
+    /** The cap, with two decimals; null when there is none. */
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
+    }
+
+    /** A sum of figures held to the cap: the cap when the sum is above it; null (n/a) stays null. */
+    public BigDecimal capped(BigDecimal sum) {
+        return sum != null && cap != null && sum.compareTo(cap) > 0 ? cap : sum;
     }
 
     /** The floor, with two decimals. */

@@ -59,7 +59,8 @@ public class Rollups {
 
     /** The sheet's figures as they stand now in the current transaction. */
     public Rollup take(String sheetId) {
-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
         Map<Long, List<Claim>> byPerson = new LinkedHashMap<>();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (claim.getStatus().counts()) {
@@ -89,6 +90,10 @@ public class Rollups {
             boolean rated = today != null && rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
             if (!rated && !figured) {
                 due = null;
+            }
+            // A due-total is at most the sheet's cap.
+            if (sheet != null) {
+                due = sheet.capped(due);
             }
             figures.put(person.getId(), new Figures(person.getName(), claimed, due));
             claimedTotal = claimedTotal.add(claimed);

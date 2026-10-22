@@ -27,11 +27,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class SheetController {
 
     /** What the screen is told about a loaded sheet. */
-    public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate) {
+    public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
+            String cap) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
-                    sheet.getLatePct().toPlainString(), sheet.getPolicyDate());
+                    sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
         }
     }
 
@@ -42,15 +44,17 @@ public class SheetController {
     /** What the screen is told about the sheet's settings: the clerk limit with two decimals, null for none,
      * the floor with two decimals, the terms in days, the late percent with two decimals, and the policy
      * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off), and
-     * each grade's own terms in days, null for none (the sheet's terms). */
+     * each grade's own terms in days, null for none (the sheet's terms), and the cap with two decimals, null
+     * for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, Integer termsA, Integer termsB, Integer termsC) {
+            LocalDate periodNumberingFrom, Integer termsA, Integer termsB, Integer termsC, String cap) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(),
                     sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), sheet.getGradeTerms("A"),
-                    sheet.getGradeTerms("B"), sheet.getGradeTerms("C"));
+                    sheet.getGradeTerms("B"), sheet.getGradeTerms("C"),
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
         }
     }
 
@@ -126,6 +130,16 @@ public class SheetController {
         String value = change.value() == null ? "" : change.value().trim();
         return SettingsView.of(service.setClerkLimit(id, SignedIn.name(user),
                 value.isEmpty() ? null : new BigDecimal(value)));
+    }
+
+    /** Change the sheet's cap; a blank value means no cap. */
+    @PutMapping("/{id}/settings/cap")
+    public SettingsView setCap(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid SettingChange change) {
+        String value = change.value() == null ? "" : change.value().trim();
+        return SettingsView.of(service.setCap(id, SignedIn.name(user), value.isEmpty() ? null : new BigDecimal(value)));
     }
 
     /** Change the sheet's floor. */

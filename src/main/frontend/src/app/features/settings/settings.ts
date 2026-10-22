@@ -1,8 +1,8 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
-import { FLOOR, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
+import { CAP, FLOOR, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the floor, the terms and each grade's own terms, the late percent, the policy date and period numbering from) and the roles user names have on it (clerk by default,
+// The sheet's settings (the clerk limit, the cap, the floor, the terms and each grade's own terms, the late percent, the policy date and period numbering from) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form.
 @Component({
   selector: 'app-settings',
@@ -17,6 +17,16 @@ import { Session } from '../../core/session';
           inputmode="decimal"
           [value]="limit()"
           (input)="limit.set(value($event)); limitEdited = true; settingsError.set(null)"
+        />
+        <label for="setting-cap">Cap (empty: no cap)</label>
+        <input
+          id="setting-cap"
+          data-testid="setting-cap"
+          inputmode="decimal"
+          [value]="capInput()"
+          (input)="capInput.set(value($event)); capEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'cap')"
+          (keydown.backspace)="cleared($event, 'cap')"
         />
         <label for="setting-floor">Floor</label>
         <input
@@ -76,6 +86,7 @@ import { Session } from '../../core/session';
         }
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+      <p>Cap in force: <span data-testid="setting-cap-current">{{ session.cap() }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       @for (g of grades; track g) {
@@ -134,6 +145,7 @@ export class Settings {
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly roles = signal<RoleView[]>([]);
   protected readonly limit = signal('');
+  protected readonly capInput = signal('');
   protected readonly floorInput = signal('');
   protected readonly termsInput = signal('');
   protected readonly grades = GRADES;
@@ -146,6 +158,7 @@ export class Settings {
   protected readonly periodNumberingFromInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
+  protected capEdited = false;
   protected floorEdited = false;
   protected termsEdited = false;
   protected latePctEdited = false;
@@ -182,9 +195,12 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'policyDate' | 'periodNumberingFrom'): void {
+  protected cleared(event: Event, setting: 'cap' | 'policyDate' | 'periodNumberingFrom'): void {
     if (this.value(event) !== '') return;
-    if (setting === 'policyDate') {
+    if (setting === 'cap') {
+      this.capInput.set('');
+      this.capEdited = true;
+    } else if (setting === 'policyDate') {
       this.policyDateInput.set('');
       this.policyDateEdited = true;
     } else {
@@ -210,6 +226,7 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     const limit = this.limit().trim();
+    const cap = this.capInput().trim();
     const floor = this.floorInput().trim();
     // With nothing typed since the last save, saving sets the clerk limit again as it stands.
     const terms = this.termsInput().trim();
@@ -218,8 +235,9 @@ export class Settings {
     const periodNumberingFrom = this.periodNumberingFromInput().trim();
     const saveLimit =
       this.limitEdited ||
-      (!this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+      (!this.capEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
         !this.periodNumberingFromEdited);
+    const saveCap = this.capEdited;
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
     const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g))
@@ -229,6 +247,10 @@ export class Settings {
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     if (saveLimit && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it empty for no limit.');
+      return;
+    }
+    if (saveCap && !CAP.test(cap)) {
+      this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it empty for no cap.');
       return;
     }
     if (saveFloor && !FLOOR.test(floor)) {
@@ -257,6 +279,7 @@ export class Settings {
     }
     // What was typed is taken now: anything typed meanwhile is saved by the next submit.
     if (saveLimit) this.limitEdited = false;
+    if (saveCap) this.capEdited = false;
     if (saveFloor) this.floorEdited = false;
     if (saveTerms) this.termsEdited = false;
     for (const t of saveGradeTerms) this.gradeTermsEdited.delete(t.grade);
@@ -268,6 +291,11 @@ export class Settings {
         if (saveLimit) {
           const view = await this.api.setClerkLimit(sheet, limit);
           this.clerkLimit.set(view.clerkLimit);
+        }
+        if (saveCap) {
+          const view = await this.api.setCap(sheet, cap);
+          this.session.cap.set(view.cap ?? '');
+          if (!this.capEdited) this.capInput.set(view.cap ?? '');
         }
         if (saveFloor) {
           const view = await this.api.setFloor(sheet, floor);
@@ -340,6 +368,10 @@ export class Settings {
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.clerkLimit.set(settings.clerkLimit);
       this.session.floor.set(settings.floor);
+      // The cap's input starts at the cap in force, so clearing it is a change.
+      this.session.cap.set(settings.cap ?? '');
+      this.capInput.set(settings.cap ?? '');
+      this.capEdited = false;
       this.session.terms.set(settings.terms);
       this.session.latePct.set(settings.latePct);
       this.gradeTerms.set({ A: settings.termsA, B: settings.termsB, C: settings.termsC });
