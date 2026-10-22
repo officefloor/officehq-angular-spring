@@ -1,0 +1,210 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index be0dafde..2afe2676 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -17,6 +17,8 @@ export interface ClaimView {
+   date: string;
+   note: string;
+   status: ClaimStatus;
++  /** The sheet's number given when the claim was opened; null while DRAFT and once VOID. */
++  number: number | null;
+ }
+ 
+ /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED claims do. */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2a4e3d72..5ae7029e 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -47,6 +47,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
+     <ul [attr.aria-label]="'Claims of ' + personName()">
+       @for (c of claims(); track c.id) {
+         <li [attr.data-testid]="'claim-row-' + c.id">
++          <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+           <span data-testid="claim-amount">{{ c.amount }}</span>
+           <span data-testid="claim-date">{{ c.date }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c94e6c6f..2253537c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -42,6 +42,10 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
++    /** The sheet's number given to the claim when opened; null while DRAFT and once VOID. */
++    @Column(name = "claim_number")
++    private Integer number;
++
+     protected Claim() {
+     }
+ 
+@@ -81,11 +85,20 @@ public class Claim {
+         return status;
+     }
+ 
++    public Integer getNumber() {
++        return number;
++    }
++
+     /** Move the claim to a new status; the caller checks the move is allowed. */
+     public void become(ClaimStatus status) {
+         this.status = status;
+     }
+ 
++    /** Give the claim its number (when opened), or clear it (when voided). */
++    public void number(Integer number) {
++        this.number = number;
++    }
++
+     /** Change the claim's amount, date and note. */
+     public void change(BigDecimal amount, LocalDate date, String note) {
+         this.amount = amount;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 73abeb7c..723aff1a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -25,11 +25,12 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClaimController {
+ 
+     /** What the screen is told about a claim; the amount with two decimals. */
+-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status) {
++    public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
++            Integer number) {
+ 
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+-                    claim.getDate(), claim.getNote(), claim.getStatus());
++                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ca48bd65..0fb8efe3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -61,12 +61,19 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
++        // Opening takes the sheet's lock before reading the claim, so concurrent opens on the
++        // sheet are serialised: each sees the other's committed claim and number.
++        Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
+         Claim claim = claim(sheetId, claimId);
+         if (!claim.getStatus().canBecome(next)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+         }
++        Integer had = claim.getNumber();
+         claim.become(next);
++        if (next == ClaimStatus.OPEN || next == ClaimStatus.VOID) {
++            claim.number(number);
++        }
+         Claim saved = claims.saveAndFlush(claim);
+         String event = switch (next) {
+             case OPEN -> "CLAIM_OPENED";
+@@ -74,7 +81,8 @@ public class ClaimService {
+             case VOID -> "CLAIM_VOIDED";
+             case DRAFT -> throw new IllegalStateException();
+         };
+-        audited(event, sheetId, user, person(sheetId, saved.getPersonId()), saved);
++        audited(event, sheetId, user, person(sheetId, saved.getPersonId()), saved,
++                next == ClaimStatus.VOID ? had : saved.getNumber());
+         return saved;
+     }
+ 
+@@ -88,10 +96,15 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+     }
+ 
+-    /** Record the change to the claim once it is committed. */
++    /** Record the change to the claim once it is committed; a claim with a number carries it. */
+     private void audited(String event, String sheetId, String user, Person person, Claim claim) {
++        audited(event, sheetId, user, person, claim, claim.getNumber());
++    }
++
++    private void audited(String event, String sheetId, String user, Person person, Claim claim, Integer number) {
+         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
+-                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate());
++                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
++                + (number != null ? " number=" + number : ""));
+     }
+ 
+     private static BigDecimal money(BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 568bfd75..c4e24d7e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -22,6 +22,10 @@ public class Sheet {
+     @Column(name = "today", nullable = false)
+     private LocalDate today;
+ 
++    /** The last claim number the sheet gave out; 0 before any claim is opened. */
++    @Column(name = "last_claim_number", nullable = false)
++    private int lastClaimNumber;
++
+     protected Sheet() {
+     }
+ 
+@@ -46,4 +50,9 @@ public class Sheet {
+     public void setToday(LocalDate today) {
+         this.today = today;
+     }
++
++    /** Give out the sheet's next claim number: 1 for the first, then 2, and so on. */
++    public int nextClaimNumber() {
++        return ++lastClaimNumber;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index f1851786..11ec32fe 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,6 +1,15 @@
+ package net.officefloor.hq.app.sheet;
+ 
++import jakarta.persistence.LockModeType;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface SheetRepository extends JpaRepository<Sheet, String> {
++
++    /** The sheet, locked for the rest of the transaction so only one change at a time takes its next number. */
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select s from Sheet s where s.id = :id")
++    Optional<Sheet> findLockedById(String id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index aeee0e60..87f24944 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -30,6 +30,16 @@ public class SheetService {
+         return load(id).getToday();
+     }
+ 
++    /**
++     * Give out the sheet's next claim number, holding the sheet's lock until the caller's
++     * transaction ends so two claims opened at once get different numbers.
++     */
++    @Transactional
++    public int nextClaimNumber(String id) {
++        load(id);
++        return sheets.findLockedById(id).orElseThrow().nextClaimNumber();
++    }
++
+     /** Change the sheet's today. */
+     @Transactional
+     public synchronized Sheet setToday(String id, LocalDate today) {
+diff --git a/src/main/resources/db/migration/V8__claim_number.sql b/src/main/resources/db/migration/V8__claim_number.sql
+new file mode 100644
+index 00000000..2f9cb0db
+--- /dev/null
++++ b/src/main/resources/db/migration/V8__claim_number.sql
+@@ -0,0 +1,6 @@
++-- A claim's number: when a claim is opened it takes the sheet's next number (1, 2, ...), with no
++-- gaps and never reused. A DRAFT claim has none, and voiding a claim clears it. The sheet keeps the
++-- last number it gave out; opening a claim takes the sheet row's lock to bump it.
++ALTER TABLE sheet ADD COLUMN last_claim_number INT DEFAULT 0 NOT NULL;
++ALTER TABLE claim ADD COLUMN claim_number INT;
++ALTER TABLE claim ADD CONSTRAINT claim_number_unique UNIQUE (sheet_id, claim_number);
