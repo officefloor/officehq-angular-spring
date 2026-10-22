@@ -1,0 +1,64 @@
+{
+  "checkpoint": 61,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp61_delegation",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can delegate the steward role to a user for a from-date and a to-date, inclusive, by\nthe sheet's today (a form; DELEGATED user=<user> from=<date> to=<date>; anyone but a steward, or a\nto-date before the from-date, is refused with an error on the form). While the sheet's today is\ninside the range the user acts as a steward in every rule; every audit line of a change that\nuser makes then (not the ROLLUP and TOTALS lines) ends with for=<the steward who delegated>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can delegate the steward role to a user for a from-date and a to-date, inclusive, by\nthe sheet's today (a form; DELEGATED user=<user> from=<date> to=<date>; anyone but a steward, or a\nto-date before the from-date, is refused with an error on the form). While the sheet's today is\ninside the range the user acts as a steward in every rule; every audit line of a change that\nuser makes then (not the ROLLUP and TOTALS lines) ends with for=<the steward who delegated>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "420c6eaa14dc48cc7ce08841950fcb630ad0a129",
+  "reset_sha": "",
+  "preagent_sha": "9900b9ad6bc4ccecd97c4aa536352bd07dfe48e7",
+  "prev_sha": "9900b9ad6bc4ccecd97c4aa536352bd07dfe48e7",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.061909,
+    "input_tokens": 44,
+    "output_tokens": 15705,
+    "cache_read_tokens": 1042605,
+    "cache_creation_tokens": 67389,
+    "num_turns": 23,
+    "duration_ms": 252891,
+    "duration_api_ms": 157128,
+    "model": "claude-opus-5-5",
+    "session_id": "b5524425-a28e-4181-9ed9-7458bd8989ef",
+    "stop_reason": "success",
+    "result_text": "Steward delegation is in place, and `bin/e2e` passes all 4 tests: the new delegation test and the three existing scenarios.\n\n**How it behaves**\n- A new \"Delegate the steward role\" form takes a user, a from-date and a to-date. Each delegation made shows as a line under the form, and a refusal shows the form's error.\n- Only someone whose own role is steward can delegate. A to-date before the from-date is refused. Either way nothing is stored or written to the audit file. A successful delegation writes `DELEGATED sheet=\u2026 by=\u2026 user=\u2026 from=\u2026 to=\u2026`.\n- While the sheet's today is inside the range (both ends included), the user acts as a steward in every rule: the permission matrix, the clerk limit, approve and re-settle, and moving claims.\n- Every audit line of a change that user makes in that time ends with `for=<the steward who delegated>`. ROLLUP and TOTALS lines don't get it.\n\n**Choices you may want to revisit**\n- **A delegate can't delegate further.** The test requires this. Of all the rules, delegating checks the user's own stored role, not the role they're acting in.\n- **A user with several delegations in force** acts for the steward who made the latest one.\n- **`for=` is added whenever a delegation is in force for the user**, even if they are already a steward in their own right. The request didn't cover this case and the test doesn't either.\n- **The today that counts is the one at the start of a change.** If a delegate's change itself moves the sheet's today, `for=` follows the date before the move.\n\n**Where the changes are**\n- **Database:** a new migration, `V42__steward_delegation.sql`.\n- **Server:** new files in the `role` package handle storing delegations and the form's request. `RoleService.roleOf` returns steward while a delegation is in force.\n- **Audit:** a new request check (`DelegationGuard`) records which steward the signed-in user is acting for. `Audit.recordOnCommit` adds the `for=` from that. ROLLUP and TOTALS lines now go through a separate `recordFiguresOnCommit`, so they never get it.\n- **Front end:** a new `features/delegation` component sits on the home screen, with `core/delegations.ts` handling its calls to the server.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.061909,
+        "num_turns": 23,
+        "duration_ms": 252891,
+        "duration_api_ms": 157128,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp61.agent.jsonl",
+  "agent_diff_file": "cp61.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
