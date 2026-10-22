@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -25,6 +26,10 @@ public class Sheet {
     /** The last claim number the sheet gave out; 0 before any claim is opened. */
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
+
+    /** The clerk limit: a clerk settles only claims whose due is at or below it; null for no limit. */
+    @Column(name = "clerk_limit")
+    private BigDecimal clerkLimit;
 
     protected Sheet() {
     }
@@ -49,6 +54,15 @@ public class Sheet {
 
     public void setToday(LocalDate today) {
         this.today = today;
+    }
+
+    /** The clerk limit, with two decimals; null when there is none. */
+    public BigDecimal getClerkLimit() {
+        return clerkLimit;
+    }
+
+    public void setClerkLimit(BigDecimal clerkLimit) {
+        this.clerkLimit = clerkLimit;
     }
 
     /** Give out the sheet's next claim number: 1 for the first, then 2, and so on. */

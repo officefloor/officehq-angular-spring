@@ -1,11 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { People } from '../people/people';
+import { Settings } from '../settings/settings';
 
 // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [People],
+  imports: [People, Settings],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session">
@@ -37,6 +38,7 @@ import { People } from '../people/people';
             />
             <button type="submit" data-testid="sheet-today-save">Save today</button>
           </form>
+          <app-settings />
           <app-people />
         }
         <p data-testid="home-empty">Nothing here yet.</p>

@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, money } from '../../core/claims';
 import { Grade } from '../../core/people';
@@ -164,11 +165,16 @@ export class Claims {
     if (!sheet) return;
     try {
       this.saved.emit(await this.api.act(sheet, claim.id, action));
-    } catch {
+    } catch (e) {
       const own = action === 'settle' && claim.status === 'OPEN' && claim.openedBy === this.session.user()?.trim();
+      const overLimit = action === 'settle' && e instanceof HttpErrorResponse && e.status === 403;
       this.claimError.set({
         id: claim.id,
-        message: own ? 'You opened this claim, so someone else must settle it.' : `A ${claim.status} claim cannot be ${PAST[action]}.`,
+        message: own
+          ? 'You opened this claim, so someone else must settle it.'
+          : overLimit
+            ? 'Its due is above the clerk limit, so a steward must settle it.'
+            : `A ${claim.status} claim cannot be ${PAST[action]}.`,
       });
     }
   }

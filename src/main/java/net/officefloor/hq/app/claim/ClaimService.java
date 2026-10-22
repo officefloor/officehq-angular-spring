@@ -8,6 +8,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -28,11 +30,13 @@ public class ClaimService {
     private final SheetService sheets;
     private final Rollups rollups;
     private final PeriodService periods;
+    private final RoleService roles;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
-            Rollups rollups, PeriodService periods, Audit audit) {
+            Rollups rollups, PeriodService periods, RoleService roles, Audit audit) {
         this.periods = periods;
+        this.roles = roles;
         this.claims = claims;
         this.people = people;
         this.dues = dues;
@@ -97,7 +101,8 @@ public class ClaimService {
      * the person's grade has in force on the claim's date, or at the figure a statement bound it to.
      * Opening numbers the claim and records who opened it; a voided claim keeps its number, which
      * is never reused. The user who opened a claim
-     * is refused when settling it. A claim dated inside a closed period cannot be moved.
+     * is refused when settling it. A clerk is refused settling a claim whose due is above the sheet's
+     * clerk limit (a due of n/a is within any limit); a steward settles any. A claim dated inside a closed period cannot be moved.
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -117,13 +122,19 @@ public class ClaimService {
                     "The user who opened a claim cannot settle it.");
         }
         Person person = person(sheetId, claim.getPersonId());
+        BigDecimal settledDue = next == ClaimStatus.SETTLED
+                ? (claim.isStated() ? claim.getStatedDue() : dues.live(claim, person.getGrade()))
+                : null;
+        if (next == ClaimStatus.SETTLED) {
+            refuseIfOverClerkLimit(sheetId, user, settledDue);
+        }
         claim.become(next);
         if (next == ClaimStatus.OPEN) {
             claim.number(number);
             claim.openedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
-            claim.settleDue(claim.isStated() ? claim.getStatedDue() : dues.live(claim, person.getGrade()));
+            claim.settleDue(settledDue);
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
@@ -138,6 +149,18 @@ public class ClaimService {
         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
         rollups.audit(sheetId, user, before);
         return saved;
+    }
+
+    /** Refuse a clerk settling a claim whose due is above the sheet's clerk limit. */
+    private void refuseIfOverClerkLimit(String sheetId, String user, BigDecimal due) {
+        BigDecimal limit = sheets.clerkLimit(sheetId);
+        if (limit == null || due == null || due.compareTo(limit) <= 0) {
+            return;
+        }
+        if (Role.CLERK.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "A clerk cannot settle a claim whose due is above the clerk limit of " + limit.toPlainString() + ".");
+        }
     }
 
     /** Refuse a claim dated after its person's retirement. */
