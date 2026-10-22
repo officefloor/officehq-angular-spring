@@ -1,0 +1,68 @@
+{
+  "checkpoint": 128,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp128_transfer-merges",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    111
+  ],
+  "replaced_tests": [
+    "cp111_transfer-person.spec.ts::transfer person"
+  ],
+  "request": {
+    "spec": "A transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bf7ff74be09b019ca4a508aa4fd58074409bbde3",
+  "reset_sha": "",
+  "preagent_sha": "2dc6411025f44f7be12d444653e17c5da631d6b1",
+  "prev_sha": "2dc6411025f44f7be12d444653e17c5da631d6b1",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6954558,
+    "input_tokens": 38,
+    "output_tokens": 9061,
+    "cache_read_tokens": 726019,
+    "cache_creation_tokens": 46110,
+    "num_turns": 19,
+    "duration_ms": 294727,
+    "duration_api_ms": 100306,
+    "model": "claude-opus-5-5",
+    "session_id": "494ceb50-182b-4917-94ce-51a2baec2b8f",
+    "stop_reason": "success",
+    "result_text": "I've made a transfer onto a matching person merge into them instead of being refused. Your main test (\"transfer merges\") passes, but the other three in the spec don't all pass: scenario 1 passes, and scenarios 2 and 3 fail.\n\n**Why scenarios 2 and 3 fail**\n- **Bad expected value:** both check that `sheet-parent` reads the literal text `__SHEET__-p` (spec lines 513, 730, 815). The real parent id there is something like `smvk22ywwr2lb-p`, so `__SHEET__` looks like a placeholder that was never filled in. No app change can make that pass, and I'm not allowed to edit the spec.\n- **An earlier failure in scenario 2:** it stops even sooner, at line 446. The test expects adding a claim dated 2026-03-01 to be refused, because its due date would fall in the closed period P1, and the app accepts it. Scenario 2 never transfers anyone, and none of the code it runs was touched, so this is most likely an existing problem. I can't prove that, though: the folder isn't a git repo, so I had no original version to compare against. I didn't look into it further.\n\n**What a transfer now does when the other sheet has a match** (same name or alias, compared the way names are), in `person/TransferService.java`:\n- The person's claims are renumbered as before, assigned to the matching person, and listed after that person's own claims, in the order they were added. Any figures a statement had bound are cleared.\n- The arriving person's name and aliases are added to the match's aliases, and the arriving person is deleted.\n- The other sheet's audit gets `PERSON_TRANSFERRED \u2026 name=<name> from=<sheet>`, then `PERSON_MERGED \u2026 from=<name> into=<name>`, then the rollup lines.\n\n**Decisions to check**\n- **Contact check:** the \"contact already in use\" refusal now only applies when no merge happens, since a merged person's contact is dropped anyway.\n- **Retired match:** if the matching person is retired, the transfer is refused, the same as a merge.\n- **Aliases differing only in case:** the test expects Ada's aliases to read `Ad, Addie, addie`, but the store kept one alias per lowercase form. I added a migration, `V74__person_alias_kept_as_given.sql`, to store aliases as written. I also changed `Alias` equality to match. The alias lookup in `PersonRepository` now uses `select distinct` so one person with two such aliases doesn't break it. This means a person can now hold aliases that differ only in case anywhere in the app.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6954558,
+        "num_turns": 19,
+        "duration_ms": 294727,
+        "duration_api_ms": 100306,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp128.agent.jsonl",
+  "agent_diff_file": "cp128.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
