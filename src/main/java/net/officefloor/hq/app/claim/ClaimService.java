@@ -507,8 +507,8 @@ public class ClaimService {
     }
 
     /**
-     * Move a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its number and
-     * date, and loses any figure a statement bound it to, its due live again until its new person's
+     * Move a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its date, takes the
+     * next number in the sequence it is numbered in (its old one never used again; a DRAFT gets none), and loses any figure a statement bound it to, its due live again until its new person's
      * next statement. Only a role the sheet's permission matrix allows (a steward by
      * default) reassigns. Refused when the claim is SETTLED or VOID, when it is
      * due by inside a closed period, when the new person is its own, is retired before its date, or (for
@@ -546,6 +546,9 @@ public class ClaimService {
         refuseUnlessCorrects(sheetId, personId, claim.getAmount(), claim.getCorrects());
         claim.reassign(to.getId());
         claim.unbind();
+        if (claim.getNumber() != null) {
+            claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
+        }
         Claim saved = claims.saveAndFlush(claim);
         audited("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber(),
                 " from=" + from.getName() + " to=" + to.getName());

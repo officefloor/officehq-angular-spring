@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -88,11 +89,14 @@ public class BulkMoveService {
     }
 
     /**
-     * Reassign the selected claims to a person, each as its Reassign button would; a claim already the
-     * person's is reassigned to them again rather than refused.
+     * Reassign the selected claims to a person, each as its Reassign button would, in the order they
+     * were selected, so their new numbers follow that order; a claim already the person's is
+     * reassigned to them again rather than refused.
      */
     public Result reassign(String sheetId, String user, Collection<Long> claimIds, long personId) {
-        return each(sheetId, user, claimIds, id -> claims.reassign(sheetId, user, id, personId, true));
+        Set<Long> selected = new LinkedHashSet<>(claimIds);
+        return each(sheetId, user, selected, new ArrayList<>(selected),
+                id -> claims.reassign(sheetId, user, id, personId, true));
     }
 
     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
@@ -101,9 +105,11 @@ public class BulkMoveService {
 
     private Result each(String sheetId, String user, Collection<Long> claimIds, Function<Long, Claim> action) {
         Set<Long> selected = new HashSet<>(claimIds);
-        if (Role.VIEWER.equals(roles.roleOf(sheetId, user)) || sheets.archived(sheetId)) {
-            return new Result(List.of(), selected.size());
-        }
+        return each(sheetId, user, selected, listOrder(sheetId, selected), action);
+    }
+
+    /** The selected claims in list order. */
+    private List<Long> listOrder(String sheetId, Set<Long> selected) {
         List<Long> ordered = new ArrayList<>();
         List<Claim> sheetClaims = claims.list(sheetId);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
@@ -111,6 +117,14 @@ public class BulkMoveService {
                     .filter(claim -> claim.getPersonId().equals(person.getId()) && selected.contains(claim.getId()))
                     .sorted(NEWEST_FIRST)
                     .forEach(claim -> ordered.add(claim.getId()));
+        }
+        return ordered;
+    }
+
+    private Result each(String sheetId, String user, Set<Long> selected, List<Long> ordered,
+            Function<Long, Claim> action) {
+        if (Role.VIEWER.equals(roles.roleOf(sheetId, user)) || sheets.archived(sheetId)) {
+            return new Result(List.of(), selected.size());
         }
         List<Claim> moved = new ArrayList<>();
         for (Long id : ordered) {
