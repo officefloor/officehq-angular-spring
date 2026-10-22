@@ -20,6 +20,8 @@ export interface SettingsView {
   terms: number;
   /** The late percent with two decimals, e.g. "10.00": an overdue claim gains it of its figure every full 30 days. */
   latePct: string;
+  /** The policy date (yyyy-mm-dd); null when blank (the sheet's today is then the policy date). */
+  policyDate: string | null;
 }
 
 /** A clerk limit as the form takes it: up to two decimals, or blank for no limit. */
@@ -30,6 +32,9 @@ export const FLOOR = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** A late percent as the form takes it: 0.00 or more, with up to two decimals. */
 export const LATE_PCT = /^\d{1,3}(\.\d{1,2})?$/;
+
+/** A policy date as the form takes it: yyyy-mm-dd, or blank for the sheet's today. */
+export const POLICY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 
 /** Terms as the form takes them: a whole number of days. */
 export const TERMS = /^\d{1,4}$/;
@@ -61,6 +66,11 @@ export class SettingsApi {
   /** Set the late percent. */
   setLatePct(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/late-pct`, { value }));
+  }
+
+  /** Set the policy date; a blank value means the sheet's today. */
+  setPolicyDate(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/policy-date`, { value }));
   }
 
   /** The roles set on the sheet, by user name. */

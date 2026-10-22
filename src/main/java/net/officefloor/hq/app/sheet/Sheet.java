@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -42,6 +43,10 @@ public class Sheet {
     /** The late percent: an overdue claim's due gains it of its figure for every full 30 days overdue. */
     @Column(name = "late_pct", nullable = false)
     private BigDecimal latePct = new BigDecimal("0.00");
+
+    /** The policy date: a claim dated before it rounds half up, on or after it half to even; null for the sheet's today. */
+    @Column(name = "policy_date")
+    private LocalDate policyDate;
 
     protected Sheet() {
     }
@@ -102,6 +107,24 @@ public class Sheet {
 
     public void setLatePct(BigDecimal latePct) {
         this.latePct = latePct;
+    }
+
+    /** The policy date as set; null when blank (the sheet's today is then the policy date). */
+    public LocalDate getPolicyDate() {
+        return policyDate;
+    }
+
+    public void setPolicyDate(LocalDate policyDate) {
+        this.policyDate = policyDate;
+    }
+
+    /**
+     * How the live figures of a claim dated on a date round: half up when the date is before the
+     * policy date (the sheet's today when none is set), else half to even.
+     */
+    public RoundingMode roundingOn(LocalDate date) {
+        LocalDate policy = policyDate == null ? today : policyDate;
+        return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
     /** Give out the sheet's next claim number: 1 for the first, then 2, and so on. */

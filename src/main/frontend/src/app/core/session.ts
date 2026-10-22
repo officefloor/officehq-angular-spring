@@ -12,6 +12,8 @@ export interface SheetView {
   terms: number;
   /** The sheet's late percent with two decimals: an overdue claim gains it of its figure every full 30 days. */
   latePct: string;
+  /** The sheet's policy date (yyyy-mm-dd); null when blank, the sheet's today then being the policy date. */
+  policyDate: string | null;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -30,6 +32,8 @@ export class Session {
   readonly terms = signal(14);
   /** The active sheet's late percent with two decimals: an overdue claim gains it of its figure every full 30 days. */
   readonly latePct = signal('0.00');
+  /** The active sheet's policy date (yyyy-mm-dd); empty when blank (the sheet's today is then the policy date). */
+  readonly policyDate = signal('');
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -62,5 +66,6 @@ export class Session {
     this.floor.set(view.floor);
     this.terms.set(view.terms);
     this.latePct.set(view.latePct);
+    this.policyDate.set(view.policyDate ?? '');
   }
 }

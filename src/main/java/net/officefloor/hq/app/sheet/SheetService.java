@@ -123,4 +123,17 @@ public class SheetService {
         rollups.audit(id, user, before);
         return saved;
     }
+
+    /** Change the sheet's policy date (null: the sheet's today), auditing the change and the figures it moves. */
+    @Transactional
+    public Sheet setPolicyDate(String id, String user, LocalDate policyDate) {
+        Sheet sheet = lock(id);
+        Rollups.Rollup before = rollups.take(id);
+        sheet.setPolicyDate(policyDate);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=policy-date value="
+                + (saved.getPolicyDate() == null ? "" : saved.getPolicyDate().toString()));
+        rollups.audit(id, user, before);
+        return saved;
+    }
 }

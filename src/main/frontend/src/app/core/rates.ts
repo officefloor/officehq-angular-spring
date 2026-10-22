@@ -47,17 +47,17 @@ export const NO_RATE = 'n/a';
 
 /**
  * What is due on an amount in whole cents at a rate (a two-decimal percent): the amount times the
- * rate divided by 100, rounded half to even to whole cents (a negative amount rounds as its
- * opposite does). Worked in integers so it is exact.
+ * rate divided by 100, rounded half to even (or half up) to whole cents (a negative amount rounds as
+ * its opposite does). Worked in integers so it is exact.
  */
-export function dueCents(amountCents: number, pct: string, times = 1): number {
-  if (amountCents < 0) return -dueCents(-amountCents, pct, times);
+export function dueCents(amountCents: number, pct: string, times = 1, halfUp = false): number {
+  if (amountCents < 0) return -dueCents(-amountCents, pct, times, halfUp);
   const [whole, frac = ''] = pct.split('.');
   const basisPoints = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
   const exact = BigInt(amountCents) * basisPoints * BigInt(times);
   const quotient = exact / 10000n;
   const remainder = exact % 10000n;
-  const up = remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n);
+  const up = remainder > 5000n || (remainder === 5000n && (halfUp || quotient % 2n === 1n));
   return Number(up ? quotient + 1n : quotient);
 }
 
@@ -71,8 +71,9 @@ export function due(amountCents: number, pct: string | null): string {
  * else its figure — the one its person's last statement bound it to, or else its amount at the rate
  * the grade has in force on the claim's date raised to the sheet's floor (in whole cents) when below
  * it — with the late charge on top: the late percent of the figure for every full 30 days the claim
- * is overdue, rounded half to even. The charge is never bound by a statement. A correction has no
- * floor and no late charge. Null when there is no figure.
+ * is overdue. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
+ * charge is never bound by a statement. A correction has no floor and no late charge. Null when there
+ * is no figure.
  */
 export function claimDueCents(
   claim: ClaimView,
@@ -80,6 +81,7 @@ export function claimDueCents(
   grade: Grade,
   floorCents: number,
   late: LateTerms,
+  halfUp = false,
 ): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   let figure: number | null;
@@ -87,11 +89,11 @@ export function claimDueCents(
     figure = claim.statedDue === null ? null : cents(claim.statedDue);
   } else {
     const pct = rateOn(rates, grade, claim.date);
-    const live = pct === null ? null : dueCents(cents(claim.amount), pct);
+    const live = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
     figure = live === null || isCorrection(claim) ? live : Math.max(live, floorCents);
   }
   if (figure === null || isCorrection(claim)) return figure;
-  return figure + dueCents(figure, late.pct, latePeriods(claim, late));
+  return figure + dueCents(figure, late.pct, latePeriods(claim, late), halfUp);
 }
 
 // The rates for the grades on a sheet, read from and written to the store.

@@ -64,6 +64,20 @@ export interface LateTerms {
   today: string;
 }
 
+/**
+ * Whether a claim's live figures round half up (else half to even): when the date it rounds by is
+ * before the policy date, or the sheet's today when no policy date is set. A correction rounds by the
+ * date of the claim it corrects, found by number among its person's claims (its own when not found).
+ */
+export function roundsHalfUp(claim: ClaimView, claims: ClaimView[], policyDate: string, today: string): boolean {
+  const corrected = claim.corrects === null
+    ? undefined
+    : claims.find((c) => c.personId === claim.personId && c.number === claim.corrects);
+  const date = corrected?.date ?? claim.date;
+  const policy = policyDate || today;
+  return policy !== '' && date < policy;
+}
+
 /** How many full 30 days an overdue claim is past its due-by on the sheet's today; 0 when not overdue. */
 export function latePeriods(claim: ClaimView, late: LateTerms): number {
   if (!overdue(claim, late.terms, late.today)) return 0;

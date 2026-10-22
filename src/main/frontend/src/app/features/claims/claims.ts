@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, cents, dueBy, money, overdue } from '../../core/claims';
+import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, cents, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -139,7 +139,8 @@ export class Claims {
    */
   protected dueOf(claim: ClaimView): string {
     const late = { pct: this.session.latePct(), terms: this.session.terms(), today: this.session.today() ?? '' };
-    const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), cents(this.session.floor()), late);
+    const halfUp = roundsHalfUp(claim, this.claims(), this.session.policyDate(), late.today);
+    const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), cents(this.session.floor()), late, halfUp);
     return figure === null ? NO_RATE : money(figure);
   }
 

@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { ClaimView, ClaimsApi, cents, counts, money, overdue } from '../../core/claims';
+import { ClaimView, ClaimsApi, cents, counts, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
@@ -420,7 +420,8 @@ export class People {
    * (see claimDueCents).
    */
   private dueCents(claim: ClaimView, person: PersonView): number | null {
-    return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), this.floorCents(), this.late());
+    const halfUp = roundsHalfUp(claim, this.claimsOf(person.id), this.session.policyDate(), this.today());
+    return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), this.floorCents(), this.late(), halfUp);
   }
 
   /** A person's patrons' names, sorted, comma and space separated. */

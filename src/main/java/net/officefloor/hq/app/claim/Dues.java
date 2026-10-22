@@ -16,10 +16,25 @@ public class Dues {
 
     private final RateRepository rates;
     private final SheetRepository sheets;
+    private final ClaimRepository claims;
 
-    public Dues(RateRepository rates, SheetRepository sheets) {
+    public Dues(RateRepository rates, SheetRepository sheets, ClaimRepository claims) {
         this.rates = rates;
         this.sheets = sheets;
+        this.claims = claims;
+    }
+
+    /**
+     * How a claim's live figures round: by the sheet's policy date against the claim's date, or for a
+     * correction the date of the claim it corrects (its own when that claim is not found).
+     */
+    private RoundingMode rounding(Claim claim, Sheet sheet) {
+        LocalDate date = claim.getDate();
+        if (claim.getCorrects() != null) {
+            date = claims.findBySheetIdAndPersonIdAndNumber(claim.getSheetId(), claim.getPersonId(), claim.getCorrects())
+                    .map(Claim::getDate).orElse(date);
+        }
+        return sheet == null ? RoundingMode.HALF_EVEN : sheet.roundingOn(date);
     }
 
     /**
@@ -54,7 +69,7 @@ public class Dues {
     /**
      * A figure with the claim's late charge on top: the sheet's late percent of the figure for every
      * full 30 days an OPEN claim is past its due-by (its date plus the sheet's terms) on the sheet's
-     * today, rounded half to even. The charge is never bound: it always follows the sheet's today.
+     * today, rounded by the claim's date against the policy date. The charge is never bound: it always follows the sheet's today.
      * A correction has no late charge.
      */
     private BigDecimal withLate(Claim claim, BigDecimal figure) {
@@ -71,24 +86,27 @@ public class Dues {
             return figure;
         }
         BigDecimal late = figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods))
-                .movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+                .movePointLeft(2).setScale(2, rounding(claim, sheet));
         return figure.add(late);
     }
 
     /**
      * A claim's amount at the rate the grade has in force on the claim's date, raised to the sheet's
-     * floor when below it (a correction has no floor); null when it has no rate.
+     * floor when below it (a correction has no floor), rounded by the claim's date against the policy
+     * date; null when it has no rate.
      */
     public BigDecimal live(Claim claim, String grade) {
-        BigDecimal floor = claim.isCorrection() ? null : sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(null);
+        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+        BigDecimal floor = claim.isCorrection() || sheet == null ? null : sheet.getFloor();
+        RoundingMode rounding = rounding(claim, sheet);
         return rates.findInForce(claim.getSheetId(), grade, claim.getDate())
-                .map(rate -> due(claim.getAmount(), rate))
+                .map(rate -> due(claim.getAmount(), rate, rounding))
                 .map(due -> floor != null && due.compareTo(floor) < 0 ? floor : due)
                 .orElse(null);
     }
 
-    /** What is due on an amount at a rate: the amount times the percent over 100, rounded half to even. */
-    private static BigDecimal due(BigDecimal amount, Rate rate) {
-        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    /** What is due on an amount at a rate: the amount times the percent over 100, rounded as given. */
+    private static BigDecimal due(BigDecimal amount, Rate rate, RoundingMode rounding) {
+        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, rounding);
     }
 }

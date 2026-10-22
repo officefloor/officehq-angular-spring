@@ -1,8 +1,8 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
-import { FLOOR, LATE_PCT, LIMIT, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
+import { FLOOR, LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the floor, the terms and the late percent) and the roles user names have on it (clerk by default,
+// The sheet's settings (the clerk limit, the floor, the terms, the late percent and the policy date) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form.
 @Component({
   selector: 'app-settings',
@@ -42,6 +42,13 @@ import { Session } from '../../core/session';
           [value]="latePctInput()"
           (input)="latePctInput.set(value($event)); latePctEdited = true; settingsError.set(null)"
         />
+        <label for="setting-policy-date">Policy date (yyyy-mm-dd; empty: the sheet's today)</label>
+        <input
+          id="setting-policy-date"
+          data-testid="setting-policy-date"
+          [value]="policyDateInput()"
+          (input)="policyDateInput.set(value($event)); policyDateEdited = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -51,6 +58,7 @@ import { Session } from '../../core/session';
       <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
+      <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
       <h3>Roles</h3>
       <form (submit)="saveRole($event)" aria-label="Set a role">
         <label for="role-form-user">User</label>
@@ -103,11 +111,13 @@ export class Settings {
   protected readonly floorInput = signal('');
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
+  protected readonly policyDateInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
   protected floorEdited = false;
   protected termsEdited = false;
   protected latePctEdited = false;
+  protected policyDateEdited = false;
   protected readonly roleUser = signal('');
   protected readonly roleName = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -146,10 +156,13 @@ export class Settings {
     // With nothing typed since the last save, saving sets the clerk limit again as it stands.
     const terms = this.termsInput().trim();
     const latePct = this.latePctInput().trim();
-    const saveLimit = this.limitEdited || (!this.floorEdited && !this.termsEdited && !this.latePctEdited);
+    const policyDate = this.policyDateInput().trim();
+    const saveLimit =
+      this.limitEdited || (!this.floorEdited && !this.termsEdited && !this.latePctEdited && !this.policyDateEdited);
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
     const saveLatePct = this.latePctEdited;
+    const savePolicyDate = this.policyDateEdited;
     if (saveLimit && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it empty for no limit.');
       return;
@@ -166,11 +179,16 @@ export class Settings {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
       return;
     }
+    if (savePolicyDate && !POLICY_DATE.test(policyDate)) {
+      this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it empty for the sheet\'s today.');
+      return;
+    }
     // What was typed is taken now: anything typed meanwhile is saved by the next submit.
     if (saveLimit) this.limitEdited = false;
     if (saveFloor) this.floorEdited = false;
     if (saveTerms) this.termsEdited = false;
     if (saveLatePct) this.latePctEdited = false;
+    if (savePolicyDate) this.policyDateEdited = false;
     const write = async () => {
       try {
         if (saveLimit) {
@@ -188,6 +206,11 @@ export class Settings {
         if (saveLatePct) {
           const view = await this.api.setLatePct(sheet, latePct);
           this.session.latePct.set(view.latePct);
+        }
+        if (savePolicyDate) {
+          const view = await this.api.setPolicyDate(sheet, policyDate);
+          this.session.policyDate.set(view.policyDate ?? '');
+          if (!this.policyDateEdited) this.policyDateInput.set(view.policyDate ?? '');
         }
       } catch {
         this.settingsError.set('The settings could not be saved.');
@@ -236,6 +259,10 @@ export class Settings {
       this.session.floor.set(settings.floor);
       this.session.terms.set(settings.terms);
       this.session.latePct.set(settings.latePct);
+      this.session.policyDate.set(settings.policyDate ?? '');
+      // The policy date's input starts at the date in force, so clearing it is a change.
+      this.policyDateInput.set(settings.policyDate ?? '');
+      this.policyDateEdited = false;
       this.roles.set(roles);
     }
   }
