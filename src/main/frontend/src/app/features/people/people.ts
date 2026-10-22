@@ -92,6 +92,8 @@ function csvField(value: string): string {
       [statuses]="statusSummary()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
+      [myDueTotal]="me() ? dueTotalOf(me()!) : ''"
+      [myOverdueTotal]="me() ? overdueTotalOf(me()!) : ''"
     />
     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
@@ -781,6 +783,16 @@ export class People {
   protected readonly overdueTotal = computed(() =>
     money(trimmedCents(this.people().map((p) => this.overdueCents(p)))),
   );
+  /** The person on the sheet who goes by the signed-in user's name, by name or alias as names are compared; null when none does. */
+  protected readonly me = computed(() => {
+    const key = (name: string) => name.trim().toLowerCase();
+    const user = this.session.user();
+    if (user === null) return null;
+    return (
+      this.people().find((p) => key(p.name) === key(user) || (p.aliases ?? []).some((a) => key(a) === key(user))) ??
+      null
+    );
+  });
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   /** The date the grade entered is in force from; the sheet's today unless another is typed. */
