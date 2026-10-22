@@ -1,0 +1,64 @@
+{
+  "checkpoint": 89,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp89_claim-tags",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim may carry tags: a comma separated text on the claim form, each tag trimmed and\nlower-cased, repeats dropped; the claim shows its tags sorted, comma and space separated. The form\ncan change a claim's tags when it can edit the claim. For every tag ever used on the sheet, the\nsheet shows a due-total per tag: the due of the claims that count which carry it (a claim with two\ntags counts in both). CLAIM_ADDED gains tags=<comma separated, sorted> at its end when any were\ngiven.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim may carry tags: a comma separated text on the claim form, each tag trimmed and\nlower-cased, repeats dropped; the claim shows its tags sorted, comma and space separated. The form\ncan change a claim's tags when it can edit the claim. For every tag ever used on the sheet, the\nsheet shows a due-total per tag: the due of the claims that count which carry it (a claim with two\ntags counts in both). CLAIM_ADDED gains tags=<comma separated, sorted> at its end when any were\ngiven.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c0d4f07cac22214d877c8f59089b412f7d33f54f",
+  "reset_sha": "",
+  "preagent_sha": "43e0ec3885d3b0494d413a7e8e32d05fabcfeb86",
+  "prev_sha": "43e0ec3885d3b0494d413a7e8e32d05fabcfeb86",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.1023460000000003,
+    "input_tokens": 96,
+    "output_tokens": 25754,
+    "cache_read_tokens": 3633530,
+    "cache_creation_tokens": 107522,
+    "num_turns": 49,
+    "duration_ms": 651295,
+    "duration_api_ms": 336852,
+    "model": "claude-opus-5-5",
+    "session_id": "ff038971-322c-464e-b780-d12c94bc454f",
+    "stop_reason": "success",
+    "result_text": "Claim tags are in and working, but **3 of the 4 tests pass**. \"claim tags scenario 2\" still fails at its 10th line (line 393), before it reaches any tags. Its setup expects some claim adds to be refused, and nothing in the current code would refuse them.\n\n**What I built**\n- **Stored data:** migration `V55__claim_tags.sql` adds two columns to `claim`: `tags` (the claim's current tags, sorted and comma separated) and `tags_used` (every tag the claim has ever had). Claims are never deleted, so the sheet's tag list comes from `tags_used`. That's how \"every tag ever used\" is met: a tag edited off a draft stays listed, at 0.00 if nothing carries it.\n- **Server:** the claim form takes a comma-separated `tags` value. Each tag is trimmed and lower-cased, and blanks and repeats are dropped (`Claim.tagsOf`). Tags are saved on add and on edit, and edit keeps its usual rule that only a DRAFT claim can be changed. Leaving tags out of an edit keeps the claim's current ones. `CLAIM_ADDED` ends with `tags=a,b` when there are any, after `ref=` if a reference was given.\n- **Front end:** the claim form has a `claim-form-tags` field, and each claim shows `claim-tags` sorted and comma-space separated (\"a, b\"). The sheet shows a `tag-<tag>-due-total` for each tag. That total is the due of the claims carrying the tag that count in the live totals (the same claims behind `rollup-due-total`), so a claim with two tags counts in both.\n\n**One change outside tags:** scenario 1 expects `PERSON_EDITED` to include `terms=` only when an edit actually changes the terms. The app wrote it on every edit, which pushed `for=vic` out of place. I changed `PersonService.edit` to match, which fixed scenario 1. This changes an existing audit record, so you may want to check it's what you intend.\n\n**Why scenario 2 fails**\n- At line 393, uma adds a 12.50 claim for Ada dated 2026-03-01 with ref ` r-1 `, and the test expects it to be refused. Its due-by works out to 2026-03-20, outside the closed period P1, so the app accepts it. The ref isn't used anywhere else, and Ada isn't retired or on hold yet. Yet vic's 99.95 claim for Ada dated 03-05 is accepted, with due-by 03-26 as the test expects.\n- As an experiment I briefly made a clerk's add refused above the clerk limit (1.50 on this sheet). The test then failed one step later: vic, acting for steward wes, adding 99.95 for Ben dated 2026-02-25, which is also expected to be refused. The app works out that due-by as 03-17, again outside P1. I removed the experiment.\n\nMy guess is the test was written against a version of the app with add-claim rules this codebase doesn't have. I didn't want to invent them, since that would change how existing features behave.\n\n**Decision for you:** what rule should refuse those two adds? It could be a clerk add limit, a rule tied to the delegation's dates, or something else. If you can tell me, I'll implement it and get scenario 2 passing.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.1023460000000003,
+        "num_turns": 49,
+        "duration_ms": 651295,
+        "duration_api_ms": 336852,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp89.agent.jsonl",
+  "agent_diff_file": "cp89.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
