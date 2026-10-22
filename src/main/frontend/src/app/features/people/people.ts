@@ -272,6 +272,23 @@ function csvField(value: string): string {
           <span role="alert" data-testid="person-error">{{ message }}</span>
         }
       </form>
+      <form (submit)="retireSelected($event)" aria-label="Retire the selected people">
+        <label for="bulk-retire-date">Retire the selected people from</label>
+        <input
+          type="date"
+          id="bulk-retire-date"
+          data-testid="bulk-retire-date"
+          [value]="bulkRetireDate()"
+          (input)="bulkRetireDate.set(value($event)); bulkRetireError.set(null)"
+        />
+        <button type="submit" data-testid="bulk-retire">Retire selected people</button>
+        @if (bulkRetired() !== null) {
+          <span role="status">Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></span>
+        }
+        @if (bulkRetireError(); as message) {
+          <span role="alert" data-testid="person-error">{{ message }}</span>
+        }
+      </form>
       <table>
         <thead>
           <tr>
@@ -806,6 +823,11 @@ export class People {
   /** How many people the last bulk grade changed; null until one is done. */
   protected readonly bulkGraded = signal<number | null>(null);
   protected readonly bulkGradeError = signal<string | null>(null);
+  /** The date the selected people are retired from; the sheet's today unless another is typed. */
+  protected readonly bulkRetireDate = linkedSignal(() => this.today());
+  /** How many people the last bulk retire retired; null until one is done. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  protected readonly bulkRetireError = signal<string | null>(null);
 
   constructor() {
     // A new parent changes the rates a grade with none in force on the sheet falls back to.
@@ -848,6 +870,9 @@ export class People {
         this.bulkGraded.set(null);
         this.bulkGradeError.set(null);
         this.bulkGradeFrom.set(this.today());
+        this.bulkRetired.set(null);
+        this.bulkRetireError.set(null);
+        this.bulkRetireDate.set(this.today());
         if (sheet) void this.reload(sheet);
       });
     });
@@ -1370,6 +1395,8 @@ export class People {
     });
     this.bulkGraded.set(null);
     this.bulkGradeError.set(null);
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set(null);
   }
 
   /**
@@ -1398,6 +1425,37 @@ export class People {
       this.bulkGraded.set(changed.length);
     } catch {
       this.bulkGradeError.set('The people could not be graded.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Retire the selected people from the date together: each is retired as the row's retire would, in
+   * list order; how many were retired is shown, and the selection cleared.
+   */
+  protected async retireSelected(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy) return;
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const ids = [...this.selectedPeople()];
+    if (ids.length === 0) {
+      this.bulkRetireError.set('Select the people to retire.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const retired = await this.api.retireAll(sheet, ids, this.bulkRetireDate() || null);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => retired.find((r) => r.id === p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkRetireDate.set(this.today());
+      this.bulkRetired.set(retired.length);
+    } catch {
+      this.bulkRetireError.set('The people could not be retired.');
     } finally {
       this.busy = false;
     }

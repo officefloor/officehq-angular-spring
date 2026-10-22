@@ -164,6 +164,14 @@ export class PeopleApi {
   }
 
   /** Retire a person from a date; with none, from the sheet's today. */
+  /**
+   * Retire the selected people from a date (null: the sheet's today) together, each as the row's retire
+   * would, in list order: the people retired.
+   */
+  retireAll(sheet: string, personIds: number[], from: string | null): Promise<PersonView[]> {
+    return firstValueFrom(this.http.post<PersonView[]>(`${this.url(sheet)}/retire`, { personIds, from }));
+  }
+
   retire(sheet: string, id: number, from: string | null): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/retire`, { from }));
   }

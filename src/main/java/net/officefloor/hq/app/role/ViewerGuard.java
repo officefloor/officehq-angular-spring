@@ -16,7 +16,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 /**
  * Refuse every change a viewer asks for on a sheet: any request other than a read, or the loading
  * of the sheet, is turned away before it reaches its handler, so it writes nothing and audits nothing.
- * A bulk move and a bulk grade are the exceptions: each reaches its handler, which refuses each claim
+ * A bulk move, a bulk grade and a bulk retire are the exceptions: each reaches its handler, which refuses each claim
  * or person a viewer selected.
  */
 @Configuration
@@ -30,10 +30,11 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // A bulk move answers how many claims it refused, and a bulk grade how many people it changed, so a
-        // viewer's is let through and refuses each.
+        // A bulk move answers how many claims it refused, and a bulk grade or retire how many people it changed,
+        // so a viewer's is let through and refuses each.
         registry.addInterceptor(this).addPathPatterns("/api/sheets/*/**").excludePathPatterns("/api/sheets/*/load",
-                "/api/sheets/*/claims/open", "/api/sheets/*/claims/settle", "/api/sheets/*/people/grade");
+                "/api/sheets/*/claims/open", "/api/sheets/*/claims/settle", "/api/sheets/*/people/grade",
+                "/api/sheets/*/people/retire");
     }
 
     @Override

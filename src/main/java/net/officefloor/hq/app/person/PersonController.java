@@ -100,6 +100,12 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** The people selected to be retired together, and the date they are retired from (none: the sheet's today). */
+    public record BulkRetireForm(
+            @NotNull @Size(min = 1, max = 1000) List<@NotNull Long> personIds,
+            LocalDate from) {
+    }
+
     /** The import box's text: lines of name,grade,terms,contact. */
     public record ImportForm(@NotNull @Size(max = 200_000) String text) {
     }
@@ -107,16 +113,19 @@ public class PersonController {
     private final PersonService service;
     private final ImportService imports;
     private final BulkGradeService bulkGrade;
+    private final BulkRetireService bulkRetire;
     private final WatchService watches;
     private final MergeService merges;
     private final TransferService transfers;
     private final SheetHistory history;
 
-    public PersonController(PersonService service, ImportService imports, BulkGradeService bulkGrade, WatchService watches,
+    public PersonController(PersonService service, ImportService imports, BulkGradeService bulkGrade,
+            BulkRetireService bulkRetire, WatchService watches,
             MergeService merges, TransferService transfers, SheetHistory history) {
         this.service = service;
         this.imports = imports;
         this.bulkGrade = bulkGrade;
+        this.bulkRetire = bulkRetire;
         this.watches = watches;
         this.merges = merges;
         this.transfers = transfers;
@@ -185,6 +194,16 @@ public class PersonController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid BulkGradeForm form) {
         return bulkGrade.grade(sheetId, SignedIn.name(user), form.personIds(), form.grade(), form.from()).stream()
+                .map(PersonView::of).toList();
+    }
+
+    /** Retire the selected people from a date together, each as the row's retire would: the people retired. */
+    @PostMapping("/retire")
+    public List<PersonView> retireAll(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkRetireForm form) {
+        return bulkRetire.retire(sheetId, SignedIn.name(user), form.personIds(), form.from()).stream()
                 .map(PersonView::of).toList();
     }
 
