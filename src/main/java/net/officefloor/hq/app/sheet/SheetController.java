@@ -37,7 +37,8 @@ public class SheetController {
     /** What the screen is told about a loaded sheet. */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
-            Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent) {
+            Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
+            int fiscalStartMonth) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
@@ -45,7 +46,8 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived(),
                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
-                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId());
+                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+                    sheet.getFiscalStartMonth());
         }
 
         /** Each grade's grace values by from-date, its starting value (none) first. */
@@ -74,13 +76,13 @@ public class SheetController {
      * decimals, null for none, and the entry date, null for none (off), and each grade's grace in days,
      * null for none, with each grade's grace values by from-date, and each grade's proof threshold with two
      * decimals, null for none (the sheet's applies), and the pot with two decimals, null for none, and the
-     * parent sheet's id, null for none. */
+     * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
-            String pot, String parent) {
+            String pot, String parent, int fiscalStartMonth) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -94,7 +96,8 @@ public class SheetController {
                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
                     sheet.getEntryDate(), sheet.getGradeGrace("A"), sheet.getGradeGrace("B"), sheet.getGradeGrace("C"),
                     SheetView.graceHistory(sheet), gradeProofThresholds(sheet),
-                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId());
+                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+                    sheet.getFiscalStartMonth());
         }
 
         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
@@ -140,6 +143,15 @@ public class SheetController {
         String parent() {
             String text = value == null ? "" : value.trim();
             return text.isEmpty() ? null : text;
+        }
+    }
+
+    /** A fiscal start month as entered: a whole month number, 1 to 12; it cannot be blank. */
+    public record FiscalStartMonthChange(@NotNull @Pattern(regexp = "\\s*([1-9]|1[0-2])\\s*") String value) {
+
+        /** The month entered. */
+        int month() {
+            return Integer.parseInt(value.trim());
         }
     }
 
@@ -439,6 +451,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GraceDaysChange change) {
         return SettingsView.of(service.setGraceDays(id, SignedIn.name(user), change.days()));
+    }
+
+    /** Change the month the sheet's fiscal year starts in. */
+    @PutMapping("/{id}/settings/fiscal-start-month")
+    public SettingsView setFiscalStartMonth(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid FiscalStartMonthChange change) {
+        return SettingsView.of(service.setFiscalStartMonth(id, SignedIn.name(user), change.month()));
     }
 
     /** Change the sheet's pot; a blank value means none. */

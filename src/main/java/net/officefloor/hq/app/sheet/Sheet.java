@@ -111,6 +111,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The month, 1 to 12, the sheet's fiscal year starts in; 1 (January) unless set. Not dated. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** The parent sheet's id: its rates apply where this sheet has none in force; null for none. Not dated. */
     @Column(name = "parent_id")
     private String parentId;
@@ -371,6 +375,7 @@ public class Sheet {
         then.graceDays = graceDays;
         then.entryDate = entryDate;
         then.pot = pot;
+        then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
         then.archived = archived;
         then.dated = new ArrayList<>(datedThen);
@@ -459,6 +464,20 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    /** The month, 1 to 12, the sheet's fiscal year starts in. */
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
+    }
+
+    /** The first day of the fiscal year named after a calendar year: the sheet's start month's first day in it. */
+    public LocalDate fiscalYearStart(int year) {
+        return LocalDate.of(year, fiscalStartMonth, 1);
     }
 
     /** The parent sheet's id; null when none. */

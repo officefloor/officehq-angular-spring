@@ -253,6 +253,20 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */
+    @Transactional
+    public Sheet setFiscalStartMonth(String id, String user, int month) {
+        if (month < 1 || month > 12) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The fiscal start month is 1 to 12.");
+        }
+        Sheet sheet = lock(id);
+        sheet.setFiscalStartMonth(month);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=fiscal-start-month value="
+                + saved.getFiscalStartMonth());
+        return saved;
+    }
+
     /** Change the sheet's pot (null: none), auditing the change. */
     @Transactional
     public Sheet setPot(String id, String user, BigDecimal pot) {

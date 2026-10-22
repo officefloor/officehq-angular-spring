@@ -96,6 +96,20 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
+    /** A fiscal year to generate periods for, by the calendar year its first day falls in: four digits. */
+    public record FiscalYearForm(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+    }
+
+    /** Generate the fiscal year's twelve monthly periods as {@link #generate} does; the periods made, in month order. */
+    @PostMapping("/generate-fy")
+    public List<PeriodView> generateFiscalYear(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid FiscalYearForm form) {
+        return service.generateFiscalYear(sheetId, SignedIn.name(user), Integer.parseInt(form.year().trim())).stream()
+                .map(PeriodView::of).toList();
+    }
+
     /** Close a period, fixing its due-total. */
     @PostMapping("/{periodId}/close")
     public PeriodView close(

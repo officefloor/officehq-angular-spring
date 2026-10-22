@@ -112,6 +112,16 @@ public class PeriodService {
     }
 
     /**
+     * Generate the twelve monthly periods of the fiscal year named FY{@code year}, from the first day of
+     * the sheet's fiscal start month in that year, exactly as {@link #generate} does.
+     */
+    @Transactional
+    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
+        LocalDate first = sheets.lock(sheetId).fiscalYearStart(year);
+        return generate(sheetId, user, first, first.plusYears(1).minusDays(1));
+    }
+
+    /**
      * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures,
      * as computed now, of the claims due by in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
      * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those still OPEN or PENDING and dated

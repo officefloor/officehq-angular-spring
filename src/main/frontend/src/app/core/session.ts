@@ -49,6 +49,8 @@ export interface SheetView {
   pot?: string | null;
   /** The parent sheet's id: its rates apply where this sheet has none in force; null when there is none. */
   parent?: string | null;
+  /** The month, 1 to 12, the sheet's fiscal year starts in. */
+  fiscalStartMonth: number;
 }
 
 /**
@@ -96,6 +98,8 @@ export class Session {
   readonly pot = signal('');
   /** The active sheet's parent sheet id; empty when there is none. */
   readonly parent = signal('');
+  /** The month, 1 to 12, the active sheet's fiscal year starts in. */
+  readonly fiscalStartMonth = signal(1);
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
   /** The number of the active sheet's last settle batch; null when there has been none. */
@@ -180,6 +184,7 @@ export class Session {
     this.cap.set(view.cap ?? '');
     this.pot.set(view.pot ?? '');
     this.parent.set(view.parent ?? '');
+    this.fiscalStartMonth.set(view.fiscalStartMonth ?? 1);
     this.archived.set(view.archived);
     this.graceHistory.set(view.graceHistory ?? {});
     this.lastSettleBatch.set(view.lastSettleBatch ?? null);

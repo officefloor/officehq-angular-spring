@@ -1,6 +1,6 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
@@ -222,6 +222,14 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'pot')"
           (keydown.backspace)="cleared($event, 'pot')"
         />
+        <label for="setting-fiscal-start-month">Month the fiscal year starts in (1 to 12)</label>
+        <input
+          id="setting-fiscal-start-month"
+          data-testid="setting-fiscal-start-month"
+          inputmode="numeric"
+          [value]="fiscalStartMonthInput()"
+          (input)="fiscalStartMonthInput.set(value($event)); fiscalStartMonthEdited = true; settingsError.set(null)"
+        />
         <label for="setting-parent">Parent sheet, whose rates apply where this sheet has none (empty: none)</label>
         <input
           id="setting-parent"
@@ -269,6 +277,7 @@ import { Session } from '../../core/session';
       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() }}</span></p>
+      <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
       <p>Parent sheet in force: <span data-testid="setting-parent-current">{{ session.parent() }}</span></p>
       @for (a of permissionActions; track a) {
         <p>Roles that may {{ a }} in force:
@@ -352,6 +361,7 @@ export class Settings {
   protected readonly graceDaysInput = signal('');
   protected readonly potInput = signal('');
   protected readonly parentInput = signal('');
+  protected readonly fiscalStartMonthInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
   protected capEdited = false;
@@ -369,6 +379,7 @@ export class Settings {
   protected graceDaysEdited = false;
   protected potEdited = false;
   protected parentEdited = false;
+  protected fiscalStartMonthEdited = false;
   protected readonly permissionActions = PERMISSION_ACTIONS;
   /** Who may take each action under its standing rule, kept when its entry is blank. */
   protected readonly standing: Record<PermissionAction, string> = {
@@ -544,10 +555,11 @@ export class Settings {
     const graceDays = this.graceDaysInput().trim();
     const pot = this.potInput().trim();
     const parent = this.parentInput().trim();
+    const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.parentEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -566,6 +578,7 @@ export class Settings {
     const saveGraceDays = this.graceDaysEdited;
     const savePot = this.potEdited;
     const saveParent = this.parentEdited;
+    const saveFiscalStartMonth = this.fiscalStartMonthEdited;
     const savePermissions = PERMISSION_ACTIONS.filter((a) => this.permissionsEdited.has(a))
       .map((a) => ({ action: a, value: this.permissionInput()[a].trim() }));
     const froms = this.fromInput();
@@ -650,6 +663,10 @@ export class Settings {
       this.settingsError.set('Type a parent sheet id of letters, digits, dots, dashes or underscores, or leave it empty for none.');
       return;
     }
+    if (saveFiscalStartMonth && !FISCAL_START_MONTH.test(fiscalStartMonth)) {
+      this.settingsError.set('Type the month the fiscal year starts in as a number from 1 to 12.');
+      return;
+    }
     if (savePermissions.some((p) => !PERMISSION.test(p.value))) {
       this.settingsError.set('Type the roles that may take an action as clerk or steward, comma separated, or leave them empty for the standing rule.');
       return;
@@ -671,6 +688,7 @@ export class Settings {
     if (saveGraceDays) this.graceDaysEdited = false;
     if (savePot) this.potEdited = false;
     if (saveParent) this.parentEdited = false;
+    if (saveFiscalStartMonth) this.fiscalStartMonthEdited = false;
     for (const p of savePermissions) this.permissionsEdited.delete(p.action);
     this.fromInput.update((all) => {
       const next = { ...all };
@@ -744,6 +762,11 @@ export class Settings {
           const view = await this.api.setParent(sheet, parent);
           this.session.parent.set(view.parent ?? '');
           if (!this.parentEdited) this.parentInput.set(view.parent ?? '');
+        }
+        if (saveFiscalStartMonth) {
+          const view = await this.api.setFiscalStartMonth(sheet, fiscalStartMonth);
+          this.session.fiscalStartMonth.set(view.fiscalStartMonth);
+          if (!this.fiscalStartMonthEdited) this.fiscalStartMonthInput.set(view.fiscalStartMonth.toString());
         }
         for (const p of savePermissions) {
           const view = await this.api.setPermission(sheet, p.action, p.value);
@@ -852,6 +875,9 @@ export class Settings {
       this.session.parent.set(settings.parent ?? '');
       this.parentInput.set(settings.parent ?? '');
       this.parentEdited = false;
+      this.session.fiscalStartMonth.set(settings.fiscalStartMonth);
+      this.fiscalStartMonthInput.set(settings.fiscalStartMonth.toString());
+      this.fiscalStartMonthEdited = false;
       // Each action's roles start at those in force, so clearing them is a change.
       this.permissions.set(settings.permissions);
       this.permissionInput.set({ ...settings.permissions });

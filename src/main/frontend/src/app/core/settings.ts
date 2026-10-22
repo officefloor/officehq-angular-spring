@@ -62,6 +62,8 @@ export interface SettingsView {
   pot: string | null;
   /** The parent sheet's id: its rates apply where this sheet has none in force; null when there is none. */
   parent: string | null;
+  /** The month, 1 to 12, the fiscal year starts in; 1 unless set. */
+  fiscalStartMonth: number;
   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
   permissions: Record<PermissionAction, string>;
 }
@@ -118,6 +120,9 @@ export const POT = /^(\d{1,12}(\.\d{1,2})?)?$/;
 
 /** A parent sheet id as the form takes it, or blank for none. */
 export const PARENT = /^[A-Za-z0-9._-]{0,64}$/;
+
+/** A fiscal start month as the form takes it: a month number, 1 to 12. */
+export const FISCAL_START_MONTH = /^([1-9]|1[0-2])$/;
 
 /** Terms as the form takes them: a whole number of days. */
 export const TERMS = /^\d{1,4}$/;
@@ -204,6 +209,11 @@ export class SettingsApi {
   /** Set the parent sheet; a blank value means none. */
   setParent(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/parent`, { value }));
+  }
+
+  /** Set the month, 1 to 12, the fiscal year starts in. */
+  setFiscalStartMonth(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/fiscal-start-month`, { value }));
   }
 
   /** Set the grace days; a blank value turns closing periods by themselves off. */

@@ -45,6 +45,19 @@ export function periodOn(periods: PeriodView[], date: string): PeriodView | null
   return periods.find((p) => p.from <= date && date <= p.to) ?? null;
 }
 
+/** A fiscal year as the generate form takes it: the calendar year its first day falls in, four digits. */
+export const FISCAL_YEAR = /^\d{4}$/;
+
+/**
+ * The name of the fiscal year a date (yyyy-mm-dd) falls in, FY<yyyy> by the calendar year its first
+ * day falls in, for a fiscal year starting on the first of a month (1 to 12).
+ */
+export function fiscalYearOf(date: string, startMonth: number): string {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  return `FY${month >= startMonth ? year : year - 1}`;
+}
+
 // The periods on a sheet, read from and written to the store.
 @Injectable({ providedIn: 'root' })
 export class PeriodsApi {
@@ -67,6 +80,11 @@ export class PeriodsApi {
    */
   generate(sheet: string, from: string, to: string): Promise<PeriodView[]> {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/generate`, { from, to }));
+  }
+
+  /** Generate the fiscal year's twelve monthly periods as generate does; the periods made. */
+  generateFiscalYear(sheet: string, year: string): Promise<PeriodView[]> {
+    return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/generate-fy`, { year }));
   }
 
   /** Close a period, fixing its due-total; refused when it is already closed. */
