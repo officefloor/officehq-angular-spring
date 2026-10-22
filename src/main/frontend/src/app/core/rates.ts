@@ -34,6 +34,12 @@ export interface RatePreview {
   diff: string;
 }
 
+/** What a rate import did: how many rates were set, and the sheet's rates after. */
+export interface RateImportView {
+  set: number;
+  rates: RateView[];
+}
+
 /** A from-date as a rate takes it: yyyy-mm-dd. */
 export const FROM_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -150,6 +156,11 @@ export class RatesApi {
   /** Set a grade's rate from a date, replacing any it had from that date. */
   set(sheet: string, grade: Grade, form: RateForm): Promise<RateView> {
     return firstValueFrom(this.http.put<RateView>(`${this.url(sheet)}/${grade}`, form));
+  }
+
+  /** Set a rate per line of grade,rate,from,to, in order; all or none. */
+  importRates(sheet: string, text: string): Promise<RateImportView> {
+    return firstValueFrom(this.http.post<RateImportView>(`${this.url(sheet)}/import`, { text }));
   }
 
   /** Preview a candidate rate applied to a grade on every date; nothing is saved. */

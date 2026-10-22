@@ -1,4 +1,5 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { GRADES, Grade } from '../../core/people';
 import { FROM_DATE, NO_RATE, PERCENT, RatePreview, RateView, RatesApi, rateOn } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -50,6 +51,23 @@ import { Session } from '../../core/session';
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as message) {
           <p role="alert" data-testid="rate-form-error">{{ message }}</p>
+        }
+      </form>
+      <form (submit)="importRates($event)" aria-label="Import rates">
+        <label for="import-rates">Import rates, one per line: grade,rate,from,to</label>
+        <textarea
+          id="import-rates"
+          data-testid="import-rates"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (importSet() !== null) {
+          <p role="status">Set <strong data-testid="import-rates-set">{{ importSet() }}</strong> rates.</p>
+        }
+        @if (importError(); as message) {
+          <p role="alert" data-testid="import-rates-error">{{ message }}</p>
         }
       </form>
       <form (submit)="runPreview($event)" aria-label="Preview a rate">
@@ -136,6 +154,8 @@ export class Rates {
   readonly today = input.required<string>();
   /** A rate set through the form. */
   readonly saved = output<RateView>();
+  /** The sheet's rates after an import. */
+  readonly imported = output<RateView[]>();
 
   protected readonly grades = GRADES;
   protected readonly noRate = NO_RATE;
@@ -151,8 +171,26 @@ export class Rates {
   /** The last preview's result; cleared when the preview form changes. */
   protected readonly preview = signal<RatePreview | null>(null);
   protected readonly previewError = signal<string | null>(null);
+  /** The rate import box's text: lines of grade,rate,from,to. */
+  protected readonly importText = signal('');
+  /** How many rates the last import set; null before any. */
+  protected readonly importSet = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
+
+  constructor() {
+    // A sheet load starts the import box afresh.
+    effect(() => {
+      this.session.sheet();
+      this.session.loads();
+      untracked(() => {
+        this.importText.set('');
+        this.importSet.set(null);
+        this.importError.set(null);
+      });
+    });
+  }
 
   /** Every rate by grade, each grade's from the start, then by from-date. */
   protected readonly listed = computed(() =>
@@ -194,6 +232,34 @@ export class Rates {
       this.preview.set(await this.api.preview(sheet, grade, pct));
     } catch {
       this.previewError.set(`The rate for grade ${grade} could not be previewed.`);
+    }
+  }
+
+  /** Set a rate per pasted line, in order, as the form would; all or none. */
+  protected async importRates(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy) return;
+    this.importError.set(null);
+    this.importSet.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of grade,rate,from,to.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const result = await this.api.importRates(sheet, text);
+      if (this.session.sheet() !== sheet) return;
+      this.imported.emit(result.rates);
+      this.importSet.set(result.set);
+      this.importText.set('');
+    } catch (e) {
+      const reason = e instanceof HttpErrorResponse && e.status === 400 && typeof e.error?.detail === 'string' ? e.error.detail : null;
+      this.importError.set(reason ?? 'The rates could not be imported; nothing was changed.');
+    } finally {
+      this.busy = false;
     }
   }
 

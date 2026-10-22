@@ -14,6 +14,7 @@ import net.officefloor.hq.app.SignedIn;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -46,11 +47,21 @@ public class RateController {
             LocalDate to) {
     }
 
+    /** The rate import box's text: lines of grade,rate,from,to. */
+    public record ImportForm(@NotNull @Size(max = 200_000) String text) {
+    }
+
+    /** What the screen is told of a rate import: how many rates were set, and the sheet's rates after. */
+    public record ImportView(int set, List<RateView> rates) {
+    }
+
     private final RateService service;
+    private final RateImportService imports;
     private final SheetHistory history;
 
-    public RateController(RateService service, SheetHistory history) {
+    public RateController(RateService service, RateImportService imports, SheetHistory history) {
         this.service = service;
+        this.imports = imports;
         this.history = history;
     }
 
@@ -91,6 +102,19 @@ public class RateController {
             @RequestBody @Valid RateForm form) {
         return RateView.of(service.set(sheetId, SignedIn.name(user), grade, form.from(),
                 form.to(), new BigDecimal(form.pct())));
+    }
+
+    /**
+     * Set a rate per imported line, in order, each as the rate form would; nothing is set when any line
+     * is refused.
+     */
+    @PostMapping("/import")
+    public ImportView importRates(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ImportForm form) {
+        int set = imports.importRates(sheetId, SignedIn.name(user), form.text()).size();
+        return new ImportView(set, service.list(sheetId).stream().map(RateView::of).toList());
     }
 
     /** What the screen is told of a rate preview: the claims whose due would change, and the sum of the differences. */

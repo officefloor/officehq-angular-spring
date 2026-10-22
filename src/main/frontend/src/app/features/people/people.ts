@@ -94,7 +94,7 @@ function csvField(value: string): string {
       [overdueTotal]="overdueTotal()"
     />
     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
-    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
     <app-periods
       [periods]="periods()"
       [dueTotals]="periodDueTotals()"
