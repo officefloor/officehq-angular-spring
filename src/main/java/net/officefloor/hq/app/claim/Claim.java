@@ -42,7 +42,7 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The sheet's number given to the claim when opened; null while DRAFT and once VOID. */
+    /** The sheet's number given to the claim when opened; null while DRAFT, and kept once VOID. */
     @Column(name = "claim_number")
     private Integer number;
 
@@ -128,7 +128,7 @@ public class Claim {
         this.status = status;
     }
 
-    /** Give the claim its number (when opened), or clear it (when voided). */
+    /** Give the claim its number when it is opened; it keeps it from then on. */
     public void number(Integer number) {
         this.number = number;
     }

@@ -65,14 +65,19 @@ public class ClaimService {
     }
 
     /**
-     * Change a claim's amount, date and note; with no date it keeps its own. Refused when the claim,
-     * or the date it moves to, is inside a closed period.
+     * Change a claim's amount, date and note; with no date it keeps its own. Only a DRAFT claim can be
+     * edited: an OPEN one is changed by voiding it and adding a new one. Refused when the claim, or the
+     * date it moves to, is inside a closed period.
      */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Rollups.Rollup before = rollups.take(sheetId);
         sheets.lock(sheetId);
         Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited; only a DRAFT can.");
+        }
         periods.refuseIfClosed(sheetId, claim.getDate());
         if (date != null) {
             periods.refuseIfClosed(sheetId, date);
@@ -88,8 +93,9 @@ public class ClaimService {
      * Move a claim to a new status, recording the event; refused (and nothing written) when the
      * claim's current status does not allow the move. Settling fixes the claim's due at the rate
      * the person's grade has in force on the claim's date, or at the figure a statement bound it to.
-     * Opening records who opened the claim, and
-     * that user is refused when settling it. A claim dated inside a closed period cannot be moved.
+     * Opening numbers the claim and records who opened it; a voided claim keeps its number, which
+     * is never reused. The user who opened a claim
+     * is refused when settling it. A claim dated inside a closed period cannot be moved.
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -108,13 +114,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The user who opened a claim cannot settle it.");
         }
-        Integer had = claim.getNumber();
         Person person = person(sheetId, claim.getPersonId());
         claim.become(next);
-        if (next == ClaimStatus.OPEN || next == ClaimStatus.VOID) {
-            claim.number(number);
-        }
         if (next == ClaimStatus.OPEN) {
+            claim.number(number);
             claim.openedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
@@ -130,7 +133,7 @@ public class ClaimService {
         String suffix = next == ClaimStatus.SETTLED
                 ? " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
                 : "";
-        audited(event, sheetId, user, person, saved, next == ClaimStatus.VOID ? had : saved.getNumber(), suffix);
+        audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
         rollups.audit(sheetId, user, before);
         return saved;
     }

@@ -136,9 +136,20 @@ export class Claims {
     return (event.target as HTMLInputElement).value;
   }
 
-  /** Open a claim's editor: the form takes its values. */
+  /**
+   * Open a claim's editor: the form takes its values. Only a DRAFT claim can be edited; any other is
+   * refused with an error on its row (to change an OPEN claim, void it and add a new one).
+   */
   protected open(claim: ClaimView): void {
     this.claimError.set(null);
+    if (claim.status !== 'DRAFT') {
+      this.reset();
+      this.claimError.set({
+        id: claim.id,
+        message: `A ${claim.status} claim cannot be edited; void it and add a new one.`,
+      });
+      return;
+    }
     this.editing.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
