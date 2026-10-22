@@ -1,0 +1,64 @@
+{
+  "checkpoint": 125,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp125_unretire",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A retired person can be unretired (a button on the row; PERSON_UNRETIRED name=<name> on=<the\nsheet's today>; anyone not retired is refused with an error on the row). They are no longer retired\n(retired no, no retired-from); the retirement is kept on the row as <from> to <the day unretired>, one line per past\nretirement; and a claim dated after the from and before the to of a\npast retirement is refused as a claim after a retirement is.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA retired person can be unretired (a button on the row; PERSON_UNRETIRED name=<name> on=<the\nsheet's today>; anyone not retired is refused with an error on the row). They are no longer retired\n(retired no, no retired-from); the retirement is kept on the row as <from> to <the day unretired>, one line per past\nretirement; and a claim dated after the from and before the to of a\npast retirement is refused as a claim after a retirement is.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "318db5becf1d15513728c9e8325777ecf99c9dc9",
+  "reset_sha": "",
+  "preagent_sha": "46c93605120f70b84614badc58ca438bb8354517",
+  "prev_sha": "46c93605120f70b84614badc58ca438bb8354517",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.7850838,
+    "input_tokens": 88,
+    "output_tokens": 21320,
+    "cache_read_tokens": 2999539,
+    "cache_creation_tokens": 94803,
+    "num_turns": 44,
+    "duration_ms": 718937,
+    "duration_api_ms": 215416,
+    "model": "claude-opus-5-5",
+    "session_id": "a22d663a-4c48-4653-bc2b-9b877a9a1cdc",
+    "stop_reason": "success",
+    "result_text": "Unretire is in, but `bin/e2e` does not fully pass: 3 of the 4 tests pass and \"unretire scenario 2\" fails. The main `unretire` test, which covers this request (rows, refusals, claim rules, audit lines), passes, and so do scenarios 1 and 3.\n\n**Why scenario 2 fails**\nAt `acceptance.spec.ts:643` the test pastes a claim for Ben dated 2026-02-10 and expects it to be added. The server refuses the paste with \"The claim is due by inside a closed period.\"\n- **The cause:** setting `terms=7` without a from-date only applies from the sheet's today (2026-03-10). So a claim dated earlier gets the starting 14 business days, which makes it due 2026-03-02. That date falls inside period P1, which was closed automatically.\n- **Not caused by this change:** nobody in that test is retired or unretired before this step. The earlier run log in `.e2e.log`, from the previous \"pools\" change, failed on the same kind of paste (a claim dated 2026-02-10).\n- **Not fixed:** making it pass would mean changing how dated settings or closed periods work, which is outside this request. If you want the test fully green, that is the change to make, and I can do it.\n\n**What I changed**\n- **Stored data:** a new migration, `V73__person_retirement.sql`, adds a `person_retirement` table that keeps each past retirement's from and to dates, in order.\n- **Server:**\n  - Unretiring is a new action (`POST /people/{id}/unretire`). It turns a retired person back to not retired and keeps the retirement as \"from to the sheet's today\". Anyone not retired is refused, and nothing is written.\n  - It writes `PERSON_UNRETIRED name=<name> on=<today>` to the audit file, followed by the same total lines that retiring writes.\n  - A claim dated strictly after the from and before the to of a past retirement is now refused, using the same check that refuses a claim after a current retirement.\n  - The person data the screen receives now includes past retirements, and sheet snapshots keep them too.\n- **Front end:** each person row has an Unretire button (`person-unretire`). Past retirements show as one `person-retirement-line` per retirement, reading \"<from> to <to>\". A refusal shows in the row's existing `person-error`.\n\nTo find the cause I temporarily added a debug log line to `PasteService` and ran a copy of the test from a scratch folder outside the repo. Both are removed.\n\nI also saved a project memory note about this recurring paste failure, so a future change doesn't treat it as something new.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.7850838,
+        "num_turns": 44,
+        "duration_ms": 718937,
+        "duration_api_ms": 215416,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp125.agent.jsonl",
+  "agent_diff_file": "cp125.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
