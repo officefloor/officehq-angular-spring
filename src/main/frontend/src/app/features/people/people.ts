@@ -216,6 +216,7 @@ function csvField(value: string): string {
             <th scope="col">Due by period</th>
             <th scope="col">Excess</th>
             <th scope="col">Overdue</th>
+            <th scope="col">Due by age</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
             <th scope="col">Active</th>
@@ -258,6 +259,12 @@ function csvField(value: string): string {
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
                 <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</span></span>
+              </td>
+              <td>
+                @let aged = agedOf(p);
+                <span>0&ndash;30 <span data-testid="person-aged-0-30">{{ aged[0] }}</span></span>
+                <span>31&ndash;60 <span data-testid="person-aged-31-60">{{ aged[1] }}</span></span>
+                <span>61+ <span data-testid="person-aged-61">{{ aged[2] }}</span></span>
               </td>
               <td>
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
@@ -661,6 +668,20 @@ export class People {
       (sum, c) => sum + (this.dueCents(c, person) ?? 0),
       0,
     );
+  }
+
+  /**
+   * The due of a person's counting OPEN and PENDING claims split by their age on the sheet's today
+   * (days from the claim's date): 0 to 30, 31 to 60 and 61 or more. A claim dated after today is 0 to 30.
+   */
+  protected agedOf(person: PersonView): [string, string, string] {
+    const buckets = [0, 0, 0];
+    const today = Date.parse(this.today());
+    for (const c of this.countingOf(person.id).filter(isOpen)) {
+      const days = Number.isNaN(today) ? 0 : (today - Date.parse(c.date)) / 86_400_000;
+      buckets[days <= 30 ? 0 : days <= 60 ? 1 : 2] += this.dueCents(c, person) ?? 0;
+    }
+    return [money(buckets[0]), money(buckets[1]), money(buckets[2])];
   }
 
   /** The grade a person has in force on the sheet's today. */
