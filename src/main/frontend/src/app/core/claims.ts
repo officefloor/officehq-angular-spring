@@ -114,6 +114,12 @@ export interface BulkOpenView {
   refused: number;
 }
 
+/** What a bulk settle did: the claims settled (or sent PENDING), as they are now, and how many were refused. */
+export interface BulkSettleView {
+  settled: ClaimView[];
+  refused: number;
+}
+
 export interface ClaimForm {
   amount: string;
   /** Empty means the sheet's today (or, on an edit, the claim's own date). */
@@ -185,6 +191,10 @@ export class ClaimsApi {
    */
   openAll(sheet: string, claimIds: number[]): Promise<BulkOpenView> {
     return firstValueFrom(this.http.post<BulkOpenView>(`${this.url(sheet)}/claims/open`, { claimIds }));
+  }
+
+  settleAll(sheet: string, claimIds: number[]): Promise<BulkSettleView> {
+    return firstValueFrom(this.http.post<BulkSettleView>(`${this.url(sheet)}/claims/settle`, { claimIds }));
   }
 
   private url(sheet: string): string {

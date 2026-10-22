@@ -120,6 +120,18 @@ function csvField(value: string): string {
           <span role="alert" data-testid="bulk-open-error">{{ message }}</span>
         }
       </p>
+      <p>
+        <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
+        @if (bulkSettled(); as result) {
+          <span role="status">
+            Settled <strong data-testid="bulk-settled">{{ result.settled }}</strong>,
+            refused <strong data-testid="bulk-settle-refused">{{ result.refused }}</strong>
+          </span>
+        }
+        @if (bulkSettleError(); as message) {
+          <span role="alert" data-testid="bulk-settle-error">{{ message }}</span>
+        }
+      </p>
       <table>
         <thead>
           <tr>
@@ -394,6 +406,9 @@ export class People {
   /** How many claims the last bulk open opened and refused; null until one is done. */
   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
   protected readonly bulkOpenError = signal<string | null>(null);
+  /** How many claims the last bulk settle settled (or sent PENDING) and refused; null until one is done. */
+  protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
+  protected readonly bulkSettleError = signal<string | null>(null);
 
   constructor() {
     // Every sheet load re-reads the sheet's people from the store.
@@ -414,6 +429,8 @@ export class People {
         this.selectedClaims.set(new Set());
         this.bulkOpened.set(null);
         this.bulkOpenError.set(null);
+        this.bulkSettled.set(null);
+        this.bulkSettleError.set(null);
         if (sheet) void this.reload(sheet);
       });
     });
@@ -669,6 +686,7 @@ export class People {
       return next;
     });
     this.bulkOpenError.set(null);
+    this.bulkSettleError.set(null);
   }
 
   /**
@@ -695,6 +713,36 @@ export class People {
       this.bulkOpened.set({ opened: result.opened.length, refused: result.refused });
     } catch {
       this.bulkOpenError.set('The claims could not be opened.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Settle the selected claims together: each is settled (or sent PENDING) as its Settle button would,
+   * in list order, and each that cannot be is left as it is; how many were settled and refused is
+   * shown, and the selection cleared.
+   */
+  protected async settleSelected(): Promise<void> {
+    if (this.busy) return;
+    this.bulkSettled.set(null);
+    this.bulkSettleError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const ids = [...this.selectedClaims()];
+    if (ids.length === 0) {
+      this.bulkSettleError.set('Select the claims to settle.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const result = await this.claimsApi.settleAll(sheet, ids);
+      if (this.session.sheet() !== sheet) return;
+      for (const claim of result.settled) this.claimSaved(claim);
+      this.selectedClaims.set(new Set());
+      this.bulkSettled.set({ settled: result.settled.length, refused: result.refused });
+    } catch {
+      this.bulkSettleError.set('The claims could not be settled.');
     } finally {
       this.busy = false;
     }

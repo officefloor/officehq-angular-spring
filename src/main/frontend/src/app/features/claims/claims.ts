@@ -366,6 +366,13 @@ export class Claims {
       this.error.set(amount.startsWith('-') || corrects !== ''
         ? `The claim could not be ${verb}: a correction (an amount below 0.00) must name a SETTLED claim of ${this.personName()}, and only a correction names one.`
         : `The claim could not be ${verb}.`);
+      if (id === null) {
+        // a refused add leaves nothing typed behind for the next one; its refusal is still shown
+        this.amount.set('');
+        this.date.set('');
+        this.note.set('');
+        this.corrects.set('');
+      }
     } finally {
       this.busy = false;
     }
