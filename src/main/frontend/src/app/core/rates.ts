@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { money } from './claims';
+import { ClaimView, cents, money } from './claims';
 import { Grade } from './people';
 
 export interface RateView {
@@ -47,17 +47,31 @@ export const NO_RATE = 'n/a';
 
 /**
  * What is due on an amount in whole cents at a rate (a two-decimal percent): the amount times the
- * rate divided by 100, rounded half up to whole cents. Worked in integers so it is exact.
+ * rate divided by 100, rounded half to even to whole cents. Worked in integers so it is exact.
  */
 export function dueCents(amountCents: number, pct: string): number {
   const [whole, frac = ''] = pct.split('.');
   const basisPoints = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
-  return Number((BigInt(amountCents) * basisPoints + 5000n) / 10000n);
+  const exact = BigInt(amountCents) * basisPoints;
+  const quotient = exact / 10000n;
+  const remainder = exact % 10000n;
+  const up = remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n);
+  return Number(up ? quotient + 1n : quotient);
 }
 
 /** What is due on an amount in whole cents at a rate, shown with two decimals; n/a with no rate in force. */
 export function due(amountCents: number, pct: string | null): string {
   return pct === null ? NO_RATE : money(dueCents(amountCents, pct));
+}
+
+/**
+ * A claim's due figure in whole cents: the due fixed when it was settled, or else its amount at the
+ * rate the grade has in force on the claim's date; null when there is neither.
+ */
+export function claimDueCents(claim: ClaimView, rates: RateView[], grade: Grade): number | null {
+  if (claim.settledDue !== null) return cents(claim.settledDue);
+  const pct = rateOn(rates, grade, claim.date);
+  return pct === null ? null : dueCents(cents(claim.amount), pct);
 }
 
 // The rates for the grades on a sheet, read from and written to the store.

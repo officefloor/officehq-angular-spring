@@ -2,15 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
-import { RateView, RatesApi, dueCents, due, rateOn, sameSlot } from '../../core/rates';
+import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Rates } from '../rates/rates';
 
 // The active sheet's people: listed in the order they were added, added and edited through one form,
-// each with their claims, what they have claimed and what is due at their grade's rate in force on
-// the sheet's today, and the
-// sheet's claimed-total and due-total. The sheet's rates are set here too.
+// each with their claims, what they have claimed and what is due (the sum of their claims' due
+// figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
   imports: [Claims, Rates],
@@ -114,13 +113,10 @@ export class People {
   /** The sheet's today, on which each grade's rate in force is read. */
   protected readonly today = computed(() => this.session.today() ?? '');
   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
-  /** Everyone's due-total added up, skipping those whose grade has no rate. */
+  /** Everyone's due-total added up, skipping those shown as n/a. */
   protected readonly dueTotal = computed(() =>
     money(
-      this.people().reduce((sum, p) => {
-        const pct = this.pctOf(p.grade);
-        return pct === null ? sum : sum + dueCents(this.claimedCents(p.id), pct);
-      }, 0),
+      this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0),
     ),
   );
   protected readonly name = signal('');
@@ -162,9 +158,21 @@ export class People {
     return rateOn(this.rates(), grade, this.today());
   }
 
-  /** A person's due-total: what they have claimed at their grade's rate in force on the sheet's today. */
+  /** A person's due-total: the sum of their counting claims' due figures, or n/a (see dueTotalCents). */
   protected dueTotalOf(person: PersonView): string {
-    return due(this.claimedCents(person.id), this.pctOf(person.grade));
+    const total = this.dueTotalCents(person);
+    return total === null ? NO_RATE : money(total);
+  }
+
+  /**
+   * A person's due-total in whole cents: the sum of the due figures of their OPEN and SETTLED claims
+   * (0 with none). Null (n/a) when their grade has no rate on the sheet's today, unless a settled
+   * claim keeps a fixed figure: then it is the sum of the figures there are.
+   */
+  private dueTotalCents(person: PersonView): number | null {
+    const counting = this.claimsOf(person.id).filter(counts);
+    if (this.pctOf(person.grade) === null && !counting.some((c) => c.settledDue !== null)) return null;
+    return counting.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), person.grade) ?? 0), 0);
   }
 
   /** A rate set for a grade, in place of any it had from the same date. */

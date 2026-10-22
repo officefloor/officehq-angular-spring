@@ -1,7 +1,7 @@
 import { Component, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents } from '../../core/claims';
+import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, money } from '../../core/claims';
 import { Grade } from '../../core/people';
-import { RateView, due, rateOn } from '../../core/rates';
+import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row,
@@ -114,7 +114,8 @@ export class Claims {
    * person's grade has in force on the claim's date (n/a when it is dated before every rate).
    */
   protected dueOf(claim: ClaimView): string {
-    return claim.settledDue ?? due(cents(claim.amount), rateOn(this.rates(), this.grade(), claim.date));
+    const figure = claimDueCents(claim, this.rates(), this.grade());
+    return figure === null ? NO_RATE : money(figure);
   }
 
   protected value(event: Event): string {

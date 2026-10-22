@@ -125,9 +125,9 @@ public class ClaimService {
                 + (number != null ? " number=" + number : "") + suffix);
     }
 
-    /** What is due on an amount at a rate: the amount times the percent over 100, rounded half up. */
+    /** What is due on an amount at a rate: the amount times the percent over 100, rounded half to even. */
     private static BigDecimal due(BigDecimal amount, Rate rate) {
-        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
+        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     private static BigDecimal money(BigDecimal amount) {
