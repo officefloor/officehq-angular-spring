@@ -84,6 +84,11 @@ const PAST: Record<ClaimAction, string> = {
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+          <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
+            }
+          </ol>
           <button
             type="button"
             data-testid="claim-edit"

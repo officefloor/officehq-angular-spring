@@ -67,6 +67,7 @@ public class ClaimService {
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, dueBy, clean(note), corrects));
+        claim = logged(claim, user, person);
         audited("CLAIM_ADDED", sheetId, user, person, claim);
         rollups.audit(sheetId, user, before);
         return claim;
@@ -144,7 +145,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             claim.settleDue(settledDue);
         }
-        Claim saved = claims.saveAndFlush(claim);
+        Claim saved = logged(claims.saveAndFlush(claim), user, person);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
             case SETTLED -> "CLAIM_SETTLED";
@@ -176,7 +177,7 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         claim.settleDue(dues.approving(claim, person.gradeOn(claim.getDate())));
         claim.become(ClaimStatus.SETTLED);
-        Claim saved = claims.saveAndFlush(claim);
+        Claim saved = logged(claims.saveAndFlush(claim), user, person);
         audited("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(),
                 " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE));
         rollups.audit(sheetId, user, before);
@@ -193,7 +194,7 @@ public class ClaimService {
         Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = pending(sheetId, user, claimId);
         claim.become(ClaimStatus.OPEN);
-        Claim saved = claims.saveAndFlush(claim);
+        Claim saved = logged(claims.saveAndFlush(claim), user, person(sheetId, claim.getPersonId()));
         audited("CLAIM_REJECTED", sheetId, user, person(sheetId, saved.getPersonId()), saved, saved.getNumber(),
                 " reason=" + reason.trim());
         rollups.audit(sheetId, user, before);
@@ -299,6 +300,15 @@ public class ClaimService {
     private Person person(String sheetId, long personId) {
         return people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+    }
+
+    /**
+     * Add a line to the claim's status log for the status it now has: by the user, on the sheet's
+     * today, with its due as computed now.
+     */
+    private Claim logged(Claim claim, String user, Person person) {
+        claim.logged(user, sheets.today(claim.getSheetId()), dues.due(claim, person.gradeOn(claim.getDate())));
+        return claims.saveAndFlush(claim);
     }
 
     /** Record the change to the claim once it is committed; a claim with a number carries it. */

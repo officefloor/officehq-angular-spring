@@ -1,15 +1,22 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
@@ -70,6 +77,12 @@ public class Claim {
     /** The number of the claim this one corrects; null unless it is a correction. */
     @Column(name = "corrects")
     private String corrects;
+
+    /** The claim's status log, oldest first. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "claim_id", nullable = false)
+    @OrderBy("id")
+    private List<ClaimLogLine> log = new ArrayList<>();
 
     protected Claim() {
     }
@@ -189,5 +202,14 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+    }
+
+    public List<ClaimLogLine> getLog() {
+        return List.copyOf(log);
+    }
+
+    /** Add a line to the claim's status log for the status it now has. */
+    public void logged(String by, LocalDate on, BigDecimal due) {
+        log.add(new ClaimLogLine(status, by, on, due));
     }
 }

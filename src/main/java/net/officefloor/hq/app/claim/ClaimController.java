@@ -29,10 +29,11 @@ public class ClaimController {
      * was settled (null when not fixed, so its due is worked out from the current rate), and who
      * opened it (null until opened), and whether it is bound by its person's last statement, with the
      * figure it was bound to (null when unbound, or when it was n/a), and the number of the claim it
-     * corrects (null unless it is a correction), and the date it is due by, fixed when it was added.
+     * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
+     * log, oldest first.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
-            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects) {
+            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -40,7 +41,16 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects());
+                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log; the due with two decimals, or n/a. */
+    public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
+
+        public static LogLineView of(ClaimLogLine line) {
+            return new LogLineView(line.getStatus(), line.getBy(), line.getOn(),
+                    line.getDue() == null ? "n/a" : line.getDue().toPlainString());
         }
     }
 

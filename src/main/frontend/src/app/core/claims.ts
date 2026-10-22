@@ -45,6 +45,18 @@ export interface ClaimView {
   statedDue: string | null;
   /** The number of the SETTLED claim this one corrects; null unless it is a correction. */
   corrects: string | null;
+  /** The claim's status log, oldest first: one line per status it has had. */
+  log: ClaimLogLine[];
+}
+
+/** A status a claim moved to, by whom, on the sheet's today then, with its due as computed then. */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  /** yyyy-mm-dd */
+  on: string;
+  /** The due with two decimals, or n/a. */
+  due: string;
 }
 
 /** Whether a claim is a correction: its amount is below 0.00. It has no floor and no late charge. */
