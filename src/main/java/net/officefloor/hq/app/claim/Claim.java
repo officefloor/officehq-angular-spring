@@ -130,6 +130,10 @@ public class Claim {
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 
+    /** The reason from the sheet's list the claim was voided with; null when not voided with one. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     /** The claim's status log, oldest first. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "claim_id", nullable = false)
@@ -222,6 +226,15 @@ public class Claim {
     /** Move the claim to a new status; the caller checks the move is allowed. */
     public void become(ClaimStatus status) {
         this.status = status;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    /** Record the reason the claim is voided with; null for none. */
+    public void voidedWith(String reason) {
+        this.voidReason = reason;
     }
 
     /** Give the claim its number when it is opened; it keeps it from then on. */

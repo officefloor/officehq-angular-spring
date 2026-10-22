@@ -5,6 +5,7 @@ import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session, graceOn, valueOn } from '../../core/session';
+import { VoidReasons } from '../../core/void-reasons';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row (an
 // open editor locks its claim for other users until it is saved or cancelled, and stays open across
@@ -153,6 +154,17 @@ const PAST: Record<ClaimAction, string> = {
             [value]="rejectReasons()[c.id] ?? ''"
             (input)="setRejectReason(c.id, value($event))"
           />
+          <label [for]="'claim-void-reason-' + c.id">Void reason</label>
+          <select
+            [id]="'claim-void-reason-' + c.id"
+            data-testid="claim-void-reason"
+            (change)="setVoidReason(c.id, value($event))"
+          >
+            <option value="" [selected]="!voidReasonsChosen()[c.id]">No reason</option>
+            @for (r of voidReasons.list(); track r.id) {
+              <option [value]="r.reason" [selected]="voidReasonsChosen()[c.id] === r.reason">{{ r.reason }}</option>
+            }
+          </select>
           @for (a of actions; track a.action) {
             <button
               type="button"
@@ -258,6 +270,7 @@ export class Claims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
   private readonly editors = inject(ClaimEditors);
+  protected readonly voidReasons = inject(VoidReasons);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -322,6 +335,8 @@ export class Claims {
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The reason chosen from the sheet's list on each claim's row for voiding it, by claim id. */
+  protected readonly voidReasonsChosen = signal<Record<number, string>>({});
 
   constructor() {
     // Put back the editor left open on this person's form (or, failing that, the one whose lock this
@@ -518,6 +533,11 @@ export class Claims {
   }
 
   /** Enter the date to defer a claim until; it clears any error left on the claim's row. */
+  protected setVoidReason(id: number, reason: string): void {
+    this.voidReasonsChosen.update((reasons) => ({ ...reasons, [id]: reason }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
   protected setDeferDate(id: number, date: string): void {
     this.deferDates.update((dates) => ({ ...dates, [id]: date }));
     if (this.claimError()?.id === id) this.claimError.set(null);
@@ -755,9 +775,15 @@ export class Claims {
     this.claimError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    const reason = (this.rejectReasons()[claim.id] ?? '').trim();
+    const reason = action === 'void'
+      ? (this.voidReasonsChosen()[claim.id] ?? '')
+      : (this.rejectReasons()[claim.id] ?? '').trim();
     if (action === 'reject' && reason === '') {
       this.claimError.set({ id: claim.id, message: 'Type a reason to reject the claim.' });
+      return;
+    }
+    if (action === 'void' && reason === '' && this.voidReasons.list().length > 0) {
+      this.claimError.set({ id: claim.id, message: 'Choose a reason from the list to void the claim.' });
       return;
     }
     try {

@@ -16,6 +16,7 @@ import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.sheet.TodayChanged;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -38,13 +39,15 @@ public class ClaimService {
     private final RoleService roles;
     private final WatchService watches;
     private final HolidayService holidays;
+    private final VoidReasonService voidReasons;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
             Rollups rollups, PeriodService periods, RoleService roles, WatchService watches, HolidayService holidays,
-            Audit audit) {
+            VoidReasonService voidReasons, Audit audit) {
         this.watches = watches;
         this.holidays = holidays;
+        this.voidReasons = voidReasons;
         this.periods = periods;
         this.roles = roles;
         this.claims = claims;
@@ -220,6 +223,16 @@ public class ClaimService {
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
+        return move(sheetId, user, claimId, next, null);
+    }
+
+    /**
+     * Move a claim as {@link #move(String, String, long, ClaimStatus)} does, voiding it with a reason:
+     * while the sheet's list of void reasons is not empty, a void needs one from it (see
+     * {@link VoidReasonService#require}); the claim keeps it and its audit record ends with it.
+     */
+    @Transactional
+    public Claim move(String sheetId, String user, long claimId, ClaimStatus next, String reason) {
         // Every move takes the sheet's lock before reading the claim, so concurrent opens on the
         // sheet are serialised: each sees the other's committed claim and number.
         LocalDate today = sheets.lock(sheetId).getToday();
@@ -243,6 +256,7 @@ public class ClaimService {
         if (voidingSettled) {
             refuseVoidingSettled(sheetId, user, claim, today);
         }
+        String voidReason = next == ClaimStatus.VOID ? voidReasons.require(sheetId, reason) : null;
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(today)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim is deferred until " + claim.getDeferredUntil() + ": it cannot be settled before then.");
@@ -273,6 +287,9 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             claim.settleDue(settledDue);
         }
+        if (next == ClaimStatus.VOID) {
+            claim.voidedWith(voidReason);
+        }
         Claim saved = logged(claims.saveAndFlush(claim), user, person);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
@@ -286,6 +303,9 @@ public class ClaimService {
                 : voidingSettled
                 ? " reversed=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
                 : "";
+        if (voidReason != null) {
+            suffix += " reason=" + voidReason;
+        }
         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
         if (next == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, person, saved.getNumber());

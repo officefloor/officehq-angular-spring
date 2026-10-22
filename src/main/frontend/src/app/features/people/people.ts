@@ -12,7 +12,8 @@ import { Periods } from '../periods/periods';
 import { PasteClaims } from '../paste-claims/paste-claims';
 import { QuickAdd } from '../quick-add/quick-add';
 import { Rates } from '../rates/rates';
-import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+import { VoidReasons } from '../../core/void-reasons';
 
 /** The statuses the summary counts claims by, in the order it lists them. */
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
@@ -85,7 +86,7 @@ function csvField(value: string): string {
       (closed)="periodChanged($event)"
       (reopened)="periodChanged($event)"
     />
-    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add a person' : 'Edit a person'">
@@ -438,6 +439,7 @@ export class People {
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
   private readonly periodsApi = inject(PeriodsApi);
+  private readonly voidReasons = inject(VoidReasons);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<PersonView[]>([]);
@@ -521,6 +523,13 @@ export class People {
     SUMMARY_STATUSES.map((status) => ({
       status,
       count: this.claims().filter((c) => c.status === status).length,
+    })),
+  );
+  /** Per reason on the sheet's list: how many of the sheet's VOID claims were voided with it. */
+  protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>
+    this.voidReasons.list().map(({ reason }) => ({
+      reason,
+      count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length,
     })),
   );
   /** The sheet's cap in whole cents: a person's due-total is at most it; null when there is none. */

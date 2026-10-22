@@ -67,6 +67,8 @@ export interface ClaimView {
   lateEntry: boolean;
   /** yyyy-mm-dd: the last day (the sheet's today) a reminder was written for the claim; null when never. */
   remindedOn: string | null;
+  /** The reason from the sheet's list the claim was voided with; null (or absent, as kept by an old snapshot) when none. */
+  voidReason?: string | null;
 }
 
 /** What a split did: the original claim, as it is now, and the new claim split off it. */
@@ -293,10 +295,11 @@ export class ClaimsApi {
    * Move a claim's status; refused (409) when its status does not allow the move, or when the user
    * settling or approving it is the one who opened it, and (403) when approving or rejecting it is
    * not a steward. A reject carries its reason. Re-settling is a steward's (403 otherwise), of a
-   * SETTLED claim (409 otherwise).
+   * SETTLED claim (409 otherwise). A void carries the reason chosen from the sheet's list (409 when
+   * the list is not empty and none, or one not on it, is given).
    */
   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
-    const body = action === 'reject' ? { reason: reason ?? '' } : null;
+    const body = action === 'reject' ? { reason: reason ?? '' } : action === 'void' ? { reason: reason || null } : null;
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, body));
   }
 

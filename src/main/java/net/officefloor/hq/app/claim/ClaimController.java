@@ -40,7 +40,7 @@ public class ClaimController {
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags, List<String> tagsUsed) {
+            String ref, List<String> tags, List<String> tagsUsed, String voidReason) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -50,7 +50,7 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
-                    claim.getRef(), claim.getTags(), claim.getTagsUsed());
+                    claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason());
         }
     }
 
@@ -84,6 +84,10 @@ public class ClaimController {
     }
 
     /** The date an OPEN claim is deferred until. */
+    /** A void as chosen on the claim: a reason from the sheet's list, or none (null or blank). */
+    public record VoidForm(@Size(max = 100) String reason) {
+    }
+
     public record DeferForm(@NotNull LocalDate until) {
     }
 
@@ -257,13 +261,18 @@ public class ClaimController {
         return ClaimView.of(service.reject(sheetId, SignedIn.name(user), claimId, form.reason()));
     }
 
-    /** Void a DRAFT, OPEN or PENDING claim, or (by a steward, within days of its settlement) a SETTLED one. */
+    /**
+     * Void a DRAFT, OPEN or PENDING claim, or (by a steward, within days of its settlement) a SETTLED one;
+     * while the sheet has void reasons, with one of them.
+     */
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long claimId,
-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
-        return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.VOID));
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) @Valid VoidForm form) {
+        return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.VOID,
+                form == null ? null : form.reason()));
     }
 
     /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
