@@ -661,9 +661,21 @@ export class People {
       .join(', ');
   }
 
-  /** A person's backing: their patrons' due-totals added up, skipping those shown as n/a. */
+  /**
+   * A person's backing: the settled figures of their patrons' SETTLED claims dated within the 90 days
+   * up to and including the sheet's today, each at its frozen figure (one with none adds nothing).
+   */
   protected backingOf(person: PersonView): string {
-    return money(this.patrons(person).reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0));
+    return money(this.patrons(person).reduce((sum, p) => sum + this.recentSettledCents(p.id), 0));
+  }
+
+  private recentSettledCents(personId: number): number {
+    const today = this.today();
+    if (today === '') return 0;
+    const since = new Date(Date.parse(today) - 89 * 86_400_000).toISOString().slice(0, 10);
+    return this.claimsOf(personId)
+      .filter((c) => c.status === 'SETTLED' && since <= c.date && c.date <= today)
+      .reduce((sum, c) => sum + (c.settledDue === null ? 0 : cents(c.settledDue)), 0);
   }
 
   private patrons(person: PersonView): PersonView[] {
