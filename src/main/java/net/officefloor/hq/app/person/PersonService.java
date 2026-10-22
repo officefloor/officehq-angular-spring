@@ -133,13 +133,13 @@ public class PersonService {
 
     /**
      * Record the change to the person, with the grade in force on the sheet's today and, when the form
-     * gave them, their own terms (empty when cleared), once it is committed.
+     * gave them, their own terms (left off when they have none), once it is committed.
      */
     private void audited(String event, String sheetId, String user, Person person, LocalDate today,
             boolean withTerms) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.gradeOn(today)
-                + (withTerms ? " terms=" + (person.getTerms() == null ? "" : person.getTerms()) : ""));
+                + (withTerms && person.getTerms() != null ? " terms=" + person.getTerms() : ""));
     }
 
     /** Refuse a name already held on the sheet by anyone other than {@code self}. */

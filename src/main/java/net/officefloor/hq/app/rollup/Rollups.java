@@ -169,7 +169,8 @@ public class Rollups {
         return a == null ? b == null : b != null && a.compareTo(b) == 0;
     }
 
-    private static String shown(BigDecimal due) {
+    /** A due-total as shown: two decimals, or n/a. */
+    public static String shown(BigDecimal due) {
         return due != null ? due.toPlainString() : NO_RATE;
     }
 

@@ -54,8 +54,9 @@ public class SheetService {
     }
 
     /**
-     * Change the sheet's today, auditing the figures that moves. The sheet as it stood at the end of
-     * the today it leaves is kept first (see {@link TodayLeaving}). The periods it puts past their grace
+     * Change the sheet's today, auditing the figures that moves. When it moves, each person's due-total
+     * as it stood on the day being left is audited first, in list order, and the sheet as it stood at
+     * the end of that day is kept (see {@link TodayLeaving}). The periods it puts past their grace
      * days are closed (see {@link TodayChanged}) before those figures are audited.
      */
     @Transactional
@@ -63,6 +64,8 @@ public class SheetService {
         Sheet sheet = load(id);
         Rollups.Rollup before = rollups.take(id);
         if (!today.equals(sheet.getToday())) {
+            before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
+                    + " name=" + figures.name() + " due-total=" + Rollups.shown(figures.dueTotal())));
             events.publishEvent(new TodayLeaving(id, sheet.getToday()));
         }
         sheet.setToday(today);
