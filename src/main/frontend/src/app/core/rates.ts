@@ -76,14 +76,15 @@ export function due(amountCents: number, pct: string | null): string {
 }
 
 /**
- * A claim's due in whole cents: the due fixed when it was settled (its late charge frozen in), or
- * else its figure — the one its person's last statement bound it to (unless it is PENDING), or else its amount at the rate
- * the grade has in force on the claim's date raised to the floor (in whole cents) when below it —
- * with the late charge on top: for every full 30 days the claim is overdue, the late percent in force
- * on that boundary date (its due-by plus 30, 60, 90 ... days) of the figure, each rounded like the
- * claim, added up. The floor given is the one in force on the claim's date. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
- * charge is never bound by a statement. A correction has no floor and no late charge. Null when there
- * is no figure.
+ * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or else
+ * the greater of the floor (in whole cents) and its figure with the late charge on top. Its figure is
+ * the rate figure its person's last statement bound it to (unless it is PENDING), or else its amount
+ * at the rate the grade has in force on the claim's date; the late charge is, for every full 30 days
+ * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
+ * ... days) of the figure, each rounded like the claim, added up. The floor is applied last; the one
+ * given is the one in force on the claim's date. Live figures round half up when `halfUp` (see
+ * roundsHalfUp), else half to even. The charge and floor are never bound by a statement. A correction
+ * has no floor and no late charge. Null when there is no figure.
  */
 export function claimDueCents(
   claim: ClaimView,
@@ -99,13 +100,12 @@ export function claimDueCents(
     figure = claim.statedDue === null ? null : cents(claim.statedDue);
   } else {
     const pct = rateOn(rates, grade, claim.date);
-    const live = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
-    figure = live === null || isCorrection(claim) ? live : Math.max(live, floorCents);
+    figure = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
   }
   if (figure === null || isCorrection(claim)) return figure;
   const charge = lateBoundaries(claim, late)
     .reduce((sum, on) => sum + dueCents(figure, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
-  return figure + charge;
+  return Math.max(figure + charge, floorCents);
 }
 
 // The rates for the grades on a sheet, read from and written to the store.

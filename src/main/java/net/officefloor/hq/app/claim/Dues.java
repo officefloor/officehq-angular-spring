@@ -38,9 +38,9 @@ public class Dues {
     }
 
     /**
-     * The due figure a claim shows: the one fixed when it was settled, else (unless it is PENDING,
-     * which is not bound) the one its person's last statement bound it to, else its amount at the rate the grade has in force on the claim's date;
-     * null (n/a) when there is none.
+     * The due figure a claim shows, before its late charge and floor: the one fixed when it was settled,
+     * else (unless it is PENDING, which is not bound) the rate figure its person's last statement bound it
+     * to, else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
      */
     public BigDecimal figure(Claim claim, String grade) {
         if (claim.getSettledDue() != null) {
@@ -50,12 +50,15 @@ public class Dues {
     }
 
     /**
-     * The due a claim shows: its figure (see {@link #figure}) with the late charge on top while it is
-     * overdue; a settled claim's figure already holds the charge it was settled with. Null (n/a) when
-     * it has no figure.
+     * The due a claim shows: the greater of the floor in force on its date and its figure (see
+     * {@link #figure}) with the late charge on top while it is overdue; a settled claim's figure is
+     * frozen as it was settled. Null (n/a) when it has no figure.
      */
     public BigDecimal due(Claim claim, String grade) {
-        return withLate(claim, figure(claim, grade));
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
+        return floored(claim, withLate(claim, figure(claim, grade)));
     }
 
     /**
@@ -63,7 +66,7 @@ public class Dues {
      * the late charge it has on the sheet's today on top; null when it has no figure.
      */
     public BigDecimal settling(Claim claim, String grade) {
-        return withLate(claim, claim.isStated() ? claim.getStatedDue() : live(claim, grade));
+        return floored(claim, withLate(claim, claim.isStated() ? claim.getStatedDue() : live(claim, grade)));
     }
 
     /**
@@ -71,7 +74,7 @@ public class Dues {
      * PENDING) with the late charge it has on the sheet's today on top; null when it has no figure.
      */
     public BigDecimal approving(Claim claim, String grade) {
-        return withLate(claim, live(claim, grade));
+        return floored(claim, withLate(claim, live(claim, grade)));
     }
 
     /**
@@ -81,7 +84,7 @@ public class Dues {
      */
     public BigDecimal resettling(Claim claim, String grade) {
         BigDecimal figure = live(claim, grade);
-        return figure == null || claim.isCorrection() ? figure : lateOn(claim, figure);
+        return figure == null || claim.isCorrection() ? figure : floored(claim, lateOn(claim, figure));
     }
 
     /**
@@ -125,17 +128,27 @@ public class Dues {
     }
 
     /**
-     * A claim's amount at the rate the grade has in force on the claim's date, raised to the floor in
-     * force on the claim's date when below it (a correction has no floor), rounded by the claim's date against the policy
-     * date; null when it has no rate.
+     * A due raised to the floor in force on the claim's date when below it, applied last (after the
+     * late charge); a correction has no floor, and null (n/a) stays null.
+     */
+    private BigDecimal floored(Claim claim, BigDecimal due) {
+        if (due == null || claim.isCorrection()) {
+            return due;
+        }
+        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+        BigDecimal floor = sheet == null ? null : sheet.floorOn(claim.getDate());
+        return floor != null && due.compareTo(floor) < 0 ? floor : due;
+    }
+
+    /**
+     * A claim's rate figure: its amount at the rate the grade has in force on the claim's date, rounded
+     * by the claim's date against the policy date, with no floor; null when it has no rate.
      */
     public BigDecimal live(Claim claim, String grade) {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        BigDecimal floor = claim.isCorrection() || sheet == null ? null : sheet.floorOn(claim.getDate());
         RoundingMode rounding = rounding(claim, sheet);
         return rates.findInForce(claim.getSheetId(), grade, claim.getDate())
                 .map(rate -> due(claim.getAmount(), rate, rounding))
-                .map(due -> floor != null && due.compareTo(floor) < 0 ? floor : due)
                 .orElse(null);
     }
 

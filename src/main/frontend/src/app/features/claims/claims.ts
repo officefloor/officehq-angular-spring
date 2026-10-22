@@ -241,10 +241,11 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
 
   /**
-   * What is due on a claim: the due fixed when it was settled, or else the figure its person's last
-   * statement bound it to, or else its amount at the rate the
-   * person's grade has in force on the claim's date (n/a when it is dated before every rate) raised to
-   * the floor in force then, with its late charge (at the late percent in force on each 30-day boundary) on top while it is overdue.
+   * What is due on a claim: the due fixed when it was settled, or else the greater of the floor in
+   * force on the claim's date and its figure — the rate figure its person's last statement bound it to,
+   * or else its amount at the rate the person's grade has in force on the claim's date (n/a when it is
+   * dated before every rate) — with its late charge (at the late percent in force on each 30-day
+   * boundary) on top while it is overdue.
    */
   protected dueOf(claim: ClaimView): string {
     const late = { history: this.session.latePctHistory(), today: this.session.today() ?? '' };

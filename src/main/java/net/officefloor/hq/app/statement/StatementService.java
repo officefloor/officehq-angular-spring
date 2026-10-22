@@ -68,7 +68,7 @@ public class StatementService {
                 claim.unbind();
                 continue;
             }
-            // The statement binds the figure; the late charge stays live, but counts in its total.
+            // The statement binds the rate figure; the late charge and floor stay live, but count in its total.
             BigDecimal figure = claimService.figure(claim, person.gradeOn(claim.getDate()));
             figured |= figure != null;
             claim.bind(figure);
