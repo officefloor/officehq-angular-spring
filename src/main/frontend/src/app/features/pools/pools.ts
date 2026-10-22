@@ -1,8 +1,22 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { cents, money } from '../../core/claims';
 import { PersonView, heldOn, retiredOn } from '../../core/people';
-import { PoolMemberView, PoolView, PoolsApi } from '../../core/pools';
+import { PoolMemberView, PoolView, PoolsApi, memberOn } from '../../core/pools';
 import { Session } from '../../core/session';
+
+/** A day, yyyy-mm-dd. */
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A pool's row form: the member (person:<id> or pool:<id>), its share, and its optional from-date and
+ * to-date, cleared whenever a member is chosen: the dates belong to the membership being entered.
+ */
+interface Draft {
+  member: string;
+  share: string;
+  from: string;
+  to: string;
+}
 
 /** A share percent: more than 0.00 and at most 100.00, with up to two decimals. */
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
@@ -61,7 +75,9 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
 // The sheet's pools, each with its members and their shares, and a form to add one. A member is added
 // from the pool's row, a person or another pool (pool:<name>); a retired member's share counts as 0.00
 // toward the pool's total. A member with a hold in force on the sheet's today keeps their share in the
-// total but gets no cut, their share spread over the members with a cut. Each member of a balanced pool shows their cut of the pool's pot: the sheet's
+// total but gets no cut, their share spread over the members with a cut. A membership may carry a
+// from-date and a to-date: on a sheet's today outside them the member is left out entirely, from the
+// total share and the cuts. Each member of a balanced pool shows their cut of the pool's pot: the sheet's
 // pot for a pool that is a member of none, its cut in the pool above for one that is.
 @Component({
   selector: 'app-pools',
@@ -105,7 +121,7 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
               <select
                 [id]="'pool-member-select-' + line.pool.id"
                 data-testid="pool-member-select"
-                (change)="draft(line.pool.id, { member: value($event) })"
+                (change)="draft(line.pool.id, { member: value($event), from: '', to: '' })"
               >
                 <option value="" [selected]="drafts().get(line.pool.id)?.member === ''">Choose a person or pool</option>
                 @for (p of people(); track p.id) {
@@ -122,6 +138,22 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
                 inputmode="decimal"
                 [value]="drafts().get(line.pool.id)?.share ?? ''"
                 (input)="draft(line.pool.id, { share: value($event) })"
+              />
+              <label [for]="'pool-member-from-' + line.pool.id">From</label>
+              <input
+                [id]="'pool-member-from-' + line.pool.id"
+                data-testid="pool-member-from"
+                type="date"
+                [value]="drafts().get(line.pool.id)?.from ?? ''"
+                (input)="draft(line.pool.id, { from: value($event) })"
+              />
+              <label [for]="'pool-member-to-' + line.pool.id">To</label>
+              <input
+                [id]="'pool-member-to-' + line.pool.id"
+                data-testid="pool-member-to"
+                type="date"
+                [value]="drafts().get(line.pool.id)?.to ?? ''"
+                (input)="draft(line.pool.id, { to: value($event) })"
               />
               <button type="submit" data-testid="pool-member-add">Add member</button>
               @if (errors().get(line.pool.id); as message) {
@@ -146,8 +178,8 @@ export class Pools {
   protected readonly pools = signal<PoolView[]>([]);
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
-  /** The member (person:<id> or pool:<id>) and share chosen on each pool's row, by pool id. */
-  protected readonly drafts = signal(new Map<number, { member: string; share: string }>());
+  /** The member (person:<id> or pool:<id>), share and dates chosen on each pool's row, by pool id. */
+  protected readonly drafts = signal(new Map<number, Draft>());
   /** The error shown on each pool's row, by pool id. */
   protected readonly errors = signal(new Map<number, string>());
   /**
@@ -182,7 +214,9 @@ export class Pools {
   private readonly cutLines = computed(() => {
     const retired = new Set(this.people().filter((p) => retiredOn(p, this.today())).map((p) => p.id));
     const held = new Set(this.people().filter((p) => heldOn(p, this.today())).map((p) => p.id));
-    const pools = this.pools();
+    const today = this.today();
+    // A membership not in force on the sheet's today is left out entirely.
+    const pools = this.pools().map((pool) => ({ ...pool, members: pool.members.filter((m) => memberOn(m, today)) }));
     const parents = this.parents();
     const sheetPot = this.session.pot();
     const totals = new Map(
@@ -204,7 +238,7 @@ export class Pools {
       memo.set(pool.id, found);
       return found;
     };
-    return pools.map((pool) => ({ pool, total: totals.get(pool.id) ?? 0, cuts: cutsOf(pool) }));
+    return this.pools().map((pool, i) => ({ pool, total: totals.get(pool.id) ?? 0, cuts: cutsOf(pools[i]) }));
   });
   /** The pool each member pool is in, by member pool id. */
   private readonly parents = computed(
@@ -234,10 +268,10 @@ export class Pools {
 
   protected readonly key = key;
 
-  protected draft(poolId: number, change: Partial<{ member: string; share: string }>): void {
+  protected draft(poolId: number, change: Partial<Draft>): void {
     this.drafts.update((all) => {
       const next = new Map(all);
-      next.set(poolId, { member: '', share: '', ...all.get(poolId), ...change });
+      next.set(poolId, { member: '', share: '', from: '', to: '', ...all.get(poolId), ...change });
       return next;
     });
     this.setError(poolId, null);
@@ -276,7 +310,7 @@ export class Pools {
     this.setError(pool.id, null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    const draft = this.drafts().get(pool.id) ?? { member: '', share: '' };
+    const draft = this.drafts().get(pool.id) ?? { member: '', share: '', from: '', to: '' };
     const [kind, raw] = draft.member.split(':');
     const id = Number(raw);
     let member: { personId: number } | { poolId: number };
@@ -302,9 +336,19 @@ export class Pools {
       this.setError(pool.id, 'A share is more than 0.00 and at most 100.00, with two decimals.');
       return;
     }
+    const from = draft.from.trim();
+    const to = draft.to.trim();
+    if ((from !== '' && !DATE.test(from)) || (to !== '' && !DATE.test(to))) {
+      this.setError(pool.id, 'A from-date and a to-date are days, yyyy-mm-dd.');
+      return;
+    }
+    if (from !== '' && to !== '' && to < from) {
+      this.setError(pool.id, 'A to-date is not before the from-date.');
+      return;
+    }
     this.busy = true;
     try {
-      const saved = await this.api.addMember(sheet, pool.id, member, share);
+      const saved = await this.api.addMember(sheet, pool.id, member, share, from || null, to || null);
       this.pools.update((all) => all.map((p) => (p.id === saved.id ? saved : p)));
       this.drafts.update((all) => {
         const next = new Map(all);

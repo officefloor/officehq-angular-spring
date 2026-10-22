@@ -2,6 +2,7 @@ package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,14 +81,17 @@ public class PoolService {
 
     /**
      * Add a person on the sheet to a pool with a share percent; refused when the share is not more than
-     * 0.00 and at most 100.00 with two decimals, or the person is already in the pool.
+     * 0.00 and at most 100.00 with two decimals, the to-date is before the from-date, or the person is
+     * already in the pool.
      */
     @Transactional
-    public PoolWithMembers addMember(String sheetId, String user, long poolId, long personId, BigDecimal share) {
+    public PoolWithMembers addMember(String sheetId, String user, long poolId, long personId, BigDecimal share,
+            LocalDate from, LocalDate to) {
         if (share.scale() > 2 || share.signum() <= 0 || share.compareTo(MAX_SHARE) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A share is more than 0.00 and at most 100.00, with two decimals.");
         }
+        refuseDates(from, to);
         sheets.lock(sheetId);
         Pool pool = pools.findBySheetIdAndId(sheetId, poolId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool."));
@@ -97,24 +101,25 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is already in the pool.");
         }
         BigDecimal scaled = share.setScale(2, RoundingMode.UNNECESSARY);
-        members.saveAndFlush(new PoolMember(poolId, personId, scaled));
+        members.saveAndFlush(new PoolMember(poolId, personId, scaled).during(from, to));
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + person.getName() + " share=" + scaled.toPlainString());
+                + " name=" + person.getName() + " share=" + scaled.toPlainString() + dates(from, to));
         return list(sheetId).stream().filter(p -> p.pool().getId().equals(poolId)).findFirst().orElseThrow();
     }
 
     /**
      * Add another pool on the sheet to a pool with a share percent; refused when the share is bad, the pool
      * would contain itself through any chain, the member pool is already a member of a pool, or the chain of
-     * pools would be more than three deep.
+     * pools would be more than three deep; or the to-date is before the from-date.
      */
     @Transactional
     public PoolWithMembers addPoolMember(String sheetId, String user, long poolId, long memberPoolId,
-            BigDecimal share) {
+            BigDecimal share, LocalDate from, LocalDate to) {
         if (share.scale() > 2 || share.signum() <= 0 || share.compareTo(MAX_SHARE) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A share is more than 0.00 and at most 100.00, with two decimals.");
         }
+        refuseDates(from, to);
         sheets.lock(sheetId);
         Pool pool = pools.findBySheetIdAndId(sheetId, poolId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool."));
@@ -138,10 +143,22 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A chain of pools is at most three deep.");
         }
         BigDecimal scaled = share.setScale(2, RoundingMode.UNNECESSARY);
-        members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, scaled));
+        members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, scaled).during(from, to));
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + member.getName() + " share=" + scaled.toPlainString());
+                + " name=" + member.getName() + " share=" + scaled.toPlainString() + dates(from, to));
         return list(sheetId).stream().filter(p -> p.pool().getId().equals(poolId)).findFirst().orElseThrow();
+    }
+
+    /** Refused when a membership's to-date is before its from-date. */
+    private static void refuseDates(LocalDate from, LocalDate to) {
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A to-date is not before the from-date.");
+        }
+    }
+
+    /** A membership's dates as audited: from=<date> and to=<date>, each only when given. */
+    private static String dates(LocalDate from, LocalDate to) {
+        return (from != null ? " from=" + from : "") + (to != null ? " to=" + to : "");
     }
 
     /** How deep a pool is in its chain: 1 for a pool that is a member of none. */

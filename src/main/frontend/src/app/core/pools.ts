@@ -2,12 +2,25 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-/** A pool's member: a person on the sheet or another pool (the other null), its name, and its share percent with two decimals. */
+/**
+ * A pool's member: a person on the sheet or another pool (the other null), its name, its share percent with
+ * two decimals, and the dates (yyyy-mm-dd) the membership is in force between (null: open-ended).
+ */
 export interface PoolMemberView {
   personId: number | null;
   poolId: number | null;
   name: string;
   share: string;
+  from: string | null;
+  to: string | null;
+}
+
+/**
+ * Whether a membership is in force on a day (yyyy-mm-dd): within its from-date and to-date, each optional;
+ * with no day, every membership is.
+ */
+export function memberOn(m: PoolMemberView, day: string): boolean {
+  return day === '' || ((m.from === null || m.from <= day) && (m.to === null || day <= m.to));
 }
 
 /** A pool on the sheet: a name, once per sheet, and its members in the order they were added. */
@@ -34,10 +47,18 @@ export class PoolsApi {
 
   /**
    * Add a person, or another pool, to a pool with a share; refused when the person is in it already, the
-   * share is bad, or the member pool is in a pool already, would contain itself, or would be too deep.
+   * share is bad, the to-date is before the from-date, or the member pool is in a pool already, would
+   * contain itself, or would be too deep. A date left out (null) leaves that end open.
    */
-  addMember(sheet: string, poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<PoolView> {
-    return firstValueFrom(this.http.post<PoolView>(`${this.url(sheet)}/${poolId}/members`, { ...member, share }));
+  addMember(
+    sheet: string,
+    poolId: number,
+    member: { personId: number } | { poolId: number },
+    share: string,
+    from: string | null,
+    to: string | null,
+  ): Promise<PoolView> {
+    return firstValueFrom(this.http.post<PoolView>(`${this.url(sheet)}/${poolId}/members`, { ...member, share, from, to }));
   }
 
   private url(sheet: string): string {

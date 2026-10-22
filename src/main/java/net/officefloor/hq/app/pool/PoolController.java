@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -38,13 +39,14 @@ public class PoolController {
 
     /**
      * A pool's member: the person or the member pool (the other null), its name, and its share percent with
-     * two decimals.
+     * two decimals, and the dates the membership is in force between (null: open-ended).
      */
-    public record MemberView(Long personId, Long poolId, String name, String share) {
+    public record MemberView(Long personId, Long poolId, String name, String share, LocalDate from, LocalDate to) {
 
         static MemberView of(PoolService.Member member) {
             return new MemberView(member.member().getPersonId(), member.member().getMemberPoolId(), member.name(),
-                    member.member().getShare().toPlainString());
+                    member.member().getShare().toPlainString(), member.member().getFromDate(),
+                    member.member().getToDate());
         }
     }
 
@@ -54,9 +56,10 @@ public class PoolController {
 
     /**
      * A member as entered on the pool's row: a person or another pool (exactly one of them) and a share
-     * percent with up to two decimals.
+     * percent with up to two decimals, and optionally the dates the membership is in force between.
      */
-    public record MemberForm(Long personId, Long poolId, @NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String share) {
+    public record MemberForm(Long personId, Long poolId, @NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String share,
+            LocalDate from, LocalDate to) {
     }
 
     private final PoolService service;
@@ -93,10 +96,10 @@ public class PoolController {
         }
         if (form.poolId() != null) {
             return PoolView.of(service.addPoolMember(sheetId, SignedIn.name(user), poolId, form.poolId(),
-                    new BigDecimal(form.share())));
+                    new BigDecimal(form.share()), form.from(), form.to()));
         }
         return PoolView.of(service.addMember(sheetId, SignedIn.name(user), poolId, form.personId(),
-                new BigDecimal(form.share())));
+                new BigDecimal(form.share()), form.from(), form.to()));
     }
 
     /** Another user added the same name or member between the check and the write: the unique index refuses it. */
