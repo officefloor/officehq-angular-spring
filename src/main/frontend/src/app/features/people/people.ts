@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
 import { Session } from '../../core/session';
@@ -135,8 +136,12 @@ export class People {
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        this.error.set('That name is already in use on this sheet.');
+      } else {
+        this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+      }
     }
   }
 
