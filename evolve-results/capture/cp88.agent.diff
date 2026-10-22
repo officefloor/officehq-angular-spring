@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 0a4ae0d0..fcbacb5b 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -81,7 +81,8 @@ export function due(amountCents: number, pct: string | null): string {
+  * the rate figure its person's last statement bound it to (unless it is PENDING), or else its amount
+  * at the rate the grade has in force on the claim's date; the late charge is, for every full 30 days
+  * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
+- * ... days) of the figure, each rounded like the claim, added up. The floor is applied last; the one
++ * ... days) of the figure plus the charges of the boundaries before it (compounding), each rounded
++ * like the claim, added up. The floor is applied last; the one
+  * given is the one in force on the claim's date. Live figures round half up when `halfUp` (see
+  * roundsHalfUp), else half to even. The charge and floor are never bound by a statement. A correction
+  * has no floor and no late charge. Null when there is no figure.
+@@ -104,7 +105,7 @@ export function claimDueCents(
+   }
+   if (figure === null || isCorrection(claim)) return figure;
+   const charge = lateBoundaries(claim, late)
+-    .reduce((sum, on) => sum + dueCents(figure, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
++    .reduce((sum, on) => sum + dueCents(figure + sum, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
+   return Math.max(figure + charge, floorCents);
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 5a429017..81ee721a 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -328,6 +328,15 @@ export class Claims {
+         if (claim) this.fill(claim);
+       });
+     });
++    // An editor whose claim has left this person's DRAFT claims (reassigned, opened or gone) is closed:
++    // the form goes back to adding a claim.
++    effect(() => {
++      const claims = this.claims();
++      untracked(() => {
++        const id = this.editing();
++        if (this.restored && id !== null && !claims.some((c) => c.id === id && c.status === 'DRAFT')) this.reset();
++      });
++    });
+   }
+ 
+   /**
+@@ -802,7 +811,9 @@ export class Claims {
+       return;
+     }
+     const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects, ref: this.ref().trim() };
+-    const id = this.editing();
++    // a claim no longer this person's is not edited from their form: the form adds a claim
++    const editing = this.editing();
++    const id = this.claims().some((c) => c.id === editing) ? editing : null;
+     this.busy = true;
+     try {
+       const claim = id === null
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index c043c584..3a35e7d5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -144,8 +144,8 @@ public class Dues {
+     /**
+      * A figure with the late charge an OPEN claim would have on the sheet's today on top: for every full
+      * 30 days past its due-by plus its grade's grace (see {@link Sheet#lateFrom}), the late percent in
+-     * force on that boundary date (that date plus 30, 60, 90 ... days) of the figure, rounded like the
+-     * claim, the charges added up.
++     * force on that boundary date (that date plus 30, 60, 90 ... days) of the figure plus the charges of
++     * the boundaries before it (the charge compounds), rounded like the claim, the charges added up.
+      */
+     private BigDecimal lateOn(Claim claim, String grade, BigDecimal figure, Basis basis) {
+         Sheet sheet = basis.sheet();
+@@ -159,7 +159,7 @@ public class Dues {
+         for (long period = 1; period <= periods; period++) {
+             BigDecimal latePct = sheet.latePctOn(dueBy.plusDays(30 * period));
+             if (latePct != null && latePct.signum() != 0) {
+-                late = late.add(figure.multiply(latePct).movePointLeft(2).setScale(2, rounding));
++                late = late.add(figure.add(late).multiply(latePct).movePointLeft(2).setScale(2, rounding));
+             }
+         }
+         return figure.add(late);
