@@ -8,6 +8,7 @@ import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '..
 import { Session, graceOn, valueOn } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
+import { Consolidated } from '../consolidated/consolidated';
 import { Periods } from '../periods/periods';
 import { Pools } from '../pools/pools';
 import { PasteClaims } from '../paste-claims/paste-claims';
@@ -83,7 +84,7 @@ function csvField(value: string): string {
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Header, PasteClaims, Periods, Pools, QuickAdd, Rates, Summary],
+  imports: [Claims, Consolidated, Header, PasteClaims, Periods, Pools, QuickAdd, Rates, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -91,6 +92,7 @@ function csvField(value: string): string {
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
     />
+    <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" />
     <app-periods
       [periods]="periods()"

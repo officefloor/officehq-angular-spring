@@ -25,4 +25,23 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
         }
         return chain;
     }
+
+    /** The sheets naming this one as their parent. */
+    List<Sheet> findByParentIdOrderByIdAsc(String parentId);
+
+    /** A sheet's descendants: its children, their children, and so on, each once. */
+    default List<String> descendants(String id) {
+        List<String> found = new ArrayList<>();
+        List<String> next = new ArrayList<>(List.of(id));
+        while (!next.isEmpty()) {
+            String parent = next.remove(0);
+            for (Sheet child : findByParentIdOrderByIdAsc(parent)) {
+                if (!child.getId().equals(id) && !found.contains(child.getId())) {
+                    found.add(child.getId());
+                    next.add(child.getId());
+                }
+            }
+        }
+        return found;
+    }
 }
