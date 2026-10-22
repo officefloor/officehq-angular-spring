@@ -99,16 +99,22 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** The import box's text: lines of name,grade,terms,contact. */
+    public record ImportForm(@NotNull @Size(max = 200_000) String text) {
+    }
+
     private final PersonService service;
+    private final ImportService imports;
     private final BulkGradeService bulkGrade;
     private final WatchService watches;
     private final MergeService merges;
     private final TransferService transfers;
     private final SheetHistory history;
 
-    public PersonController(PersonService service, BulkGradeService bulkGrade, WatchService watches,
+    public PersonController(PersonService service, ImportService imports, BulkGradeService bulkGrade, WatchService watches,
             MergeService merges, TransferService transfers, SheetHistory history) {
         this.service = service;
+        this.imports = imports;
         this.bulkGrade = bulkGrade;
         this.watches = watches;
         this.merges = merges;
@@ -137,6 +143,15 @@ public class PersonController {
             @RequestBody @Valid PersonForm form) {
         return view(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms(),
                 form.contact()));
+    }
+
+    /** Add a person per imported line, in order, each as the person form would; nothing is added when any line is refused. */
+    @PostMapping("/import")
+    public List<PersonView> importPeople(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ImportForm form) {
+        return imports.importPeople(sheetId, SignedIn.name(user), form.text()).stream().map(this::view).toList();
     }
 
     /** Change a person's name and record their grade from its date, from the version of the person the form loaded. */

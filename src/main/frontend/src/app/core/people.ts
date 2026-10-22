@@ -117,6 +117,11 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(this.url(sheet), form));
   }
 
+  /** Add a person per pasted line of name,grade,terms,contact, in order, each as the form would; refused (400) as a whole. */
+  importPeople(sheet: string, text: string): Promise<PersonView[]> {
+    return firstValueFrom(this.http.post<PersonView[]>(`${this.url(sheet)}/import`, { text }));
+  }
+
   edit(sheet: string, id: number, form: PersonForm): Promise<PersonView> {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheet)}/${id}`, form));
   }
