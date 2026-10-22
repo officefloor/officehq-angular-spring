@@ -1,9 +1,13 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
-import { CAP, FLOOR, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
+import {
+  CAP, DatedKey, FLOOR, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, ROLES, SETTING_FROM, SettingsView, TERMS,
+  RoleName, RoleView, SettingsApi,
+} from '../../core/settings';
 import { Session } from '../../core/session';
 
 // The sheet's settings (the clerk limit, the cap, the floor, the terms and each grade's own terms, the late percent, the policy date and period numbering from) and the roles user names have on it (clerk by default,
-// or steward), each changed through its own form.
+// or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
+// sheet's today unless one is typed) and shown as in force on the sheet's today.
 @Component({
   selector: 'app-settings',
   template: `
@@ -18,6 +22,13 @@ import { Session } from '../../core/session';
           [value]="limit()"
           (input)="limit.set(value($event)); limitEdited = true; settingsError.set(null)"
         />
+        <label for="setting-clerk-limit-from">Clerk limit from (yyyy-mm-dd; empty: the sheet's today)</label>
+        <input
+          id="setting-clerk-limit-from"
+          data-testid="setting-clerk-limit-from"
+          [value]="fromInput()['clerk-limit']"
+          (input)="fromTyped('clerk-limit', value($event))"
+        />
         <label for="setting-cap">Cap (empty: no cap)</label>
         <input
           id="setting-cap"
@@ -28,6 +39,13 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'cap')"
           (keydown.backspace)="cleared($event, 'cap')"
         />
+        <label for="setting-cap-from">Cap from (yyyy-mm-dd; empty: the sheet's today)</label>
+        <input
+          id="setting-cap-from"
+          data-testid="setting-cap-from"
+          [value]="fromInput()['cap']"
+          (input)="fromTyped('cap', value($event))"
+        />
         <label for="setting-floor">Floor</label>
         <input
           id="setting-floor"
@@ -36,6 +54,13 @@ import { Session } from '../../core/session';
           [value]="floorInput()"
           (input)="floorInput.set(value($event)); floorEdited = true; settingsError.set(null)"
         />
+        <label for="setting-floor-from">Floor from (yyyy-mm-dd; empty: the sheet's today)</label>
+        <input
+          id="setting-floor-from"
+          data-testid="setting-floor-from"
+          [value]="fromInput()['floor']"
+          (input)="fromTyped('floor', value($event))"
+        />
         <label for="setting-terms">Terms (days)</label>
         <input
           id="setting-terms"
@@ -43,6 +68,13 @@ import { Session } from '../../core/session';
           inputmode="numeric"
           [value]="termsInput()"
           (input)="termsInput.set(value($event)); termsEdited = true; settingsError.set(null)"
+        />
+        <label for="setting-terms-from">Terms from (yyyy-mm-dd; empty: the sheet's today)</label>
+        <input
+          id="setting-terms-from"
+          data-testid="setting-terms-from"
+          [value]="fromInput()['terms']"
+          (input)="fromTyped('terms', value($event))"
         />
         @for (g of grades; track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days; empty: the sheet's terms)</label>
@@ -53,6 +85,13 @@ import { Session } from '../../core/session';
             [value]="gradeTermsInput()[g]"
             (input)="gradeTermsTyped(g, value($event))"
           />
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from (yyyy-mm-dd; empty: the sheet's today)</label>
+          <input
+            [id]="'setting-terms-' + g + '-from'"
+            [attr.data-testid]="'setting-terms-' + g + '-from'"
+            [value]="fromInput()[gradeKey(g)]"
+            (input)="fromTyped(gradeKey(g), value($event))"
+          />
         }
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input
@@ -61,6 +100,13 @@ import { Session } from '../../core/session';
           inputmode="decimal"
           [value]="latePctInput()"
           (input)="latePctInput.set(value($event)); latePctEdited = true; settingsError.set(null)"
+        />
+        <label for="setting-late-pct-from">Late percent from (yyyy-mm-dd; empty: the sheet's today)</label>
+        <input
+          id="setting-late-pct-from"
+          data-testid="setting-late-pct-from"
+          [value]="fromInput()['late-pct']"
+          (input)="fromTyped('late-pct', value($event))"
         />
         <label for="setting-policy-date">Policy date (yyyy-mm-dd; empty: the sheet's today)</label>
         <input
@@ -153,6 +199,8 @@ export class Settings {
   protected readonly gradeTerms = signal<Record<Grade, number | null>>({ A: null, B: null, C: null });
   protected readonly gradeTermsInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly latePctInput = signal('');
+  /** The from-date typed for each dated setting; empty for the sheet's today. */
+  protected readonly fromInput = signal<Record<DatedKey, string>>(Settings.noFroms());
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFrom = signal('');
   protected readonly periodNumberingFromInput = signal('');
@@ -174,6 +222,10 @@ export class Settings {
   /** The settings saves in flight: a save submitted meanwhile is written after them, in turn. */
   private saving: Promise<void> = Promise.resolve();
 
+  private static noFroms(): Record<DatedKey, string> {
+    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'late-pct': '' };
+  }
+
   constructor() {
     // Every sheet load re-reads the sheet's settings and roles from the store.
     effect(() => {
@@ -184,11 +236,39 @@ export class Settings {
         this.gradeTerms.set({ A: null, B: null, C: null });
         this.periodNumberingFrom.set('');
         this.roles.set([]);
+        this.fromInput.set(Settings.noFroms());
         this.settingsError.set(null);
         this.roleError.set(null);
         if (sheet) void this.reload(sheet, loads);
       });
     });
+    // A change to the sheet's today changes which dated values are in force.
+    let shownToday: string | null = null;
+    effect(() => {
+      const today = this.session.today();
+      untracked(() => {
+        const sheet = this.session.sheet();
+        const changed = shownToday !== null && today !== shownToday;
+        shownToday = today;
+        if (sheet && changed) void this.todayChanged(sheet);
+      });
+    });
+  }
+
+  /** A from-date typed: saving then records that setting from it. */
+  protected fromTyped(key: DatedKey, value: string): void {
+    this.fromInput.update((all) => ({ ...all, [key]: value }));
+    if (key === 'clerk-limit') this.limitEdited = true;
+    else if (key === 'cap') this.capEdited = true;
+    else if (key === 'floor') this.floorEdited = true;
+    else if (key === 'terms') this.termsEdited = true;
+    else if (key === 'late-pct') this.latePctEdited = true;
+    else this.gradeTermsEdited.add(key.slice('terms-'.length) as Grade);
+    this.settingsError.set(null);
+  }
+
+  protected gradeKey(grade: Grade): DatedKey {
+    return `terms-${grade}`;
   }
 
   /**
@@ -245,6 +325,20 @@ export class Settings {
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
+    const froms = this.fromInput();
+    const from = (key: DatedKey) => froms[key].trim();
+    const savedKeys: DatedKey[] = [
+      ...(saveLimit ? (['clerk-limit'] as const) : []),
+      ...(saveCap ? (['cap'] as const) : []),
+      ...(saveFloor ? (['floor'] as const) : []),
+      ...(saveTerms ? (['terms'] as const) : []),
+      ...saveGradeTerms.map((t) => this.gradeKey(t.grade)),
+      ...(saveLatePct ? (['late-pct'] as const) : []),
+    ];
+    if (savedKeys.some((key) => !SETTING_FROM.test(from(key)))) {
+      this.settingsError.set('Type a from-date as yyyy-mm-dd, or leave it empty for the sheet\'s today.');
+      return;
+    }
     if (saveLimit && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it empty for no limit.');
       return;
@@ -286,32 +380,32 @@ export class Settings {
     if (saveLatePct) this.latePctEdited = false;
     if (savePolicyDate) this.policyDateEdited = false;
     if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
+    this.fromInput.update((all) => {
+      const next = { ...all };
+      for (const key of savedKeys) next[key] = '';
+      return next;
+    });
     const write = async () => {
       try {
         if (saveLimit) {
-          const view = await this.api.setClerkLimit(sheet, limit);
-          this.clerkLimit.set(view.clerkLimit);
+          this.inForce(await this.api.setClerkLimit(sheet, limit, from('clerk-limit')));
         }
         if (saveCap) {
-          const view = await this.api.setCap(sheet, cap);
-          this.session.cap.set(view.cap ?? '');
+          const view = await this.api.setCap(sheet, cap, from('cap'));
+          this.inForce(view);
           if (!this.capEdited) this.capInput.set(view.cap ?? '');
         }
         if (saveFloor) {
-          const view = await this.api.setFloor(sheet, floor);
-          this.session.floor.set(view.floor);
+          this.inForce(await this.api.setFloor(sheet, floor, from('floor')));
         }
         if (saveTerms) {
-          const view = await this.api.setTerms(sheet, terms);
-          this.session.terms.set(view.terms);
+          this.inForce(await this.api.setTerms(sheet, terms, from('terms')));
         }
         for (const t of saveGradeTerms) {
-          const view = await this.api.setGradeTerms(sheet, t.grade, t.value);
-          this.gradeTerms.set({ A: view.termsA, B: view.termsB, C: view.termsC });
+          this.inForce(await this.api.setGradeTerms(sheet, t.grade, t.value, from(this.gradeKey(t.grade))));
         }
         if (saveLatePct) {
-          const view = await this.api.setLatePct(sheet, latePct);
-          this.session.latePct.set(view.latePct);
+          this.inForce(await this.api.setLatePct(sheet, latePct, from('late-pct')));
         }
         if (savePolicyDate) {
           const view = await this.api.setPolicyDate(sheet, policyDate);
@@ -362,19 +456,32 @@ export class Settings {
     }
   }
 
+  /** Show the dated settings as in force on the sheet's today, and the floor's and late percent's values by from-date. */
+  private inForce(view: SettingsView): void {
+    this.clerkLimit.set(view.clerkLimit);
+    this.session.cap.set(view.cap ?? '');
+    this.session.floor.set(view.floor);
+    this.session.floorHistory.set(view.floorHistory);
+    this.session.terms.set(view.terms);
+    this.gradeTerms.set({ A: view.termsA, B: view.termsB, C: view.termsC });
+    this.session.latePct.set(view.latePct);
+    this.session.latePctHistory.set(view.latePctHistory);
+  }
+
+  /** The sheet's today changed: re-read which values are in force on it. */
+  private async todayChanged(sheet: string): Promise<void> {
+    const settings = await this.api.get(sheet);
+    if (this.session.sheet() === sheet) this.inForce(settings);
+  }
+
   private async reload(sheet: string, loads: number): Promise<void> {
     const [settings, roles] = await Promise.all([this.api.get(sheet), this.api.roles(sheet)]);
     // A later load may have started while this one was in flight: only the latest is shown.
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
-      this.clerkLimit.set(settings.clerkLimit);
-      this.session.floor.set(settings.floor);
+      this.inForce(settings);
       // The cap's input starts at the cap in force, so clearing it is a change.
-      this.session.cap.set(settings.cap ?? '');
       this.capInput.set(settings.cap ?? '');
       this.capEdited = false;
-      this.session.terms.set(settings.terms);
-      this.session.latePct.set(settings.latePct);
-      this.gradeTerms.set({ A: settings.termsA, B: settings.termsB, C: settings.termsC });
       this.session.policyDate.set(settings.policyDate ?? '');
       // The policy date's input starts at the date in force, so clearing it is a change.
       this.policyDateInput.set(settings.policyDate ?? '');

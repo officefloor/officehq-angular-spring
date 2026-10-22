@@ -65,80 +65,66 @@ public class SheetService {
         return load(id).getClerkLimit();
     }
 
-    /** Change the sheet's clerk limit (null: no limit), auditing the change. */
+    /** Record the sheet's clerk limit (null: no limit) from a date (null: the sheet's today), auditing the change. */
     @Transactional
-    public Sheet setClerkLimit(String id, String user, BigDecimal limit) {
+    public Sheet setClerkLimit(String id, String user, BigDecimal limit, LocalDate from) {
+        return setDated(id, user, Sheet.CLERK_LIMIT, money(limit), from, false);
+    }
+
+    /** Record the sheet's cap (null: no cap) from a date, auditing the change and the figures it moves. */
+    @Transactional
+    public Sheet setCap(String id, String user, BigDecimal cap, LocalDate from) {
+        return setDated(id, user, Sheet.CAP, money(cap), from, true);
+    }
+
+    /** Record the sheet's floor from a date, auditing the change and the figures it moves. */
+    @Transactional
+    public Sheet setFloor(String id, String user, BigDecimal floor, LocalDate from) {
+        return setDated(id, user, Sheet.FLOOR, money(floor), from, true);
+    }
+
+    /** Record the sheet's terms, in days, from a date, auditing the change; claims keep their due-by. */
+    @Transactional
+    public Sheet setTerms(String id, String user, int terms, LocalDate from) {
+        return setDated(id, user, Sheet.TERMS, Integer.toString(terms), from, true);
+    }
+
+    /**
+     * Record a grade's own terms, in days (null: the sheet's terms), from a date, auditing the change.
+     * Claims keep their due-by.
+     */
+    @Transactional
+    public Sheet setGradeTerms(String id, String user, String grade, Integer terms, LocalDate from) {
+        return setDated(id, user, Sheet.gradeTermsKey(grade), terms == null ? null : terms.toString(), from, true);
+    }
+
+    /** Record the sheet's late percent from a date, auditing the change and the figures it moves. */
+    @Transactional
+    public Sheet setLatePct(String id, String user, BigDecimal latePct, LocalDate from) {
+        return setDated(id, user, Sheet.LATE_PCT, money(latePct), from, true);
+    }
+
+    /**
+     * Record a dated setting's value (null: none) from a date, the sheet's today when none is given,
+     * replacing any value recorded from that date. The change is audited, with the from-date when one
+     * was given, and so are the figures it moves when it can move any.
+     */
+    private Sheet setDated(String id, String user, String key, String value, LocalDate from, boolean movesFigures) {
         Sheet sheet = lock(id);
-        sheet.setClerkLimit(limit == null ? null : limit.setScale(2, RoundingMode.UNNECESSARY));
+        Rollups.Rollup before = movesFigures ? rollups.take(id) : null;
+        sheet.record(key, from == null ? sheet.getToday() : from, value);
         Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=clerk-limit value="
-                + (saved.getClerkLimit() == null ? "" : saved.getClerkLimit().toPlainString()));
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value="
+                + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
+        if (movesFigures) {
+            rollups.audit(id, user, before);
+        }
         return saved;
     }
 
-    /** Change the sheet's cap (null: no cap), auditing the change and the figures it moves. */
-    @Transactional
-    public Sheet setCap(String id, String user, BigDecimal cap) {
-        Sheet sheet = lock(id);
-        Rollups.Rollup before = rollups.take(id);
-        sheet.setCap(cap == null ? null : cap.setScale(2, RoundingMode.UNNECESSARY));
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=cap value="
-                + (saved.getCap() == null ? "" : saved.getCap().toPlainString()));
-        rollups.audit(id, user, before);
-        return saved;
-    }
-
-    /** Change the sheet's floor, auditing the change and the figures it moves. */
-    @Transactional
-    public Sheet setFloor(String id, String user, BigDecimal floor) {
-        Sheet sheet = lock(id);
-        Rollups.Rollup before = rollups.take(id);
-        sheet.setFloor(floor.setScale(2, RoundingMode.UNNECESSARY));
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=floor value="
-                + saved.getFloor().toPlainString());
-        rollups.audit(id, user, before);
-        return saved;
-    }
-
-    /** Change the sheet's terms, in days, auditing the change; claims keep their due-by. */
-    @Transactional
-    public Sheet setTerms(String id, String user, int terms) {
-        Sheet sheet = lock(id);
-        Rollups.Rollup before = rollups.take(id);
-        sheet.setTerms(terms);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + saved.getTerms());
-        rollups.audit(id, user, before);
-        return saved;
-    }
-
-    /** Change a grade's own terms, in days (null: the sheet's terms), auditing the change. Claims keep their due-by. */
-    @Transactional
-    public Sheet setGradeTerms(String id, String user, String grade, Integer terms) {
-        Sheet sheet = lock(id);
-        Rollups.Rollup before = rollups.take(id);
-        sheet.setGradeTerms(grade, terms);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        Integer value = saved.getGradeTerms(grade);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms-" + grade + " value="
-                + (value == null ? "" : value.toString()));
-        rollups.audit(id, user, before);
-        return saved;
-    }
-
-    /** Change the sheet's late percent, auditing the change and the figures it moves. */
-    @Transactional
-    public Sheet setLatePct(String id, String user, BigDecimal latePct) {
-        Sheet sheet = lock(id);
-        Rollups.Rollup before = rollups.take(id);
-        sheet.setLatePct(latePct.setScale(2, RoundingMode.UNNECESSARY));
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=late-pct value="
-                + saved.getLatePct().toPlainString());
-        rollups.audit(id, user, before);
-        return saved;
+    /** A figure with two decimals as text; null stays null. */
+    private static String money(BigDecimal value) {
+        return value == null ? null : value.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
     }
 
     /** Change the sheet's policy date (null: the sheet's today), auditing the change and the figures it moves. */

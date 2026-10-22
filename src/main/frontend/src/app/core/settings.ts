@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { DatedValue } from './session';
 
 /** The roles a user name can have on a sheet; a name with none set is a clerk. */
 export const ROLES = ['clerk', 'steward'] as const;
@@ -11,6 +12,13 @@ export interface RoleView {
   role: RoleName;
 }
 
+/** The settings that carry a figure: each is saved from a from-date and shown as in force on the sheet's today. */
+export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'late-pct';
+
+/** A from-date as a dated setting takes it: yyyy-mm-dd, or blank for the sheet's today. */
+export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
+
+/** The settings as in force on the sheet's today. */
 export interface SettingsView {
   /** The clerk limit with two decimals, e.g. "1.50"; null when there is no limit. */
   clerkLimit: string | null;
@@ -30,6 +38,10 @@ export interface SettingsView {
   termsC: number | null;
   /** The cap with two decimals, e.g. "8.00": a person's due-total is at most it; null when there is none. */
   cap: string | null;
+  /** The floor's values by from-date, its starting value first. */
+  floorHistory: DatedValue[];
+  /** The late percent's values by from-date, its starting value first. */
+  latePctHistory: DatedValue[];
 }
 
 /** The grades that can have their own terms. */
@@ -69,34 +81,34 @@ export class SettingsApi {
     return firstValueFrom(this.http.get<SettingsView>(`${this.url(sheet)}/settings`));
   }
 
-  /** Set the clerk limit; a blank value means no limit. */
-  setClerkLimit(sheet: string, value: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/clerk-limit`, { value }));
+  /** Set the clerk limit from a date (blank: the sheet's today); a blank value means no limit. */
+  setClerkLimit(sheet: string, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/clerk-limit`, { value, from }));
   }
 
-  /** Set the cap; a blank value means no cap. */
-  setCap(sheet: string, value: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/cap`, { value }));
+  /** Set the cap from a date (blank: the sheet's today); a blank value means no cap. */
+  setCap(sheet: string, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/cap`, { value, from }));
   }
 
-  /** Set the floor. */
-  setFloor(sheet: string, value: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/floor`, { value }));
+  /** Set the floor from a date (blank: the sheet's today). */
+  setFloor(sheet: string, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/floor`, { value, from }));
   }
 
-  /** Set the terms, in days. */
-  setTerms(sheet: string, value: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/terms`, { value }));
+  /** Set the terms, in days, from a date (blank: the sheet's today). */
+  setTerms(sheet: string, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/terms`, { value, from }));
   }
 
-  /** Set a grade's own terms, in days; a blank value means the grade uses the sheet's terms. */
-  setGradeTerms(sheet: string, grade: Grade, value: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/terms-${grade}`, { value }));
+  /** Set a grade's own terms, in days, from a date (blank: the sheet's today); a blank value means the grade uses the sheet's terms. */
+  setGradeTerms(sheet: string, grade: Grade, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/terms-${grade}`, { value, from }));
   }
 
-  /** Set the late percent. */
-  setLatePct(sheet: string, value: string): Promise<SettingsView> {
-    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/late-pct`, { value }));
+  /** Set the late percent from a date (blank: the sheet's today). */
+  setLatePct(sheet: string, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/late-pct`, { value, from }));
   }
 
   /** Set the policy date; a blank value means the sheet's today. */

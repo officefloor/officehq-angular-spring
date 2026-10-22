@@ -85,7 +85,7 @@ public class Dues {
     }
 
     /**
-     * A figure with the claim's late charge on top: the sheet's late percent of the figure for every
+     * A figure with the claim's late charge on top: the late percent in force on the claim's date of the figure for every
      * full 30 days an OPEN or PENDING claim is past its due-by (fixed when it was added) on the sheet's
      * today, rounded by the claim's date against the policy date. The charge is never bound: it always follows the sheet's today.
      * A correction has no late charge.
@@ -100,7 +100,8 @@ public class Dues {
     /** A figure with the late charge an OPEN claim would have on the sheet's today on top. */
     private BigDecimal lateOn(Claim claim, BigDecimal figure) {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        if (sheet == null || sheet.getLatePct().signum() == 0) {
+        BigDecimal latePct = sheet == null ? null : sheet.latePctOn(claim.getDate());
+        if (latePct == null || latePct.signum() == 0) {
             return figure;
         }
         LocalDate dueBy = claim.getDueBy();
@@ -108,19 +109,19 @@ public class Dues {
         if (periods <= 0) {
             return figure;
         }
-        BigDecimal late = figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods))
+        BigDecimal late = figure.multiply(latePct).multiply(BigDecimal.valueOf(periods))
                 .movePointLeft(2).setScale(2, rounding(claim, sheet));
         return figure.add(late);
     }
 
     /**
-     * A claim's amount at the rate the grade has in force on the claim's date, raised to the sheet's
-     * floor when below it (a correction has no floor), rounded by the claim's date against the policy
+     * A claim's amount at the rate the grade has in force on the claim's date, raised to the floor in
+     * force on the claim's date when below it (a correction has no floor), rounded by the claim's date against the policy
      * date; null when it has no rate.
      */
     public BigDecimal live(Claim claim, String grade) {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
-        BigDecimal floor = claim.isCorrection() || sheet == null ? null : sheet.getFloor();
+        BigDecimal floor = claim.isCorrection() || sheet == null ? null : sheet.floorOn(claim.getDate());
         RoundingMode rounding = rounding(claim, sheet);
         return rates.findInForce(claim.getSheetId(), grade, claim.getDate())
                 .map(rate -> due(claim.getAmount(), rate, rounding))

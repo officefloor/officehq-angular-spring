@@ -2,20 +2,43 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
+/** A setting's value from a date (yyyy-mm-dd); from null for its starting value, before every from-date. */
+export interface DatedValue {
+  from: string | null;
+  value: string;
+}
+
+/**
+ * The value a dated setting has in force on a date (yyyy-mm-dd): the one with the latest from-date
+ * on or before it, else the starting value (the one with no from-date), else `start`.
+ */
+export function valueOn(history: DatedValue[], date: string, start: string): string {
+  let best: DatedValue | null = null;
+  for (const d of history) {
+    if (d.from !== null && d.from > date) continue;
+    if (best === null || (d.from !== null && (best.from === null || d.from > best.from))) best = d;
+  }
+  return best === null ? start : best.value;
+}
+
 export interface SheetView {
   id: string;
   /** The sheet's today (yyyy-mm-dd): every date-dependent decision and default date uses it. */
   today: string;
-  /** The sheet's floor with two decimals: a claim's live due is at least it. */
+  /** The sheet's floor in force on its today, with two decimals. */
   floor: string;
-  /** The sheet's terms in days: a claim is due by its date plus them. */
+  /** The sheet's terms in force on its today, in days. */
   terms: number;
-  /** The sheet's late percent with two decimals: an overdue claim gains it of its figure every full 30 days. */
+  /** The sheet's late percent in force on its today, with two decimals. */
   latePct: string;
   /** The sheet's policy date (yyyy-mm-dd); null when blank, the sheet's today then being the policy date. */
   policyDate: string | null;
-  /** The sheet's cap with two decimals: a person's due-total is at most it; null when there is none. */
+  /** The sheet's cap in force on its today, with two decimals: a person's due-total is at most it; null when there is none. */
   cap: string | null;
+  /** The floor's values by from-date, its starting value first. */
+  floorHistory: DatedValue[];
+  /** The late percent's values by from-date, its starting value first. */
+  latePctHistory: DatedValue[];
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -28,15 +51,22 @@ export class Session {
   readonly sheet = signal<string | null>(null);
   /** The active sheet's today; features use it, never the real clock. */
   readonly today = signal<string | null>(null);
-  /** The active sheet's floor with two decimals: a claim's live due is at least it. */
+  /** The active sheet's floor in force on its today, with two decimals. */
   readonly floor = signal('1.00');
-  /** The active sheet's terms in days: a claim is due by its date plus them. */
+  /** The active sheet's floor by from-date: a claim's live due is at least the one in force on its date. */
+  readonly floorHistory = signal<DatedValue[]>([]);
+  /** The active sheet's terms in force on its today, in days. */
   readonly terms = signal(14);
-  /** The active sheet's late percent with two decimals: an overdue claim gains it of its figure every full 30 days. */
+  /** The active sheet's late percent in force on its today, with two decimals. */
   readonly latePct = signal('0.00');
+  /**
+   * The active sheet's late percent by from-date: an overdue claim gains the one in force on its date
+   * of its figure every full 30 days.
+   */
+  readonly latePctHistory = signal<DatedValue[]>([]);
   /** The active sheet's policy date (yyyy-mm-dd); empty when blank (the sheet's today is then the policy date). */
   readonly policyDate = signal('');
-  /** The active sheet's cap with two decimals: a person's due-total is at most it; empty when there is none. */
+  /** The active sheet's cap in force on its today, with two decimals: a person's due-total is at most it; empty when there is none. */
   readonly cap = signal('');
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
@@ -70,6 +100,8 @@ export class Session {
     this.floor.set(view.floor);
     this.terms.set(view.terms);
     this.latePct.set(view.latePct);
+    this.floorHistory.set(view.floorHistory);
+    this.latePctHistory.set(view.latePctHistory);
     this.policyDate.set(view.policyDate ?? '');
     this.cap.set(view.cap ?? '');
   }

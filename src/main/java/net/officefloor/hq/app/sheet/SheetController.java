@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.List;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -28,12 +29,13 @@ public class SheetController {
 
     /** What the screen is told about a loaded sheet. */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
-            String cap) {
+            String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
-                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
+                    DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()));
         }
     }
 
@@ -41,41 +43,78 @@ public class SheetController {
     public record TodayChange(@NotNull LocalDate today) {
     }
 
-    /** What the screen is told about the sheet's settings: the clerk limit with two decimals, null for none,
+    /** What the screen is told about the sheet's settings, each dated one as in force on the sheet's today
+     * (with the floor's and the late percent's values by from-date): the clerk limit with two decimals, null for none,
      * the floor with two decimals, the terms in days, the late percent with two decimals, and the policy
      * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off), and
      * each grade's own terms in days, null for none (the sheet's terms), and the cap with two decimals, null
      * for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, Integer termsA, Integer termsB, Integer termsC, String cap) {
+            LocalDate periodNumberingFrom, Integer termsA, Integer termsB, Integer termsC, String cap,
+            List<DatedValue> floorHistory, List<DatedValue> latePctHistory) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(),
                     sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), sheet.getGradeTerms("A"),
                     sheet.getGradeTerms("B"), sheet.getGradeTerms("C"),
-                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
+                    DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()));
         }
     }
 
     /** A setting's value as entered: up to two decimals, or blank (or null) for none. */
-    public record SettingChange(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value) {
+    public record SettingChange(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
     }
 
     /** A floor as entered: up to two decimals; it cannot be blank. */
-    public record FloorChange(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String value) {
+    public record FloorChange(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
     }
 
     /** Terms as entered: a whole number of days; they cannot be blank. */
-    public record TermsChange(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value) {
+    public record TermsChange(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
     }
 
     /** A grade's terms as entered: a whole number of days, or blank (or null) for the sheet's terms. */
-    public record GradeTermsChange(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+    public record GradeTermsChange(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
     }
 
     /** A late percent as entered: 0.00 or more, up to two decimals; it cannot be blank. */
-    public record LatePctChange(@NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String value) {
+    public record LatePctChange(@NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
+    }
+
+    /** A change to a dated setting: from a date entered as yyyy-mm-dd, or blank (or null) for the sheet's today. */
+    interface Dated {
+
+        String from();
+
+        /** The from-date entered; null when blank. */
+        default LocalDate fromDate() {
+            return parse(from());
+        }
+    }
+
+    /** A setting's value from a date: from null for its starting value, before every from-date. */
+    public record DatedValue(LocalDate from, String value) {
+
+        static List<DatedValue> of(List<DatedSetting> history) {
+            return history.stream().map(d -> new DatedValue(d.getFromDate(), d.getValue())).toList();
+        }
+    }
+
+    /** A date as entered; null when blank. */
+    static LocalDate parse(String value) {
+        String text = value == null ? "" : value.trim();
+        try {
+            return text.isEmpty() ? null : LocalDate.parse(text);
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + text);
+        }
     }
 
     /** A date setting as entered: yyyy-mm-dd, or blank (or null) for none. */
@@ -83,12 +122,7 @@ public class SheetController {
 
         /** The date entered; null when blank. */
         LocalDate date() {
-            String text = value == null ? "" : value.trim();
-            try {
-                return text.isEmpty() ? null : LocalDate.parse(text);
-            } catch (DateTimeParseException e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + text);
-            }
+            return parse(value);
         }
     }
 
@@ -121,7 +155,7 @@ public class SheetController {
         return SettingsView.of(service.load(id));
     }
 
-    /** Change the sheet's clerk limit; a blank value means no limit. */
+    /** Record the sheet's clerk limit from a date (blank: the sheet's today); a blank value means no limit. */
     @PutMapping("/{id}/settings/clerk-limit")
     public SettingsView setClerkLimit(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
@@ -129,38 +163,38 @@ public class SheetController {
             @RequestBody @Valid SettingChange change) {
         String value = change.value() == null ? "" : change.value().trim();
         return SettingsView.of(service.setClerkLimit(id, SignedIn.name(user),
-                value.isEmpty() ? null : new BigDecimal(value)));
+                value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
     }
 
-    /** Change the sheet's cap; a blank value means no cap. */
+    /** Record the sheet's cap from a date (blank: the sheet's today); a blank value means no cap. */
     @PutMapping("/{id}/settings/cap")
     public SettingsView setCap(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid SettingChange change) {
         String value = change.value() == null ? "" : change.value().trim();
-        return SettingsView.of(service.setCap(id, SignedIn.name(user), value.isEmpty() ? null : new BigDecimal(value)));
+        return SettingsView.of(service.setCap(id, SignedIn.name(user), value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
     }
 
-    /** Change the sheet's floor. */
+    /** Record the sheet's floor from a date (blank: the sheet's today). */
     @PutMapping("/{id}/settings/floor")
     public SettingsView setFloor(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid FloorChange change) {
-        return SettingsView.of(service.setFloor(id, SignedIn.name(user), new BigDecimal(change.value().trim())));
+        return SettingsView.of(service.setFloor(id, SignedIn.name(user), new BigDecimal(change.value().trim()), change.fromDate()));
     }
 
-    /** Change the sheet's terms, in days. */
+    /** Record the sheet's terms, in days, from a date (blank: the sheet's today). */
     @PutMapping("/{id}/settings/terms")
     public SettingsView setTerms(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid TermsChange change) {
-        return SettingsView.of(service.setTerms(id, SignedIn.name(user), Integer.parseInt(change.value().trim())));
+        return SettingsView.of(service.setTerms(id, SignedIn.name(user), Integer.parseInt(change.value().trim()), change.fromDate()));
     }
 
-    /** Change a grade's own terms, in days; a blank value means the grade uses the sheet's terms. */
+    /** Record a grade's own terms, in days, from a date (blank: the sheet's today); a blank value means the grade uses the sheet's terms. */
     @PutMapping("/{id}/settings/terms-{grade}")
     public SettingsView setGradeTerms(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
@@ -169,16 +203,16 @@ public class SheetController {
             @RequestBody @Valid GradeTermsChange change) {
         String value = change.value() == null ? "" : change.value().trim();
         return SettingsView.of(service.setGradeTerms(id, SignedIn.name(user), grade,
-                value.isEmpty() ? null : Integer.valueOf(value)));
+                value.isEmpty() ? null : Integer.valueOf(value), change.fromDate()));
     }
 
-    /** Change the sheet's late percent. */
+    /** Record the sheet's late percent from a date (blank: the sheet's today). */
     @PutMapping("/{id}/settings/late-pct")
     public SettingsView setLatePct(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid LatePctChange change) {
-        return SettingsView.of(service.setLatePct(id, SignedIn.name(user), new BigDecimal(change.value().trim())));
+        return SettingsView.of(service.setLatePct(id, SignedIn.name(user), new BigDecimal(change.value().trim()), change.fromDate()));
     }
 
     /** Change the sheet's policy date; a blank value means the sheet's today. */

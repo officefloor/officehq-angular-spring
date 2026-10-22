@@ -77,9 +77,9 @@ export function due(amountCents: number, pct: string | null): string {
 /**
  * A claim's due in whole cents: the due fixed when it was settled (its late charge frozen in), or
  * else its figure — the one its person's last statement bound it to (unless it is PENDING), or else its amount at the rate
- * the grade has in force on the claim's date raised to the sheet's floor (in whole cents) when below
- * it — with the late charge on top: the late percent of the figure for every full 30 days the claim
- * is overdue. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
+ * the grade has in force on the claim's date raised to the floor (in whole cents) when below it —
+ * with the late charge on top: the late percent of the figure for every full 30 days the claim
+ * is overdue. The floor and late percent given are those in force on the claim's date. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
  * charge is never bound by a statement. A correction has no floor and no late charge. Null when there
  * is no figure.
  */

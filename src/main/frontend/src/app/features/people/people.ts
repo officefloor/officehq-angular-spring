@@ -5,7 +5,7 @@ import { GRADES, Grade, PeopleApi, PersonView, gradeOn, heldOn } from '../../cor
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
-import { Session } from '../../core/session';
+import { Session, valueOn } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
 import { Periods } from '../periods/periods';
@@ -387,14 +387,10 @@ export class People {
       count: this.claims().filter((c) => c.status === status).length,
     })),
   );
-  /** The sheet's floor in whole cents: a claim's live due is at least it. */
-  private readonly floorCents = computed(() => cents(this.session.floor()));
   /** The sheet's cap in whole cents: a person's due-total is at most it; null when there is none. */
   private readonly capCents = computed(() => (this.session.cap() === '' ? null : cents(this.session.cap())));
   /** The sheet's today, on which each grade's rate in force is read. */
   protected readonly today = computed(() => this.session.today() ?? '');
-  /** What late charges are worked from: the sheet's late percent and today. */
-  private readonly late = computed(() => ({ pct: this.session.latePct(), today: this.today() }));
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.claimedCents(p.id), 0)),
   );
@@ -548,12 +544,14 @@ export class People {
   }
 
   /**
-   * A claim's due in whole cents at the grade its person has in force on its date, with its late charge
-   * (see claimDueCents).
+   * A claim's due in whole cents at the grade its person has in force on its date, with the floor
+   * and late percent in force on its date (see claimDueCents).
    */
   private dueCents(claim: ClaimView, person: PersonView): number | null {
     const halfUp = roundsHalfUp(claim, this.claimsOf(person.id), this.session.policyDate(), this.today());
-    return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), this.floorCents(), this.late(), halfUp);
+    const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
+    const late = { pct: valueOn(this.session.latePctHistory(), claim.date, '0.00'), today: this.today() };
+    return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), floor, late, halfUp);
   }
 
   /** A person's patrons' names, sorted, comma and space separated. */
