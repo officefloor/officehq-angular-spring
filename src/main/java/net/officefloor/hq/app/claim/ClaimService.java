@@ -65,17 +65,24 @@ public class ClaimService {
 
     /**
      * Make the claims a bulk settle settled the sheet's next settle batch: each carries its number.
-     * Nothing is audited.
+     * Audited as BATCH_SETTLED with the batch number, how many claims it holds, and the frozen figures
+     * of those of them SETTLED, added up.
      */
     @Transactional
-    public Batch batch(String sheetId, List<Long> claimIds) {
+    public Batch batch(String sheetId, String user, List<Long> claimIds) {
         int number = sheets.lock(sheetId).nextSettleBatch();
         List<Claim> batched = new ArrayList<>();
+        BigDecimal total = BigDecimal.ZERO;
         for (Long id : claimIds) {
             Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow();
             claim.settledInBatch(number);
+            if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
+                total = total.add(claim.getSettledDue());
+            }
             batched.add(claims.save(claim));
         }
+        audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + number
+                + " count=" + batched.size() + " total=" + total.setScale(2, RoundingMode.HALF_UP).toPlainString());
         return new Batch(number, batched);
     }
 
