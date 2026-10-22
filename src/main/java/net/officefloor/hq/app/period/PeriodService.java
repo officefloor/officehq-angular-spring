@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -73,7 +74,7 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing its due-total at this moment: the sum of the due figures of the OPEN and
+     * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures of the OPEN and
      * SETTLED claims dated in it, each at the grade its person has in force on its date (a claim with no figure adds nothing),
      * leaving out the OPEN and PENDING claims dated within their person's hold, unless bound by a statement. Refused when the period is already closed.
      */
@@ -88,7 +89,8 @@ public class PeriodService {
         }
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, person -> person));
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+        byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
             if (person == null || !person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated()) || !period.contains(claim.getDate())) {
@@ -96,13 +98,13 @@ public class PeriodService {
             }
             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
             if (figure != null) {
-                total = total.add(figure);
+                totals.merge(person.getId(), figure, BigDecimal::add);
             }
         }
-        period.close(total);
+        period.close(totals);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " total=" + total.toPlainString());
+                + " total=" + saved.getClosedTotal().toPlainString());
         return saved;
     }
 

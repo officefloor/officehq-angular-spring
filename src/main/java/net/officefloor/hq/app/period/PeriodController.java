@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -28,15 +30,18 @@ public class PeriodController {
 
     /**
      * What the screen is told about a period: its name, its inclusive from and to dates, whether it
-     * is closed, and the due-total fixed when it was closed (null while open).
+     * is closed, the due-total fixed when it was closed (null while open), and each person's due-total
+     * for it fixed then, by person id (empty while open).
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal) {
+            String closedTotal, Map<Long, String> personTotals) {
 
         static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(),
-                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString());
+                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
+                    period.getPersonTotals().entrySet().stream()
+                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())));
         }
     }
 

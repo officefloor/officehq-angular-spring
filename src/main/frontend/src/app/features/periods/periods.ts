@@ -5,7 +5,8 @@ import { Session } from '../../core/session';
 
 // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
 // and one form to add a period (a unique name and inclusive from and to dates, overlapping no other).
-// A period can be closed: its due-total is then the one fixed at closing. A steward can reopen a
+// Its due-total is the sum of the people's figures for it. A period can be closed: each person's figure
+// is then the one fixed at closing. A steward can reopen a
 // closed period, making its due-total live again.
 @Component({
   selector: 'app-periods',
@@ -58,7 +59,7 @@ import { Session } from '../../core/session';
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
               <td>
                 @if (!p.closed) {
@@ -96,7 +97,7 @@ export class Periods {
 
   /** The sheet's periods by from-date. */
   readonly periods = input.required<PeriodView[]>();
-  /** Each period's due-total, by period id, with two decimals. */
+  /** Each period's due-total (the sum of the people's figures for it), by period id, with two decimals. */
   readonly dueTotals = input.required<Map<number, string>>();
   /** A period added through the form. */
   readonly saved = output<PeriodView>();
