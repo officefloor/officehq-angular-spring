@@ -40,6 +40,15 @@ function countsInPeriod(claim: ClaimView, person: PersonView, today: string, per
 }
 
 /** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
+/**
+ * The sum of the people's figures in whole cents, leaving out the single highest and the single
+ * lowest when there are three or more.
+ */
+function trimmedCents(figures: number[]): number {
+  const total = figures.reduce((sum, f) => sum + f, 0);
+  return figures.length >= 3 ? total - Math.max(...figures) - Math.min(...figures) : total;
+}
+
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
@@ -423,19 +432,29 @@ export class People {
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.claimedCents(p.id), 0)),
   );
-  /** Everyone's due-total added up, skipping those shown as n/a. */
+  /**
+   * Everyone's due-total added up, skipping those shown as n/a, and leaving out the highest and
+   * lowest when three or more have one.
+   */
   protected readonly dueTotal = computed(() =>
     money(
-      this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0),
+      trimmedCents(
+        this.people()
+          .map((p) => this.dueTotalCents(p))
+          .filter((c): c is number => c !== null),
+      ),
     ),
   );
   /** How many overdue claims count in the live totals, across everyone. */
   protected readonly overdueCount = computed(() =>
     this.people().reduce((sum, p) => sum + this.overdueOf(p.id).length, 0),
   );
-  /** The due of everyone's counting overdue claims added up. */
+  /**
+   * Everyone's overdue-total added up, leaving out the highest and lowest when there are three or
+   * more people.
+   */
   protected readonly overdueTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + this.overdueCents(p), 0)),
+    money(trimmedCents(this.people().map((p) => this.overdueCents(p)))),
   );
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');

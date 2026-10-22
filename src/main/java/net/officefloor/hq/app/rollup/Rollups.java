@@ -74,8 +74,8 @@ public class Rollups {
         }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
-        BigDecimal dueTotal = zero();
-        BigDecimal overdueTotal = zero();
+        List<BigDecimal> dueFigures = new ArrayList<>();
+        List<BigDecimal> overdueFigures = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of()).stream()
                     .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today)))
@@ -108,11 +108,28 @@ public class Rollups {
             figures.put(person.getId(), new Figures(person.getName(), claimed, due, overdue));
             claimedTotal = claimedTotal.add(claimed);
             if (due != null) {
-                dueTotal = dueTotal.add(due);
+                dueFigures.add(due);
             }
-            overdueTotal = overdueTotal.add(overdue);
+            overdueFigures.add(overdue);
         }
-        return new Rollup(figures, claimedTotal, dueTotal, overdueTotal);
+        return new Rollup(figures, claimedTotal, trimmed(dueFigures), trimmed(overdueFigures));
+    }
+
+    /**
+     * The sum of the people's figures, leaving out the single highest and the single lowest when there
+     * are three or more.
+     */
+    static BigDecimal trimmed(List<BigDecimal> figures) {
+        BigDecimal total = zero();
+        for (BigDecimal figure : figures) {
+            total = total.add(figure);
+        }
+        if (figures.size() >= 3) {
+            BigDecimal highest = figures.stream().max(BigDecimal::compareTo).orElseThrow();
+            BigDecimal lowest = figures.stream().min(BigDecimal::compareTo).orElseThrow();
+            total = total.subtract(highest).subtract(lowest);
+        }
+        return total;
     }
 
     /**
