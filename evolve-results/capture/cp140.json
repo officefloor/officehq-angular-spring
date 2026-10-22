@@ -1,0 +1,72 @@
+{
+  "checkpoint": 140,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp140_remainder-to-smallest",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "The remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4097ed509ce408ff5925998e61d4292393594bd7",
+  "reset_sha": "",
+  "preagent_sha": "bb04857681241e78dbc95d8a50e13cb1b75aecfd",
+  "prev_sha": "bb04857681241e78dbc95d8a50e13cb1b75aecfd",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.582899,
+    "input_tokens": 38,
+    "output_tokens": 7311,
+    "cache_read_tokens": 631555,
+    "cache_creation_tokens": 38777,
+    "num_turns": 19,
+    "duration_ms": 303673,
+    "duration_api_ms": 105480,
+    "model": "claude-opus-5-5",
+    "session_id": "e41b3970-47cb-4341-819c-a40cda164c59",
+    "stop_reason": "success",
+    "result_text": "I've changed the remainder rule, but `bin/e2e` doesn't fully pass: 3 of the 4 tests pass, and \"remainder to smallest scenario 3\" fails. Both reasons it fails look like mistakes in the test, not in the new rule.\n\n**The change** is in `src/main/frontend/src/app/features/pools/pools.ts`, in the `cuts()` function (line 55); that's the only place pool cuts are worked out. After each member's cut is rounded, the leftover cent or cents now go to:\n- the member with the smallest non-zero cut, taking the one added most recently on a tie;\n- if every cut is zero, the last member who gets a cut (retired and held members never do).\n\nBefore, the leftover went to the member with the largest share. I updated the comment above the function to match.\n\n**Why scenario 3 fails**\n1. **An unfilled placeholder (lines 939 and 1020).** The test sets the sheet's parent to `${sheet}-p` but then expects the screen to show the literal text `__SHEET__-p`. The app shows the real parent id, so this check can't pass.\n2. **Two audit records the test doesn't list.** To get past the first problem, I ran a temporary copy of the spec with the placeholder filled in, then deleted it; the real spec is untouched. In that run every on-screen check passed, including all the pool cut values. The run then stopped on the audit check: it expects 36 lines and the app writes 38. The two extra lines are `LATE_ENTRY` records for Ada's claims dated 2026-03-10. Those dates fall inside period P1, which the test soft-closes first, and the existing rule in `ClaimService.add` records such claims as late entries. The spec never mentions `LATE_ENTRY` anywhere.\n\nI left both alone because the only ways to make the test pass would be showing a fake placeholder on screen or removing the late-entry records. Neither is part of this change, and both would break existing behaviour. The spec probably needs fixing at its source.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.582899,
+        "num_turns": 19,
+        "duration_ms": 303673,
+        "duration_api_ms": 105480,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp140.agent.jsonl",
+  "agent_diff_file": "cp140.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

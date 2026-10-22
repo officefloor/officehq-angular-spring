@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 8b75a605..85bdf621 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -49,8 +49,9 @@ function cut(pot: bigint, share: bigint, shares: bigint): bigint {
+ /**
+  * Each member's cut of the pot, in cents by member key. A retired person, or one with a hold in force on
+  * the sheet's today, gets 0; every other member gets the pot times their share over the shares of the
+- * members with a cut, rounded half to even; the remainder goes to the member with a cut with the largest
+- * share, the earliest added on a tie, so the cuts total exactly the pot.
++ * members with a cut, rounded half to even; the remainder goes to the member with the smallest non-zero
++ * cut, the latest added on a tie, or to the last member with a cut when every cut is zero, so the cuts
++ * total exactly the pot.
+  */
+ function cuts(pool: PoolView, pot: bigint, retired: Set<number>, held: Set<number>): Map<string, bigint> {
+   const shares = pool.members.map((m) => ({
+@@ -60,10 +61,13 @@ function cuts(pool: PoolView, pot: bigint, retired: Set<number>, held: Set<numbe
+   const withCut = shares.filter((m) => m.share > 0);
+   const total = BigInt(withCut.reduce((sum, m) => sum + m.share, 0));
+   const all = new Map(shares.map((m) => [m.id, total > 0n ? cut(pot, BigInt(m.share), total) : 0n]));
+-  const largest = withCut.reduce((best, m) => (m.share > best.share ? m : best), withCut[0]);
+-  if (largest) {
++  const smallest = withCut.reduce<(typeof withCut)[number] | undefined>((best, m) => {
++    const c = all.get(m.id)!;
++    return c > 0n && (best === undefined || c <= all.get(best.id)!) ? m : best;
++  }, undefined) ?? withCut[withCut.length - 1];
++  if (smallest) {
+     const remainder = pot - [...all.values()].reduce((sum, c) => sum + c, 0n);
+-    all.set(largest.id, all.get(largest.id)! + remainder);
++    all.set(smallest.id, all.get(smallest.id)! + remainder);
+   }
+   return all;
+ }
