@@ -390,6 +390,11 @@ function csvField(value: string): string {
               <td>
                 <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                <ul>
+                  @for (r of p.retirements ?? []; track $index) {
+                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
               </td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               <td>
@@ -517,6 +522,14 @@ function csvField(value: string): string {
                   (click)="retire(p)"
                 >
                   Retire
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-unretire"
+                  [attr.aria-label]="'Unretire ' + p.name"
+                  (click)="unretire(p)"
+                >
+                  Unretire
                 </button>
                 <label [for]="'person-hold-from-' + p.id">Hold from</label>
                 <input
@@ -1288,6 +1301,20 @@ export class People {
       this.people.update((list) => list.map((p) => (p.id === retired.id ? retired : p)));
     } catch {
       this.personError.set({ id: person.id, message: 'The person could not be retired.' });
+    }
+  }
+
+  /** Unretire a retired person on the sheet's today. */
+  protected async unretire(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      const unretired = await this.api.unretire(sheet, person.id);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === unretired.id ? unretired : p)));
+    } catch {
+      this.personError.set({ id: person.id, message: 'The person could not be unretired.' });
     }
   }
 

@@ -168,6 +168,27 @@ public class PersonService {
     }
 
     /**
+     * Unretire a retired person on the sheet's today: they are no longer retired, and the retirement is
+     * kept on them, from its date to today. Refused for anyone not retired.
+     */
+    @Transactional
+    public Person unretire(String sheetId, String user, long personId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (person.getRetiredFrom() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " is not retired.");
+        }
+        LocalDate today = sheets.today(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
+        person.unretire(today);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " on=" + today);
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Put a person on hold from a date (null: the sheet's today) to a date (null: no end); refused
      * when the to-date is before the from-date. Their figures and the sheet's totals move as their
      * OPEN and PENDING claims dated within it, not bound by a statement, leave the live totals.

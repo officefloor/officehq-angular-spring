@@ -8,6 +8,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.Retirement;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.WatchService;
@@ -771,11 +772,16 @@ public class ClaimService {
         }
     }
 
-    /** Refuse a claim dated after its person's retirement. */
+    /** Refuse a claim dated after its person's retirement, or after the from and before the to of a past one. */
     private static void refuseIfRetired(Person person, LocalDate date) {
         if (!person.canClaimOn(date)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     person.getName() + " is retired from " + person.getRetiredFrom() + ": a claim cannot be dated after it.");
+        }
+        Retirement past = person.pastRetirementBarring(date);
+        if (past != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " was retired from "
+                    + past.getFromDate() + " to " + past.getToDate() + ": a claim cannot be dated within it.");
         }
     }
 

@@ -46,7 +46,7 @@ public class PersonController {
      * beginning of time).
      */
     public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, long version, int statementCount,
-            String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
+            String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
             String originSheetId) {
 
@@ -61,10 +61,16 @@ public class PersonController {
             return new PersonView(person.getId(), person.getName(), grades, person.getTerms(), person.getContact(), person.getVersion(),
                     person.getStatementCount(),
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
-                    person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
+                    person.getStatementDate(), person.getRetiredFrom(),
+                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+                    person.isHeld(),
                     person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
                     person.getPatronIds(), person.getAliases(), clashing, person.getOriginSheetId());
         }
+    }
+
+    /** A past retirement of a person, from its date to the day they were unretired. */
+    public record RetirementView(LocalDate from, LocalDate to) {
     }
 
     /** A hold on a person, from a date to a date (null: no end). */
@@ -230,6 +236,15 @@ public class PersonController {
             @RequestBody(required = false) RetireForm form) {
         return view(service.retire(sheetId, SignedIn.name(user), personId,
                 form == null ? null : form.from()));
+    }
+
+    /** Unretire a retired person on the sheet's today. */
+    @PostMapping("/{personId}/unretire")
+    public PersonView unretire(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return view(service.unretire(sheetId, SignedIn.name(user), personId));
     }
 
     /** A hold's dates: from (none: the sheet's today) and to (none: no end). */

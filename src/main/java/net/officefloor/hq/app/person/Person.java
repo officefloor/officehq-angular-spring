@@ -95,6 +95,12 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The person's past retirements, in the order they were unretired from. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "retirement_order")
+    private List<Retirement> retirements = new ArrayList<>();
+
     /**
      * The person's holds, in the order they were added: their OPEN and PENDING claims dated within
      * one, unless bound by a statement, count in no live total.
@@ -251,6 +257,20 @@ public class Person {
         this.retiredFrom = from;
     }
 
+    /**
+     * Unretire the person on a date (the sheet's today): they are no longer retired, and the retirement
+     * is kept as a past one, from its date to this one.
+     */
+    public void unretire(LocalDate on) {
+        retirements.add(new Retirement(retiredFrom, on));
+        this.retiredFrom = null;
+    }
+
+    /** The person's past retirements, in the order they were unretired from. */
+    public List<Retirement> getRetirements() {
+        return Collections.unmodifiableList(retirements);
+    }
+
     /** Whether the person has any hold, whatever its dates. */
     public boolean isHeld() {
         return !holds.isEmpty();
@@ -297,6 +317,11 @@ public class Person {
     /** Whether a claim may be dated on this date: not after the person's retirement. */
     public boolean canClaimOn(LocalDate date) {
         return retiredFrom == null || !date.isAfter(retiredFrom);
+    }
+
+    /** The past retirement a claim dated on this date would fall within (after its from, before its to); null when none. */
+    public Retirement pastRetirementBarring(LocalDate date) {
+        return retirements.stream().filter(r -> r.bars(date)).findFirst().orElse(null);
     }
 
     /** Record a statement taken on a date with its due-total (null when n/a). */
