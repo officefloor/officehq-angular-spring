@@ -1,0 +1,64 @@
+{
+  "checkpoint": 109,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp109_parent-sheet-rates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet may name a parent sheet (settings, SETTING_CHANGED key=parent value=<sheet id>; not\ndated). A sheet cannot be its own parent, nor name a sheet that has this sheet as an ancestor; and\nthe parent must be a sheet that exists (has been loaded); each is refused with an error on the\nsettings. When a grade has no rate in force on a date on this sheet, the parent's rate for that grade\nand date is used, then the parent's parent, up to three levels up. Show the parent sheet id on the\nscreen (nothing when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet may name a parent sheet (settings, SETTING_CHANGED key=parent value=<sheet id>; not\ndated). A sheet cannot be its own parent, nor name a sheet that has this sheet as an ancestor; and\nthe parent must be a sheet that exists (has been loaded); each is refused with an error on the\nsettings. When a grade has no rate in force on a date on this sheet, the parent's rate for that grade\nand date is used, then the parent's parent, up to three levels up. Show the parent sheet id on the\nscreen (nothing when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "28dfbd0aac3cfa73a01c13222b5ba775db4e0dbc",
+  "reset_sha": "",
+  "preagent_sha": "623f8a53ae0994ac5a89882c2b06344b1b5d4342",
+  "prev_sha": "623f8a53ae0994ac5a89882c2b06344b1b5d4342",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.6293654,
+    "input_tokens": 100,
+    "output_tokens": 28788,
+    "cache_read_tokens": 4750747,
+    "cache_creation_tokens": 137882,
+    "num_turns": 54,
+    "duration_ms": 657909,
+    "duration_api_ms": 322313,
+    "model": "claude-opus-5-5",
+    "session_id": "32add610-2074-46b6-9027-fa777624b458",
+    "stop_reason": "success",
+    "result_text": "I've built the parent sheet setting, but `bin/e2e` still fails 2 of its 4 tests (scenarios 1 and 2 pass). Both remaining failures look like mistakes in the spec rather than in the app. I didn't edit the spec.\n\n**Why the remaining tests fail**\n\n1. **Unfilled placeholder in the spec.** Four `sheet-parent` checks expect the literal text `__SHEET__-p`, which looks like a template value that was never filled in. The app shows the real parent id instead (e.g. `smvjx4y5zcad3-p`). The other `sheet-parent` checks, and the audit line `key=parent value=${sheet}-p`, use the real id. This alone fails the first test and scenario 3.\n2. **One extra audit line in scenario 3.** I ran a temporary copy of the spec with the placeholder filled in, then deleted it. In that run the first test and scenarios 1 and 2 passed. Scenario 3 got 50 audit lines where it expects 49. The extra line is `LATE_ENTRY \u2026 person=Cam amount=3.33 date=2026-03-15`. That claim is dated inside period P1 (2026-03-01 to 2026-03-15), which the test has soft-closed. The existing code, which I didn't touch, treats a period's dates as inclusive and logs any claim dated in a soft-closed period as a late entry. So either the spec is wrong here or that existing rule is meant to change. Tell me if it's the rule and I'll change it.\n\n**What the change does**\n- **Stored data:** a new `parent_id` column on the sheet (migration `V67__sheet_parent.sql`). It isn't dated.\n- **Setting it:** `PUT /api/sheets/{id}/settings/parent` writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=parent value=<id>`, then any rollup lines for figures that moved. A blank value clears the parent. It is refused with the settings error, writing nothing, when:\n  - the sheet names itself;\n  - the named sheet has never been loaded;\n  - the named sheet already has this sheet as an ancestor (the whole chain is checked, not just three levels).\n- **Using the parent's rates:** when a grade has no rate in force on a date, the parent's rate is used, then the grandparent's, up to three levels up. This applies to claim dues, rollups, statements, the rate preview and `rate-current-*`, on both the server and the screen.\n- **As-of views:** the parent's rates are read as they stood on the as-of date. Scenario 3 needs this: on 2026-04-02 the parent had no saved history yet, so the rates must show `n/a`.\n- **Screen:** `sheet-parent` shows the parent's id (empty when there is none). The settings form has a `setting-parent` field and a `setting-parent-current` value.\n\n**Running the tests:** your environment sets `PORT=3001`, but another app was already using that port, so my first run tested that app instead of this one. I left it running and used `PORT=3047 bin/e2e` instead.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.6293654,
+        "num_turns": 54,
+        "duration_ms": 657909,
+        "duration_api_ms": 322313,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp109.agent.jsonl",
+  "agent_diff_file": "cp109.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
