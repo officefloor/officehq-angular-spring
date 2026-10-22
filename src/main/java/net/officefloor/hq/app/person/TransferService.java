@@ -16,7 +16,7 @@ import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
-import net.officefloor.hq.app.statement.StatementRepository;
+import net.officefloor.hq.app.statement.StatementService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,19 +26,20 @@ import org.springframework.web.server.ResponseStatusException;
  * Transferring a person to another sheet: a steward only. The person arrives on the other sheet with
  * their grades, terms, contact and aliases, and with their claims (status, dates, notes, fixed figures
  * and logs kept); each claim that had a number takes the other sheet's next, in the order the claims
- * were opened, and loses any figure a statement bound and its reference. No statement is counted for
- * them there. They leave this sheet entirely: anyone naming them as a patron no longer does, and their
- * patrons, holds, pool memberships, statements and watchers are dropped. When someone on the other
- * sheet already goes by their name or an alias, they are merged into that person there: their claims
- * listed after the other's own, their name and aliases joined to the other's aliases, and their contact
- * dropped.
+ * were opened, keeps any figure a statement bound and loses its reference. Their statements go with
+ * them. They leave this sheet entirely: anyone naming them as a patron no longer does, and their
+ * patrons, holds, pool memberships and watchers are dropped. When someone on the other sheet already
+ * goes by their name or an alias, they are merged into that person there: their claims listed after
+ * the other's own, their name and aliases joined to the other's aliases, their statements joined to
+ * the other's (the other's last staying the other's, or, the other having none, becoming theirs), and
+ * their contact dropped.
  */
 @Service
 public class TransferService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final StatementRepository statements;
+    private final StatementService statements;
     private final WatchRepository watches;
     private final PoolMemberRepository poolMembers;
     private final RoleService roles;
@@ -47,7 +48,7 @@ public class TransferService {
     private final Rollups rollups;
     private final Audit audit;
 
-    public TransferService(PersonRepository people, ClaimRepository claims, StatementRepository statements,
+    public TransferService(PersonRepository people, ClaimRepository claims, StatementService statements,
             WatchRepository watches, PoolMemberRepository poolMembers, RoleService roles, SheetService sheets,
             PeriodService periods, Rollups rollups, Audit audit) {
         this.people = people;
@@ -100,14 +101,13 @@ public class TransferService {
         Rollups.Rollup before = rollups.take(sheetId);
         Rollups.Rollup toBefore = rollups.take(toSheetId);
 
-        // Anyone naming them as a patron no longer does; their pool memberships, statements and watchers go.
+        // Anyone naming them as a patron no longer does; their pool memberships and watchers go.
         for (Person other : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (!other.getId().equals(person.getId()) && other.removePatron(person.getId())) {
                 people.save(other);
             }
         }
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderBySeqDesc(sheetId, person.getId()));
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, person.getId()));
 
         if (into == null) {
@@ -115,6 +115,7 @@ public class TransferService {
             person.transferTo(toSheetId);
             person.setPosition(last + 1);
             people.saveAndFlush(person);
+            statements.follow(sheetId, person);
         }
 
         // Their claims follow, each that had a number taking the other sheet's next in the order opened.
@@ -146,6 +147,7 @@ public class TransferService {
             // Their name and aliases join the other's aliases, and they leave with their holds and contact.
             into.addAlias(name);
             person.getAliases().forEach(into::addAlias);
+            statements.handOver(sheetId, person, into);
             people.delete(person);
             people.flush();
             people.saveAndFlush(into);

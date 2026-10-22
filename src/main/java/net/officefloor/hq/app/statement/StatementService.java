@@ -150,6 +150,34 @@ public class StatementService {
         return new Stated(saved, stated);
     }
 
+    /**
+     * Hand a person's statements to another they join (on the other's sheet): the other's count
+     * becomes their own plus theirs, numbered with theirs first, and the other's last statement stays
+     * the other's, or, having none, becomes theirs. The caller saves the other.
+     */
+    public void handOver(String fromSheetId, Person from, Person into) {
+        int moved = from.getStatementCount();
+        List<Statement> intos = statements.findBySheetIdAndPersonIdOrderBySeqDesc(into.getSheetId(), into.getId());
+        // The other's own are numbered after theirs, the last first so no two share a number.
+        for (Statement statement : intos) {
+            statement.moveTo(into.getSheetId(), into.getId(), statement.getSeq() + moved);
+            statements.saveAndFlush(statement);
+        }
+        for (Statement statement : statements.findBySheetIdAndPersonIdOrderBySeqDesc(fromSheetId, from.getId())) {
+            statement.moveTo(into.getSheetId(), into.getId(), statement.getSeq());
+            statements.saveAndFlush(statement);
+        }
+        into.absorbStatements(from);
+    }
+
+    /** Move a person's statements with them to the sheet they are now on. */
+    public void follow(String fromSheetId, Person person) {
+        for (Statement statement : statements.findBySheetIdAndPersonIdOrderBySeqDesc(fromSheetId, person.getId())) {
+            statement.moveTo(person.getSheetId(), person.getId(), statement.getSeq());
+            statements.saveAndFlush(statement);
+        }
+    }
+
     /** Refused: the sheet, or the person, was not yet kept at the end of that date. */
     private static ResponseStatusException notYet(LocalDate day) {
         return new ResponseStatusException(HttpStatus.CONFLICT, "The person was not on the sheet on " + day + ".");

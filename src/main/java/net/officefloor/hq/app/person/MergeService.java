@@ -13,7 +13,7 @@ import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
-import net.officefloor.hq.app.statement.StatementRepository;
+import net.officefloor.hq.app.statement.StatementService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,19 +21,21 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Merging a person into another on the sheet: a steward only. The merged person's claims move to the
- * other, numbers and dates kept, listed after the other's own in the order they were added, each
- * losing any figure a statement bound. Their name and aliases become aliases of the other; their
+ * other, numbers, dates and any figure a statement bound kept, listed after the other's own in the
+ * order they were added. Their name and aliases become aliases of the other; their
  * patrons are added to the other's (not the other themselves, no repeats); anyone naming them as a
  * patron names the other instead (no repeats); their pool memberships move to the other, shares added
- * where the other is already a member; their plans become the other's. Their statements, holds, watchers and contact are dropped, and
- * they leave the sheet.
+ * where the other is already a member; their plans become the other's. Their statements join the
+ * other's: the other's count becomes their own plus theirs, and the other's last statement stays the
+ * other's (or, the other having none, becomes theirs). Their holds, watchers and contact are dropped,
+ * and they leave the sheet.
  */
 @Service
 public class MergeService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final StatementRepository statements;
+    private final StatementService statements;
     private final WatchRepository watches;
     private final PoolMemberRepository poolMembers;
     private final PlanRepository plans;
@@ -42,7 +44,7 @@ public class MergeService {
     private final Rollups rollups;
     private final Audit audit;
 
-    public MergeService(PersonRepository people, ClaimRepository claims, StatementRepository statements,
+    public MergeService(PersonRepository people, ClaimRepository claims, StatementService statements,
             WatchRepository watches, PoolMemberRepository poolMembers, PlanRepository plans, RoleService roles, SheetService sheets,
             Rollups rollups, Audit audit) {
         this.people = people;
@@ -79,12 +81,11 @@ public class MergeService {
         }
         Rollups.Rollup before = rollups.take(sheetId);
 
-        // Their claims, in the order they were added, move to the other unbound.
+        // Their claims, in the order they were added, move to the other, still bound as they were.
         List<Claim> moved = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, from.getId()).stream()
                 .sorted(Comparator.comparing(Claim::getId)).toList();
         for (Claim claim : moved) {
             claim.reassign(into.getId());
-            claim.unbind();
         }
         claims.saveAll(moved);
 
@@ -126,8 +127,9 @@ public class MergeService {
             plans.save(plan);
         }
 
-        // Their statements and watchers are dropped, and they leave the sheet with their holds and contact.
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderBySeqDesc(sheetId, from.getId()));
+        // Their statements join the other's; their watchers are dropped, and they leave the sheet with
+        // their holds and contact.
+        statements.handOver(sheetId, from, into);
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
         String fromName = from.getName();
         people.delete(from);

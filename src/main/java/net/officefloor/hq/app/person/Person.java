@@ -358,6 +358,18 @@ public class Person {
     }
 
     /**
+     * Take in another person's statements as they join this one: their count is added to this
+     * person's, and this person's last statement stays theirs, or, having none, becomes the other's.
+     */
+    public void absorbStatements(Person other) {
+        if (this.statementCount == 0) {
+            this.statementTotal = other.statementTotal;
+            this.statementDate = other.statementDate;
+        }
+        this.statementCount += other.statementCount;
+    }
+
+    /**
      * Cancel the last statement: one fewer is counted, and the one before it (its due-total, null
      * when n/a, and date) is shown again; with none before it, no statement is shown.
      */
@@ -395,18 +407,14 @@ public class Person {
     }
 
     /**
-     * Move the person to another sheet: they keep their grades, terms, contact and aliases, but name
-     * no patrons, have no holds, and no statement is counted for them there. They show the sheet they
-     * came from.
+     * Move the person to another sheet: they keep their grades, terms, contact, aliases and
+     * statements, but name no patrons and have no holds. They show the sheet they came from.
      */
     public void transferTo(String sheetId) {
         this.originSheetId = this.sheetId;
         this.sheetId = sheetId;
         this.patronIds.clear();
         this.holds.clear();
-        this.statementCount = 0;
-        this.statementTotal = null;
-        this.statementDate = null;
     }
 
     /** No longer name this person as a patron; false when they were not one. */

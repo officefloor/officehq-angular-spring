@@ -375,13 +375,12 @@ public class Claim {
     }
 
     /**
-     * Move the claim with its person to another sheet: its status, dates, note, fixed figures and log
-     * are kept; it loses any figure a statement bound, its reference, its settle batch and any
+     * Move the claim with its person to another sheet: its status, dates, note, fixed figures, log
+     * and any figure a statement bound are kept; it loses its reference, its settle batch and any
      * editor's lock. The caller gives it the other sheet's number.
      */
     public void transferTo(String sheetId) {
         this.sheetId = sheetId;
-        unbind();
         refer(null);
         this.settleBatch = null;
         this.lockedBy = null;

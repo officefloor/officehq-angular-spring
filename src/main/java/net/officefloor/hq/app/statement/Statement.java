@@ -67,4 +67,11 @@ public class Statement {
     public LocalDate getTakenOn() {
         return takenOn;
     }
+
+    /** Move the statement to a person (on a sheet) under a number among theirs. */
+    public void moveTo(String sheetId, Long personId, int seq) {
+        this.sheetId = sheetId;
+        this.personId = personId;
+        this.seq = seq;
+    }
 }

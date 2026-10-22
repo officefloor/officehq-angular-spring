@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -89,14 +88,12 @@ public class BulkMoveService {
     }
 
     /**
-     * Reassign the selected claims to a person, each as its Reassign button would, in the order they
-     * were selected, so their new numbers follow that order; a claim already the person's is
-     * reassigned to them again rather than refused.
+     * Reassign the selected claims to a person, each as its Reassign button would, in list order, so
+     * their new numbers follow that order; a claim already the person's is reassigned to them again
+     * rather than refused.
      */
     public Result reassign(String sheetId, String user, Collection<Long> claimIds, long personId) {
-        Set<Long> selected = new LinkedHashSet<>(claimIds);
-        return each(sheetId, user, selected, new ArrayList<>(selected),
-                id -> claims.reassign(sheetId, user, id, personId, true));
+        return each(sheetId, user, claimIds, id -> claims.reassign(sheetId, user, id, personId, true));
     }
 
     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
