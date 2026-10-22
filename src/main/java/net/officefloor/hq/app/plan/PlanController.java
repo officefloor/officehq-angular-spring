@@ -24,21 +24,28 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PlanController {
 
-    /** What the screen is told about a plan: its amount with two decimals, its dates, and how many claims it has made. */
-    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end,
-            int generated) {
+    /**
+     * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
+     * the month, the other null), and how many claims it has made.
+     */
+    public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, int generated) {
 
         static PlanView of(Plan plan) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getEnd(), plan.getGenerated());
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated());
         }
     }
 
-    /** A plan as entered on the form: an amount as the claim form takes it, a start, every N days, and an end. */
+    /**
+     * A plan as entered on the form: an amount as the claim form takes it, a start, every N days or a day of the
+     * month (one of the two, the other absent or blank), and an end.
+     */
     public record PlanForm(
             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
             @NotNull LocalDate start,
-            @NotNull @Pattern(regexp = "\\d{1,5}") String every,
+            @Pattern(regexp = "|\\d{1,5}") String every,
+            @Pattern(regexp = "|\\d{1,2}") String day,
             @NotNull LocalDate end) {
     }
 
@@ -67,7 +74,12 @@ public class PlanController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PlanForm form) {
         return PlanView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
-                form.start(), Integer.parseInt(form.every()), form.end()));
+                form.start(), number(form.every()), number(form.day()), form.end()));
+    }
+
+    /** A whole number typed on the form, or null when left out. */
+    private static Integer number(String typed) {
+        return typed == null || typed.isEmpty() ? null : Integer.valueOf(typed);
     }
 
     /** Make the claims every plan on the sheet is due up to the sheet's today. */

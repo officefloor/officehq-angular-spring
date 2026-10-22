@@ -4,14 +4,20 @@ import { firstValueFrom } from 'rxjs';
 import { ClaimView } from './claims';
 import { Session } from './session';
 
-/** A plan on a person: an amount claimed every N days from a start date to an end date (yyyy-mm-dd). */
+/**
+ * A plan on a person: an amount claimed every N days, or monthly on a day of the month, from a start date to
+ * an end date (yyyy-mm-dd).
+ */
 export interface PlanView {
   id: number;
   personId: number;
   /** The amount with two decimals, e.g. "12.50". */
   amount: string;
   start: string;
-  every: number;
+  /** Every N days, or null for a monthly plan. */
+  every: number | null;
+  /** The day of the month (1 to 31) of a monthly plan, or null for one every N days. */
+  day: number | null;
   end: string;
   /** How many claims the plan has made so far. */
   generated: number;
@@ -21,7 +27,10 @@ export interface PlanView {
 export interface PlanForm {
   amount: string;
   start: string;
+  /** Every N days, blank for a monthly plan. */
   every: string;
+  /** The day of the month, blank for a plan every N days. */
+  day: string;
   end: string;
 }
 
@@ -42,7 +51,7 @@ export class PlansApi {
     return firstValueFrom(this.http.get<PlanView[]>(`${this.url(sheet)}/plans`));
   }
 
-  /** Add a plan on a person; refused (400) for a bad amount or interval, or an end before the start. */
+  /** Add a plan on a person; refused (400) for a bad amount, interval or day of the month, or an end before the start. */
   add(sheet: string, personId: number, form: PlanForm): Promise<PlanView> {
     return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/people/${personId}/plans`, form));
   }

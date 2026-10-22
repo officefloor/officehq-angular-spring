@@ -53,16 +53,24 @@ public class PlanService {
     }
 
     /**
-     * Add a plan on a person: an amount (not below 0.00), claimed every N days (at least 1) from a start
-     * date to an end date; refused when the end is before the start.
+     * Add a plan on a person: an amount (not below 0.00), claimed every N days (at least 1) or monthly on a
+     * day of the month (1 to 31), exactly one of the two, from a start date to an end date; refused when the
+     * end is before the start.
      */
     @Transactional
-    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
+    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
+            Integer day, LocalDate end) {
         if (amount.signum() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount cannot be below 0.00.");
         }
-        if (every < 1) {
+        if ((every == null) == (day == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A plan repeats either every N days or monthly on a day of the month.");
+        }
+        if (day != null && (day < 1 || day > 31)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's day of the month is 1 to 31.");
+        }
+        if (every != null && every < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan repeats every 1 day or more.");
         }
         if (end.isBefore(start)) {
@@ -72,9 +80,9 @@ public class PlanService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         BigDecimal money = amount.setScale(2, RoundingMode.UNNECESSARY);
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, end));
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, day, end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " amount=" + money.toPlainString() + " start=" + start + " every=" + every + " end=" + end);
+                + " amount=" + money.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
         return saved;
     }
 

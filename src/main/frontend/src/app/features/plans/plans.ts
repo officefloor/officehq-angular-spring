@@ -10,14 +10,20 @@ function reasonOf(e: unknown): string | null {
 }
 
 // A person's plans, each with how many claims it has made so far, and the form adding one: an amount,
-// a start date, every N days and an end date.
+// a start date, every N days or a day of the month, and an end date.
 @Component({
   selector: 'app-person-plans',
   template: `
     <ul>
       @for (plan of plans(); track plan.id) {
         <li [attr.data-testid]="'plan-row-' + plan.id">
-          {{ plan.amount }} from {{ plan.start }} every {{ plan.every }} days to {{ plan.end }};
+          {{ plan.amount }} from {{ plan.start }}
+          @if (plan.day !== null) {
+            monthly on day {{ plan.day }}
+          } @else {
+            every {{ plan.every }} days
+          }
+          to {{ plan.end }};
           made <span data-testid="plan-generated">{{ plan.generated }}</span>
         </li>
       }
@@ -47,6 +53,14 @@ function reasonOf(e: unknown): string | null {
         [value]="every()"
         (input)="every.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-form-day-' + personId()">Or monthly on day</label>
+      <input
+        [id]="'plan-form-day-' + personId()"
+        data-testid="plan-form-day"
+        inputmode="numeric"
+        [value]="day()"
+        (input)="day.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input
         type="date"
@@ -74,6 +88,7 @@ export class PersonPlans {
   protected readonly amount = signal('');
   protected readonly start = signal('');
   protected readonly every = signal('');
+  protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -89,13 +104,27 @@ export class PersonPlans {
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    const form = { amount: this.amount().trim(), start: this.start(), every: this.every().trim(), end: this.end() };
+    const form = {
+      amount: this.amount().trim(),
+      start: this.start(),
+      every: this.every().trim(),
+      day: this.day().trim(),
+      end: this.end(),
+    };
     if (!/^\d{1,12}(\.\d{1,2})?$/.test(form.amount)) {
       this.error.set('Type an amount of 0.00 or more, with at most two decimals.');
       return;
     }
-    if (!/^\d{1,5}$/.test(form.every) || Number(form.every) < 1) {
+    if ((form.every === '') === (form.day === '')) {
+      this.error.set('Type either every how many days or a day of the month.');
+      return;
+    }
+    if (form.every !== '' && (!/^\d{1,5}$/.test(form.every) || Number(form.every) < 1)) {
       this.error.set('Type a whole number of days, 1 or more.');
+      return;
+    }
+    if (form.day !== '' && (!/^\d{1,2}$/.test(form.day) || Number(form.day) < 1 || Number(form.day) > 31)) {
+      this.error.set('Type a day of the month from 1 to 31.');
       return;
     }
     if (!form.start || !form.end) {
@@ -112,6 +141,7 @@ export class PersonPlans {
       this.amount.set('');
       this.start.set('');
       this.every.set('');
+      this.day.set('');
       this.end.set('');
     } catch (e) {
       this.error.set(reasonOf(e) ?? 'The plan could not be added.');
@@ -151,10 +181,12 @@ export class PlanGenerate {
   private busy = false;
 
   constructor() {
-    // A sheet load starts afresh.
+    // A sheet load starts afresh, and so does a change of the sheet's today: the count shown was made up
+    // to the old one.
     effect(() => {
       this.session.sheet();
       this.session.loads();
+      this.session.today();
       untracked(() => {
         this.count.set(null);
         this.error.set(null);
