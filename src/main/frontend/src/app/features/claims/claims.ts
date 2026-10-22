@@ -92,6 +92,7 @@ const PAST: Record<ClaimAction, string> = {
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+          <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
@@ -137,6 +138,14 @@ const PAST: Record<ClaimAction, string> = {
             (click)="addProof(c)"
           >
             Add proof
+          </button>
+          <button
+            type="button"
+            data-testid="claim-remind"
+            [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date"
+            (click)="remind(c)"
+          >
+            Remind
           </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -577,6 +586,23 @@ export class Claims {
         message: claim.status === 'SETTLED' || claim.status === 'VOID'
           ? `A ${claim.status} claim cannot take a proof.`
           : 'The proof could not be added.',
+      });
+    }
+  }
+
+  /** Remind a claim; refused with an error on its row unless it is OPEN or PENDING and not yet reminded today. */
+  protected async remind(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      this.saved.emit(await this.api.remind(sheet, claim.id));
+    } catch {
+      this.claimError.set({
+        id: claim.id,
+        message: claim.status === 'OPEN' || claim.status === 'PENDING'
+          ? 'The claim could not be reminded; it may already have been reminded today.'
+          : `A ${claim.status} claim cannot be reminded; only an OPEN or PENDING one can.`,
       });
     }
   }

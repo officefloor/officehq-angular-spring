@@ -269,6 +269,27 @@ public class ClaimService {
     }
 
     /**
+     * Remind an OPEN or PENDING claim: the claim shows the sheet's today as its reminded date. Refused
+     * when the claim is in any other status, or was already reminded on the sheet's today.
+     */
+    @Transactional
+    public Claim remind(String sheetId, String user, long claimId) {
+        LocalDate today = sheets.lock(sheetId).getToday();
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reminded; only an OPEN or PENDING one can.");
+        }
+        if (today.equals(claim.getRemindedOn())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim was already reminded on " + today + ".");
+        }
+        claim.remind(today);
+        Claim saved = claims.saveAndFlush(claim);
+        audited("REMIND", sheetId, user, person(sheetId, saved.getPersonId()), saved);
+        return saved;
+    }
+
+    /**
      * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it,
      * the claim counts in no total, is not overdue, cannot be settled and is left unbound by a
      * statement. Refused when the claim is not OPEN, when the date is not after the sheet's today, or

@@ -34,11 +34,11 @@ public class ClaimController {
      * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
      * log, oldest first, and the date it is deferred until (null when it was never deferred), and its proofs count,
      * and the number of the claim it was split from (null unless it was split off another), and the user whose open
-     * editor locks it (null when none does).
+     * editor locks it (null when none does), and the last day it was reminded (null when never).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
-            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -47,7 +47,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn());
         }
     }
 
@@ -266,6 +266,15 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.addProof(sheetId, SignedIn.name(user), claimId));
+    }
+
+    /** Remind an OPEN or PENDING claim, once per sheet's today. */
+    @PostMapping("/claims/{claimId}/remind")
+    public ClaimView remind(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.remind(sheetId, SignedIn.name(user), claimId));
     }
 
     /** Defer an OPEN claim until a date after the sheet's today. */

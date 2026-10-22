@@ -90,6 +90,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The last day (the sheet's today) a reminder was written for the claim; null when never reminded. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** The user whose open editor locks the claim for everyone else; null when no editor holds it. */
     @Column(name = "locked_by")
     private String lockedBy;
@@ -271,6 +275,15 @@ public class Claim {
     /** Raise the claim's proofs count by one; the caller checks the claim can take a proof. */
     public void addProof() {
         proofs++;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    /** Mark the claim reminded on a day; the caller checks the claim can be reminded. */
+    public void remind(LocalDate on) {
+        this.remindedOn = on;
     }
 
     public String getLockedBy() {

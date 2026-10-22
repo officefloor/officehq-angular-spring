@@ -59,6 +59,8 @@ export interface ClaimView {
   lockedBy: string | null;
   /** Whether the claim was added while the period it is dated in was soft-closed. */
   lateEntry: boolean;
+  /** yyyy-mm-dd: the last day (the sheet's today) a reminder was written for the claim; null when never. */
+  remindedOn: string | null;
 }
 
 /** What a split did: the original claim, as it is now, and the new claim split off it. */
@@ -273,6 +275,11 @@ export class ClaimsApi {
    * Defer an OPEN claim until a date; refused (409) when the claim is not OPEN, the date is not after
    * the sheet's today, or the claim is dated inside a closed period.
    */
+  /** Remind an OPEN or PENDING claim; refused when it was already reminded on the sheet's today. */
+  remind(sheet: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/remind`, {}));
+  }
+
   /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
   addProof(sheet: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/proof`, {}));
