@@ -534,6 +534,24 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 >
                   Cancel statement
                 </button>
+                <label [for]="'person-inline-grade-' + p.id">Grade</label>
+                <select
+                  [id]="'person-inline-grade-' + p.id"
+                  data-testid="person-inline-grade"
+                  (change)="inlineGrades.set(p.id, $any(value($event))); personError.set(null)"
+                >
+                  @for (g of grades; track g) {
+                    <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-inline-grade-save"
+                  [attr.aria-label]="'Save the grade chosen for ' + p.name"
+                  (click)="saveInlineGrade(p)"
+                >
+                  Save grade
+                </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
                 <input
                   type="date"
@@ -669,6 +687,8 @@ export class People {
   });
   /** The retire-from date typed on each person's row, by person id; none means the sheet's today. */
   protected readonly retireDates = new Map<number, string>();
+  /** The grade chosen on each person's row. */
+  protected readonly inlineGrades = new Map<number, Grade>();
   /** The hold dates typed on each person's row, by person id; an empty from means the sheet's today. */
   protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
   /** The sheet's claims, newest first. */
@@ -1368,6 +1388,22 @@ export class People {
         id: person.id,
         message: direction === 'up' ? 'The top person cannot move up.' : 'The bottom person cannot move down.',
       });
+    }
+  }
+
+  /** Record the grade chosen on a person's row from the sheet's today, as the person form would. */
+  protected async saveInlineGrade(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const grade = this.inlineGrades.get(person.id) ?? this.gradeOf(person);
+    try {
+      const saved = await this.api.grade(sheet, person.id, grade, person.version);
+      if (this.session.sheet() !== sheet) return;
+      this.inlineGrades.delete(person.id);
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch {
+      this.personError.set({ id: person.id, message: 'The grade could not be saved.' });
     }
   }
 

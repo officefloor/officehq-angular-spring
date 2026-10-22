@@ -110,6 +110,10 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** A grade chosen on a person's row, from the version of the person the row shows. */
+    public record RowGradeForm(@NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
+    }
+
     /** The people selected to be retired together, and the date they are retired from (none: the sheet's today). */
     public record BulkRetireForm(
             @NotNull @Size(min = 1, max = 1000) List<@NotNull Long> personIds,
@@ -205,6 +209,16 @@ public class PersonController {
             @RequestBody @Valid BulkGradeForm form) {
         return bulkGrade.grade(sheetId, SignedIn.name(user), form.personIds(), form.grade(), form.from()).stream()
                 .map(PersonView::of).toList();
+    }
+
+    /** Record the grade chosen on the person's row from the sheet's today, as the person form would. */
+    @PostMapping("/{personId}/grade")
+    public PersonView gradeRow(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid RowGradeForm form) {
+        return view(service.grade(sheetId, SignedIn.name(user), personId, form.version(), form.grade()));
     }
 
     /** Retire the selected people from a date together, each as the row's retire would: the people retired. */

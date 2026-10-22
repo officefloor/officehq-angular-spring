@@ -134,6 +134,15 @@ public class PersonService {
         return saved;
     }
 
+    /** Record a person's grade from the sheet's today, keeping the rest of them, as the person form would. */
+    @Transactional
+    public Person grade(String sheetId, String user, long personId, long version, String grade) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        return edit(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(),
+                person.getContact(), false, false);
+    }
+
     /**
      * Swap a person with the one above them in the list (up) or below them (down); refused for the top
      * person moving up and the bottom one moving down. PERSON_MOVED carries their new position, counting

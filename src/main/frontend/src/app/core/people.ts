@@ -151,6 +151,11 @@ export class PeopleApi {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheet)}/${id}`, form));
   }
 
+  /** Record the grade chosen on a person's row from the sheet's today, from the version the row shows. */
+  grade(sheet: string, id: number, grade: Grade, version: number): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/grade`, { grade, version }));
+  }
+
   /**
    * Give the selected people a grade from a date (null: the sheet's today) together, each as the person
    * form would, in list order: the people changed.
