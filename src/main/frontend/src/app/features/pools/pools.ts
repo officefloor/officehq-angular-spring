@@ -144,10 +144,35 @@ export class Pools {
   /** The error shown on each pool's row, by pool id. */
   protected readonly errors = signal(new Map<number, string>());
   /**
-   * Each pool with its total share, a retired member's share counting as 0.00, and, when it is balanced
-   * and it has a pot, each member's cut of the pot.
+   * Each pool as shown: its total share, a retired member's share counting as 0.00, and, when it is
+   * balanced and it has a pot, each member's cut of the pot.
    */
-  protected readonly lines = computed<PoolLine[]>(() => {
+  protected readonly lines = computed<PoolLine[]>(() =>
+    this.cutLines().map(({ pool, total, cuts }) => ({
+      pool,
+      total: money(total),
+      balanced: total === 10000,
+      cuts: new Map([...cuts].map(([id, c]) => [id, money(Number(c))])),
+    })),
+  );
+  /**
+   * Each person's cut total in cents, by person id: their cuts across every pool they are a member of, as
+   * shown, added up; a pool that shows no cuts adds nothing, and a person in none has none.
+   */
+  readonly personCuts = computed(() => {
+    const totals = new Map<number, number>();
+    for (const { pool, cuts } of this.cutLines()) {
+      for (const m of pool.members) {
+        const c = cuts.get(key(m));
+        if (m.personId !== null && c !== undefined) {
+          totals.set(m.personId, (totals.get(m.personId) ?? 0) + Number(c));
+        }
+      }
+    }
+    return totals;
+  });
+  /** Each pool with its total share in hundredths of a percent and its members' cuts in cents by member key. */
+  private readonly cutLines = computed(() => {
     const retired = new Set(this.people().filter((p) => retiredOn(p, this.today())).map((p) => p.id));
     const pools = this.pools();
     const parents = this.parents();
@@ -171,11 +196,7 @@ export class Pools {
       memo.set(pool.id, found);
       return found;
     };
-    return pools.map((pool) => {
-      const total = totals.get(pool.id) ?? 0;
-      const shown = new Map([...cutsOf(pool)].map(([id, c]) => [id, money(Number(c))]));
-      return { pool, total: money(total), balanced: total === 10000, cuts: shown };
-    });
+    return pools.map((pool) => ({ pool, total: totals.get(pool.id) ?? 0, cuts: cutsOf(pool) }));
   });
   /** The pool each member pool is in, by member pool id. */
   private readonly parents = computed(

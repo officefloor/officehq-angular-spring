@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
 import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
@@ -181,6 +181,7 @@ function csvField(value: string): string {
         due <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>,
         open in total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+      <p>Cut in total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
       @if (tagTotals().length > 0) {
         <ul aria-label="Due by tag">
           @for (t of tagTotals(); track t.tag) {
@@ -294,6 +295,7 @@ function csvField(value: string): string {
             <th scope="col">Watched</th>
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
+            <th scope="col">Cut</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -417,6 +419,7 @@ function csvField(value: string): string {
                 }
               </td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
+              <td data-testid="person-cut-total">{{ cutTotalOf(p) }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -693,6 +696,14 @@ export class People {
   protected readonly settledTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.settledCents(p), 0)),
   );
+  /** The sheet's pools, which work out each person's cuts. */
+  private readonly pools = viewChild.required(Pools);
+  /** Each person's cut total in cents, by person id. */
+  private readonly cutCents = computed(() => this.pools().personCuts());
+  /** Everyone's cut total added up. */
+  protected readonly cutTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + (this.cutCents().get(p.id) ?? 0), 0)),
+  );
   /** Everyone's open-total added up (not trimmed). */
   protected readonly openTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.openCents(p), 0)),
@@ -955,6 +966,11 @@ export class People {
   /** A person's open-total: the due of their counting OPEN and PENDING claims (see countsLive). */
   protected openTotalOf(person: PersonView): string {
     return money(this.openCents(person));
+  }
+
+  /** A person's cut total: their cuts across every pool they are a member of, added up. */
+  protected cutTotalOf(person: PersonView): string {
+    return money(this.cutCents().get(person.id) ?? 0);
   }
 
   private settledCents(person: PersonView): number {
