@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 4467c145..570848b3 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -3,7 +3,7 @@ import { StatusSummary } from '../summary/summary';
+ 
+ // The sheet's header: its counters, each repeating a figure shown elsewhere on the screen — the people
+ // on the sheet (retired people included), the summary's claim count per status, and the sheet's
+-// due-total and overdue-total.
++// due-total and overdue-total; and the signed-in user's own figures, when a person goes by their name.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -16,6 +16,8 @@ import { StatusSummary } from '../summary/summary';
+       </p>
+       <p>Due <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
++      <p>My due <strong data-testid="my-due-total">{{ myDueTotal() }}</strong></p>
++      <p>My overdue <strong data-testid="my-overdue-total">{{ myOverdueTotal() }}</strong></p>
+     </header>
+   `,
+ })
+@@ -24,4 +26,7 @@ export class Header {
+   readonly statuses = input.required<StatusSummary[]>();
+   readonly dueTotal = input.required<string>();
+   readonly overdueTotal = input.required<string>();
++  /** The signed-in user's own due-total and overdue-total, as the person going by their name; empty when none does. */
++  readonly myDueTotal = input.required<string>();
++  readonly myOverdueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f3089021..c6d07a04 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -92,6 +92,8 @@ function csvField(value: string): string {
+       [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()"
+       [overdueTotal]="overdueTotal()"
++      [myDueTotal]="me() ? dueTotalOf(me()!) : ''"
++      [myOverdueTotal]="me() ? overdueTotalOf(me()!) : ''"
+     />
+     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
+@@ -781,6 +783,16 @@ export class People {
+   protected readonly overdueTotal = computed(() =>
+     money(trimmedCents(this.people().map((p) => this.overdueCents(p)))),
+   );
++  /** The person on the sheet who goes by the signed-in user's name, by name or alias as names are compared; null when none does. */
++  protected readonly me = computed(() => {
++    const key = (name: string) => name.trim().toLowerCase();
++    const user = this.session.user();
++    if (user === null) return null;
++    return (
++      this.people().find((p) => key(p.name) === key(user) || (p.aliases ?? []).some((a) => key(a) === key(user))) ??
++      null
++    );
++  });
+   protected readonly name = signal('');
+   protected readonly grade = signal<Grade>('A');
+   /** The date the grade entered is in force from; the sheet's today unless another is typed. */
