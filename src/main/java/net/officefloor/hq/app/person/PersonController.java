@@ -32,16 +32,16 @@ public class PersonController {
     /**
      * What the screen is told about a person, with their statement count, and the last statement's
      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
-     * retired from (null when not retired).
+     * retired from (null when not retired), and whether they are on hold.
      */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statementTotal, LocalDate statementDate, LocalDate retiredFrom) {
+            String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held) {
 
         public static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     person.getStatementCount(),
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
-                    person.getStatementDate(), person.getRetiredFrom());
+                    person.getStatementDate(), person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -104,6 +104,24 @@ public class PersonController {
             @RequestBody(required = false) RetireForm form) {
         return PersonView.of(service.retire(sheetId, SignedIn.name(user), personId,
                 form == null ? null : form.from()));
+    }
+
+    /** Put a person on hold. */
+    @PostMapping("/{personId}/hold")
+    public PersonView hold(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PersonView.of(service.hold(sheetId, SignedIn.name(user), personId, true));
+    }
+
+    /** Take a person off hold. */
+    @PostMapping("/{personId}/release")
+    public PersonView release(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PersonView.of(service.hold(sheetId, SignedIn.name(user), personId, false));
     }
 
     /** Someone else saved the person between the version check and the write. */

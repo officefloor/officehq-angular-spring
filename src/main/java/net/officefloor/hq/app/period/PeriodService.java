@@ -69,8 +69,8 @@ public class PeriodService {
 
     /**
      * Close a period, fixing its due-total at this moment: the sum of the due figures of the OPEN and
-     * SETTLED claims dated in it, each at its own person's grade (a claim with no figure adds nothing).
-     * Refused when the period is already closed.
+     * SETTLED claims dated in it, each at its own person's grade (a claim with no figure adds nothing),
+     * leaving out the OPEN claims of anyone on hold. Refused when the period is already closed.
      */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
@@ -81,15 +81,15 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed.");
         }
-        Map<Long, String> grades = people.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .collect(Collectors.toMap(Person::getId, Person::getGrade));
+        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, person -> person));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            String grade = grades.get(claim.getPersonId());
-            if (!claim.getStatus().counts() || grade == null || !period.contains(claim.getDate())) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !person.countsLive(claim.getStatus()) || !period.contains(claim.getDate())) {
                 continue;
             }
-            BigDecimal figure = dues.figure(claim, grade);
+            BigDecimal figure = dues.figure(claim, person.getGrade());
             if (figure != null) {
                 total = total.add(figure);
             }

@@ -10,6 +10,7 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Locale;
+import net.officefloor.hq.app.claim.ClaimStatus;
 
 /**
  * A person on a sheet, with a name and a grade (A, B or C). The name is kept with surrounding spaces
@@ -55,6 +56,10 @@ public class Person {
     /** The date the person is retired from; null while they are not retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
+
+    /** Whether the person is on hold: their OPEN claims count in no live total. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
 
     protected Person() {
     }
@@ -123,6 +128,23 @@ public class Person {
     /** Retire the person from a date: no claim dated after it can be added for them. */
     public void retire(LocalDate from) {
         this.retiredFrom = from;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    /** Put the person on hold, or take them off it. */
+    public void setHeld(boolean held) {
+        this.held = held;
+    }
+
+    /**
+     * Whether a claim of the person in this status counts in a live total: OPEN and SETTLED claims do,
+     * but not an OPEN one while the person is on hold.
+     */
+    public boolean countsLive(ClaimStatus status) {
+        return status.counts() && !(held && status == ClaimStatus.OPEN);
     }
 
     /** Whether a claim may be dated on this date: not after the person's retirement. */

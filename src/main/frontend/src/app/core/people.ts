@@ -20,6 +20,8 @@ export interface PersonView {
   statementDate: string | null;
   /** The date (yyyy-mm-dd) the person is retired from; null when they are not retired. */
   retiredFrom: string | null;
+  /** Whether the person is on hold: their OPEN claims count in no live total. */
+  held: boolean;
 }
 
 /** A statement taken: the person as stated and their claims, newest first. */
@@ -61,6 +63,11 @@ export class PeopleApi {
   /** Retire a person from a date; with none, from the sheet's today. */
   retire(sheet: string, id: number, from: string | null): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/retire`, { from }));
+  }
+
+  /** Put a person on hold, or take them off it. */
+  hold(sheet: string, id: number, held: boolean): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/${held ? 'hold' : 'release'}`, null));
   }
 
   private url(sheet: string): string {

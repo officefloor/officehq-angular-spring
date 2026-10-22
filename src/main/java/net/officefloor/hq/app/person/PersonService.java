@@ -78,6 +78,27 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * Put a person on hold ({@code held}) or take them off it; refused when they already are. Their
+     * figures and the sheet's totals move as their OPEN claims leave or rejoin the live totals.
+     */
+    @Transactional
+    public Person hold(String sheetId, String user, long personId, boolean held) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (person.isHeld() == held) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    held ? "The person is already on hold." : "The person is not on hold.");
+        }
+        Rollups.Rollup before = rollups.take(sheetId);
+        person.setHeld(held);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName());
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
     /** Record the change to the person once it is committed. */
     private void audited(String event, String sheetId, String user, Person person) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
