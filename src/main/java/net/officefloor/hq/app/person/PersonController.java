@@ -13,6 +13,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -75,9 +76,11 @@ public class PersonController {
     }
 
     private final PersonService service;
+    private final WatchService watches;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, WatchService watches) {
         this.service = service;
+        this.watches = watches;
     }
 
     /** The sheet's people in the order they were added. */
@@ -152,6 +155,34 @@ public class PersonController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PatronForm form) {
         return PersonView.of(service.addPatron(sheetId, SignedIn.name(user), personId, form.patronId()));
+    }
+
+    /** The ids of the people on the sheet the signed-in user watches. */
+    @GetMapping("/watched")
+    public List<Long> watched(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return watches.watched(sheetId, SignedIn.name(user));
+    }
+
+    /** Start watching a person as the signed-in user. */
+    @PutMapping("/{personId}/watch")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void watch(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        watches.watch(sheetId, SignedIn.name(user), personId);
+    }
+
+    /** Stop watching a person as the signed-in user. */
+    @DeleteMapping("/{personId}/watch")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unwatch(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        watches.unwatch(sheetId, SignedIn.name(user), personId);
     }
 
     /** Someone else saved the person between the version check and the write. */

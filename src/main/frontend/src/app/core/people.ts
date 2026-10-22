@@ -112,6 +112,17 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/patrons`, { patronId }));
   }
 
+  /** The ids of the people on the sheet the signed-in user watches. */
+  watched(sheet: string): Promise<number[]> {
+    return firstValueFrom(this.http.get<number[]>(`${this.url(sheet)}/watched`));
+  }
+
+  /** Start (true) or stop (false) watching a person as the signed-in user. */
+  watch(sheet: string, id: number, on: boolean): Promise<void> {
+    const url = `${this.url(sheet)}/${id}/watch`;
+    return firstValueFrom(on ? this.http.put<void>(url, null) : this.http.delete<void>(url));
+  }
+
   private url(sheet: string): string {
     return `/api/sheets/${encodeURIComponent(sheet)}/people`;
   }

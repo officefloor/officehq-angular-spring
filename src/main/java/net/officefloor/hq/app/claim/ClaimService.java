@@ -8,6 +8,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.WatchService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollups;
@@ -32,10 +33,12 @@ public class ClaimService {
     private final Rollups rollups;
     private final PeriodService periods;
     private final RoleService roles;
+    private final WatchService watches;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
-            Rollups rollups, PeriodService periods, RoleService roles, Audit audit) {
+            Rollups rollups, PeriodService periods, RoleService roles, WatchService watches, Audit audit) {
+        this.watches = watches;
         this.periods = periods;
         this.roles = roles;
         this.claims = claims;
@@ -176,6 +179,9 @@ public class ClaimService {
                 ? " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
                 : "";
         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
+        if (next == ClaimStatus.SETTLED) {
+            watches.notifyWatchers(sheetId, user, person, saved.getNumber());
+        }
         rollups.audit(sheetId, user, before);
         return saved;
     }
@@ -245,6 +251,7 @@ public class ClaimService {
         Claim saved = logged(claims.saveAndFlush(claim), user, person);
         audited("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(),
                 " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE));
+        watches.notifyWatchers(sheetId, user, person, saved.getNumber());
         rollups.audit(sheetId, user, before);
         return saved;
     }
@@ -274,6 +281,7 @@ public class ClaimService {
         audited("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber(),
                 " old=" + (old != null ? old.toPlainString() : NO_RATE)
                         + " new=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE));
+        watches.notifyWatchers(sheetId, user, person, saved.getNumber());
         rollups.audit(sheetId, user, before);
         return saved;
     }

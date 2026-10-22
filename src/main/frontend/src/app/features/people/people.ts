@@ -161,6 +161,7 @@ function csvField(value: string): string {
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
             <th scope="col">On hold</th>
+            <th scope="col">Watched</th>
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
             <th scope="col">Claims</th>
@@ -205,6 +206,18 @@ function csvField(value: string): string {
                     <li data-testid="person-hold-line">from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
                   }
                 </ul>
+              </td>
+              <td>
+                <span data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</span>
+                <button
+                  type="button"
+                  data-testid="person-watch"
+                  [attr.aria-pressed]="watched().has(p.id)"
+                  [attr.aria-label]="(watched().has(p.id) ? 'Stop watching ' : 'Watch ') + p.name"
+                  (click)="toggleWatch(p)"
+                >
+                  {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}
+                </button>
               </td>
               <td>
                 <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
@@ -437,6 +450,8 @@ export class People {
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   /** The person chosen in each row's patron list, by person id. */
   protected readonly patronChoices = new Map<number, string>();
+  /** The ids of the people the signed-in user watches. */
+  protected readonly watched = signal<ReadonlySet<number>>(new Set());
   /** The refusal of the last patron added on a person's row, shown on that row. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -457,6 +472,7 @@ export class People {
       this.session.loads();
       untracked(() => {
         this.people.set([]);
+        this.watched.set(new Set());
         this.claims.set([]);
         this.rates.set([]);
         this.periods.set([]);
@@ -708,6 +724,29 @@ export class People {
     }
   }
 
+  /** Start or stop watching a person as the signed-in user. */
+  protected async toggleWatch(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const on = !this.watched().has(person.id);
+    try {
+      await this.api.watch(sheet, person.id, on);
+      if (this.session.sheet() !== sheet) return;
+      this.watched.update((set) => {
+        const next = new Set(set);
+        if (on) next.add(person.id);
+        else next.delete(person.id);
+        return next;
+      });
+    } catch {
+      this.personError.set({
+        id: person.id,
+        message: on ? 'The person could not be watched.' : 'The person could not be unwatched.',
+      });
+    }
+  }
+
   /**
    * Download the people as a CSV file: a header line, then one line per person in list order, retired
    * people included, with the grade in force on the sheet's today, the retired-from date or nothing, and
@@ -915,8 +954,9 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, claims, rates, periods] = await Promise.all([
+    const [people, watched, claims, rates, periods] = await Promise.all([
       this.api.list(sheet),
+      this.api.watched(sheet),
       this.claimsApi.list(sheet),
       this.ratesApi.list(sheet),
       this.periodsApi.list(sheet),
@@ -926,6 +966,7 @@ export class People {
       this.claims.set(claims);
       this.rates.set(rates);
       this.periods.set(periods);
+      this.watched.set(new Set(watched));
       this.people.set(people);
     }
   }
