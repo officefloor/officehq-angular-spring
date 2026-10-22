@@ -38,7 +38,7 @@ export interface PersonView {
   statementCount: number;
   /** The last statement's due-total with two decimals; null when it was n/a, or none was taken. */
   statementTotal: string | null;
-  /** The sheet's today (yyyy-mm-dd) when the last statement was taken; null when none was. */
+  /** The date (yyyy-mm-dd) the last statement was taken as of; null when none was. */
   statementDate: string | null;
   /** The date (yyyy-mm-dd) the person is retired from; null when they are not retired. */
   retiredFrom: string | null;
@@ -109,9 +109,12 @@ export class PeopleApi {
     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheet)}/${id}`, form));
   }
 
-  /** Take a statement: record the person's due-total and bind their counting claims to their figures. */
-  statement(sheet: string, id: number): Promise<StatementView> {
-    return firstValueFrom(this.http.post<StatementView>(`${this.url(sheet)}/${id}/statements`, null));
+  /**
+   * Take a statement as of a date on or before the sheet's today (null: now): record the person's
+   * due-total and bind the claims that counted then to their figures as they stood then.
+   */
+  statement(sheet: string, id: number, asOf: string | null = null): Promise<StatementView> {
+    return firstValueFrom(this.http.post<StatementView>(`${this.url(sheet)}/${id}/statements`, { asOf }));
   }
 
   /** Cancel the last statement: the claims it bound are live again, the one before it shown. */

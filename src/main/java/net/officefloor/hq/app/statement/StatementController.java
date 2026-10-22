@@ -3,6 +3,7 @@ package net.officefloor.hq.app.statement;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedIn;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
@@ -11,6 +12,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,13 +32,19 @@ public class StatementController {
         this.service = service;
     }
 
-    /** Take a statement for a person. */
+    /** The date a statement is taken as of; with none, the sheet's today. */
+    public record StatementForm(LocalDate asOf) {
+    }
+
+    /** Take a statement for a person, as of a date on or before the sheet's today. */
     @PostMapping
     public StatementView take(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long personId,
-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
-        StatementService.Stated stated = service.take(sheetId, SignedIn.name(user), personId);
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) StatementForm form) {
+        StatementService.Stated stated = service.take(sheetId, SignedIn.name(user), personId,
+                form == null ? null : form.asOf());
         return new StatementView(PersonView.of(stated.person()),
                 stated.claims().stream().map(ClaimView::of).toList());
     }

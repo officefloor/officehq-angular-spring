@@ -54,13 +54,17 @@ public class SheetService {
     }
 
     /**
-     * Change the sheet's today, auditing the figures that moves. The periods it puts past their grace
+     * Change the sheet's today, auditing the figures that moves. The sheet as it stood at the end of
+     * the today it leaves is kept first (see {@link TodayLeaving}). The periods it puts past their grace
      * days are closed (see {@link TodayChanged}) before those figures are audited.
      */
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id);
         Rollups.Rollup before = rollups.take(id);
+        if (!today.equals(sheet.getToday())) {
+            events.publishEvent(new TodayLeaving(id, sheet.getToday()));
+        }
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         events.publishEvent(new TodayChanged(id, user, today, saved.getGraceDays()));

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rate;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -23,7 +24,13 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
      * after that one's to-date.
      */
     default Optional<Rate> findInForce(String sheetId, String grade, LocalDate date) {
-        return findBySheetIdAndGrade(sheetId, grade).stream()
+        return inForce(findBySheetIdAndGrade(sheetId, grade), grade, date);
+    }
+
+    /** The rate in force for a grade on a date among these rates (see {@link #findInForce}). */
+    static Optional<Rate> inForce(Collection<Rate> rates, String grade, LocalDate date) {
+        return rates.stream()
+                .filter(rate -> rate.getGrade().equals(grade))
                 .filter(rate -> rate.appliesOn(date))
                 .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(rate -> !rate.endedBy(date));

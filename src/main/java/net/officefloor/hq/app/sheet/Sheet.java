@@ -259,6 +259,36 @@ public class Sheet {
         return all;
     }
 
+    /** Every value recorded for a setting from a date, whatever its key. */
+    public List<DatedSetting> getDated() {
+        return List.copyOf(dated);
+    }
+
+    /**
+     * The sheet as it stood on a past date, held in no store: its starting values and permissions as
+     * now, that date as its today, and the values recorded from a date and the policy date it had then.
+     */
+    public Sheet asOf(LocalDate day, List<DatedSetting> datedThen, LocalDate policyDateThen) {
+        Sheet then = new Sheet(id, createdAt, day);
+        then.lastClaimNumber = lastClaimNumber;
+        then.clerkLimit = clerkLimit;
+        then.cap = cap;
+        then.proofThreshold = proofThreshold;
+        then.floor = floor;
+        then.terms = terms;
+        then.termsA = termsA;
+        then.termsB = termsB;
+        then.termsC = termsC;
+        then.latePct = latePct;
+        then.policyDate = policyDateThen;
+        then.periodNumberingFrom = periodNumberingFrom;
+        then.graceDays = graceDays;
+        then.archived = archived;
+        then.dated = new ArrayList<>(datedThen);
+        then.permissions = new HashMap<>(permissions);
+        return then;
+    }
+
     /** The floor's values (see {@link #history}). */
     public List<DatedSetting> floorHistory() {
         return history(FLOOR, plain(floor));

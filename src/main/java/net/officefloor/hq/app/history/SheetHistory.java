@@ -1,0 +1,165 @@
+package net.officefloor.hq.app.history;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.sheet.DatedSetting;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.TodayLeaving;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * The sheet as it stood at the end of past dates. Every change is made on the sheet's today, so as the
+ * sheet's today moves on from a date, everything its figures are read from (its settings, rates,
+ * people and claims) is kept as it stands: what was changed while the sheet's today was on or before
+ * that date, and nothing changed later.
+ */
+@Service
+public class SheetHistory {
+
+    /** A sheet's figures-bearing state, as kept. */
+    record State(LocalDate policyDate, List<SettingState> settings, List<RateState> rates,
+            List<PersonState> people, List<ClaimState> claims) {
+    }
+
+    record SettingState(String key, LocalDate from, String value) {
+    }
+
+    record RateState(String grade, LocalDate from, LocalDate to, BigDecimal pct) {
+    }
+
+    record GradeState(LocalDate from, String grade) {
+    }
+
+    record HoldState(LocalDate from, LocalDate to) {
+    }
+
+    record PersonState(long id, String name, String grade, List<GradeState> grades, Integer terms,
+            List<HoldState> holds, LocalDate retiredFrom) {
+    }
+
+    record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
+            String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
+            LocalDate deferredUntil) {
+    }
+
+    /**
+     * The sheet as it stood at the end of a date, held in no store: the sheet with that date as its
+     * today, its people by id and its claims by id, newest first, and the basis their figures are read
+     * against.
+     */
+    public record AsOf(Sheet sheet, Map<Long, Person> people, Map<Long, Claim> claims, Dues.Basis basis) {
+    }
+
+    private final SheetSnapshotRepository snapshots;
+    private final SheetRepository sheets;
+    private final RateRepository rates;
+    private final PersonRepository people;
+    private final ClaimRepository claims;
+    private final JsonMapper json;
+
+    public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateRepository rates,
+            PersonRepository people, ClaimRepository claims, JsonMapper json) {
+        this.snapshots = snapshots;
+        this.sheets = sheets;
+        this.rates = rates;
+        this.people = people;
+        this.claims = claims;
+        this.json = json;
+    }
+
+    /** The sheet's today moves on: keep the sheet as it stands, as it was at the end of the date it leaves. */
+    @EventListener
+    @Transactional
+    public void todayLeaving(TodayLeaving leaving) {
+        String sheetId = leaving.sheetId();
+        Sheet sheet = sheets.findById(sheetId).orElseThrow();
+        State state = new State(sheet.getPolicyDate(),
+                sheet.getDated().stream().map(d -> new SettingState(d.getKey(), d.getFromDate(), d.getValue())).toList(),
+                rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId).stream()
+                        .map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())).toList(),
+                people.findBySheetIdOrderByIdAsc(sheetId).stream().map(SheetHistory::kept).toList(),
+                claims.findBySheetIdOrderByIdDesc(sheetId).stream().map(SheetHistory::kept).toList());
+        snapshots.save(new SheetSnapshot(sheetId, leaving.today(), json.writeValueAsString(state)));
+    }
+
+    /**
+     * The sheet as it stood at the end of a date before its today; empty when nothing was kept for
+     * it on or before that date.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AsOf> at(String sheetId, LocalDate day) {
+        Sheet now = sheets.findById(sheetId).orElse(null);
+        if (now == null) {
+            return Optional.empty();
+        }
+        return snapshots.findFirstBySheetIdAndAsOfLessThanEqualOrderByIdDesc(sheetId, day)
+                .map(snapshot -> restored(now, day, json.readValue(snapshot.getState(), State.class)));
+    }
+
+    private static AsOf restored(Sheet now, LocalDate day, State state) {
+        Sheet sheet = now.asOf(day,
+                state.settings().stream().map(s -> new DatedSetting(s.key(), s.from(), s.value())).toList(),
+                state.policyDate());
+        List<Rate> rates = state.rates().stream().map(r -> {
+            Rate rate = new Rate(now.getId(), r.grade(), r.from(), r.pct());
+            rate.setToDate(r.to());
+            return rate;
+        }).toList();
+        Map<Long, Person> people = new LinkedHashMap<>();
+        for (PersonState p : state.people()) {
+            Person person = new Person(now.getId(), p.name(), p.grade(), p.terms());
+            p.grades().forEach(g -> person.gradeFrom(g.grade(), g.from()));
+            p.holds().forEach(h -> person.hold(h.from(), h.to()));
+            if (p.retiredFrom() != null) {
+                person.retire(p.retiredFrom());
+            }
+            people.put(p.id(), person);
+        }
+        Map<Long, Claim> claims = new LinkedHashMap<>();
+        for (ClaimState c : state.claims()) {
+            Claim claim = new Claim(now.getId(), c.personId(), c.amount(), c.date(), c.dueBy(), "", c.corrects());
+            claim.become(c.status());
+            claim.number(c.number());
+            claim.settleDue(c.settledDue());
+            if (c.stated()) {
+                claim.bind(c.statedDue());
+            }
+            claim.defer(c.deferredUntil());
+            claims.put(c.id(), claim);
+        }
+        Dues.Basis basis = new Dues.Basis(sheet, rates, correction -> claims.values().stream()
+                .filter(c -> Objects.equals(c.getPersonId(), correction.getPersonId())
+                        && Objects.equals(c.getNumber(), correction.getCorrects()))
+                .findFirst());
+        return new AsOf(sheet, people, claims, basis);
+    }
+
+    private static PersonState kept(Person p) {
+        return new PersonState(p.getId(), p.getName(), p.getGrade(),
+                p.getGradesFrom().entrySet().stream().map(e -> new GradeState(e.getKey(), e.getValue())).toList(),
+                p.getTerms(), p.getHolds().stream().map(h -> new HoldState(h.getFromDate(), h.getToDate())).toList(),
+                p.getRetiredFrom());
+    }
+
+    private static ClaimState kept(Claim c) {
+        return new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getDueBy(), c.getStatus(),
+                c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil());
+    }
+}

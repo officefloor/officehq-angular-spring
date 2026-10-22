@@ -300,11 +300,19 @@ function csvField(value: string): string {
                 >
                   Edit
                 </button>
+                <label [for]="'person-statement-asof-' + p.id">Statement as of</label>
+                <input
+                  #statementAsOf
+                  type="date"
+                  [id]="'person-statement-asof-' + p.id"
+                  data-testid="person-statement-asof"
+                  (input)="personError.set(null)"
+                />
                 <button
                   type="button"
                   data-testid="person-statement"
                   [attr.aria-label]="'Take a statement for ' + p.name"
-                  (click)="statement(p)"
+                  (click)="statement(p, statementAsOf)"
                 >
                   Statement
                 </button>
@@ -726,14 +734,19 @@ export class People {
     return person.statementTotal ?? NO_RATE;
   }
 
-  /** Take a statement for a person: the row and their claims show what the store holds after it. */
-  protected async statement(person: PersonView): Promise<void> {
+  /**
+   * Take a statement for a person, as of the date typed beside the button (blank: now): the row and
+   * their claims show what the store holds after it, and the date is cleared for the next one.
+   */
+  protected async statement(person: PersonView, asOfInput: HTMLInputElement): Promise<void> {
     this.personError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
+    const asOf = asOfInput.value.trim() || null;
     try {
-      const stated = await this.api.statement(sheet, person.id);
+      const stated = await this.api.statement(sheet, person.id, asOf);
       if (this.session.sheet() !== sheet) return;
+      asOfInput.value = '';
       this.people.update((list) => list.map((p) => (p.id === stated.person.id ? stated.person : p)));
       const byId = new Map(stated.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
