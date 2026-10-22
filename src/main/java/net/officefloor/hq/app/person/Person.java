@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
@@ -16,11 +17,14 @@ import java.time.LocalDate;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
 /**
- * A person on a sheet, with a name and a grade (A, B or C). The name is kept with surrounding spaces
+ * A person on a sheet, with a name and a dated grade (A, B or C): the first grade they were given
+ * applies from the beginning of time, and each later one from its own date. The name is kept with surrounding spaces
  * removed and is unique on the sheet ignoring case, by its {@link #keyOf key}. Its version is raised on
  * every save, so an edit made from an older version is refused.
  */
@@ -41,8 +45,16 @@ public class Person {
     @Column(name = "name_key", nullable = false)
     private String nameKey;
 
+    /** The first grade the person was given: in force from the beginning of time. */
     @Column(name = "grade", nullable = false)
     private String grade;
+
+    /** The grades recorded since the first, by the date each is in force from. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
+    @MapKeyColumn(name = "from_date")
+    @Column(name = "grade", nullable = false)
+    private Map<LocalDate, String> gradesFrom = new TreeMap<>();
 
     @Version
     @Column(name = "version", nullable = false)
@@ -110,12 +122,35 @@ public class Person {
         this.nameKey = keyOf(name);
     }
 
+    /** The first grade the person was given: in force from the beginning of time. */
     public String getGrade() {
         return grade;
     }
 
-    public void setGrade(String grade) {
-        this.grade = grade;
+    /** The grades recorded since the first, by the date each is in force from, earliest first. */
+    public Map<LocalDate, String> getGradesFrom() {
+        return Collections.unmodifiableMap(new TreeMap<>(gradesFrom));
+    }
+
+    /**
+     * The grade in force on a date: the one recorded from the latest date on or before it, else the
+     * first grade the person was given.
+     */
+    public String gradeOn(LocalDate date) {
+        String on = grade;
+        LocalDate latest = null;
+        for (Map.Entry<LocalDate, String> entry : gradesFrom.entrySet()) {
+            if (!entry.getKey().isAfter(date) && (latest == null || entry.getKey().isAfter(latest))) {
+                latest = entry.getKey();
+                on = entry.getValue();
+            }
+        }
+        return on;
+    }
+
+    /** Record a grade from a date, in place of any recorded from that same date. */
+    public void gradeFrom(String grade, LocalDate from) {
+        gradesFrom.put(from, grade);
     }
 
     public long getVersion() {

@@ -59,7 +59,7 @@ public class StatementService {
         Rollups.Rollup before = rollups.take(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
-        boolean fixed = false;
+        boolean figured = false;
         int counted = 0;
         for (Claim claim : theirs) {
             // As in the live totals: an OPEN claim of a person on hold is left out.
@@ -68,17 +68,17 @@ public class StatementService {
                 continue;
             }
             // The statement binds the figure; the late charge stays live, but counts in its total.
-            BigDecimal figure = claimService.figure(claim, person.getGrade());
-            fixed |= figure != null && (claim.getSettledDue() != null || claim.isStated());
+            BigDecimal figure = claimService.figure(claim, person.gradeOn(claim.getDate()));
+            figured |= figure != null;
             claim.bind(figure);
             counted++;
-            BigDecimal due = claimService.due(claim, person.getGrade());
+            BigDecimal due = claimService.due(claim, person.gradeOn(claim.getDate()));
             if (due != null) {
                 total = total.add(due);
             }
         }
-        // As on the screen: n/a when the grade has no rate today, unless a claim keeps a fixed figure.
-        if (rates.findInForce(sheetId, person.getGrade(), today).isEmpty() && !fixed) {
+        // As on the screen: n/a when the grade in force today has no rate, unless a claim has a figure.
+        if (rates.findInForce(sheetId, person.gradeOn(today), today).isEmpty() && !figured) {
             total = null;
         }
         person.stated(total, today);

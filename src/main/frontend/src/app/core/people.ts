@@ -6,10 +6,30 @@ import { ClaimView } from './claims';
 export const GRADES = ['A', 'B', 'C'] as const;
 export type Grade = (typeof GRADES)[number];
 
+/** A grade a person has, from a date (yyyy-mm-dd); null from the beginning of time. */
+export interface GradeView {
+  grade: Grade;
+  from: string | null;
+}
+
+/**
+ * The grade a person has in force on a date (yyyy-mm-dd): the one recorded from the latest date on or
+ * before it, else the first they were given (from the beginning of time).
+ */
+export function gradeOn(grades: GradeView[], date: string): Grade {
+  let on = grades[0];
+  for (const g of grades) {
+    if (g.from === null || g.from > date) continue;
+    if (on.from === null || g.from > on.from) on = g;
+  }
+  return on.grade;
+}
+
 export interface PersonView {
   id: number;
   name: string;
-  grade: Grade;
+  /** The person's grades by the date each is in force from, the first from the beginning of time. */
+  grades: GradeView[];
   /** Raised on every save of the person. */
   version: number;
   /** How many statements have been taken for the person. */
@@ -35,6 +55,8 @@ export interface StatementView {
 export interface PersonForm {
   name: string;
   grade: Grade;
+  /** On an edit, the date (yyyy-mm-dd) the grade is in force from; null for the sheet's today. */
+  gradeFrom?: string | null;
   /** On an edit, the version of the person the form loaded. */
   version?: number;
 }

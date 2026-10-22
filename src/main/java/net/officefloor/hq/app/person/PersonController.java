@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -33,13 +34,18 @@ public class PersonController {
      * What the screen is told about a person, with their statement count, and the last statement's
      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
      * retired from (null when not retired), whether they are on hold, and the ids of their patrons.
+     * Their grades are listed by the date each is in force from, the first with none (from the
+     * beginning of time).
      */
-    public record PersonView(long id, String name, String grade, long version, int statementCount,
+    public record PersonView(long id, String name, List<GradeView> grades, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
             List<Long> patronIds) {
 
         public static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+            List<GradeView> grades = new ArrayList<>();
+            grades.add(new GradeView(person.getGrade(), null));
+            person.getGradesFrom().forEach((from, grade) -> grades.add(new GradeView(grade, from)));
+            return new PersonView(person.getId(), person.getName(), grades, person.getVersion(),
                     person.getStatementCount(),
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
                     person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
@@ -47,13 +53,19 @@ public class PersonController {
         }
     }
 
+    /** A grade a person has, from a date (null: from the beginning of time). */
+    public record GradeView(String grade, LocalDate from) {
+    }
+
     /**
-     * A person's values as entered on the form: a name is required, the grade is A, B or C. An edit
-     * carries the version of the person the form loaded.
+     * A person's values as entered on the form: a name is required, the grade is A, B or C. On an edit
+     * the grade is recorded from its date (none: the sheet's today); a person's first grade applies
+     * from the beginning of time. An edit carries the version of the person the form loaded.
      */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate gradeFrom,
             Long version) {
     }
 
@@ -79,7 +91,7 @@ public class PersonController {
         return PersonView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.grade()));
     }
 
-    /** Change a person's name and grade, from the version of the person the form loaded. */
+    /** Change a person's name and record their grade from its date, from the version of the person the form loaded. */
     @PutMapping("/{personId}")
     public PersonView edit(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
@@ -90,7 +102,7 @@ public class PersonController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required.");
         }
         return PersonView.of(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
-                form.grade()));
+                form.grade(), form.gradeFrom()));
     }
 
     /** The date a person is retired from; with none, the sheet's today. */

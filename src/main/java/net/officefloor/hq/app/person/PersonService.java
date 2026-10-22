@@ -39,17 +39,19 @@ public class PersonService {
         requireNameFree(sheetId, name, null);
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = people.saveAndFlush(new Person(sheetId, name, grade));
-        audited("PERSON_ADDED", sheetId, user, person);
+        audited("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId));
         rollups.audit(sheetId, user, before);
         return person;
     }
 
     /**
-     * Change a person's name and grade, from the version of the person the editor loaded; refused when
-     * someone has saved the person since, or when the name is in use by another person.
+     * Change a person's name and record their grade from a date (null: the sheet's today), keeping the
+     * grades already recorded, from the version of the person the editor loaded; refused when someone
+     * has saved the person since, or when the name is in use by another person.
      */
     @Transactional
-    public Person edit(String sheetId, String user, long personId, long version, String name, String grade) {
+    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         if (person.getVersion() != version) {
@@ -58,10 +60,11 @@ public class PersonService {
         }
         requireNameFree(sheetId, name, person.getId());
         Rollups.Rollup before = rollups.take(sheetId);
+        LocalDate today = sheets.today(sheetId);
         person.setName(name);
-        person.setGrade(grade);
+        person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
         Person saved = people.saveAndFlush(person);
-        audited("PERSON_EDITED", sheetId, user, saved);
+        audited("PERSON_EDITED", sheetId, user, saved, today);
         rollups.audit(sheetId, user, before);
         return saved;
     }
@@ -121,10 +124,10 @@ public class PersonService {
         return saved;
     }
 
-    /** Record the change to the person once it is committed. */
-    private void audited(String event, String sheetId, String user, Person person) {
+    /** Record the change to the person, with the grade in force on the sheet's today, once it is committed. */
+    private void audited(String event, String sheetId, String user, Person person, LocalDate today) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.getGrade());
+                + " name=" + person.getName() + " grade=" + person.gradeOn(today));
     }
 
     /** Refuse a name already held on the sheet by anyone other than {@code self}. */

@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents, dueBy, money, overdue } from '../../core/claims';
-import { Grade } from '../../core/people';
+import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -95,8 +95,8 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
-  /** The person's grade. */
-  readonly grade = input.required<Grade>();
+  /** The person's grades by the date each is in force from; each claim uses the one on its date. */
+  readonly grades = input.required<GradeView[]>();
   /** The sheet's rates; each claim uses the one its person's grade has in force on its date. */
   readonly rates = input.required<RateView[]>();
   /** The sheet's periods; each claim belongs to the one whose dates contain its date, or to none. */
@@ -128,7 +128,7 @@ export class Claims {
    */
   protected dueOf(claim: ClaimView): string {
     const late = { pct: this.session.latePct(), terms: this.session.terms(), today: this.session.today() ?? '' };
-    const figure = claimDueCents(claim, this.rates(), this.grade(), cents(this.session.floor()), late);
+    const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), cents(this.session.floor()), late);
     return figure === null ? NO_RATE : money(figure);
   }
 

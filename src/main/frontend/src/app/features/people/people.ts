@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, money, overdue } from '../../core/claims';
-import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
+import { GRADES, Grade, PeopleApi, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -48,12 +48,20 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
           id="person-form-grade"
           data-testid="person-form-grade"
           [value]="grade()"
-          (change)="grade.set(gradeOf($event)); error.set(null)"
+          (change)="grade.set(gradeChosen($event)); error.set(null)"
         >
           @for (g of grades; track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
+        <label for="person-form-grade-from">Grade from</label>
+        <input
+          type="date"
+          id="person-form-grade-from"
+          data-testid="person-form-grade-from"
+          [value]="gradeFrom()"
+          (input)="gradeFrom.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -100,7 +108,7 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td>
@@ -148,7 +156,7 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsOf(p.id)"
-                  [grade]="p.grade"
+                  [grades]="p.grades"
                   [rates]="rates()"
                   [periods]="periods()"
                   (saved)="claimSaved($event)"
@@ -274,6 +282,8 @@ export class People {
   );
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
+  /** The date the grade entered is in force from; the sheet's today unless another is typed. */
+  protected readonly gradeFrom = signal('');
   /** The id of the person open in the form, or null when the form adds a new person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person open in the form, as it was loaded. */
@@ -344,6 +354,11 @@ export class People {
     );
   }
 
+  /** The grade a person has in force on the sheet's today. */
+  protected gradeOf(person: PersonView): Grade {
+    return gradeOn(person.grades, this.today());
+  }
+
   /** The rate a grade has in force on the sheet's today (a two-decimal percent), or null when it has none. */
   protected pctOf(grade: Grade): string | null {
     return rateOn(this.rates(), grade, this.today());
@@ -357,19 +372,22 @@ export class People {
 
   /**
    * A person's due-total in whole cents: the sum of the due figures of their OPEN and SETTLED claims
-   * (0 with none; see countsLive). Null (n/a) when their grade has no rate on the sheet's today, unless a settled
-   * or stated claim keeps a fixed figure: then it is the sum of the figures there are.
+   * (0 with none; see countsLive). Null (n/a) when the grade they have in force on the sheet's today has no
+   * rate, unless a claim has a figure (a fixed one, or one at the grade in force on its own date): then it
+   * is the sum of the figures there are.
    */
   private dueTotalCents(person: PersonView): number | null {
-    const counting = this.countingOf(person.id);
-    const fixed = (c: ClaimView) => c.settledDue !== null || (c.stated && c.statedDue !== null);
-    if (this.pctOf(person.grade) === null && !counting.some(fixed)) return null;
-    return counting.reduce((sum, c) => sum + (this.dueCents(c, person) ?? 0), 0);
+    const dues = this.countingOf(person.id).map((c) => this.dueCents(c, person));
+    if (this.pctOf(this.gradeOf(person)) === null && dues.every((d) => d === null)) return null;
+    return dues.reduce<number>((sum, d) => sum + (d ?? 0), 0);
   }
 
-  /** A claim's due in whole cents at its person's grade, with its late charge (see claimDueCents). */
+  /**
+   * A claim's due in whole cents at the grade its person has in force on its date, with its late charge
+   * (see claimDueCents).
+   */
   private dueCents(claim: ClaimView, person: PersonView): number | null {
-    return claimDueCents(claim, this.rates(), person.grade, this.floorCents(), this.late());
+    return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), this.floorCents(), this.late());
   }
 
   /** A person's patrons' names, sorted, comma and space separated. */
@@ -508,7 +526,7 @@ export class People {
     return (event.target as HTMLInputElement).checked;
   }
 
-  protected gradeOf(event: Event): Grade {
+  protected gradeChosen(event: Event): Grade {
     return (event.target as HTMLSelectElement).value as Grade;
   }
 
@@ -518,7 +536,8 @@ export class People {
     this.editing.set(person.id);
     this.version.set(person.version);
     this.name.set(person.name);
-    this.grade.set(person.grade);
+    this.grade.set(this.gradeOf(person));
+    this.gradeFrom.set(this.today());
     this.error.set(null);
   }
 
@@ -526,6 +545,7 @@ export class People {
     this.editing.set(null);
     this.name.set('');
     this.grade.set('A');
+    this.gradeFrom.set(this.today());
     this.error.set(null);
   }
 
@@ -547,7 +567,8 @@ export class People {
         const added = await this.api.add(sheet, form);
         this.people.update((list) => [...list, added]);
       } else {
-        const saved = await this.api.edit(sheet, id, { ...form, version: this.version() });
+        const gradeFrom = this.gradeFrom().trim() || null;
+        const saved = await this.api.edit(sheet, id, { ...form, gradeFrom, version: this.version() });
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
@@ -573,7 +594,7 @@ export class People {
       this.people.update((list) => list.map((p) => (p.id === id ? current : p)));
       this.version.set(current.version);
       this.name.set(current.name);
-      this.grade.set(current.grade);
+      this.grade.set(this.gradeOf(current));
     } catch {
       // the form keeps what was typed; the refusal is still shown
     }

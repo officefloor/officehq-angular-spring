@@ -114,6 +114,8 @@ export class Settings {
   protected readonly roleError = signal<string | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
+  /** The settings saves in flight: a save submitted meanwhile is written after them, in turn. */
+  private saving: Promise<void> = Promise.resolve();
 
   constructor() {
     // Every sheet load re-reads the sheet's settings and roles from the store.
@@ -136,7 +138,6 @@ export class Settings {
 
   protected async saveSettings(event: Event): Promise<void> {
     event.preventDefault();
-    if (this.busy) return;
     this.settingsError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -165,33 +166,35 @@ export class Settings {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
       return;
     }
-    this.busy = true;
-    try {
-      if (saveLimit) {
-        const view = await this.api.setClerkLimit(sheet, limit);
-        this.clerkLimit.set(view.clerkLimit);
-        this.limitEdited = false;
+    // What was typed is taken now: anything typed meanwhile is saved by the next submit.
+    if (saveLimit) this.limitEdited = false;
+    if (saveFloor) this.floorEdited = false;
+    if (saveTerms) this.termsEdited = false;
+    if (saveLatePct) this.latePctEdited = false;
+    const write = async () => {
+      try {
+        if (saveLimit) {
+          const view = await this.api.setClerkLimit(sheet, limit);
+          this.clerkLimit.set(view.clerkLimit);
+        }
+        if (saveFloor) {
+          const view = await this.api.setFloor(sheet, floor);
+          this.session.floor.set(view.floor);
+        }
+        if (saveTerms) {
+          const view = await this.api.setTerms(sheet, terms);
+          this.session.terms.set(view.terms);
+        }
+        if (saveLatePct) {
+          const view = await this.api.setLatePct(sheet, latePct);
+          this.session.latePct.set(view.latePct);
+        }
+      } catch {
+        this.settingsError.set('The settings could not be saved.');
       }
-      if (saveFloor) {
-        const view = await this.api.setFloor(sheet, floor);
-        this.session.floor.set(view.floor);
-        this.floorEdited = false;
-      }
-      if (saveTerms) {
-        const view = await this.api.setTerms(sheet, terms);
-        this.session.terms.set(view.terms);
-        this.termsEdited = false;
-      }
-      if (saveLatePct) {
-        const view = await this.api.setLatePct(sheet, latePct);
-        this.session.latePct.set(view.latePct);
-        this.latePctEdited = false;
-      }
-    } catch {
-      this.settingsError.set('The settings could not be saved.');
-    } finally {
-      this.busy = false;
-    }
+    };
+    this.saving = this.saving.then(write);
+    await this.saving;
   }
 
   protected async saveRole(event: Event): Promise<void> {

@@ -75,18 +75,19 @@ public class Rollups {
                     .toList();
             BigDecimal claimed = zero();
             BigDecimal due = zero();
-            boolean fixed = false;
+            boolean figured = false;
             for (Claim claim : counting) {
                 claimed = claimed.add(claim.getAmount());
-                BigDecimal figure = dues.due(claim, person.getGrade());
+                BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
                 if (figure != null) {
                     due = due.add(figure);
+                    figured = true;
                 }
-                fixed |= claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null);
             }
-            // As on the screen: n/a when the grade has no rate today, unless a claim keeps a fixed figure.
-            boolean rated = today != null && rates.findInForce(sheetId, person.getGrade(), today).isPresent();
-            if (!rated && !fixed) {
+            // As on the screen: n/a when the grade in force today has no rate, unless a claim has a
+            // figure (a fixed one, or one at the grade in force on its own date).
+            boolean rated = today != null && rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
+            if (!rated && !figured) {
                 due = null;
             }
             figures.put(person.getId(), new Figures(person.getName(), claimed, due));

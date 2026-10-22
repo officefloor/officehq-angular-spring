@@ -124,7 +124,7 @@ public class ClaimService {
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal settledDue = next == ClaimStatus.SETTLED
-                ? dues.settling(claim, person.getGrade())
+                ? dues.settling(claim, person.gradeOn(claim.getDate()))
                 : null;
         if (next == ClaimStatus.SETTLED) {
             refuseIfOverClerkLimit(sheetId, user, settledDue);

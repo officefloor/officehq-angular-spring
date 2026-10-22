@@ -69,7 +69,7 @@ public class PeriodService {
 
     /**
      * Close a period, fixing its due-total at this moment: the sum of the due figures of the OPEN and
-     * SETTLED claims dated in it, each at its own person's grade (a claim with no figure adds nothing),
+     * SETTLED claims dated in it, each at the grade its person has in force on its date (a claim with no figure adds nothing),
      * leaving out the OPEN claims of anyone on hold. Refused when the period is already closed.
      */
     @Transactional
@@ -89,7 +89,7 @@ public class PeriodService {
             if (person == null || !person.countsLive(claim.getStatus()) || !period.contains(claim.getDate())) {
                 continue;
             }
-            BigDecimal figure = dues.due(claim, person.getGrade());
+            BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
             if (figure != null) {
                 total = total.add(figure);
             }
