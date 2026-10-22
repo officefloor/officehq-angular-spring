@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** The role a user name has on a sheet: clerk or steward. A name with no role set is a clerk. */
+/** The role a user name has on a sheet: clerk, steward or viewer. A name with no role set is a clerk. */
 @Entity
 @Table(name = "sheet_role")
 public class Role {
@@ -17,6 +17,9 @@ public class Role {
 
     /** The role that may settle any claim, whatever the clerk limit, and approves or rejects a PENDING one. */
     public static final String STEWARD = "steward";
+
+    /** The role that sees every screen and figure of the sheet but may change nothing on it. */
+    public static final String VIEWER = "viewer";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

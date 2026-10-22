@@ -32,7 +32,7 @@ public class RoleController {
     /** A role as entered on the form: a user name and one of the roles. */
     public record RoleForm(
             @NotBlank @Size(max = 200) String user,
-            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD) String role) {
+            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
     }
 
     private final RoleService service;

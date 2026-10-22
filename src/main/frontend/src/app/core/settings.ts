@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DatedValue } from './session';
 
-/** The roles a user name can have on a sheet; a name with none set is a clerk. */
-export const ROLES = ['clerk', 'steward'] as const;
+/** The roles a user name can have on a sheet; a name with none set is a clerk, and a viewer can change nothing. */
+export const ROLES = ['clerk', 'steward', 'viewer'] as const;
 export type RoleName = (typeof ROLES)[number];
 
 export interface RoleView {
