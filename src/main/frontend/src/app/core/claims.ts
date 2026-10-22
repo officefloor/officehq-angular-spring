@@ -79,6 +79,22 @@ export interface ClaimView {
   voidReason?: string | null;
   /** The claim's comments, oldest first; empty (or absent, as kept by an old snapshot) for none. */
   comments?: ClaimComment[] | null;
+  /** The claim's lines, in the order they were added; empty (or absent, as kept by an old snapshot) for none. */
+  lines?: ClaimLine[] | null;
+}
+
+/** A line of a claim: its label, quantity and unit amount (two decimals). */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
+}
+
+/** A line as typed on a claim. */
+export interface LineForm {
+  label: string;
+  qty: string;
+  unit: string;
 }
 
 /** A comment on a claim: by whom, on the sheet's today then, and its text. */
@@ -336,6 +352,14 @@ export class ClaimsApi {
   /** Remind an OPEN or PENDING claim; refused when it was already reminded on the sheet's today. */
   remind(sheet: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/remind`, {}));
+  }
+
+  /**
+   * Add a line to a DRAFT claim, its amount becoming its lines' total; refused when the line is not one
+   * the form takes, the claim is not a DRAFT, is due by in a closed period or is locked by another user.
+   */
+  addLine(sheet: string, id: number, line: LineForm): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/lines`, line));
   }
 
   /** Comment on a claim; refused (400) when the comment is blank. */

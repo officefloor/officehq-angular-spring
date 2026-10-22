@@ -178,6 +178,10 @@ public class ClaimService {
                 periods.refuseIfClosed(sheetId, holidays.dueBy(sheetId, date, claim.getTerms()));
             }
         }
+        if (!claim.getLines().isEmpty() && money(amount).compareTo(claim.getAmount()) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim with lines takes its amount from them: " + claim.getAmount().toPlainString() + ".");
+        }
         refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
         String referred = ref == null ? claim.getRef() : reference(ref);
         refuseIfReferred(sheetId, referred, claim.getId());
@@ -190,6 +194,32 @@ public class ClaimService {
         claim.editedBy(user);
         Claim saved = claims.saveAndFlush(claim);
         audited("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Add a line to a DRAFT claim: a label, a quantity (at least 1) and a unit amount (two decimals); the
+     * claim's amount becomes its lines' quantities times their unit amounts, added up. It counts as an
+     * edit of the claim, refused as one is (see {@link #refuseUnlessEditable}), and is audited as
+     * CLAIM_LINE_ADDED with the claim's new amount, ending label=&lt;label&gt; qty=&lt;qty&gt; unit=&lt;unit&gt;.
+     */
+    @Transactional
+    public Claim addLine(String sheetId, String user, long claimId, String label, int qty, BigDecimal unit) {
+        String trimmed = clean(label);
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A line needs a label.");
+        }
+        Rollups.Rollup before = rollups.take(sheetId);
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        refuseUnlessEditable(sheetId, user, claim);
+        BigDecimal unitAmount = money(unit);
+        claim.addLine(trimmed, qty, unitAmount);
+        claim.editedBy(user);
+        Claim saved = claims.saveAndFlush(claim);
+        audited("CLAIM_LINE_ADDED", sheetId, user, person(sheetId, saved.getPersonId()), saved, saved.getNumber(),
+                " label=" + trimmed + " qty=" + qty + " unit=" + unitAmount.toPlainString());
         rollups.audit(sheetId, user, before);
         return saved;
     }

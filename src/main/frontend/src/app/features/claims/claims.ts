@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, cents, tagsText, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
+import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, cents, tagsText, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -150,6 +150,42 @@ const PAST: Record<ClaimAction, string> = {
             (click)="addComment(c)"
           >
             Add comment
+          </button>
+          <ol [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of c.lines ?? []; track $index) {
+              <li data-testid="claim-lines-line">{{ line.label }} {{ line.qty }} x {{ line.unit }}</li>
+            }
+          </ol>
+          <label [for]="'claim-line-label-' + c.id">Line label</label>
+          <input
+            [id]="'claim-line-label-' + c.id"
+            data-testid="claim-line-label"
+            [value]="lineFormOf(c.id).label"
+            (input)="setLine(c.id, 'label', value($event))"
+          />
+          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+          <input
+            [id]="'claim-line-qty-' + c.id"
+            data-testid="claim-line-qty"
+            inputmode="numeric"
+            [value]="lineFormOf(c.id).qty"
+            (input)="setLine(c.id, 'qty', value($event))"
+          />
+          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+          <input
+            [id]="'claim-line-unit-' + c.id"
+            data-testid="claim-line-unit"
+            inputmode="decimal"
+            [value]="lineFormOf(c.id).unit"
+            (input)="setLine(c.id, 'unit', value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-line-add"
+            [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date"
+            (click)="addLine(c)"
+          >
+            Add line
           </button>
           <button
             type="button"
@@ -379,6 +415,8 @@ export class Claims {
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The comment typed on each claim's row, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
+  /** The line typed on each claim's row, by claim id. */
+  protected readonly lineForms = signal<Record<number, LineForm>>({});
   /** The amount typed on each DRAFT claim's row to change it to, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
@@ -787,6 +825,59 @@ export class Claims {
         message: e instanceof HttpErrorResponse && e.status === 403
           ? 'Your role is not allowed to comment on a claim.'
           : 'The comment could not be added.',
+      });
+    }
+  }
+
+  /** The line typed on a claim's row; empty when none is. */
+  protected lineFormOf(id: number): LineForm {
+    return this.lineForms()[id] ?? { label: '', qty: '', unit: '' };
+  }
+
+  /** Type a field of a line on a claim; it clears any error left on the claim's row. */
+  protected setLine(id: number, field: keyof LineForm, text: string): void {
+    this.lineForms.update((forms) => ({ ...forms, [id]: { ...this.lineFormOf(id), [field]: text } }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Add the line typed on a claim's row to it, an edit of the claim: refused with an error on its row
+   * when the label is blank, the quantity is not a whole number of at least 1 or the unit amount has
+   * more than two decimals, when the claim is not a DRAFT, is due by in a closed period or is locked by
+   * another user's editor, or for a viewer.
+   */
+  protected async addLine(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const typed = this.lineFormOf(claim.id);
+    const line = { label: typed.label.trim(), qty: typed.qty.trim(), unit: typed.unit.trim() };
+    if (!line.label) {
+      this.claimError.set({ id: claim.id, message: 'Type a label to add the line.' });
+      return;
+    }
+    if (!/^0*[1-9]\d{0,5}$/.test(line.qty)) {
+      this.claimError.set({ id: claim.id, message: 'Type a quantity: a whole number, at least 1.' });
+      return;
+    }
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(line.unit)) {
+      this.claimError.set({ id: claim.id, message: 'Type a unit amount with up to two decimals.' });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.addLine(sheet, claim.id, line));
+      this.lineForms.update((forms) => ({ ...forms, [claim.id]: { label: '', qty: '', unit: '' } }));
+    } catch (e) {
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.claimError.set({
+        id: claim.id,
+        message: status === 403
+          ? 'Your role is not allowed to edit a claim.'
+          : status === 423
+            ? this.lockedMessage(null)
+            : claim.status !== 'DRAFT'
+              ? `A ${claim.status} claim cannot take a line; only a DRAFT can.`
+              : 'The line could not be added.',
       });
     }
   }

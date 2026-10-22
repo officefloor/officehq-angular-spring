@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
  * Cloning a sheet to another id: a steward only, and only to an id never used. The clone gets the
  * sheet's today, settings, roles, rates, holidays, void reasons, templates, people (grades, terms,
  * contacts, aliases, holds, retirements and patrons), pools, periods (all open) and claims (status,
- * fixed figures, dates, notes, logs and comments); each claim that had a number takes the clone's next,
+ * fixed figures, dates, notes, logs, comments and lines); each claim that had a number takes the clone's next,
  * in the order the claims were opened (people in list order on the same day). Statements, and so any
  * figure a statement bound, are not copied, nor are watchers, delegations or the sheet's history.
  */
@@ -135,6 +135,7 @@ public class CloneService {
                     FROM claim WHERE id = ?""", toSheetId, people.get(row.getLong(2)), from);
             copyChildren("claim_log", "claim_id", "status, by_user, on_date, due", to, from);
             copyChildren("claim_comment", "claim_id", "by_user, on_date, text", to, from);
+            copyChildren("claim_line", "claim_id", "label, qty, unit", to, from);
             cloned.put(to, from);
         }, sheetId);
 

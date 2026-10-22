@@ -37,13 +37,13 @@ public class ClaimController {
      * editor locks it (null when none does), and the last day it was reminded (null when never), and its
      * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
      * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never), and the number of the bulk settle batch that settled
-     * it (null when none did).
+     * it (null when none did), and its lines, in the order they were added.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
-            String editedBy, Integer settleBatch) {
+            String editedBy, Integer settleBatch, List<LineView> lines) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -55,7 +55,7 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
                     claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
-                    claim.getSettleBatch());
+                    claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList());
         }
     }
 
@@ -74,6 +74,20 @@ public class ClaimController {
         public static CommentView of(ClaimComment comment) {
             return new CommentView(comment.getBy(), comment.getOn(), comment.getText());
         }
+    }
+
+    /** A line of a claim: its label, quantity and unit amount with two decimals. */
+    public record LineView(String label, int qty, String unit) {
+
+        public static LineView of(ClaimLine line) {
+            return new LineView(line.getLabel(), line.getQty(), line.getUnit().toPlainString());
+        }
+    }
+
+    /** A line as typed on the claim: a label (blank is refused), a quantity of at least 1 and a unit amount with up to two decimals. */
+    public record LineForm(@NotBlank @Size(max = 200) String label,
+            @NotNull @Pattern(regexp = "0*[1-9]\\d{0,5}") String qty,
+            @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String unit) {
     }
 
     /** A comment as typed on the claim; blank is refused. */
@@ -348,6 +362,17 @@ public class ClaimController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid CommentForm form) {
         return ClaimView.of(service.comment(sheetId, SignedIn.name(user), claimId, form.text()));
+    }
+
+    /** Add a line to a DRAFT claim; its amount becomes its lines' total. */
+    @PostMapping("/claims/{claimId}/lines")
+    public ClaimView addLine(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid LineForm form) {
+        return ClaimView.of(service.addLine(sheetId, SignedIn.name(user), claimId, form.label(),
+                Integer.parseInt(form.qty()), new BigDecimal(form.unit())));
     }
 
     /** Remind an OPEN or PENDING claim, once per sheet's today. */
