@@ -3,10 +3,12 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { ClaimView, ClaimsApi, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
+import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Periods } from '../periods/periods';
+import { QuickAdd } from '../quick-add/quick-add';
 import { Rates } from '../rates/rates';
 
 // The active sheet's people: listed in the order they were added, added and edited through one form,
@@ -14,7 +16,7 @@ import { Rates } from '../rates/rates';
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, Rates],
+  imports: [Claims, Periods, QuickAdd, Rates],
   template: `
     <app-rates [rates]="rates()" [today]="today()" (saved)="rateSaved($event)" />
     <app-periods
@@ -54,6 +56,7 @@ import { Rates } from '../rates/rates';
           <p role="alert" data-testid="person-form-error">{{ message }}</p>
         }
       </form>
+      <app-quick-add (added)="quickAdded($event)" />
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table>
@@ -270,6 +273,12 @@ export class People {
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
     );
+  }
+
+  /** A claim quick-added: its person listed when they were added for it, the claim first as the newest. */
+  protected quickAdded(added: QuickAddView): void {
+    if (added.personAdded) this.people.update((list) => [...list, added.person]);
+    this.claimSaved(added.claim);
   }
 
   protected value(event: Event): string {
