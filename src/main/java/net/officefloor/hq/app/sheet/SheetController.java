@@ -228,14 +228,24 @@ public class SheetController {
         }
     }
 
+    /** The id of a sheet to clone this one to, as entered. */
+    public record CloneRequest(@NotBlank @Size(max = 64) @Pattern(regexp = "\\s*[A-Za-z0-9._-]+\\s*") String to) {
+    }
+
+    /** What the screen is told about a clone made: the id it was made at. */
+    public record CloneView(String to) {
+    }
+
     private final SheetService service;
     private final RoleService roles;
     private final SheetHistory history;
+    private final CloneService clones;
 
-    public SheetController(SheetService service, RoleService roles, SheetHistory history) {
+    public SheetController(SheetService service, RoleService roles, SheetHistory history, CloneService clones) {
         this.service = service;
         this.roles = roles;
         this.history = history;
+        this.clones = clones;
     }
 
     /**
@@ -268,6 +278,17 @@ public class SheetController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may archive the sheet.");
         }
         return SheetView.of(service.archive(id, name));
+    }
+
+    /** Clone the sheet to another id, which must never have been used: only a steward may. */
+    @PostMapping("/{id}/clone")
+    public CloneView cloneTo(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid CloneRequest request) {
+        String to = request.to().trim();
+        clones.cloneTo(id, SignedIn.name(user), to);
+        return new CloneView(to);
     }
 
     /** The sheet's settings; with an as-of date, as they stood at the end of that date. */

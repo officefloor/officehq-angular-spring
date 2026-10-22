@@ -158,6 +158,16 @@ export class Session {
     this.show(view);
   }
 
+  /** Clone the active sheet to another id, one never used, in the store; answers the id cloned to. */
+  async cloneTo(to: string): Promise<string> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet is loaded.');
+    const made = await firstValueFrom(
+      this.http.post<{ to: string }>(`/api/sheets/${encodeURIComponent(id)}/clone`, { to }),
+    );
+    return made.to;
+  }
+
   private show(view: SheetView): void {
     this.sheet.set(view.id);
     this.today.set(view.today);

@@ -63,6 +63,17 @@ import { AuditViewer } from '../audit/audit';
           <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() }}</strong></p>
           <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+          <form (submit)="cloneSheet($event)">
+            <label for="sheet-clone-to">Clone to sheet id</label>
+            <input
+              id="sheet-clone-to"
+              data-testid="sheet-clone-to"
+              [value]="cloneInput()"
+              (input)="cloneInput.set(value($event)); sheetError.set(null)"
+            />
+            <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+          </form>
+          <p>Last clone made <strong data-testid="sheet-cloned-to">{{ clonedTo() }}</strong></p>
           <app-settings />
           <app-delegation />
           <app-holidays />
@@ -96,12 +107,17 @@ export class Home {
   protected readonly sheetInput = signal('');
   protected readonly todayInput = signal('');
   protected readonly asOfInput = signal('');
+  protected readonly cloneInput = signal('');
+  /** The id the sheet on screen was last cloned to from this screen; empty when none since it was loaded. */
+  protected readonly clonedTo = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
   /** A today change is waiting for its answer: a second submit meanwhile is ignored. */
   private savingToday = false;
   /** An archive is waiting for its answer: a second click meanwhile is ignored. */
   private archiving = false;
+  /** A clone is waiting for its answer: a second submit meanwhile is ignored. */
+  private cloning = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -126,6 +142,7 @@ export class Home {
       this.sheetError.set('Type a sheet id to load.');
       return;
     }
+    this.clonedTo.set('');
     try {
       await this.session.loadSheet(id);
     } catch {
@@ -187,6 +204,25 @@ export class Home {
       this.sheetError.set('The sheet could not be archived.');
     } finally {
       this.archiving = false;
+    }
+  }
+
+  protected async cloneSheet(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.cloning) return;
+    this.sheetError.set(null);
+    const to = this.cloneInput().trim();
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(to)) {
+      this.sheetError.set('Type a sheet id to clone to.');
+      return;
+    }
+    this.cloning = true;
+    try {
+      this.clonedTo.set(await this.session.cloneTo(to));
+    } catch {
+      this.sheetError.set(`The sheet could not be cloned to "${to}".`);
+    } finally {
+      this.cloning = false;
     }
   }
 }
