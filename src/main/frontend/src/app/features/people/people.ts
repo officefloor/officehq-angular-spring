@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
@@ -176,9 +176,38 @@ function csvField(value: string): string {
           <span role="alert" data-testid="bulk-settle-error">{{ message }}</span>
         }
       </p>
+      <form (submit)="gradeSelected($event)" aria-label="Grade the selected people">
+        <label for="bulk-grade">Grade the selected people</label>
+        <select
+          id="bulk-grade"
+          data-testid="bulk-grade"
+          [value]="bulkGrade()"
+          (change)="bulkGrade.set(gradeChosen($event)); bulkGradeError.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">from</label>
+        <input
+          type="date"
+          id="bulk-grade-from"
+          data-testid="bulk-grade-from"
+          [value]="bulkGradeFrom()"
+          (input)="bulkGradeFrom.set(value($event)); bulkGradeError.set(null)"
+        />
+        <button type="submit" data-testid="bulk-grade-apply">Grade selected people</button>
+        @if (bulkGraded() !== null) {
+          <span role="status">Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></span>
+        }
+        @if (bulkGradeError(); as message) {
+          <span role="alert" data-testid="person-error">{{ message }}</span>
+        }
+      </form>
       <table>
         <thead>
           <tr>
+            <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
@@ -201,6 +230,15 @@ function csvField(value: string): string {
         <tbody>
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
+              <td>
+                <input
+                  type="checkbox"
+                  data-testid="person-select"
+                  [attr.aria-label]="'Select ' + p.name"
+                  [checked]="selectedPeople().has(p.id)"
+                  (change)="selectPerson(p.id, checked($event))"
+                />
+              </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -525,6 +563,15 @@ export class People {
   /** How many claims the last bulk settle settled (or sent PENDING) and refused; null until one is done. */
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
+  /** The ids of the people ticked to be given a grade together. */
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  /** The grade to give the selected people. */
+  protected readonly bulkGrade = signal<Grade>('A');
+  /** The date the selected people's grade is in force from; the sheet's today unless another is typed. */
+  protected readonly bulkGradeFrom = linkedSignal(() => this.today());
+  /** How many people the last bulk grade changed; null until one is done. */
+  protected readonly bulkGraded = signal<number | null>(null);
+  protected readonly bulkGradeError = signal<string | null>(null);
 
   constructor() {
     // Every sheet load re-reads the sheet's people from the store.
@@ -548,6 +595,10 @@ export class People {
         this.bulkOpenError.set(null);
         this.bulkSettled.set(null);
         this.bulkSettleError.set(null);
+        this.selectedPeople.set(new Set());
+        this.bulkGraded.set(null);
+        this.bulkGradeError.set(null);
+        this.bulkGradeFrom.set(this.today());
         if (sheet) void this.reload(sheet);
       });
     });
@@ -879,6 +930,49 @@ export class People {
   /** A period closed or reopened, in its place. */
   protected periodChanged(period: PeriodView): void {
     this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
+  }
+
+  /** Tick (on) or clear a person's checkbox. */
+  protected selectPerson(id: number, on: boolean): void {
+    this.selectedPeople.update((set) => {
+      const next = new Set(set);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    this.bulkGraded.set(null);
+    this.bulkGradeError.set(null);
+  }
+
+  /**
+   * Give the selected people the grade from the date together: each is edited as the person form
+   * would, in list order; how many were changed is shown, and the selection cleared.
+   */
+  protected async gradeSelected(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy) return;
+    this.bulkGraded.set(null);
+    this.bulkGradeError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const ids = [...this.selectedPeople()];
+    if (ids.length === 0) {
+      this.bulkGradeError.set('Select the people to grade.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const changed = await this.api.gradeAll(sheet, ids, this.bulkGrade(), this.bulkGradeFrom() || null);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => changed.find((c) => c.id === p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkGradeFrom.set(this.today());
+      this.bulkGraded.set(changed.length);
+    } catch {
+      this.bulkGradeError.set('The people could not be graded.');
+    } finally {
+      this.busy = false;
+    }
   }
 
   /** Tick (on) or clear a claim's checkbox. */

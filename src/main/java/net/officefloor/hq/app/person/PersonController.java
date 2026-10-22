@@ -81,12 +81,22 @@ public class PersonController {
             Long version) {
     }
 
+    /** The people selected to be given a grade together, the grade, and the date it is in force from (none: the sheet's today). */
+    public record BulkGradeForm(
+            @NotNull @Size(min = 1, max = 1000) List<@NotNull Long> personIds,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {
+    }
+
     private final PersonService service;
+    private final BulkGradeService bulkGrade;
     private final WatchService watches;
     private final SheetHistory history;
 
-    public PersonController(PersonService service, WatchService watches, SheetHistory history) {
+    public PersonController(PersonService service, BulkGradeService bulkGrade, WatchService watches,
+            SheetHistory history) {
         this.service = service;
+        this.bulkGrade = bulkGrade;
         this.watches = watches;
         this.history = history;
     }
@@ -121,6 +131,16 @@ public class PersonController {
         }
         return PersonView.of(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
                 form.grade(), form.gradeFrom(), form.terms()));
+    }
+
+    /** Give the selected people a grade from a date together, each as the person form would: the people changed. */
+    @PostMapping("/grade")
+    public List<PersonView> grade(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkGradeForm form) {
+        return bulkGrade.grade(sheetId, SignedIn.name(user), form.personIds(), form.grade(), form.from()).stream()
+                .map(PersonView::of).toList();
     }
 
     /** The date a person is retired from; with none, the sheet's today. */

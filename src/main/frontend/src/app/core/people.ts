@@ -110,6 +110,14 @@ export class PeopleApi {
   }
 
   /**
+   * Give the selected people a grade from a date (null: the sheet's today) together, each as the person
+   * form would, in the order they were added: the people changed.
+   */
+  gradeAll(sheet: string, personIds: number[], grade: Grade, from: string | null): Promise<PersonView[]> {
+    return firstValueFrom(this.http.post<PersonView[]>(`${this.url(sheet)}/grade`, { personIds, grade, from }));
+  }
+
+  /**
    * Take a statement as of a date on or before the sheet's today (null: now): record the person's
    * due-total and bind the claims that counted then to their figures as they stood then.
    */
