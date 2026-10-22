@@ -1,5 +1,6 @@
 import { Component, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, ClaimView, ClaimsApi } from '../../core/claims';
+import { AMOUNT, ClaimView, ClaimsApi, cents } from '../../core/claims';
+import { due } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row.
@@ -46,6 +47,7 @@ import { Session } from '../../core/session';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <button
             type="button"
             data-testid="claim-edit"
@@ -67,6 +69,8 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
+  /** The rate for the person's grade (a two-decimal percent), or null when the grade has none. */
+  readonly pct = input.required<string | null>();
   /** A claim added or saved through the form. */
   readonly saved = output<ClaimView>();
 
@@ -76,6 +80,11 @@ export class Claims {
   /** The id of the claim open in the form, or null when the form adds a new claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+
+  /** What is due on a claim: its amount at the person's grade's rate. */
+  protected dueOf(claim: ClaimView): string {
+    return due(cents(claim.amount), this.pct());
+  }
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
