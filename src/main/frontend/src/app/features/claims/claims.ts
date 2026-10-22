@@ -58,6 +58,13 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
     <ul [attr.aria-label]="'Claims of ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input
+            type="checkbox"
+            data-testid="claim-select"
+            [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date"
+            [checked]="selected().has(c.id)"
+            (change)="selectedChange.emit({ id: c.id, on: checked($event) })"
+          />
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
@@ -110,6 +117,10 @@ export class Claims {
   readonly rates = input.required<RateView[]>();
   /** The sheet's periods; each claim belongs to the one whose dates contain its date, or to none. */
   readonly periods = input.required<PeriodView[]>();
+  /** The ids of the claims selected for a bulk action. */
+  readonly selected = input.required<ReadonlySet<number>>();
+  /** A claim's checkbox ticked (on) or cleared. */
+  readonly selectedChange = output<{ id: number; on: boolean }>();
   /** A claim added or saved through the form. */
   readonly saved = output<ClaimView>();
 
@@ -157,6 +168,10 @@ export class Claims {
   /** The name of the period a claim's date falls in; empty when it falls in none. */
   protected periodOf(claim: ClaimView): string {
     return periodOn(this.periods(), claim.date)?.name ?? '';
+  }
+
+  protected checked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
   }
 
   protected value(event: Event): string {

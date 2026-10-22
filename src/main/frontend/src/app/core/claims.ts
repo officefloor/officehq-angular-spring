@@ -85,6 +85,12 @@ export function latePeriods(claim: ClaimView, late: LateTerms): number {
   return Math.floor(days / 30);
 }
 
+/** What a bulk open did: the claims opened, as they are now, and how many were refused. */
+export interface BulkOpenView {
+  opened: ClaimView[];
+  refused: number;
+}
+
 export interface ClaimForm {
   amount: string;
   /** Empty means the sheet's today (or, on an edit, the claim's own date). */
@@ -138,6 +144,14 @@ export class ClaimsApi {
    */
   act(sheet: string, id: number, action: ClaimAction): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, null));
+  }
+
+  /**
+   * Open the selected claims together, in list order (people in the order they were added, each
+   * person's claims newest first); those that cannot be opened are refused and left as they are.
+   */
+  openAll(sheet: string, claimIds: number[]): Promise<BulkOpenView> {
+    return firstValueFrom(this.http.post<BulkOpenView>(`${this.url(sheet)}/claims/open`, { claimIds }));
   }
 
   private url(sheet: string): string {

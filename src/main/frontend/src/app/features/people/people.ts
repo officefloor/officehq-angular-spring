@@ -101,6 +101,18 @@ function csvField(value: string): string {
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong> claims,
         due <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      <p>
+        <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
+        @if (bulkOpened(); as result) {
+          <span role="status">
+            Opened <strong data-testid="bulk-opened">{{ result.opened }}</strong>,
+            refused <strong data-testid="bulk-refused">{{ result.refused }}</strong>
+          </span>
+        }
+        @if (bulkOpenError(); as message) {
+          <span role="alert" data-testid="bulk-open-error">{{ message }}</span>
+        }
+      </p>
       <table>
         <thead>
           <tr>
@@ -173,6 +185,8 @@ function csvField(value: string): string {
                   [grades]="p.grades"
                   [rates]="rates()"
                   [periods]="periods()"
+                  [selected]="selectedClaims()"
+                  (selectedChange)="selectClaim($event.id, $event.on)"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -338,6 +352,11 @@ export class People {
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
+  /** The ids of the claims ticked for a bulk action. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** How many claims the last bulk open opened and refused; null until one is done. */
+  protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkOpenError = signal<string | null>(null);
 
   constructor() {
     // Every sheet load re-reads the sheet's people from the store.
@@ -354,6 +373,9 @@ export class People {
         this.retireDates.clear();
         this.patronError.set(null);
         this.patronChoices.clear();
+        this.selectedClaims.set(new Set());
+        this.bulkOpened.set(null);
+        this.bulkOpenError.set(null);
         if (sheet) void this.reload(sheet);
       });
     });
@@ -564,6 +586,46 @@ export class People {
   /** A period closed or reopened, in its place. */
   protected periodChanged(period: PeriodView): void {
     this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
+  }
+
+  /** Tick (on) or clear a claim's checkbox. */
+  protected selectClaim(id: number, on: boolean): void {
+    this.selectedClaims.update((set) => {
+      const next = new Set(set);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    this.bulkOpenError.set(null);
+  }
+
+  /**
+   * Open the selected claims together: each that can be opened is, numbered in list order, and each
+   * that cannot is left as it is; how many were opened and refused is shown, and the selection cleared.
+   */
+  protected async openSelected(): Promise<void> {
+    if (this.busy) return;
+    this.bulkOpened.set(null);
+    this.bulkOpenError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const ids = [...this.selectedClaims()];
+    if (ids.length === 0) {
+      this.bulkOpenError.set('Select the claims to open.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const result = await this.claimsApi.openAll(sheet, ids);
+      if (this.session.sheet() !== sheet) return;
+      for (const claim of result.opened) this.claimSaved(claim);
+      this.selectedClaims.set(new Set());
+      this.bulkOpened.set({ opened: result.opened.length, refused: result.refused });
+    } catch {
+      this.bulkOpenError.set('The claims could not be opened.');
+    } finally {
+      this.busy = false;
+    }
   }
 
   /** A claim added (listed first, as the newest) or saved or moved (in its place). */
