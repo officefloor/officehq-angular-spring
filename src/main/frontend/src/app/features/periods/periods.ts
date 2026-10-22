@@ -7,7 +7,8 @@ import { Session } from '../../core/session';
 // and one form to add a period (a unique name and inclusive from and to dates, overlapping no other).
 // Its due-total is the sum of the people's figures for it. A period can be closed: each person's figure
 // is then the one fixed at closing. A permitted role (a steward by default) can reopen a
-// closed period, making its due-total live again.
+// closed period, making its due-total live again. A second form generates a period per calendar month
+// over a range of dates, named yyyy-mm, leaving out months whose name is taken or that overlap a period.
 @Component({
   selector: 'app-periods',
   template: `
@@ -40,6 +41,31 @@ import { Session } from '../../core/session';
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as message) {
           <p role="alert" data-testid="period-form-error">{{ message }}</p>
+        }
+      </form>
+      <form (submit)="generate($event)" aria-label="Generate monthly periods">
+        <label for="period-generate-from">From</label>
+        <input
+          id="period-generate-from"
+          type="date"
+          data-testid="period-generate-from"
+          [value]="generateFrom()"
+          (input)="generateFrom.set(value($event)); generateReset()"
+        />
+        <label for="period-generate-to">To</label>
+        <input
+          id="period-generate-to"
+          type="date"
+          data-testid="period-generate-to"
+          [value]="generateTo()"
+          (input)="generateTo.set(value($event)); generateReset()"
+        />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <p role="status">Periods made: <span data-testid="period-generated">{{ generated() }}</span></p>
+        }
+        @if (generateError(); as message) {
+          <p role="alert" data-testid="period-generate-error">{{ message }}</p>
         }
       </form>
       <table>
@@ -110,6 +136,11 @@ export class Periods {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly generateFrom = signal('');
+  protected readonly generateTo = signal('');
+  /** How many periods the last generate made; null before one, or once its range is changed. */
+  protected readonly generated = signal<number | null>(null);
+  protected readonly generateError = signal<string | null>(null);
   /** The refusal of the last action taken on a period's row, shown on that row. */
   protected readonly periodError = signal<{ id: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -152,6 +183,40 @@ export class Periods {
             ? 'Your role is not allowed to reopen a period.'
             : 'The period could not be reopened.',
       });
+    }
+  }
+
+  protected generateReset(): void {
+    this.generated.set(null);
+    this.generateError.set(null);
+  }
+
+  /** Generate a period per month in the range; how many were made is shown, a refusal as an error. */
+  protected async generate(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy) return;
+    this.generateReset();
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const from = this.generateFrom().trim();
+    const to = this.generateTo().trim();
+    if (!PERIOD_DATE.test(from) || !PERIOD_DATE.test(to)) {
+      this.generateError.set('Pick a from and a to date to generate periods for.');
+      return;
+    }
+    if (to < from) {
+      this.generateError.set('The to date cannot be before the from date.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const made = await this.api.generate(sheet, from, to);
+      made.forEach((period) => this.saved.emit(period));
+      this.generated.set(made.length);
+    } catch {
+      this.generateError.set('The periods could not be generated.');
+    } finally {
+      this.busy = false;
     }
   }
 

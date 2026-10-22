@@ -74,6 +74,20 @@ public class PeriodController {
         return PeriodView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.from(), form.to()));
     }
 
+    /** A range of months to generate periods for: a from and a to date, both required. */
+    public record GenerateForm(@NotNull LocalDate from, @NotNull LocalDate to) {
+    }
+
+    /** Generate one period per calendar month in the range; the periods made, in month order. */
+    @PostMapping("/generate")
+    public List<PeriodView> generate(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GenerateForm form) {
+        return service.generate(sheetId, SignedIn.name(user), form.from(), form.to()).stream()
+                .map(PeriodView::of).toList();
+    }
+
     /** Close a period, fixing its due-total. */
     @PostMapping("/{periodId}/close")
     public PeriodView close(

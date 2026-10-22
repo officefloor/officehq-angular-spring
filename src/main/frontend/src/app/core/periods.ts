@@ -50,6 +50,15 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<PeriodView>(this.url(sheet), form));
   }
 
+  /**
+   * Generate one period per calendar month from the from-date's month to the to-date's month, named
+   * yyyy-mm; months whose name is taken or whose days overlap a period are left out. The periods made.
+   * Refused when the to-date is before the from-date.
+   */
+  generate(sheet: string, from: string, to: string): Promise<PeriodView[]> {
+    return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/generate`, { from, to }));
+  }
+
   /** Close a period, fixing its due-total; refused when it is already closed. */
   close(sheet: string, id: number): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/close`, {}));
