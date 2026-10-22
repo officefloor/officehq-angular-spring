@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -77,5 +78,22 @@ public class RateController {
             @RequestBody @Valid RateForm form) {
         return RateView.of(service.set(sheetId, SignedIn.name(user), grade, form.from(),
                 form.to(), new BigDecimal(form.pct())));
+    }
+
+    /** What the screen is told of a rate preview: the claims whose due would change, and the sum of the differences. */
+    public record PreviewView(int count, String diff) {
+    }
+
+    /**
+     * How many OPEN and PENDING claims on a grade would show a different due were a candidate rate
+     * applied to the grade on every date, and the sum of the differences; nothing is saved.
+     */
+    @GetMapping("/{grade}/preview")
+    public PreviewView preview(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestParam @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct) {
+        RateService.Preview preview = service.preview(sheetId, grade, new BigDecimal(pct));
+        return new PreviewView(preview.count(), preview.diff().toPlainString());
     }
 }

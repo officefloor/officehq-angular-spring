@@ -1,6 +1,6 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { GRADES, Grade } from '../../core/people';
-import { FROM_DATE, NO_RATE, PERCENT, RateView, RatesApi, rateOn } from '../../core/rates';
+import { FROM_DATE, NO_RATE, PERCENT, RatePreview, RateView, RatesApi, rateOn } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // The sheet's rates: each grade's rate in force on the sheet's today, every rate by grade and
@@ -50,6 +50,37 @@ import { Session } from '../../core/session';
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as message) {
           <p role="alert" data-testid="rate-form-error">{{ message }}</p>
+        }
+      </form>
+      <form (submit)="runPreview($event)" aria-label="Preview a rate">
+        <label for="rate-preview-grade">Preview grade</label>
+        <select
+          id="rate-preview-grade"
+          data-testid="rate-preview-grade"
+          [value]="previewGrade()"
+          (change)="previewGrade.set(gradeOf($event)); clearPreview()"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input
+          id="rate-preview-pct"
+          data-testid="rate-preview-pct"
+          inputmode="decimal"
+          [value]="previewPct()"
+          (input)="previewPct.set(value($event)); clearPreview()"
+        />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewError(); as message) {
+          <p role="alert" data-testid="rate-preview-error">{{ message }}</p>
+        }
+        @if (preview(); as p) {
+          <p aria-live="polite">
+            Claims that would change: <span data-testid="rate-preview-count">{{ p.count }}</span>;
+            difference in due: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+          </p>
         }
       </form>
       <table>
@@ -113,6 +144,11 @@ export class Rates {
   /** The to-date typed (yyyy-mm-dd); empty means no end. */
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly previewGrade = signal<Grade>('A');
+  protected readonly previewPct = signal('');
+  /** The last preview's result; cleared when the preview form changes. */
+  protected readonly preview = signal<RatePreview | null>(null);
+  protected readonly previewError = signal<string | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
 
@@ -133,6 +169,30 @@ export class Rates {
 
   protected gradeOf(event: Event): Grade {
     return (event.target as HTMLSelectElement).value as Grade;
+  }
+
+  protected clearPreview(): void {
+    this.preview.set(null);
+    this.previewError.set(null);
+  }
+
+  /** Show what the candidate rate would change for the grade's open claims; nothing is saved. */
+  protected async runPreview(event: Event): Promise<void> {
+    event.preventDefault();
+    this.clearPreview();
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const grade = this.previewGrade();
+    const pct = this.previewPct().trim();
+    if (!PERCENT.test(pct)) {
+      this.previewError.set('Type a candidate rate of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    try {
+      this.preview.set(await this.api.preview(sheet, grade, pct));
+    } catch {
+      this.previewError.set(`The rate for grade ${grade} could not be previewed.`);
+    }
   }
 
   protected async save(event: Event): Promise<void> {

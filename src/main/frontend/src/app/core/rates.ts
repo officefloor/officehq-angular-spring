@@ -25,6 +25,15 @@ export interface RateForm {
   to: string | null;
 }
 
+/**
+ * What a candidate rate for a grade would change: how many OPEN and PENDING claims would show a
+ * different due, and the sum of the differences (new minus current, two decimals).
+ */
+export interface RatePreview {
+  count: number;
+  diff: string;
+}
+
 /** A from-date as a rate takes it: yyyy-mm-dd. */
 export const FROM_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -122,6 +131,13 @@ export class RatesApi {
   /** Set a grade's rate from a date, replacing any it had from that date. */
   set(sheet: string, grade: Grade, form: RateForm): Promise<RateView> {
     return firstValueFrom(this.http.put<RateView>(`${this.url(sheet)}/${grade}`, form));
+  }
+
+  /** Preview a candidate rate applied to a grade on every date; nothing is saved. */
+  preview(sheet: string, grade: Grade, pct: string): Promise<RatePreview> {
+    return firstValueFrom(
+      this.http.get<RatePreview>(`${this.url(sheet)}/${grade}/preview`, { params: { pct } }),
+    );
   }
 
   private url(sheet: string): string {
