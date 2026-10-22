@@ -152,6 +152,13 @@ function csvField(value: string): string {
           (focus)="contactGiven.set(true)"
           (input)="contact.set(value($event)); contactGiven.set(true); error.set(null)"
         />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input
+          id="person-form-tags"
+          data-testid="person-form-tags"
+          [value]="tags()"
+          (input)="tags.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -305,6 +312,7 @@ function csvField(value: string): string {
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
             <th scope="col">Contact</th>
+            <th scope="col">Tags</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Due by period</th>
@@ -361,6 +369,7 @@ function csvField(value: string): string {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td>
@@ -764,15 +773,17 @@ export class People {
   );
   /**
    * For every tag ever used on the sheet, sorted: the due of the claims that count in the live totals
-   * (see countsLive) which carry it; a claim with two tags counts in both (a claim with no figure adds nothing).
+   * (see countsLive) which carry it, or whose person carries it; a claim with two tags counts in both, and a
+   * tag both the claim and its person carry counts it once (a claim with no figure adds nothing).
    */
   protected readonly tagTotals = computed(() => {
     const totals = new Map<string, number>();
     for (const c of this.claims()) for (const tag of c.tagsUsed ?? []) totals.set(tag, 0);
+    for (const p of this.people()) for (const tag of p.tagsUsed ?? []) totals.set(tag, 0);
     for (const p of this.people()) {
       for (const c of this.countingOf(p.id)) {
         const due = this.dueCents(c, p) ?? 0;
-        for (const tag of c.tags ?? []) totals.set(tag, (totals.get(tag) ?? 0) + due);
+        for (const tag of new Set([...(c.tags ?? []), ...(p.tags ?? [])])) totals.set(tag, (totals.get(tag) ?? 0) + due);
       }
     }
     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
@@ -821,6 +832,8 @@ export class People {
   protected readonly terms = signal('');
   /** The person's contact as typed: blank for none. */
   protected readonly contact = signal('');
+  /** The person's tags as typed, comma separated: blank for none. */
+  protected readonly tags = signal('');
   /** Whether the terms or the contact were taken up on the form since it was opened. */
   protected readonly termsGiven = signal(false);
   protected readonly contactGiven = signal(false);
@@ -1728,6 +1741,7 @@ export class People {
     this.gradeFrom.set(this.today());
     this.terms.set(person.terms === null ? '' : String(person.terms));
     this.contact.set(person.contact ?? '');
+    this.tags.set((person.tags ?? []).join(', '));
     this.termsGiven.set(false);
     this.contactGiven.set(false);
     this.error.set(null);
@@ -1740,6 +1754,7 @@ export class People {
     this.gradeFrom.set(this.today());
     this.terms.set('');
     this.contact.set('');
+    this.tags.set('');
     this.termsGiven.set(false);
     this.contactGiven.set(false);
     this.error.set(null);
@@ -1759,7 +1774,7 @@ export class People {
       return;
     }
     const form = { name: this.name(), grade: this.grade(), terms: typedTerms === '' ? null : Number(typedTerms),
-      contact: this.contact(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven() };
+      contact: this.contact(), tags: this.tags(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven() };
     if (!form.name.trim()) {
       this.error.set('Type a name for the person.');
       return;
@@ -1808,6 +1823,7 @@ export class People {
       this.grade.set(this.gradeOf(current));
       this.terms.set(current.terms === null ? '' : String(current.terms));
       this.contact.set(current.contact ?? '');
+      this.tags.set((current.tags ?? []).join(', '));
     } catch {
       // the form keeps what was typed; the refusal is still shown
     }

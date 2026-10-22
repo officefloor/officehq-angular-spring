@@ -45,7 +45,8 @@ public class PersonController {
      * Their grades are listed by the date each is in force from, the first with none (from the
      * beginning of time).
      */
-    public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, long version, int statementCount,
+    public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, List<String> tags,
+            List<String> tagsUsed, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
             String originSheetId) {
@@ -58,7 +59,8 @@ public class PersonController {
             List<GradeView> grades = new ArrayList<>();
             grades.add(new GradeView(person.getGrade(), null));
             person.getGradesFrom().forEach((from, grade) -> grades.add(new GradeView(grade, from)));
-            return new PersonView(person.getId(), person.getName(), grades, person.getTerms(), person.getContact(), person.getVersion(),
+            return new PersonView(person.getId(), person.getName(), grades, person.getTerms(), person.getContact(),
+                    person.getTags(), person.getTagsUsed(), person.getVersion(),
                     person.getStatementCount(),
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
                     person.getStatementDate(), person.getRetiredFrom(),
@@ -85,7 +87,8 @@ public class PersonController {
      * A person's values as entered on the form: a name is required, the grade is A, B or C. On an edit
      * the grade is recorded from its date (none: the sheet's today); a person's first grade applies
      * from the beginning of time. Their own terms are a whole number of days, none for no terms of
-     * their own. A contact is kept trimmed and lower-cased, blank for none. An edit says whether the
+     * their own. A contact is kept trimmed and lower-cased, blank for none. Tags are comma separated
+     * (blank: none; none at all keep the person's own). An edit says whether the
      * terms and the contact were typed on the form (PERSON_EDITED then carries them), and carries the version of the person the form loaded.
      */
     public record PersonForm(
@@ -96,7 +99,8 @@ public class PersonController {
             @Size(max = 200) String contact,
             boolean termsGiven,
             boolean contactGiven,
-            Long version) {
+            Long version,
+            @Size(max = 1000) String tags) {
     }
 
     /** The people selected to be given a grade together, the grade, and the date it is in force from (none: the sheet's today). */
@@ -158,7 +162,7 @@ public class PersonController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonForm form) {
         return view(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms(),
-                form.contact()));
+                form.contact(), form.tags()));
     }
 
     /** The people an import added and those it updated, each in the order of their lines. */
@@ -190,7 +194,7 @@ public class PersonController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required.");
         }
         return view(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
-                form.grade(), form.gradeFrom(), form.terms(), form.contact(), form.termsGiven(), form.contactGiven()));
+                form.grade(), form.gradeFrom(), form.terms(), form.contact(), form.termsGiven(), form.contactGiven(), form.tags()));
     }
 
     /** Give the selected people a grade from a date together, each as the person form would: the people changed. */

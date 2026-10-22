@@ -71,6 +71,14 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags, sorted and comma separated; null when they have none. */
+    @Column(name = "tags")
+    private String tags;
+
+    /** Every tag the person has ever carried, sorted and comma separated; null when none. */
+    @Column(name = "tags_used")
+    private String tagsUsed;
+
     /** The sheet the person was last transferred from; null when they were never transferred. */
     @Column(name = "origin_sheet_id")
     private String originSheetId;
@@ -226,6 +234,24 @@ public class Person {
     /** Set the person's contact, kept as {@link #contactOf cleaned}; blank or null for none. */
     public void setContact(String contact) {
         this.contact = contactOf(contact);
+    }
+
+    /** The person's tags, sorted; empty when they have none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give the person their tags (see {@link net.officefloor.hq.app.claim.Claim#tagsOf}); empty for none. */
+    public void tag(List<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", tags);
+        List<String> used = java.util.stream.Stream.concat(getTagsUsed().stream(), tags.stream())
+                .distinct().sorted().toList();
+        this.tagsUsed = used.isEmpty() ? null : String.join(",", used);
+    }
+
+    /** Every tag the person has ever carried, sorted; empty when none. */
+    public List<String> getTagsUsed() {
+        return tagsUsed == null ? List.of() : List.of(tagsUsed.split(","));
     }
 
     public long getVersion() {

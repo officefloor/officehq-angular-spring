@@ -34,6 +34,10 @@ export interface PersonView {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
+  /** The person's tags, sorted (trimmed, lower case, no repeats); empty (or absent, as kept by an old snapshot) for none. */
+  tags?: string[] | null;
+  /** Every tag the person has ever carried, sorted; empty (or absent, as kept by an old snapshot) for none. */
+  tagsUsed?: string[] | null;
   /** Raised on every save of the person. */
   version: number;
   /** How many statements have been taken for the person. */
@@ -111,6 +115,8 @@ export interface PersonForm {
   contactGiven?: boolean;
   /** On an edit, the version of the person the form loaded. */
   version?: number;
+  /** The person's tags, comma separated; blank for none. */
+  tags?: string;
 }
 
 // The people kept on a sheet, read from and written to the store.

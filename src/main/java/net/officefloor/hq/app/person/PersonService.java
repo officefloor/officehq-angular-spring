@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -64,11 +65,19 @@ public class PersonService {
      */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, null);
+    }
+
+    /** Add a person as {@link #add(String, String, String, String, Integer, String)} does, with their tags, comma separated (null or blank: none). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            String tags) {
         sheets.load(sheetId);
         requireNameFree(sheetId, name, null);
         requireContactFree(sheetId, contact, null);
         Rollups.Rollup before = rollups.take(sheetId);
         Person added = new Person(sheetId, name, grade, terms, contact);
+        added.tag(Claim.tagsOf(tags));
         added.setPosition(people.findMaxPositionBySheetId(sheetId) + 1);
         Person person = people.saveAndFlush(added);
         audited("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId), terms != null,
@@ -87,6 +96,15 @@ public class PersonService {
     @Transactional
     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, boolean termsGiven, boolean contactGiven) {
+        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, termsGiven, contactGiven,
+                null);
+    }
+
+    /** Edit a person as {@link #edit} does, and set their tags from the comma separated text (null: kept as they are). */
+    @Transactional
+    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, boolean termsGiven, boolean contactGiven,
+            String tags) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         if (person.getVersion() != version) {
@@ -106,6 +124,9 @@ public class PersonService {
         person.setName(name);
         person.setTerms(terms);
         person.setContact(contact);
+        if (tags != null) {
+            person.tag(Claim.tagsOf(tags));
+        }
         person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
         Person saved = people.saveAndFlush(person);
         audited("PERSON_EDITED", sheetId, user, saved, today, withTerms, withContact);
