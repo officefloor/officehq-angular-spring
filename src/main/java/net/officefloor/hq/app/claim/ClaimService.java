@@ -66,7 +66,8 @@ public class ClaimService {
     /**
      * Move a claim to a new status, recording the event; refused (and nothing written) when the
      * claim's current status does not allow the move. Settling fixes the claim's due at the rate
-     * the person's grade has in force on the claim's date.
+     * the person's grade has in force on the claim's date. Opening records who opened the claim, and
+     * that user is refused when settling it.
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -78,11 +79,18 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The user who opened a claim cannot settle it.");
+        }
         Integer had = claim.getNumber();
         Person person = person(sheetId, claim.getPersonId());
         claim.become(next);
         if (next == ClaimStatus.OPEN || next == ClaimStatus.VOID) {
             claim.number(number);
+        }
+        if (next == ClaimStatus.OPEN) {
+            claim.openedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
             claim.settleDue(rates.findInForce(sheetId, person.getGrade(), claim.getDate())

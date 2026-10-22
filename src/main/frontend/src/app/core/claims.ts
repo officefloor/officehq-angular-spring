@@ -24,6 +24,8 @@ export interface ClaimView {
    * settled, or the grade had no rate then), so its due follows the current rate.
    */
   settledDue: string | null;
+  /** The user who opened the claim; null until it is opened. The opener cannot settle it. */
+  openedBy: string | null;
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED claims do. */
@@ -70,7 +72,10 @@ export class ClaimsApi {
     return firstValueFrom(this.http.put<ClaimView>(`${this.url(sheet)}/claims/${id}`, form));
   }
 
-  /** Move a claim's status; refused (409) when its status does not allow the move. */
+  /**
+   * Move a claim's status; refused (409) when its status does not allow the move,
+   * or when the user settling it is the one who opened it.
+   */
   act(sheet: string, id: number, action: ClaimAction): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, null));
   }

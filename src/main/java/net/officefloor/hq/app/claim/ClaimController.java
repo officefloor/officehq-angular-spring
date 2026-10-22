@@ -26,15 +26,17 @@ public class ClaimController {
 
     /**
      * What the screen is told about a claim; the amount with two decimals, and the due fixed when it
-     * was settled (null when not fixed, so its due is worked out from the current rate).
+     * was settled (null when not fixed, so its due is worked out from the current rate), and who
+     * opened it (null until opened).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Integer number, String settledDue) {
+            Integer number, String settledDue, String openedBy) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
-                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
+                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
+                    claim.getOpenedBy());
         }
     }
 
@@ -91,7 +93,7 @@ public class ClaimController {
         return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.OPEN));
     }
 
-    /** Settle an OPEN claim. */
+    /** Settle an OPEN claim; refused for the user who opened it. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

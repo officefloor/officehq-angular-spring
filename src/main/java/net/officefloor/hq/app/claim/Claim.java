@@ -50,6 +50,10 @@ public class Claim {
     @Column(name = "settled_due", precision = 14, scale = 2)
     private BigDecimal settledDue;
 
+    /** The user who opened the claim; null until it is opened. */
+    @Column(name = "opened_by")
+    private String openedBy;
+
     protected Claim() {
     }
 
@@ -95,6 +99,15 @@ public class Claim {
 
     public BigDecimal getSettledDue() {
         return settledDue;
+    }
+
+    public String getOpenedBy() {
+        return openedBy;
+    }
+
+    /** Record the user who opened the claim. */
+    public void openedBy(String user) {
+        this.openedBy = user;
     }
 
     /** Fix the claim's due as it is settled. */

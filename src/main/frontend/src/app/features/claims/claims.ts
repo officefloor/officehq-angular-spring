@@ -54,6 +54,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <button
             type="button"
             data-testid="claim-edit"
@@ -140,7 +141,11 @@ export class Claims {
     try {
       this.saved.emit(await this.api.act(sheet, claim.id, action));
     } catch {
-      this.claimError.set({ id: claim.id, message: `A ${claim.status} claim cannot be ${PAST[action]}.` });
+      const own = action === 'settle' && claim.status === 'OPEN' && claim.openedBy === this.session.user()?.trim();
+      this.claimError.set({
+        id: claim.id,
+        message: own ? 'You opened this claim, so someone else must settle it.' : `A ${claim.status} claim cannot be ${PAST[action]}.`,
+      });
     }
   }
 
