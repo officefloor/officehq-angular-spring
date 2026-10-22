@@ -113,7 +113,7 @@ public class PeriodService {
 
     /**
      * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures,
-     * as computed now, of the claims dated in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
+     * as computed now, of the claims due by in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
      * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those still OPEN or PENDING and dated
      * within their person's hold or of a person whose retirement date is reached, unless bound by a statement, and those deferred on today. A soft-closed period closes with its figures
      * fixed afresh. Refused when the period is already closed, or for a role the sheet's permission matrix does not allow.
@@ -135,7 +135,7 @@ public class PeriodService {
 
     /**
      * Soft-close an open period: its due-total and each person's figure for it are fixed as on a close
-     * (see {@link #close}), while claims dated in it can still be added and changed. Refused when the
+     * (see {@link #close}), while claims due by in it can still be added and changed. Refused when the
      * period is already closed or soft-closed, or for a role the sheet's permission matrix does not
      * allow to close.
      */
@@ -195,7 +195,7 @@ public class PeriodService {
         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !period.contains(claim.getDate())) {
+            if (person == null || !period.contains(claim.getDueBy())) {
                 continue;
             }
             ClaimStatus then = claim.statusAt(period.getToDate());
@@ -212,7 +212,7 @@ public class PeriodService {
     }
 
     /**
-     * Reopen a closed or soft-closed period: its due-total is live again, the claims dated in it counting at their
+     * Reopen a closed or soft-closed period: its due-total is live again, the claims due by in it counting at their
      * current figures. Refused for a role the sheet's permission matrix
      * does not allow (anyone but a steward by default), and when the period is neither closed nor soft-closed.
      */
@@ -234,7 +234,7 @@ public class PeriodService {
     }
 
     /**
-     * Give out the number for a claim dated on a date as it is opened, holding the sheet's lock until
+     * Give out the number for a claim due by a date (its due-by) as it is opened, holding the sheet's lock until
      * the caller's transaction ends. While the sheet numbers by period (see {@link Sheet#numbersByPeriod})
      * it is the next within the period the date falls in, {@code <period name>-<n>}, or {@code X-<n>}
      * when it falls in none; otherwise it is the sheet's next sheet-wide number.
@@ -269,10 +269,10 @@ public class PeriodService {
                 .anyMatch(p -> p.isSoftClosed() && p.contains(date));
     }
 
-    /** Refuse a change to a claim dated inside one of the sheet's closed periods. */
+    /** Refuse a change to a claim due by a date (its due-by) inside one of the sheet's closed periods. */
     public void refuseIfClosed(String sheetId, LocalDate date) {
         if (periods.findBySheetIdAndClosedTrue(sheetId).stream().anyMatch(p -> p.contains(date))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is dated inside a closed period.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is due by inside a closed period.");
         }
     }
 }

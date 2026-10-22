@@ -21,7 +21,7 @@ import java.util.Map;
  * A period on a sheet: a name, unique on the sheet ignoring case by its {@link #keyOf key}, and a
  * from and to date, both inclusive. No two periods on a sheet overlap. A closed period keeps the
  * due-total it had when it was closed, and each person's due-total for it then, until it is reopened.
- * A soft-closed period fixes them the same way, but claims dated in it can still change; it can be
+ * A soft-closed period fixes them the same way, but claims due by in it can still change; it can be
  * closed (fixing them afresh) or reopened.
  */
 @Entity

@@ -451,7 +451,7 @@ export class People {
   protected readonly periods = signal<PeriodView[]>([]);
   /**
    * Each person's due-total for each period, in whole cents, by period id then person id. While the
-   * period is open it is live: the sum of the due figures, as shown now, of the person's claims dated in
+   * period is open it is live: the sum of the due figures, as shown now, of the person's claims due by in
    * it that were OPEN, PENDING or SETTLED at the end of its last day, each at the grade in force on its
    * date (a claim with no figure adds nothing), leaving out those held or deferred (see countsInPeriod). Once closed or soft-closed it is the figure fixed then,
    * 0 for a person added since.
@@ -467,7 +467,7 @@ export class People {
     );
     const byId = new Map(this.people().map((p) => [p.id, p]));
     for (const c of this.claims()) {
-      const period = periodOn(this.periods(), c.date);
+      const period = periodOn(this.periods(), c.dueBy);
       const person = byId.get(c.personId);
       if (!period || fixed(period) || !person || !countsInPeriod(c, person, this.today(), period)) continue;
       const row = figures.get(period.id)!;

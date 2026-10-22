@@ -226,7 +226,7 @@ export class Claims {
   readonly grades = input.required<GradeView[]>();
   /** The sheet's rates; each claim uses the one its person's grade has in force on its date. */
   readonly rates = input.required<RateView[]>();
-  /** The sheet's periods; each claim belongs to the one whose dates contain its date, or to none. */
+  /** The sheet's periods; each claim belongs to the one whose dates contain its due-by, or to none. */
   readonly periods = input.required<PeriodView[]>();
   /** The people on the sheet, any of whom (but this one) a claim may be reassigned to. */
   readonly people = input.required<{ id: number; name: string }[]>();
@@ -323,9 +323,9 @@ export class Claims {
     return deferred(claim, this.session.today() ?? '');
   }
 
-  /** The name of the period a claim's date falls in; empty when it falls in none. */
+  /** The name of the period a claim's due-by falls in; empty when it falls in none. */
   protected periodOf(claim: ClaimView): string {
-    return periodOn(this.periods(), claim.date)?.name ?? '';
+    return periodOn(this.periods(), claim.dueBy)?.name ?? '';
   }
 
   protected checked(event: Event): boolean {
@@ -339,7 +339,7 @@ export class Claims {
   /**
    * Open a claim's editor: the claim is locked for other users and the form takes its values. Only a
    * DRAFT claim can be edited; any other is refused with an error on its row (to change an OPEN claim,
-   * void it and add a new one), as is one dated in a closed period, both taking no lock. A claim
+   * void it and add a new one), as is one due by in a closed period, both taking no lock. A claim
    * another user's editor holds is refused with an error on its row, the form left on it to save once
    * the lock is released; a viewer's edit is refused like any of their actions.
    */
@@ -355,7 +355,7 @@ export class Claims {
       });
       return;
     }
-    const period = periodOn(this.periods(), claim.date);
+    const period = periodOn(this.periods(), claim.dueBy);
     if (period?.closed) {
       this.reset();
       this.claimError.set({ id: claim.id, message: `Period ${period.name} is closed, so its claims cannot be edited.` });
@@ -458,7 +458,7 @@ export class Claims {
   /**
    * Defer a claim until the date entered on its row; refused with an error on its row when no date is
    * entered, when the claim is not OPEN, when the date is not after the sheet's today, or when the
-   * claim is dated in a closed period.
+   * claim is due by in a closed period.
    */
   protected async defer(claim: ClaimView): Promise<void> {
     this.claimError.set(null);
@@ -473,7 +473,7 @@ export class Claims {
       this.saved.emit(await this.api.defer(sheet, claim.id, until));
     } catch {
       const today = this.session.today() ?? '';
-      const period = periodOn(this.periods(), claim.date);
+      const period = periodOn(this.periods(), claim.dueBy);
       this.claimError.set({
         id: claim.id,
         message: claim.status !== 'OPEN'
@@ -496,7 +496,7 @@ export class Claims {
   /**
    * Re-date a claim to the date entered on its row; refused with an error on its row when no date is
    * entered, when the user is not a steward, when the claim is not OPEN or PENDING, when its date or
-   * the new date is in a closed period, or when the new date is after its person's retirement.
+   * its due-by is in a closed period, or when the new date is after its person's retirement.
    */
   protected async redate(claim: ClaimView): Promise<void> {
     this.claimError.set(null);
@@ -511,15 +511,15 @@ export class Claims {
       this.saved.emit(await this.api.redate(sheet, claim.id, date));
       this.newDates.update((dates) => ({ ...dates, [claim.id]: '' }));
     } catch (e) {
-      const closed = [periodOn(this.periods(), claim.date), periodOn(this.periods(), date)].find((p) => p?.closed);
+      const closed = periodOn(this.periods(), claim.dueBy);
       this.claimError.set({
         id: claim.id,
         message: e instanceof HttpErrorResponse && e.status === 403
           ? 'Only a steward can re-date a claim.'
           : claim.status !== 'OPEN' && claim.status !== 'PENDING'
             ? `A ${claim.status} claim cannot be re-dated; only an OPEN or PENDING one can.`
-            : closed
-              ? `Period ${closed.name} is closed, so a claim cannot be re-dated into or out of it.`
+            : closed?.closed
+              ? `Period ${closed.name} is closed, so its claims cannot be re-dated.`
               : 'The claim could not be re-dated to that date.',
       });
     }
@@ -534,14 +534,14 @@ export class Claims {
   /**
    * Split the amount typed on a claim's row off it into a new OPEN claim; refused with an error on its
    * row when the amount is not above 0.00 and below the claim's, when the claim is not OPEN or is
-   * deferred, or when it is dated in a closed period.
+   * deferred, or when it is due by in a closed period.
    */
   protected async split(claim: ClaimView): Promise<void> {
     this.claimError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const amount = (this.splitAmounts()[claim.id] ?? '').trim();
-    const period = periodOn(this.periods(), claim.date);
+    const period = periodOn(this.periods(), claim.dueBy);
     const refuse = (): string =>
       claim.status !== 'OPEN'
         ? `A ${claim.status} claim cannot be split; only an OPEN one can.`
