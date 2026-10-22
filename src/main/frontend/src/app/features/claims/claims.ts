@@ -322,6 +322,8 @@ export class Claims {
   readonly periods = input.required<PeriodView[]>();
   /** The people on the sheet, any of whom (but this one) a claim may be reassigned to. */
   readonly people = input.required<{ id: number; name: string }[]>();
+  /** The date the person is retired from; null when they are not retired. */
+  readonly retiredFrom = input<string | null>(null);
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input.required<ReadonlySet<number>>();
   /** A claim's checkbox ticked (on) or cleared. */
@@ -461,7 +463,8 @@ export class Claims {
   /**
    * Open a claim's editor: the claim is locked for other users and the form takes its values. Only a
    * DRAFT claim can be edited; any other is refused with an error on its row (to change an OPEN claim,
-   * void it and add a new one), as is one due by in a closed period, both taking no lock. A claim
+   * void it and add a new one), as is one due by in a closed period or dated after its person's
+   * retirement, all taking no lock. A claim
    * another user's editor holds is refused with an error on its row, the form left on it to save once
    * the lock is released; a viewer's edit is refused like any of their actions.
    */
@@ -483,6 +486,15 @@ export class Claims {
     if (period?.closed) {
       this.reset();
       this.claimError.set({ id: claim.id, message: `Period ${period.name} is closed, so its claims cannot be edited.` });
+      return;
+    }
+    const retired = this.retiredFrom();
+    if (retired !== null && claim.date > retired) {
+      this.reset();
+      this.claimError.set({
+        id: claim.id,
+        message: `${this.personName()} is retired from ${retired}, so a claim dated after it cannot be edited.`,
+      });
       return;
     }
     const me = this.session.user()?.trim();

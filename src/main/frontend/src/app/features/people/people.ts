@@ -176,6 +176,7 @@ function csvField(value: string): string {
       </p>
       <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+        <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
       </p>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
@@ -450,6 +451,7 @@ function csvField(value: string): string {
                 <app-claims
                   [personId]="p.id"
                   [personName]="p.name"
+                  [retiredFrom]="p.retiredFrom"
                   [claims]="claimsOf(p.id)"
                   [grades]="p.grades"
                   [rates]="rates()"
@@ -1400,11 +1402,41 @@ export class People {
       ['name', 'grade', 'retired-from', 'due-total'],
       ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)]),
     ];
+    this.download(lines, 'people');
+  }
+
+  /**
+   * Download the claims as a CSV file: a header line, then one line per claim, people in list order
+   * (retired people included) and each person's claims oldest first, with the number, period and due
+   * as shown (an empty number or period, or n/a, as it is). Each line ends with a line feed.
+   */
+  protected exportClaims(): void {
+    const lines = [
+      ['person', 'number', 'date', 'amount', 'due', 'status', 'period'],
+      ...this.people().flatMap((p) =>
+        [...this.claimsOf(p.id)].reverse().map((c) => {
+          const due = this.dueCents(c, p);
+          return [
+            p.name,
+            c.number ?? '',
+            c.date,
+            c.amount,
+            due === null ? NO_RATE : money(due),
+            c.status,
+            periodOn(this.periods(), c.dueBy)?.name ?? '',
+          ];
+        }),
+      ),
+    ];
+    this.download(lines, 'claims');
+  }
+
+  private download(lines: string[][], name: string): void {
     const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
     const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `people-${this.session.sheet() ?? 'sheet'}.csv`;
+    link.download = `${name}-${this.session.sheet() ?? 'sheet'}.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url));
   }
