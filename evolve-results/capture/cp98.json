@@ -1,0 +1,64 @@
+{
+  "checkpoint": 98,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp98_settle-batches",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A bulk settle that settles at least one claim (a claim that goes to PENDING counts) is a batch,\nnumbered 1, 2, ... on the sheet in the order the batches happen. Each claim settled by it shows its\nbatch number; a claim settled one at a time shows nothing. The screen shows the number of the last\nbatch beside the bulk settle button, or nothing when there has been none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA bulk settle that settles at least one claim (a claim that goes to PENDING counts) is a batch,\nnumbered 1, 2, ... on the sheet in the order the batches happen. Each claim settled by it shows its\nbatch number; a claim settled one at a time shows nothing. The screen shows the number of the last\nbatch beside the bulk settle button, or nothing when there has been none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ee1db5a13f3c721ed477755f1e03563eeca5ea22",
+  "reset_sha": "",
+  "preagent_sha": "baf92fc4f941c60f114cd637cde5286b1849f858",
+  "prev_sha": "baf92fc4f941c60f114cd637cde5286b1849f858",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8693114,
+    "input_tokens": 38,
+    "output_tokens": 9739,
+    "cache_read_tokens": 904977,
+    "cache_creation_tokens": 61673,
+    "num_turns": 20,
+    "duration_ms": 181850,
+    "duration_api_ms": 88766,
+    "model": "claude-opus-5-5",
+    "session_id": "5d124561-f6da-4485-933c-1eb06eb63a7a",
+    "stop_reason": "success",
+    "result_text": "Bulk settles are now numbered as batches, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- A bulk settle that settles at least one claim becomes the sheet's next batch: 1, 2, and so on. A claim sent to PENDING counts as settled.\n- Every claim settled by that bulk settle shows the batch number in its row (`claim-batch`). A claim settled one at a time shows nothing there.\n- The number of the last batch appears next to the bulk settle button (`bulk-settle-batch`), and is blank when there has been none. It updates straight away after a bulk settle and again whenever the sheet is reloaded.\n- A bulk settle where every claim is refused uses up no number.\n- Nothing is written to the audit file for batches, since the spec expects no new records.\n\n**Changes**\n- **Stored data:** a new migration, `V59__settle_batch.sql`, adds a `last_settle_batch` counter to the sheet and a `settle_batch` column to the claim.\n- **Server:**\n  - After the claims are settled, `BulkMoveService.settle` calls a new `ClaimService.batch`. This takes the sheet lock, gets the next number and stamps it on the claims that were settled.\n  - The claim view now includes `settleBatch`. The sheet view includes `lastSettleBatch`, which is null when there has been no batch. The bulk settle result includes `batch`.\n- **Front end:**\n  - `claim-batch` is added to the claim row in `claims.ts`.\n  - `bulk-settle-batch` is added next to the bulk settle button in `people.ts`.\n  - The session keeps track of the last batch number.\n\n**Things you might not expect**\n- A claim keeps its batch number permanently, even if it is later voided or changed. The request didn't say what should happen in that case.\n- The batch number is stamped in its own transaction after the claims are settled, not in the same one. If the server failed in between, the claims would be settled but have no batch number.\n- On the \"as of\" (past date) view, the batch numbers are blank because that view's saved history doesn't record them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8693114,
+        "num_turns": 20,
+        "duration_ms": 181850,
+        "duration_api_ms": 88766,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp98.agent.jsonl",
+  "agent_diff_file": "cp98.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
