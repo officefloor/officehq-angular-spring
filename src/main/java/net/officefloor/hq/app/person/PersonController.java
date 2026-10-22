@@ -337,11 +337,18 @@ public class PersonController {
         transfers.transfer(sheetId, SignedIn.name(user), personId, form.toSheetId());
     }
 
-    /** The ids of the people on the sheet the signed-in user watches. */
+    /**
+     * The ids of the people on the sheet the signed-in user watches; none while the sheet is shown as
+     * of a date, as watches are not kept in the sheet's history.
+     */
     @GetMapping("/watched")
     public List<Long> watched(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        if (AsOfGuard.date(asOf) != null) {
+            return List.of();
+        }
         return watches.watched(sheetId, SignedIn.name(user));
     }
 
