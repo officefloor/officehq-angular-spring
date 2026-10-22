@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents, dueBy, money, overdue } from '../../core/claims';
+import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, cents, dueBy, money, overdue } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -37,6 +37,14 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
         [value]="note()"
         (input)="note.set(value($event)); error.set(null)"
       />
+      <label [for]="'claim-form-corrects-' + personId()">Corrects claim no.</label>
+      <input
+        [id]="'claim-form-corrects-' + personId()"
+        data-testid="claim-form-corrects"
+        inputmode="numeric"
+        [value]="corrects()"
+        (input)="corrects.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -60,6 +68,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+          <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <button
             type="button"
@@ -107,6 +116,8 @@ export class Claims {
   protected readonly amount = signal('');
   protected readonly date = signal('');
   protected readonly note = signal('');
+  /** The number of the SETTLED claim a correction corrects; empty on any other claim. */
+  protected readonly corrects = signal('');
   /** The id of the claim open in the form, or null when the form adds a new claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -176,6 +187,7 @@ export class Claims {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
+    this.corrects.set(claim.corrects === null ? '' : String(claim.corrects));
     this.error.set(null);
   }
 
@@ -205,6 +217,7 @@ export class Claims {
     this.amount.set('');
     this.date.set('');
     this.note.set('');
+    this.corrects.set('');
     this.error.set(null);
   }
 
@@ -216,10 +229,15 @@ export class Claims {
     if (!sheet) return;
     const amount = this.amount().trim();
     if (!AMOUNT.test(amount)) {
-      this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
+      this.error.set('Type an amount with up to two decimals; below 0.00 only for a correction.');
       return;
     }
-    const form = { amount, date: this.date().trim() || null, note: this.note() };
+    const corrects = this.corrects().trim();
+    if (corrects !== '' && !CLAIM_NUMBER.test(corrects)) {
+      this.error.set('Type the number of the claim it corrects.');
+      return;
+    }
+    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : Number(corrects) };
     const id = this.editing();
     this.busy = true;
     try {
@@ -229,7 +247,10 @@ export class Claims {
       this.saved.emit(claim);
       this.reset();
     } catch {
-      this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+      const verb = id === null ? 'added' : 'saved';
+      this.error.set(amount.startsWith('-') || corrects !== ''
+        ? `The claim could not be ${verb}: a correction (an amount below 0.00) must name a SETTLED claim of ${this.personName()}, and only a correction names one.`
+        : `The claim could not be ${verb}.`);
     } finally {
       this.busy = false;
     }

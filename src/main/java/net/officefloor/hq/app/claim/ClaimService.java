@@ -53,29 +53,34 @@ public class ClaimService {
 
     /**
      * Add a claim for a person on the sheet; with no date it is dated the sheet's today. Refused when
-     * it is dated inside a closed period.
+     * it is dated inside a closed period, or when it is a correction that does not name a SETTLED claim
+     * of the same person (see {@link #refuseUnlessCorrects}).
      */
     @Transactional
-    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         sheets.lock(sheetId);
         periods.refuseIfClosed(sheetId, dated);
         refuseIfRetired(person, dated);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, clean(note)));
+        refuseUnlessCorrects(sheetId, personId, amount, corrects);
+        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, clean(note), corrects));
         audited("CLAIM_ADDED", sheetId, user, person, claim);
         rollups.audit(sheetId, user, before);
         return claim;
     }
 
     /**
-     * Change a claim's amount, date and note; with no date it keeps its own. Only a DRAFT claim can be
+     * Change a claim's amount, date, note and the number it corrects; with no date it keeps its own. Only a DRAFT claim can be
      * edited: an OPEN one is changed by voiding it and adding a new one. Refused when the claim, or the
-     * date it moves to, is inside a closed period.
+     * date it moves to, is inside a closed period, or when it would be a correction that does not name a
+     * SETTLED claim of the same person.
      */
     @Transactional
-    public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+    public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Rollups.Rollup before = rollups.take(sheetId);
         sheets.lock(sheetId);
         Claim claim = claim(sheetId, claimId);
@@ -88,7 +93,8 @@ public class ClaimService {
             periods.refuseIfClosed(sheetId, date);
             refuseIfRetired(person(sheetId, claim.getPersonId()), date);
         }
-        claim.change(money(amount), date != null ? date : claim.getDate(), clean(note));
+        refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
+        claim.change(money(amount), date != null ? date : claim.getDate(), clean(note), corrects);
         Claim saved = claims.saveAndFlush(claim);
         audited("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
         rollups.audit(sheetId, user, before);
@@ -161,6 +167,27 @@ public class ClaimService {
         if (Role.CLERK.equals(roles.roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "A clerk cannot settle a claim whose due is above the clerk limit of " + limit.toPlainString() + ".");
+        }
+    }
+
+    /**
+     * Refuse a correction (an amount below 0.00) unless it names, by number, a SETTLED claim of the
+     * same person; and refuse naming a claim to correct on any other claim.
+     */
+    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) {
+            if (corrects != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Only a correction, with an amount below 0.00, names a claim it corrects.");
+            }
+            return;
+        }
+        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .filter(corrected -> corrected.getStatus() == ClaimStatus.SETTLED)
+                .isPresent();
+        if (!settled) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A correction must name the number of a SETTLED claim of the same person.");
         }
     }
 

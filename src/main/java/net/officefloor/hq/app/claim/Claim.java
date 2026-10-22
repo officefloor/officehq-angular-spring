@@ -12,8 +12,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * A claim a person on a sheet makes: an amount (0.00 or more, two decimals), a date, a note and a
- * status (DRAFT when added).
+ * A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
+ * when added). A claim with a negative amount is a correction, naming the number of the SETTLED claim
+ * of the same person it corrects.
  */
 @Entity
 @Table(name = "claim")
@@ -62,15 +63,21 @@ public class Claim {
     @Column(name = "stated_due", precision = 14, scale = 2)
     private BigDecimal statedDue;
 
+    /** The number of the claim this one corrects; null unless it is a correction. */
+    @Column(name = "corrects")
+    private Integer corrects;
+
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
         this.note = note;
+        this.corrects = corrects;
     }
 
     public Long getId() {
@@ -133,11 +140,21 @@ public class Claim {
         this.number = number;
     }
 
-    /** Change the claim's amount, date and note. */
-    public void change(BigDecimal amount, LocalDate date, String note) {
+    public Integer getCorrects() {
+        return corrects;
+    }
+
+    /** Whether the claim is a correction: its amount is below 0.00. */
+    public boolean isCorrection() {
+        return amount.signum() < 0;
+    }
+
+    /** Change the claim's amount, date, note and the number it corrects. */
+    public void change(BigDecimal amount, LocalDate date, String note, Integer corrects) {
         this.amount = amount;
         this.date = date;
         this.note = note;
+        this.corrects = corrects;
     }
 
     public boolean isStated() {

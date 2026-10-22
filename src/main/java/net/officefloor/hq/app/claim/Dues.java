@@ -55,9 +55,10 @@ public class Dues {
      * A figure with the claim's late charge on top: the sheet's late percent of the figure for every
      * full 30 days an OPEN claim is past its due-by (its date plus the sheet's terms) on the sheet's
      * today, rounded half to even. The charge is never bound: it always follows the sheet's today.
+     * A correction has no late charge.
      */
     private BigDecimal withLate(Claim claim, BigDecimal figure) {
-        if (figure == null || claim.getStatus() != ClaimStatus.OPEN || claim.getSettledDue() != null) {
+        if (figure == null || claim.isCorrection() || claim.getStatus() != ClaimStatus.OPEN || claim.getSettledDue() != null) {
             return figure;
         }
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
@@ -76,10 +77,10 @@ public class Dues {
 
     /**
      * A claim's amount at the rate the grade has in force on the claim's date, raised to the sheet's
-     * floor when below it; null when it has no rate.
+     * floor when below it (a correction has no floor); null when it has no rate.
      */
     public BigDecimal live(Claim claim, String grade) {
-        BigDecimal floor = sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(null);
+        BigDecimal floor = claim.isCorrection() ? null : sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(null);
         return rates.findInForce(claim.getSheetId(), grade, claim.getDate())
                 .map(rate -> due(claim.getAmount(), rate))
                 .map(due -> floor != null && due.compareTo(floor) < 0 ? floor : due)

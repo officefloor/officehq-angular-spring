@@ -30,6 +30,13 @@ export interface ClaimView {
   stated: boolean;
   /** The figure the statement bound the claim to, with two decimals; null when unbound, or when it was n/a. */
   statedDue: string | null;
+  /** The number of the SETTLED claim this one corrects; null unless it is a correction. */
+  corrects: number | null;
+}
+
+/** Whether a claim is a correction: its amount is below 0.00. It has no floor and no late charge. */
+export function isCorrection(claim: ClaimView): boolean {
+  return claim.amount.startsWith('-') && cents(claim.amount) !== 0;
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED claims do. */
@@ -69,20 +76,28 @@ export interface ClaimForm {
   /** Empty means the sheet's today (or, on an edit, the claim's own date). */
   date: string | null;
   note: string;
+  /** The number of the claim a correction corrects; null on any other claim. */
+  corrects: number | null;
 }
 
-/** An amount as a claim takes it: 0.00 or more, with up to two decimals. */
-export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+/** An amount as a claim takes it: up to two decimals, below 0.00 only on a correction. */
+export const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
+
+/** A claim number as the form takes it. */
+export const CLAIM_NUMBER = /^[1-9]\d{0,8}$/;
 
 /** A two-decimal amount in whole cents, so sums are exact. */
 export function cents(amount: string): number {
-  const [whole, frac = ''] = amount.split('.');
-  return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  const negative = amount.startsWith('-');
+  const [whole, frac = ''] = (negative ? amount.slice(1) : amount).split('.');
+  const abs = Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  return negative ? -abs : abs;
 }
 
 /** Whole cents shown with two decimals. */
 export function money(cents: number): string {
-  return `${Math.trunc(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+  const abs = Math.abs(cents);
+  return `${cents < 0 ? '-' : ''}${Math.trunc(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
 // The claims people on a sheet make, read from and written to the store.

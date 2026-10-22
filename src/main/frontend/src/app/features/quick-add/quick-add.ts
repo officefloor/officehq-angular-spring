@@ -71,7 +71,7 @@ export class QuickAdd {
       this.error.set('Type a name for the person.');
       return;
     }
-    if (!AMOUNT.test(amount)) {
+    if (!AMOUNT.test(amount) || amount.startsWith('-')) {
       this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
       return;
     }
