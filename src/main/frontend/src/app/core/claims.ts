@@ -47,6 +47,8 @@ export interface ClaimView {
   statedDue: string | null;
   /** The number of the SETTLED claim this one corrects; null unless it is a correction. */
   corrects: string | null;
+  /** The claim's external reference; null when it has none. */
+  ref: string | null;
   /** The claim's status log, oldest first: one line per status it has had. */
   log: ClaimLogLine[];
   /** yyyy-mm-dd: the date the claim is deferred until; null when it was never deferred. */
@@ -196,6 +198,8 @@ export interface ClaimForm {
   note: string;
   /** The number of the claim a correction corrects; null on any other claim. */
   corrects: string | null;
+  /** The claim's external reference, used at most once on the sheet; blank for none. */
+  ref: string;
 }
 
 /** An amount as a claim takes it: up to two decimals, below 0.00 only on a correction. */

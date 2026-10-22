@@ -90,6 +90,14 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The claim's external reference; null when it has none. */
+    @Column(name = "ref")
+    private String ref;
+
+    /** The reference as compared on the sheet (lower case); null when it has none. */
+    @Column(name = "ref_key")
+    private String refKey;
+
     /** The date the claim is deferred until; null when it was never deferred. */
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
@@ -215,6 +223,21 @@ public class Claim {
 
     public String getCorrects() {
         return corrects;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    /** Give the claim an external reference; null for none. */
+    public void refer(String ref) {
+        this.ref = ref;
+        this.refKey = keyOf(ref);
+    }
+
+    /** A reference as compared on a sheet, without regard to case; null for none. */
+    public static String keyOf(String ref) {
+        return ref == null ? null : ref.toLowerCase(java.util.Locale.ROOT);
     }
 
     /** Whether the claim is a correction: its amount is below 0.00. */

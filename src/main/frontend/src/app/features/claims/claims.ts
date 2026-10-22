@@ -55,6 +55,13 @@ const PAST: Record<ClaimAction, string> = {
         [value]="corrects()"
         (input)="corrects.set(value($event)); typed()"
       />
+      <label [for]="'claim-form-ref-' + personId()">Reference</label>
+      <input
+        [id]="'claim-form-ref-' + personId()"
+        data-testid="claim-form-ref"
+        [value]="ref()"
+        (input)="ref.set(value($event)); typed()"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -79,6 +86,7 @@ const PAST: Record<ClaimAction, string> = {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
@@ -267,6 +275,8 @@ export class Claims {
   protected readonly note = signal('');
   /** The number of the SETTLED claim a correction corrects; empty on any other claim. */
   protected readonly corrects = signal('');
+  /** The claim's external reference; empty for none. */
+  protected readonly ref = signal('');
   /** Whose form this is: the signed-in user's, on the sheet, for the person. */
   private readonly editorKey = computed(() => `${this.session.user()}/${this.session.sheet()}/${this.personId()}`);
   /** The id of the claim open in the form, or null when the form adds a new claim. */
@@ -466,6 +476,7 @@ export class Claims {
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
+    this.ref.set(claim.ref ?? '');
     this.error.set(null);
   }
 
@@ -581,7 +592,7 @@ export class Claims {
     const me = this.session.user()?.trim();
     const period = periodOn(this.periods(), claim.dueBy);
     try {
-      const saved = await this.api.edit(sheet, claim.id, { amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? null });
+      const saved = await this.api.edit(sheet, claim.id, { amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? null, ref: claim.ref ?? '' });
       this.saved.emit(saved);
       this.inlineAmounts.update((amounts) => ({ ...amounts, [claim.id]: '' }));
       // the save released this user's lock, so an editor left open on the claim is closed
@@ -770,6 +781,7 @@ export class Claims {
     this.date.set('');
     this.note.set('');
     this.corrects.set('');
+    this.ref.set('');
     this.error.set(null);
   }
 
@@ -789,7 +801,7 @@ export class Claims {
       this.error.set('Type the number of the claim it corrects.');
       return;
     }
-    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects };
+    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects, ref: this.ref().trim() };
     const id = this.editing();
     this.busy = true;
     try {
@@ -802,6 +814,8 @@ export class Claims {
       const verb = id === null ? 'added' : 'saved';
       this.error.set(e instanceof HttpErrorResponse && e.status === 423
         ? this.lockedMessage(null)
+        : e instanceof HttpErrorResponse && e.status === 409 && form.ref !== ''
+        ? `The claim could not be ${verb}: the reference ${form.ref} may already be used on this sheet.`
         : amount.startsWith('-') || corrects !== ''
         ? `The claim could not be ${verb}: a correction (an amount below 0.00) must name a SETTLED claim of ${this.personName()}, and only a correction names one.`
         : `The claim could not be ${verb}.`);
@@ -811,6 +825,7 @@ export class Claims {
         this.date.set('');
         this.note.set('');
         this.corrects.set('');
+        this.ref.set('');
       }
     } finally {
       this.busy = false;

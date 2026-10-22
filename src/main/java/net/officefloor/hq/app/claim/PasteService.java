@@ -16,7 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The paste box: lines of name,amount,date,note each add a DRAFT claim, in order, for the named
  * person on the sheet. The date may be blank (the sheet's entry date while set, else its today) and the note, which may hold commas,
- * may be absent. Every line is held to the claim form's rules; it is one change, so when any line is
+ * may be absent. A note ending in " #<reference>" gives the claim that external reference, which is not
+ * part of the note. Every line is held to the claim form's rules; it is one change, so when any line is
  * refused nothing is added and nothing is recorded.
  */
 @Service
@@ -28,11 +29,14 @@ public class PasteService {
     /** The longest note the claim form takes. */
     private static final int NOTE_MAX = 500;
 
+    /** The longest reference the claim form takes. */
+    private static final int REF_MAX = 200;
+
     /** The most lines one paste takes. */
     static final int LINES_MAX = 1000;
 
     /** A line read from the paste, checked against the form's rules. */
-    private record Line(Person person, BigDecimal amount, LocalDate date, String note) {
+    private record Line(Person person, BigDecimal amount, LocalDate date, String note, String ref) {
     }
 
     private final PersonRepository people;
@@ -61,7 +65,7 @@ public class PasteService {
         }
         List<Claim> added = new ArrayList<>();
         for (Line line : lines) {
-            added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null));
+            added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null, line.ref()));
         }
         return added;
     }
@@ -91,10 +95,19 @@ public class PasteService {
             }
         }
         String note = fields.length > 3 ? fields[3].trim() : "";
+        String ref = null;
+        int hash = note.lastIndexOf(" #");
+        if (hash >= 0 && ClaimService.reference(note.substring(hash + 2)) != null) {
+            ref = ClaimService.reference(note.substring(hash + 2));
+            note = note.substring(0, hash).trim();
+        }
+        if (ref != null && ref.length() > REF_MAX) {
+            throw refused("Line " + number + ": the reference is longer than " + REF_MAX + " characters.");
+        }
         if (note.length() > NOTE_MAX) {
             throw refused("Line " + number + ": the note is longer than " + NOTE_MAX + " characters.");
         }
-        return new Line(person, new BigDecimal(amount), date, note);
+        return new Line(person, new BigDecimal(amount), date, note, ref);
     }
 
     private static ResponseStatusException refused(String reason) {

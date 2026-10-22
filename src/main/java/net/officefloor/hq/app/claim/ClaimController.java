@@ -34,11 +34,13 @@ public class ClaimController {
      * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
      * log, oldest first, and the date it is deferred until (null when it was never deferred), and its proofs count,
      * and the number of the claim it was split from (null unless it was split off another), and the user whose open
-     * editor locks it (null when none does), and the last day it was reminded (null when never).
+     * editor locks it (null when none does), and the last day it was reminded (null when never), and its
+     * external reference (null when it has none).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
-            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
+            String ref) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -47,7 +49,8 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
+                    claim.getRef());
         }
     }
 
@@ -63,13 +66,15 @@ public class ClaimController {
     /**
      * A claim's values as entered on the form: the amount is required, with up to two decimals, and
      * below 0.00 only on a correction, which names the number of the claim it corrects; no date means
-     * the sheet's today (or, on an edit, the claim's own); the note may be empty.
+     * the sheet's today (or, on an edit, the claim's own); the note may be empty; a blank reference is
+     * none (and on an edit, no reference at all keeps the claim's own).
      */
     public record ClaimForm(
             @NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 500) String note,
-            @Pattern(regexp = "[1-9]\\d{0,8}|\\S.{0,200}-[1-9]\\d{0,8}") String corrects) {
+            @Pattern(regexp = "[1-9]\\d{0,8}|\\S.{0,200}-[1-9]\\d{0,8}") String corrects,
+            @Size(max = 200) String ref) {
     }
 
     /** Why a steward rejects a PENDING claim. */
@@ -144,7 +149,7 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimForm form) {
-        return ClaimView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects()));
+        return ClaimView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects(), form.ref()));
     }
 
     /** Add a DRAFT claim per pasted line, in order; nothing is added when any line is refused. */
@@ -163,7 +168,7 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimForm form) {
-        return ClaimView.of(service.edit(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects()));
+        return ClaimView.of(service.edit(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects(), form.ref()));
     }
 
     /** Open a claim's editor, locking the claim for every other user. */

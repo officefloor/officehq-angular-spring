@@ -71,6 +71,17 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        return add(sheetId, user, personId, amount, date, note, corrects, null);
+    }
+
+    /**
+     * Add a claim (see {@link #add(String, String, long, BigDecimal, LocalDate, String, String)}) with an
+     * external reference (blank: none); refused when the reference is already used on the sheet, comparing
+     * without regard to case. CLAIM_ADDED ends with ref=&lt;reference&gt; when one was given.
+     */
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref) {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
@@ -79,13 +90,17 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
+        String referred = reference(ref);
+        refuseIfReferred(sheetId, referred, null);
         Claim added = new Claim(sheetId, personId, money(amount), dated, terms, dueBy, clean(note), corrects);
+        added.refer(referred);
         if (periods.softClosedOn(sheetId, dueBy)) {
             added.markLateEntry();
         }
         Claim claim = claims.saveAndFlush(added);
         claim = logged(claim, user, person);
-        audited("CLAIM_ADDED", sheetId, user, person, claim);
+        audited("CLAIM_ADDED", sheetId, user, person, claim, claim.getNumber(),
+                referred != null ? " ref=" + referred : "");
         if (claim.isLateEntry()) {
             audited("LATE_ENTRY", sheetId, user, person, claim);
         }
@@ -97,11 +112,12 @@ public class ClaimService {
      * Change a claim's amount, date, note and the number it corrects; with no date it keeps its own. Only a DRAFT claim can be
      * edited: an OPEN one is changed by voiding it and adding a new one. It keeps the due-by fixed when it
      * was added, and so its period. Refused when the claim's due-by is inside a closed period, or when it
-     * would be a correction that does not name a SETTLED claim of the same person.
+     * would be a correction that does not name a SETTLED claim of the same person, or when its external
+     * reference (null: kept as it is; blank: none) is already used by another claim on the sheet.
      */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Rollups.Rollup before = rollups.take(sheetId);
         sheets.lock(sheetId);
         Claim claim = claim(sheetId, claimId);
@@ -110,6 +126,9 @@ public class ClaimService {
             refuseIfRetired(person(sheetId, claim.getPersonId()), date);
         }
         refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
+        String referred = ref == null ? claim.getRef() : reference(ref);
+        refuseIfReferred(sheetId, referred, claim.getId());
+        claim.refer(referred);
         claim.change(money(amount), date != null ? date : claim.getDate(), clean(note), corrects);
         claim.lockFor(null);
         Claim saved = claims.saveAndFlush(claim);
@@ -657,6 +676,24 @@ public class ClaimService {
     /** The due a claim shows, with its late charge (see {@link Dues#due}). */
     public BigDecimal due(Claim claim, String grade) {
         return dues.due(claim, grade);
+    }
+
+    /** Refuse a reference already used on the sheet by a claim other than the one given (null: any). */
+    private void refuseIfReferred(String sheetId, String ref, Long self) {
+        if (ref == null) {
+            return;
+        }
+        claims.findBySheetIdAndRefKey(sheetId, Claim.keyOf(ref))
+                .filter((other) -> !other.getId().equals(self))
+                .ifPresent((other) -> {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "The reference " + ref + " is already used on this sheet.");
+                });
+    }
+
+    /** A reference as typed, without surrounding spaces; null when blank. */
+    static String reference(String ref) {
+        return ref == null || ref.isBlank() ? null : ref.trim();
     }
 
     private static BigDecimal money(BigDecimal amount) {
