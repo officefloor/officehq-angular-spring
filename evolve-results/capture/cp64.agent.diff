@@ -1,0 +1,174 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 230e00d2..0a4ae0d0 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -76,14 +76,15 @@ export function due(amountCents: number, pct: string | null): string {
+ }
+ 
+ /**
+- * A claim's due in whole cents: the due fixed when it was settled (its late charge frozen in), or
+- * else its figure — the one its person's last statement bound it to (unless it is PENDING), or else its amount at the rate
+- * the grade has in force on the claim's date raised to the floor (in whole cents) when below it —
+- * with the late charge on top: for every full 30 days the claim is overdue, the late percent in force
+- * on that boundary date (its due-by plus 30, 60, 90 ... days) of the figure, each rounded like the
+- * claim, added up. The floor given is the one in force on the claim's date. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
+- * charge is never bound by a statement. A correction has no floor and no late charge. Null when there
+- * is no figure.
++ * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or else
++ * the greater of the floor (in whole cents) and its figure with the late charge on top. Its figure is
++ * the rate figure its person's last statement bound it to (unless it is PENDING), or else its amount
++ * at the rate the grade has in force on the claim's date; the late charge is, for every full 30 days
++ * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
++ * ... days) of the figure, each rounded like the claim, added up. The floor is applied last; the one
++ * given is the one in force on the claim's date. Live figures round half up when `halfUp` (see
++ * roundsHalfUp), else half to even. The charge and floor are never bound by a statement. A correction
++ * has no floor and no late charge. Null when there is no figure.
+  */
+ export function claimDueCents(
+   claim: ClaimView,
+@@ -99,13 +100,12 @@ export function claimDueCents(
+     figure = claim.statedDue === null ? null : cents(claim.statedDue);
+   } else {
+     const pct = rateOn(rates, grade, claim.date);
+-    const live = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
+-    figure = live === null || isCorrection(claim) ? live : Math.max(live, floorCents);
++    figure = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
+   }
+   if (figure === null || isCorrection(claim)) return figure;
+   const charge = lateBoundaries(claim, late)
+     .reduce((sum, on) => sum + dueCents(figure, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
+-  return figure + charge;
++  return Math.max(figure + charge, floorCents);
+ }
+ 
+ // The rates for the grades on a sheet, read from and written to the store.
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 64600b7c..89f57dd4 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -241,10 +241,11 @@ export class Claims {
+   protected readonly rejectReasons = signal<Record<number, string>>({});
+ 
+   /**
+-   * What is due on a claim: the due fixed when it was settled, or else the figure its person's last
+-   * statement bound it to, or else its amount at the rate the
+-   * person's grade has in force on the claim's date (n/a when it is dated before every rate) raised to
+-   * the floor in force then, with its late charge (at the late percent in force on each 30-day boundary) on top while it is overdue.
++   * What is due on a claim: the due fixed when it was settled, or else the greater of the floor in
++   * force on the claim's date and its figure — the rate figure its person's last statement bound it to,
++   * or else its amount at the rate the person's grade has in force on the claim's date (n/a when it is
++   * dated before every rate) — with its late charge (at the late percent in force on each 30-day
++   * boundary) on top while it is overdue.
+    */
+   protected dueOf(claim: ClaimView): string {
+     const late = { history: this.session.latePctHistory(), today: this.session.today() ?? '' };
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 6c577f71..3b103240 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -38,9 +38,9 @@ public class Dues {
+     }
+ 
+     /**
+-     * The due figure a claim shows: the one fixed when it was settled, else (unless it is PENDING,
+-     * which is not bound) the one its person's last statement bound it to, else its amount at the rate the grade has in force on the claim's date;
+-     * null (n/a) when there is none.
++     * The due figure a claim shows, before its late charge and floor: the one fixed when it was settled,
++     * else (unless it is PENDING, which is not bound) the rate figure its person's last statement bound it
++     * to, else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
+      */
+     public BigDecimal figure(Claim claim, String grade) {
+         if (claim.getSettledDue() != null) {
+@@ -50,12 +50,15 @@ public class Dues {
+     }
+ 
+     /**
+-     * The due a claim shows: its figure (see {@link #figure}) with the late charge on top while it is
+-     * overdue; a settled claim's figure already holds the charge it was settled with. Null (n/a) when
+-     * it has no figure.
++     * The due a claim shows: the greater of the floor in force on its date and its figure (see
++     * {@link #figure}) with the late charge on top while it is overdue; a settled claim's figure is
++     * frozen as it was settled. Null (n/a) when it has no figure.
+      */
+     public BigDecimal due(Claim claim, String grade) {
+-        return withLate(claim, figure(claim, grade));
++        if (claim.getSettledDue() != null) {
++            return claim.getSettledDue();
++        }
++        return floored(claim, withLate(claim, figure(claim, grade)));
+     }
+ 
+     /**
+@@ -63,7 +66,7 @@ public class Dues {
+      * the late charge it has on the sheet's today on top; null when it has no figure.
+      */
+     public BigDecimal settling(Claim claim, String grade) {
+-        return withLate(claim, claim.isStated() ? claim.getStatedDue() : live(claim, grade));
++        return floored(claim, withLate(claim, claim.isStated() ? claim.getStatedDue() : live(claim, grade)));
+     }
+ 
+     /**
+@@ -71,7 +74,7 @@ public class Dues {
+      * PENDING) with the late charge it has on the sheet's today on top; null when it has no figure.
+      */
+     public BigDecimal approving(Claim claim, String grade) {
+-        return withLate(claim, live(claim, grade));
++        return floored(claim, withLate(claim, live(claim, grade)));
+     }
+ 
+     /**
+@@ -81,7 +84,7 @@ public class Dues {
+      */
+     public BigDecimal resettling(Claim claim, String grade) {
+         BigDecimal figure = live(claim, grade);
+-        return figure == null || claim.isCorrection() ? figure : lateOn(claim, figure);
++        return figure == null || claim.isCorrection() ? figure : floored(claim, lateOn(claim, figure));
+     }
+ 
+     /**
+@@ -125,17 +128,27 @@ public class Dues {
+     }
+ 
+     /**
+-     * A claim's amount at the rate the grade has in force on the claim's date, raised to the floor in
+-     * force on the claim's date when below it (a correction has no floor), rounded by the claim's date against the policy
+-     * date; null when it has no rate.
++     * A due raised to the floor in force on the claim's date when below it, applied last (after the
++     * late charge); a correction has no floor, and null (n/a) stays null.
++     */
++    private BigDecimal floored(Claim claim, BigDecimal due) {
++        if (due == null || claim.isCorrection()) {
++            return due;
++        }
++        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
++        BigDecimal floor = sheet == null ? null : sheet.floorOn(claim.getDate());
++        return floor != null && due.compareTo(floor) < 0 ? floor : due;
++    }
++
++    /**
++     * A claim's rate figure: its amount at the rate the grade has in force on the claim's date, rounded
++     * by the claim's date against the policy date, with no floor; null when it has no rate.
+      */
+     public BigDecimal live(Claim claim, String grade) {
+         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+-        BigDecimal floor = claim.isCorrection() || sheet == null ? null : sheet.floorOn(claim.getDate());
+         RoundingMode rounding = rounding(claim, sheet);
+         return rates.findInForce(claim.getSheetId(), grade, claim.getDate())
+                 .map(rate -> due(claim.getAmount(), rate, rounding))
+-                .map(due -> floor != null && due.compareTo(floor) < 0 ? floor : due)
+                 .orElse(null);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index bdfa8279..b0328df3 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -68,7 +68,7 @@ public class StatementService {
+                 claim.unbind();
+                 continue;
+             }
+-            // The statement binds the figure; the late charge stays live, but counts in its total.
++            // The statement binds the rate figure; the late charge and floor stay live, but count in its total.
+             BigDecimal figure = claimService.figure(claim, person.gradeOn(claim.getDate()));
+             figured |= figure != null;
+             claim.bind(figure);
