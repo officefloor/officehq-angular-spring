@@ -239,6 +239,16 @@ public class Person {
         this.statementDate = date;
     }
 
+    /**
+     * Cancel the last statement: one fewer is counted, and the one before it (its due-total, null
+     * when n/a, and date) is shown again; with none before it, no statement is shown.
+     */
+    public void unstated(BigDecimal previousTotal, LocalDate previousDate) {
+        this.statementCount--;
+        this.statementTotal = previousTotal;
+        this.statementDate = previousDate;
+    }
+
     public Set<Long> getPatronIds() {
         return Collections.unmodifiableSet(patronIds);
     }

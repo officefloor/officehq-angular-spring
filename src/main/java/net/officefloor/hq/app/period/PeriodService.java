@@ -160,7 +160,8 @@ public class PeriodService {
     /**
      * The sheet's today was changed: close, in order of their to-dates, each open period whose to-date
      * plus the sheet's grace days is before the new today, exactly as a close by hand would, its
-     * PERIOD_CLOSED marked auto=yes. Nothing closes while the grace days are off.
+     * PERIOD_CLOSED marked auto=yes. A soft-closed period keeps the figures fixed for it and is left as
+     * it is. Nothing closes while the grace days are off.
      */
     @EventListener
     public void todayChanged(TodayChanged change) {
@@ -169,7 +170,7 @@ public class PeriodService {
         }
         LocalDate today = sheets.lock(change.sheetId()).getToday();
         List<Period> due = periods.findBySheetIdOrderByFromDateAsc(change.sheetId()).stream()
-                .filter(p -> !p.isClosed() && p.getToDate().plusDays(change.graceDays()).isBefore(today))
+                .filter(p -> !p.isFixed() && p.getToDate().plusDays(change.graceDays()).isBefore(today))
                 .sorted(Comparator.comparing(Period::getToDate))
                 .toList();
         for (Period period : due) {

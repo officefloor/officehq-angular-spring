@@ -307,6 +307,14 @@ function csvField(value: string): string {
                 >
                   Statement
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-unstate"
+                  [attr.aria-label]="'Cancel the last statement for ' + p.name"
+                  (click)="unstate(p)"
+                >
+                  Cancel statement
+                </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
                 <input
                   type="date"
@@ -730,6 +738,22 @@ export class People {
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
     } catch {
       this.personError.set({ id: person.id, message: 'The statement could not be taken.' });
+    }
+  }
+
+  /** Cancel a person's last statement: the row and their claims show what the store holds after it. */
+  protected async unstate(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      const cancelled = await this.api.unstate(sheet, person.id);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === cancelled.person.id ? cancelled.person : p)));
+      const byId = new Map(cancelled.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+    } catch {
+      this.personError.set({ id: person.id, message: 'The statement could not be cancelled.' });
     }
   }
 

@@ -10,6 +10,8 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -19,7 +21,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * A person's statements: taking one records their due-total on the sheet's today, binds each of
- * their counting claims to the due figure it shows then, and leaves the rest unbound.
+ * their counting claims to the due figure it shows then, and leaves the rest unbound. A steward may
+ * cancel the last one: the claims it bound are live again, and the person shows the one before it.
  */
 @Service
 public class StatementService {
@@ -37,11 +40,16 @@ public class StatementService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final Rollups rollups;
+    private final StatementRepository statements;
+    private final RoleService roles;
     private final Audit audit;
 
     public StatementService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
-            RateRepository rates, SheetService sheets, Rollups rollups, Audit audit) {
+            RateRepository rates, SheetService sheets, Rollups rollups, StatementRepository statements,
+            RoleService roles, Audit audit) {
         this.rollups = rollups;
+        this.statements = statements;
+        this.roles = roles;
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
@@ -86,10 +94,47 @@ public class StatementService {
         total = sheets.load(sheetId).capped(total);
         person.stated(total, today);
         Person saved = people.saveAndFlush(person);
+        statements.saveAndFlush(new Statement(sheetId, saved.getId(), saved.getStatementCount(), total, today));
         List<Claim> bound = claims.saveAllAndFlush(theirs);
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " due-total=" + (total != null ? total.toPlainString() : NO_RATE) + " claims=" + counted);
         rollups.audit(sheetId, user, before);
         return new Stated(saved, bound);
+    }
+
+    /**
+     * Cancel a person's last statement: the claims it bound are live again (a figure an earlier
+     * statement bound is not restored), and the person shows the statement before it, or none. Only a
+     * steward cancels; refused when the person has no statement.
+     */
+    @Transactional
+    public Stated cancel(String sheetId, String user, long personId) {
+        sheets.lock(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward cancels a statement.");
+        }
+        if (person.getStatementCount() == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " has no statement to cancel.");
+        }
+        Rollups.Rollup before = rollups.take(sheetId);
+        BigDecimal cancelled = person.getStatementTotal();
+        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderBySeqDesc(sheetId, personId);
+        if (!taken.isEmpty() && taken.get(0).getSeq() == person.getStatementCount()) {
+            statements.delete(taken.remove(0));
+        }
+        // The one before it, when it was recorded.
+        Statement previous = taken.isEmpty() || taken.get(0).getSeq() != person.getStatementCount() - 1
+                ? null : taken.get(0);
+        person.unstated(previous == null ? null : previous.getTotal(), previous == null ? null : previous.getTakenOn());
+        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        theirs.forEach(Claim::unbind);
+        Person saved = people.saveAndFlush(person);
+        List<Claim> live = claims.saveAllAndFlush(theirs);
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " due-total=" + (cancelled != null ? cancelled.toPlainString() : NO_RATE));
+        rollups.audit(sheetId, user, before);
+        return new Stated(saved, live);
     }
 }

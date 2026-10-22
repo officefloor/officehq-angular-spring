@@ -101,6 +101,11 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<StatementView>(`${this.url(sheet)}/${id}/statements`, null));
   }
 
+  /** Cancel the last statement: the claims it bound are live again, the one before it shown. */
+  unstate(sheet: string, id: number): Promise<StatementView> {
+    return firstValueFrom(this.http.delete<StatementView>(`${this.url(sheet)}/${id}/statements/last`));
+  }
+
   /** Retire a person from a date; with none, from the sheet's today. */
   retire(sheet: string, id: number, from: string | null): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/retire`, { from }));
