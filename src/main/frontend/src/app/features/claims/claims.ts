@@ -469,9 +469,11 @@ export class Claims {
         && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'));
       const steward = e instanceof HttpErrorResponse && e.status === 403
         && (((action === 'approve' || action === 'reject') && claim.status === 'PENDING')
-          || (action === 'resettle' && claim.status === 'SETTLED'));
-      const forbidden = e instanceof HttpErrorResponse && e.status === 403
+          || ((action === 'resettle' || action === 'void') && claim.status === 'SETTLED'));
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403 && !steward
         && (action === 'open' || action === 'settle' || action === 'void');
+      const lateVoid = e instanceof HttpErrorResponse && e.status === 409
+        && action === 'void' && claim.status === 'SETTLED';
       this.claimError.set({
         id: claim.id,
         message: forbidden
@@ -484,6 +486,8 @@ export class Claims {
               ? `The claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
             : steward
               ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
+            : lateVoid
+              ? 'A SETTLED claim can only be voided within 7 days of its settlement, outside a closed period.'
               : `A ${claim.status} claim cannot be ${PAST[action]}.`,
       });
     }

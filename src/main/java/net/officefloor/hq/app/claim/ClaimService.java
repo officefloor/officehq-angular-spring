@@ -117,7 +117,9 @@ public class ClaimService {
      * (a due of n/a is within any limit) sends it PENDING instead, for a steward to approve or reject;
      * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
      * refused. A claim dated inside a closed period cannot be moved, nor can a claim
-     * deferred on the sheet's today be settled.
+     * deferred on the sheet's today be settled. A SETTLED claim is voided only by a steward, within
+     * {@link ClaimStatus#VOID_SETTLED_DAYS} days of its settlement; its frozen figure leaves every
+     * total and the audit records it as reversed.
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -139,6 +141,10 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+        }
+        boolean voidingSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+        if (voidingSettled) {
+            refuseVoidingSettled(sheetId, user, claim, today);
         }
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(today)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -177,6 +183,8 @@ public class ClaimService {
         };
         String suffix = next == ClaimStatus.SETTLED
                 ? " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
+                : voidingSettled
+                ? " reversed=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
                 : "";
         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
         if (next == ClaimStatus.SETTLED) {
@@ -412,6 +420,21 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim's due is above the proof threshold of " + threshold.toPlainString()
                             + ": it needs a proof before it is settled.");
+        }
+    }
+
+    /**
+     * Refuse voiding a SETTLED claim unless the user acts as a steward and the sheet's today is no more
+     * than {@link ClaimStatus#VOID_SETTLED_DAYS} days after the claim's settlement in its status log.
+     */
+    private void refuseVoidingSettled(String sheetId, String user, Claim claim, LocalDate today) {
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward voids a SETTLED claim.");
+        }
+        LocalDate settledOn = claim.settledOn();
+        if (settledOn == null || today == null || today.isAfter(settledOn.plusDays(ClaimStatus.VOID_SETTLED_DAYS))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A SETTLED claim can only be voided within "
+                    + ClaimStatus.VOID_SETTLED_DAYS + " days of its settlement.");
         }
     }
 

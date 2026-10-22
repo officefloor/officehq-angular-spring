@@ -221,7 +221,7 @@ public class ClaimController {
         return ClaimView.of(service.reject(sheetId, SignedIn.name(user), claimId, form.reason()));
     }
 
-    /** Void a DRAFT, OPEN or PENDING claim. */
+    /** Void a DRAFT, OPEN or PENDING claim, or (by a steward, within days of its settlement) a SETTLED one. */
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

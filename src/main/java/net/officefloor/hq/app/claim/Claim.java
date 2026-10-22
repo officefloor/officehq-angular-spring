@@ -282,6 +282,20 @@ public class Claim {
         return then;
     }
 
+    /**
+     * The day the claim was last settled, as its status log records it: the date of its last SETTLED
+     * line, or null when the log has none.
+     */
+    public LocalDate settledOn() {
+        LocalDate on = null;
+        for (ClaimLogLine line : log) {
+            if (line.getStatus() == ClaimStatus.SETTLED) {
+                on = line.getOn();
+            }
+        }
+        return on;
+    }
+
     /** Add a line to the claim's status log for the status it now has. */
     public void logged(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogLine(status, by, on, due));

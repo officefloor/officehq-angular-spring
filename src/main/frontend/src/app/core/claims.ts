@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import type { DatedValue } from './session';
 
 /**
- * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID. A clerk settling a claim
+ * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID (SETTLED → VOID by a
+ * steward within 7 days of its settlement). A clerk settling a claim
  * above the clerk limit sends it PENDING; a steward approves it (SETTLED) or rejects it (OPEN again).
  */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
