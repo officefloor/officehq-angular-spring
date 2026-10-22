@@ -93,7 +93,7 @@ public class Dues {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return floored(claim, withLate(claim, figure(claim, grade, basis), basis), basis);
+        return floored(claim, withLate(claim, grade, figure(claim, grade, basis), basis), basis);
     }
 
     /**
@@ -102,7 +102,7 @@ public class Dues {
      */
     public BigDecimal settling(Claim claim, String grade) {
         Basis basis = live(claim.getSheetId());
-        return floored(claim, withLate(claim, claim.isStated() ? claim.getStatedDue() : live(claim, grade, basis), basis), basis);
+        return floored(claim, withLate(claim, grade, claim.isStated() ? claim.getStatedDue() : live(claim, grade, basis), basis), basis);
     }
 
     /**
@@ -111,7 +111,7 @@ public class Dues {
      */
     public BigDecimal approving(Claim claim, String grade) {
         Basis basis = live(claim.getSheetId());
-        return floored(claim, withLate(claim, live(claim, grade, basis), basis), basis);
+        return floored(claim, withLate(claim, grade, live(claim, grade, basis), basis), basis);
     }
 
     /**
@@ -122,7 +122,7 @@ public class Dues {
     public BigDecimal resettling(Claim claim, String grade) {
         Basis basis = live(claim.getSheetId());
         BigDecimal figure = live(claim, grade, basis);
-        return figure == null || claim.isCorrection() ? figure : floored(claim, lateOn(claim, figure, basis), basis);
+        return figure == null || claim.isCorrection() ? figure : floored(claim, lateOn(claim, grade, figure, basis), basis);
     }
 
     /**
@@ -131,27 +131,28 @@ public class Dues {
      * against the policy date. The charge is never bound: it always follows the sheet's today.
      * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue).
      */
-    private BigDecimal withLate(Claim claim, BigDecimal figure, Basis basis) {
+    private BigDecimal withLate(Claim claim, String grade, BigDecimal figure, Basis basis) {
         if (figure == null || claim.isCorrection() || !claim.getStatus().isOpen() || claim.getSettledDue() != null) {
             return figure;
         }
         if (basis.sheet() != null && claim.isDeferredOn(basis.today())) {
             return figure;
         }
-        return lateOn(claim, figure, basis);
+        return lateOn(claim, grade, figure, basis);
     }
 
     /**
      * A figure with the late charge an OPEN claim would have on the sheet's today on top: for every full
-     * 30 days past its due-by, the late percent in force on that boundary date (the due-by plus 30, 60,
-     * 90 ... days) of the figure, rounded like the claim, the charges added up.
+     * 30 days past its due-by plus its grade's grace (see {@link Sheet#lateFrom}), the late percent in
+     * force on that boundary date (that date plus 30, 60, 90 ... days) of the figure, rounded like the
+     * claim, the charges added up.
      */
-    private BigDecimal lateOn(Claim claim, BigDecimal figure, Basis basis) {
+    private BigDecimal lateOn(Claim claim, String grade, BigDecimal figure, Basis basis) {
         Sheet sheet = basis.sheet();
         if (sheet == null) {
             return figure;
         }
-        LocalDate dueBy = claim.getDueBy();
+        LocalDate dueBy = sheet.lateFrom(claim.getDueBy(), grade, claim.getDate());
         long periods = ChronoUnit.DAYS.between(dueBy, sheet.getToday()) / 30;
         RoundingMode rounding = rounding(claim, basis);
         BigDecimal late = BigDecimal.ZERO.setScale(2);

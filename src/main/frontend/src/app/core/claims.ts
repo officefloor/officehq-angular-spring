@@ -117,11 +117,20 @@ export function deferred(claim: ClaimView, today: string): boolean {
 }
 
 /**
- * Whether a claim is overdue: it is OPEN or PENDING, its due-by is before the sheet's today, and it is
- * not deferred on it.
+ * The date (yyyy-mm-dd) a claim's lateness counts from: its due-by plus the grace days its grade has
+ * in force on the claim's date (0 when none). The due-by shown is unchanged.
  */
-export function overdue(claim: ClaimView, today: string): boolean {
-  return isOpen(claim) && today !== '' && dueBy(claim) < today && !deferred(claim, today);
+export function lateFrom(claim: ClaimView, grace = 0): string {
+  if (grace === 0) return dueBy(claim);
+  return new Date(Date.parse(dueBy(claim)) + grace * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Whether a claim is overdue: it is OPEN or PENDING, its due-by plus its grace days is before the
+ * sheet's today, and it is not deferred on it.
+ */
+export function overdue(claim: ClaimView, today: string, grace = 0): boolean {
+  return isOpen(claim) && today !== '' && lateFrom(claim, grace) < today && !deferred(claim, today);
 }
 
 /** What a late charge is worked from: the sheet's late percent by from-date and its today. */
@@ -130,6 +139,8 @@ export interface LateTerms {
   history: DatedValue[];
   /** The sheet's today (yyyy-mm-dd); empty when none is loaded. */
   today: string;
+  /** The claim's grace days (see lateFrom); 0 or absent when none. */
+  grace?: number;
 }
 
 /**
@@ -146,19 +157,22 @@ export function roundsHalfUp(claim: ClaimView, claims: ClaimView[], policyDate: 
   return policy !== '' && date < policy;
 }
 
-/** How many full 30 days an overdue claim is past its due-by on the sheet's today; 0 when not overdue. */
+/**
+ * How many full 30 days an overdue claim is past its due-by plus its grace (see lateFrom) on the
+ * sheet's today; 0 when not overdue.
+ */
 export function latePeriods(claim: ClaimView, late: LateTerms): number {
-  if (!overdue(claim, late.today)) return 0;
-  const days = (Date.parse(late.today) - Date.parse(dueBy(claim))) / 86_400_000;
+  if (!overdue(claim, late.today, late.grace)) return 0;
+  const days = (Date.parse(late.today) - Date.parse(lateFrom(claim, late.grace))) / 86_400_000;
   return Math.floor(days / 30);
 }
 
 /**
  * The 30-day boundary dates (yyyy-mm-dd) an overdue claim has passed on the sheet's today: its due-by
- * plus 30, 60, 90 ... days, one for every full 30 days it is overdue.
+ * plus its grace (see lateFrom), plus 30, 60, 90 ... days, one for every full 30 days it is overdue.
  */
 export function lateBoundaries(claim: ClaimView, late: LateTerms): string[] {
-  const from = Date.parse(dueBy(claim));
+  const from = Date.parse(lateFrom(claim, late.grace));
   return Array.from({ length: latePeriods(claim, late) }, (_, i) =>
     new Date(from + (i + 1) * 30 * 86_400_000).toISOString().slice(0, 10));
 }

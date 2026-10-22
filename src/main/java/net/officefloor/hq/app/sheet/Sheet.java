@@ -34,6 +34,7 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String GRACE = "grace";
 
     /** The actions the permission matrix covers, each with the roles that may take it under the standing rule. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
@@ -241,6 +242,27 @@ public class Sheet {
         return own != null ? own : termsOn(date);
     }
 
+    /** A grade's grace in force on the sheet's today in days; null when it has none. */
+    public Integer getGradeGrace(String grade) {
+        return gradeGraceOn(grade, today);
+    }
+
+    /** A grade's grace in force on a date in days; null when it has none (as before every from-date). */
+    public Integer gradeGraceOn(String grade, LocalDate date) {
+        String value = valueOn(gradeGraceKey(grade), date, null);
+        return value == null ? null : Integer.valueOf(value);
+    }
+
+    /**
+     * The date a claim's lateness is counted from: its due-by plus the grace its grade (the one in force
+     * on the claim's date) has in force on that date, else its due-by. It is overdue once this is before
+     * the sheet's today, and its late charge's 30-day boundaries are counted from it.
+     */
+    public LocalDate lateFrom(LocalDate dueBy, String grade, LocalDate date) {
+        Integer grace = grade == null ? null : gradeGraceOn(grade, date);
+        return grace == null ? dueBy : dueBy.plusDays(grace);
+    }
+
     /** The late percent in force on the sheet's today, with two decimals. */
     public BigDecimal getLatePct() {
         return latePctOn(today);
@@ -254,6 +276,16 @@ public class Sheet {
     /** The key a grade's own terms are recorded under. */
     public static String gradeTermsKey(String grade) {
         return TERMS + "-" + grade;
+    }
+
+    /** The key a grade's grace is recorded under. */
+    public static String gradeGraceKey(String grade) {
+        return GRACE + "-" + grade;
+    }
+
+    /** A grade's grace values (see {@link #history}), none before every from-date. */
+    public List<DatedSetting> gradeGraceHistory(String grade) {
+        return history(gradeGraceKey(grade), null);
     }
 
     /**

@@ -86,11 +86,12 @@ public class Rollups {
             boolean figured = false;
             for (Claim claim : counting) {
                 claimed = claimed.add(claim.getAmount());
-                BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
+                String grade = person.gradeOn(claim.getDate());
+                BigDecimal figure = dues.due(claim, grade);
                 if (figure != null) {
                     due = due.add(figure);
                     figured = true;
-                    if (overdue(claim, today)) {
+                    if (overdue(claim, sheet, grade)) {
                         overdue = overdue.add(figure);
                     }
                 }
@@ -156,11 +157,15 @@ public class Rollups {
     }
 
     /**
-     * Whether a claim is overdue: OPEN or PENDING with its due-by before the sheet's today, and not
-     * deferred on it.
+     * Whether a claim is overdue: OPEN or PENDING with its due-by (plus its grade's grace, see
+     * {@link Sheet#lateFrom}) before the sheet's today, and not deferred on it.
      */
-    private static boolean overdue(Claim claim, LocalDate today) {
-        return today != null && claim.getStatus().isOpen() && claim.getDueBy().isBefore(today)
+    private static boolean overdue(Claim claim, Sheet sheet, String grade) {
+        if (sheet == null) {
+            return false;
+        }
+        LocalDate today = sheet.getToday();
+        return claim.getStatus().isOpen() && sheet.lateFrom(claim.getDueBy(), grade, claim.getDate()).isBefore(today)
                 && !claim.isDeferredOn(today);
     }
 

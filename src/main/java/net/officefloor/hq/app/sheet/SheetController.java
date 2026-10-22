@@ -36,15 +36,29 @@ public class SheetController {
 
     /** What the screen is told about a loaded sheet. */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
-            String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived) {
+            String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
+            Map<String, List<DatedValue>> graceHistory) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
-                    DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived());
+                    DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived(),
+                    graceHistory(sheet));
+        }
+
+        /** Each grade's grace values by from-date, its starting value (none) first. */
+        static Map<String, List<DatedValue>> graceHistory(Sheet sheet) {
+            Map<String, List<DatedValue>> all = new TreeMap<>();
+            for (String grade : GRADES) {
+                all.put(grade, DatedValue.of(sheet.gradeGraceHistory(grade)));
+            }
+            return all;
         }
     }
+
+    /** The grades a person can have. */
+    static final List<String> GRADES = List.of("A", "B", "C");
 
     /** A change to the sheet's today. */
     public record TodayChange(@NotNull LocalDate today) {
@@ -56,11 +70,13 @@ public class SheetController {
      * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off), and the grace days, null for none (off), and
      * each grade's own terms in days, null for none (the sheet's terms), and the cap with two decimals, null
      * for none, and the proof threshold with two decimals, null for none, and the note threshold with two
-     * decimals, null for none, and the entry date, null for none (off). */
+     * decimals, null for none, and the entry date, null for none (off), and each grade's grace in days,
+     * null for none, with each grade's grace values by from-date. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
-            Map<String, String> permissions, String noteThreshold, LocalDate entryDate) {
+            Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
+            Integer graceC, Map<String, List<DatedValue>> graceHistory) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -72,7 +88,8 @@ public class SheetController {
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
                     permissions(sheet),
                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
-                    sheet.getEntryDate());
+                    sheet.getEntryDate(), sheet.getGradeGrace("A"), sheet.getGradeGrace("B"), sheet.getGradeGrace("C"),
+                    SheetView.graceHistory(sheet));
         }
 
         /** The roles set for each action of the permission matrix; blank when it keeps its standing rule. */
@@ -125,6 +142,11 @@ public class SheetController {
 
     /** A grade's terms as entered: a whole number of days, or blank (or null) for the sheet's terms. */
     public record GradeTermsChange(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
+    }
+
+    /** A grade's grace as entered: a whole number of days, or blank (or null) for none. */
+    public record GradeGraceChange(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
     }
 
@@ -291,6 +313,18 @@ public class SheetController {
             @RequestBody @Valid GradeTermsChange change) {
         String value = change.value() == null ? "" : change.value().trim();
         return SettingsView.of(service.setGradeTerms(id, SignedIn.name(user), grade,
+                value.isEmpty() ? null : Integer.valueOf(value), change.fromDate()));
+    }
+
+    /** Record a grade's grace, in days, from a date (blank: the sheet's today); a blank value means none. */
+    @PutMapping("/{id}/settings/grace-{grade}")
+    public SettingsView setGradeGrace(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GradeGraceChange change) {
+        String value = change.value() == null ? "" : change.value().trim();
+        return SettingsView.of(service.setGradeGrace(id, SignedIn.name(user), grade,
                 value.isEmpty() ? null : Integer.valueOf(value), change.fromDate()));
     }
 

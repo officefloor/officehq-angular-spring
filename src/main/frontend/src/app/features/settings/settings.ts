@@ -1,6 +1,6 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
@@ -127,6 +127,23 @@ import { Session } from '../../core/session';
             (input)="fromTyped(gradeKey(g), value($event))"
           />
         }
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} past the due-by before a claim is overdue (empty: none)</label>
+          <input
+            [id]="'setting-grace-' + g"
+            [attr.data-testid]="'setting-grace-' + g"
+            inputmode="numeric"
+            [value]="gradeGraceInput()[g]"
+            (input)="gradeGraceTyped(g, value($event))"
+          />
+          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} from (yyyy-mm-dd; empty: the sheet's today)</label>
+          <input
+            [id]="'setting-grace-' + g + '-from'"
+            [attr.data-testid]="'setting-grace-' + g + '-from'"
+            [value]="fromInput()[graceKey(g)]"
+            (input)="fromTyped(graceKey(g), value($event))"
+          />
+        }
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input
           id="setting-late-pct"
@@ -202,6 +219,10 @@ import { Session } from '../../core/session';
         <p>Terms for grade {{ g }} in force:
           <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</span></p>
       }
+      @for (g of grades; track g) {
+        <p>Grace days for grade {{ g }} in force:
+          <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</span></p>
+      }
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
@@ -271,6 +292,9 @@ export class Settings {
   /** Each grade's own terms in force; null when it uses the sheet's terms. */
   protected readonly gradeTerms = signal<Record<Grade, number | null>>({ A: null, B: null, C: null });
   protected readonly gradeTermsInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
+  /** Each grade's grace in force, in days; null when it has none. */
+  protected readonly gradeGrace = signal<Record<Grade, number | null>>({ A: null, B: null, C: null });
+  protected readonly gradeGraceInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly latePctInput = signal('');
   /** The from-date typed for each dated setting; empty for the sheet's today. */
   protected readonly fromInput = signal<Record<DatedKey, string>>(Settings.noFroms());
@@ -290,6 +314,7 @@ export class Settings {
   protected termsEdited = false;
   protected latePctEdited = false;
   protected gradeTermsEdited = new Set<Grade>();
+  protected gradeGraceEdited = new Set<Grade>();
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
   protected entryDateEdited = false;
@@ -314,7 +339,7 @@ export class Settings {
   private saving: Promise<void> = Promise.resolve();
 
   private static noFroms(): Record<DatedKey, string> {
-    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'late-pct': '', 'proof-threshold': '', 'note-threshold': '' };
+    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'note-threshold': '' };
   }
 
   private static noPermissions(): Record<PermissionAction, string> {
@@ -331,6 +356,7 @@ export class Settings {
         this.proofThreshold.set(null);
         this.noteThreshold.set(null);
         this.gradeTerms.set({ A: null, B: null, C: null });
+        this.gradeGrace.set({ A: null, B: null, C: null });
         this.periodNumberingFrom.set('');
         this.entryDate.set('');
         this.graceDays.set('');
@@ -365,12 +391,17 @@ export class Settings {
     else if (key === 'floor') this.floorEdited = true;
     else if (key === 'terms') this.termsEdited = true;
     else if (key === 'late-pct') this.latePctEdited = true;
+    else if (key.startsWith('grace-')) this.gradeGraceEdited.add(key.slice('grace-'.length) as Grade);
     else this.gradeTermsEdited.add(key.slice('terms-'.length) as Grade);
     this.settingsError.set(null);
   }
 
   protected gradeKey(grade: Grade): DatedKey {
     return `terms-${grade}`;
+  }
+
+  protected graceKey(grade: Grade): DatedKey {
+    return `grace-${grade}`;
   }
 
   /**
@@ -410,6 +441,12 @@ export class Settings {
     this.settingsError.set(null);
   }
 
+  protected gradeGraceTyped(grade: Grade, value: string): void {
+    this.gradeGraceInput.update((all) => ({ ...all, [grade]: value }));
+    this.gradeGraceEdited.add(grade);
+    this.settingsError.set(null);
+  }
+
   protected permissionTyped(action: PermissionAction, value: string): void {
     this.permissionInput.update((all) => ({ ...all, [action]: value }));
     this.permissionsEdited.add(action);
@@ -439,7 +476,7 @@ export class Settings {
     const graceDays = this.graceDaysInput().trim();
     const saveLimit =
       this.limitEdited ||
-      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
         !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
@@ -448,6 +485,8 @@ export class Settings {
     const saveTerms = this.termsEdited;
     const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g))
       .map((g) => ({ grade: g, value: this.gradeTermsInput()[g].trim() }));
+    const saveGradeGrace = GRADES.filter((g) => this.gradeGraceEdited.has(g))
+      .map((g) => ({ grade: g, value: this.gradeGraceInput()[g].trim() }));
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
@@ -465,6 +504,7 @@ export class Settings {
       ...(saveFloor ? (['floor'] as const) : []),
       ...(saveTerms ? (['terms'] as const) : []),
       ...saveGradeTerms.map((t) => this.gradeKey(t.grade)),
+      ...saveGradeGrace.map((t) => this.graceKey(t.grade)),
       ...(saveLatePct ? (['late-pct'] as const) : []),
     ];
     if (savedKeys.some((key) => !SETTING_FROM.test(from(key)))) {
@@ -499,6 +539,10 @@ export class Settings {
       this.settingsError.set('Type a grade\'s terms as a whole number of days, or leave them empty for the sheet\'s terms.');
       return;
     }
+    if (saveGradeGrace.some((t) => !GRADE_GRACE.test(t.value))) {
+      this.settingsError.set('Type a grade\'s grace as a whole number of days, or leave it empty for none.');
+      return;
+    }
     if (saveLatePct && !LATE_PCT.test(latePct)) {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
       return;
@@ -531,6 +575,7 @@ export class Settings {
     if (saveFloor) this.floorEdited = false;
     if (saveTerms) this.termsEdited = false;
     for (const t of saveGradeTerms) this.gradeTermsEdited.delete(t.grade);
+    for (const t of saveGradeGrace) this.gradeGraceEdited.delete(t.grade);
     if (saveLatePct) this.latePctEdited = false;
     if (savePolicyDate) this.policyDateEdited = false;
     if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
@@ -570,6 +615,9 @@ export class Settings {
         }
         for (const t of saveGradeTerms) {
           this.inForce(await this.api.setGradeTerms(sheet, t.grade, t.value, from(this.gradeKey(t.grade))));
+        }
+        for (const t of saveGradeGrace) {
+          this.inForce(await this.api.setGradeGrace(sheet, t.grade, t.value, from(this.graceKey(t.grade))));
         }
         if (saveLatePct) {
           this.inForce(await this.api.setLatePct(sheet, latePct, from('late-pct')));
@@ -650,6 +698,8 @@ export class Settings {
     this.session.floorHistory.set(view.floorHistory);
     this.session.terms.set(view.terms);
     this.gradeTerms.set({ A: view.termsA, B: view.termsB, C: view.termsC });
+    this.gradeGrace.set({ A: view.graceA, B: view.graceB, C: view.graceC });
+    this.session.graceHistory.set(view.graceHistory);
     this.session.latePct.set(view.latePct);
     this.session.latePctHistory.set(view.latePctHistory);
   }

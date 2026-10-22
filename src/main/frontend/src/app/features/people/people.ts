@@ -5,7 +5,7 @@ import { GRADES, Grade, PeopleApi, PersonView, gradeOn, leavesLive } from '../..
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
-import { Session, valueOn } from '../../core/session';
+import { Session, graceOn, valueOn } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
 import { Periods } from '../periods/periods';
@@ -667,9 +667,15 @@ export class People {
     return activeOn(this.claimsOf(person.id), person, this.today());
   }
 
-  /** A person's overdue claims that count in the live totals (see countsLive). */
+  /** A person's overdue claims that count in the live totals (see countsLive), each past its grace. */
   protected overdueOf(personId: number): ClaimView[] {
-    return this.countingOf(personId).filter((c) => overdue(c, this.today()));
+    const person = this.people().find((p) => p.id === personId);
+    return person ? this.countingOf(personId).filter((c) => overdue(c, this.today(), this.graceOf(c, person))) : [];
+  }
+
+  /** The grace days of a claim: those the grade its person has in force on its date has in force then. */
+  private graceOf(claim: ClaimView, person: PersonView): number {
+    return graceOn(this.session.graceHistory(), gradeOn(person.grades, claim.date), claim.date);
   }
 
   /** The due of a person's counting overdue claims added up (a claim with no figure adds nothing). */
@@ -774,7 +780,7 @@ export class People {
   private dueCents(claim: ClaimView, person: PersonView): number | null {
     const halfUp = roundsHalfUp(claim, this.claimsOf(person.id), this.session.policyDate(), this.today());
     const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
-    const late = { history: this.session.latePctHistory(), today: this.today() };
+    const late = { history: this.session.latePctHistory(), today: this.today(), grace: this.graceOf(claim, person) };
     return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), floor, late, halfUp);
   }
 

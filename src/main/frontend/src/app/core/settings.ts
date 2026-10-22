@@ -13,7 +13,7 @@ export interface RoleView {
 }
 
 /** The settings that carry a figure: each is saved from a from-date and shown as in force on the sheet's today. */
-export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'late-pct' | 'proof-threshold' | 'note-threshold';
+export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'note-threshold';
 
 /** A from-date as a dated setting takes it: yyyy-mm-dd, or blank for the sheet's today. */
 export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
@@ -50,6 +50,12 @@ export interface SettingsView {
   proofThreshold: string | null;
   /** The note threshold with two decimals: a claim whose due is above it needs a note to be opened; null when there is none. */
   noteThreshold: string | null;
+  /** Each grade's grace in days: its claims are overdue, and late, only from their due-by plus them; null when none. */
+  graceA: number | null;
+  graceB: number | null;
+  graceC: number | null;
+  /** Each grade's grace values by from-date (a value null when none), its starting value (none) first. */
+  graceHistory: Record<string, DatedValue[]>;
   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
   permissions: Record<PermissionAction, string>;
 }
@@ -67,6 +73,9 @@ export type Grade = (typeof GRADES)[number];
 
 /** A grade's terms as the form takes them: a whole number of days, or blank for the sheet's terms. */
 export const GRADE_TERMS = /^(\d{1,4})?$/;
+
+/** A grade's grace as the form takes it: a whole number of days, or blank for none. */
+export const GRADE_GRACE = /^(\d{1,4})?$/;
 
 /** A clerk limit as the form takes it: up to two decimals, or blank for no limit. */
 export const LIMIT = /^(\d{1,12}(\.\d{1,2})?)?$/;
@@ -143,6 +152,11 @@ export class SettingsApi {
   /** Set a grade's own terms, in days, from a date (blank: the sheet's today); a blank value means the grade uses the sheet's terms. */
   setGradeTerms(sheet: string, grade: Grade, value: string, from: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/terms-${grade}`, { value, from }));
+  }
+
+  /** Set a grade's grace, in days, from a date (blank: the sheet's today); a blank value means none. */
+  setGradeGrace(sheet: string, grade: Grade, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/grace-${grade}`, { value, from }));
   }
 
   /** Set the late percent from a date (blank: the sheet's today). */

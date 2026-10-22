@@ -4,7 +4,7 @@ import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, 
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
-import { Session, valueOn } from '../../core/session';
+import { Session, graceOn, valueOn } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row (an
 // open editor locks its claim for other users until it is saved or cancelled, and stays open across
@@ -310,7 +310,7 @@ export class Claims {
    * boundary) on top while it is overdue.
    */
   protected dueOf(claim: ClaimView): string {
-    const late = { history: this.session.latePctHistory(), today: this.session.today() ?? '' };
+    const late = { history: this.session.latePctHistory(), today: this.session.today() ?? '', grace: this.graceOf(claim) };
     const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
     const halfUp = roundsHalfUp(claim, this.claims(), this.session.policyDate(), late.today);
     const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), floor, late, halfUp);
@@ -322,9 +322,14 @@ export class Claims {
     return dueBy(claim);
   }
 
-  /** Whether a claim is OPEN and due by a date before the sheet's today. */
+  /** Whether a claim is OPEN and due by a date (plus its grace days) before the sheet's today. */
   protected overdueOf(claim: ClaimView): boolean {
-    return overdue(claim, this.session.today() ?? '');
+    return overdue(claim, this.session.today() ?? '', this.graceOf(claim));
+  }
+
+  /** A claim's grace days: those the person's grade in force on its date has in force then. */
+  private graceOf(claim: ClaimView): number {
+    return graceOn(this.session.graceHistory(), gradeOn(this.grades(), claim.date), claim.date);
   }
 
   /** Whether a claim is deferred on the sheet's today. */

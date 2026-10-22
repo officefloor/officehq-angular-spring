@@ -41,6 +41,17 @@ export interface SheetView {
   latePctHistory: DatedValue[];
   /** Whether the sheet is archived: everything stays visible but nothing on it may change. */
   archived: boolean;
+  /** Each grade's grace values by from-date (a value null when none), its starting value (none) first. */
+  graceHistory: Record<string, DatedValue[]>;
+}
+
+/**
+ * The grace days a grade has in force on a date (yyyy-mm-dd), from its grace values by from-date
+ * (see valueOn); 0 when it has none.
+ */
+export function graceOn(graceHistory: Record<string, DatedValue[]>, grade: string, date: string): number {
+  const value = valueOn(graceHistory[grade] ?? [], date, '');
+  return value ? Number(value) : 0;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -66,6 +77,11 @@ export class Session {
    * of its figure every full 30 days.
    */
   readonly latePctHistory = signal<DatedValue[]>([]);
+  /**
+   * Each grade's grace values by from-date: a claim whose grade (the one in force on its date) has
+   * grace in force on that date is overdue, and late, only from its due-by plus those days.
+   */
+  readonly graceHistory = signal<Record<string, DatedValue[]>>({});
   /** The active sheet's policy date (yyyy-mm-dd); empty when blank (the sheet's today is then the policy date). */
   readonly policyDate = signal('');
   /** The active sheet's cap in force on its today, with two decimals: a person's due-total is at most it; empty when there is none. */
@@ -139,5 +155,6 @@ export class Session {
     this.policyDate.set(view.policyDate ?? '');
     this.cap.set(view.cap ?? '');
     this.archived.set(view.archived);
+    this.graceHistory.set(view.graceHistory ?? {});
   }
 }

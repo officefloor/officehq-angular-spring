@@ -145,6 +145,15 @@ public class SheetService {
         return setDated(id, user, Sheet.gradeTermsKey(grade), terms == null ? null : terms.toString(), from, true);
     }
 
+    /**
+     * Record a grade's grace, in days (null: none), from a date, auditing the change and the figures it
+     * moves. Claims keep their due-by.
+     */
+    @Transactional
+    public Sheet setGradeGrace(String id, String user, String grade, Integer days, LocalDate from) {
+        return setDated(id, user, Sheet.gradeGraceKey(grade), days == null ? null : days.toString(), from, true);
+    }
+
     /** Record the sheet's late percent from a date, auditing the change and the figures it moves. */
     @Transactional
     public Sheet setLatePct(String id, String user, BigDecimal latePct, LocalDate from) {
