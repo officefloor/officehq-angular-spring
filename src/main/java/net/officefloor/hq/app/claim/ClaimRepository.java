@@ -12,6 +12,14 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The sheet's claims, newest first. */
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
 
+    /** The sheet's claims as they are listed, newest first. */
+    List<Claim> findBySheetIdOrderByListedDescIdDesc(String sheetId);
+
+    /** Give the claim the next place it is listed at: it is listed as the newest. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "update claim set listed = next value for claim_listed_seq where id = :id", nativeQuery = true)
+    int relist(@Param("id") Long id);
+
     /** A person's claims on the sheet, newest first. */
     List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
 

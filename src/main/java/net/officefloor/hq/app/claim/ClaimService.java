@@ -89,7 +89,7 @@ public class ClaimService {
     /** The sheet's claims, newest first. */
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
     }
 
     /**

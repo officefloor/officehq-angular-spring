@@ -50,4 +50,14 @@ public class PoolMember {
     public BigDecimal getShare() {
         return share;
     }
+
+    /** Move the membership to another person on the sheet, its share kept. */
+    public void moveTo(Long personId) {
+        this.personId = personId;
+    }
+
+    /** Add a share to the member's own. */
+    public void addShare(BigDecimal more) {
+        this.share = share.add(more);
+    }
 }

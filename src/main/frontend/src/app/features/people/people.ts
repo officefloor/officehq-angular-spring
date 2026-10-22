@@ -485,6 +485,25 @@ function csvField(value: string): string {
                 >
                   Hold
                 </button>
+                <label [for]="'person-merge-into-' + p.id">Merge into</label>
+                <select
+                  [id]="'person-merge-into-' + p.id"
+                  data-testid="person-merge-into"
+                  (change)="mergeChoices.set(p.id, value($event)); personError.set(null)"
+                >
+                  <option value="">Choose a person</option>
+                  @for (other of people(); track other.id) {
+                    <option [value]="other.id">{{ other.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-merge"
+                  [attr.aria-label]="'Merge ' + p.name + ' into the person chosen'"
+                  (click)="merge(p)"
+                >
+                  Merge
+                </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -687,6 +706,8 @@ export class People {
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   /** The person chosen in each row's patron list, by person id. */
   protected readonly patronChoices = new Map<number, string>();
+  /** The person chosen in each row's merge-into list, by person id. */
+  protected readonly mergeChoices = new Map<number, string>();
   /** The ids of the people the signed-in user watches. */
   protected readonly watched = signal<ReadonlySet<number>>(new Set());
   /** The alias typed on each row, by person id. */
@@ -736,6 +757,7 @@ export class People {
         this.holdDrafts.set(new Map());
         this.patronError.set(null);
         this.patronChoices.clear();
+        this.mergeChoices.clear();
         this.aliasDrafts.clear();
         this.selectedClaims.set(new Set());
         this.bulkOpened.set(null);
@@ -997,6 +1019,40 @@ export class People {
       this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
     } catch {
       refuse('The patron could not be added.');
+    }
+  }
+
+  /**
+   * Merge a person into the one chosen on their row (a steward only): they leave the list, and the
+   * people and claims show what the store holds after it.
+   */
+  protected async merge(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const intoId = Number(this.mergeChoices.get(person.id) ?? '');
+    const refuse = (message: string) => this.personError.set({ id: person.id, message });
+    if (!intoId) {
+      refuse('Choose a person to merge into.');
+      return;
+    }
+    if (intoId === person.id) {
+      refuse('A person cannot be merged into themselves.');
+      return;
+    }
+    try {
+      await this.api.merge(sheet, person.id, intoId);
+      const [people, claims] = await Promise.all([this.api.list(sheet), this.claimsApi.list(sheet)]);
+      if (this.session.sheet() !== sheet) return;
+      this.mergeChoices.delete(person.id);
+      this.claims.set(claims);
+      this.people.set(people);
+    } catch (e) {
+      refuse(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward may merge people.'
+          : 'The person could not be merged: neither may be retired.',
+      );
     }
   }
 

@@ -38,6 +38,10 @@ public class Claim {
     @Column(name = "person_id", nullable = false)
     private Long personId;
 
+    /** The place the claim is listed at, newest first: given by the store when added, and again when moved by a merge. */
+    @Column(name = "listed", insertable = false, updatable = false)
+    private Long listed;
+
     @Column(name = "amount", nullable = false, precision = 14, scale = 2)
     private BigDecimal amount;
 

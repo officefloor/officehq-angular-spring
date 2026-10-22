@@ -9,5 +9,10 @@ public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
     /** The members of the pools, each pool's in the order they were added. */
     List<PoolMember> findByPoolIdInOrderByIdAsc(Collection<Long> poolIds);
 
+    /** The person's memberships, in the order they were added. */
+    List<PoolMember> findByPersonIdOrderByIdAsc(Long personId);
+
+    java.util.Optional<PoolMember> findByPoolIdAndPersonId(Long poolId, Long personId);
+
     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
 }

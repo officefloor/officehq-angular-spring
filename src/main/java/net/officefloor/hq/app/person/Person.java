@@ -313,6 +313,11 @@ public class Person {
         aliases.add(new Alias(alias));
     }
 
+    /** No longer name this person as a patron; false when they were not one. */
+    public boolean removePatron(Long patronId) {
+        return patronIds.remove(patronId);
+    }
+
     /** Name another person as a patron; false when they already are one. */
     public boolean addPatron(Long patronId) {
         return patronIds.add(patronId);

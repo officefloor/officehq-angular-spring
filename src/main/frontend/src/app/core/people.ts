@@ -160,6 +160,11 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/aliases`, { alias }));
   }
 
+  /** Merge a person into another on the sheet (a steward only): the person merged into, after it. */
+  merge(sheet: string, id: number, intoId: number): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/merge`, { intoId }));
+  }
+
   /** The ids of the people on the sheet the signed-in user watches. */
   watched(sheet: string): Promise<number[]> {
     return firstValueFrom(this.http.get<number[]>(`${this.url(sheet)}/watched`));

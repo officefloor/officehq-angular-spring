@@ -95,13 +95,15 @@ public class PersonController {
     private final PersonService service;
     private final BulkGradeService bulkGrade;
     private final WatchService watches;
+    private final MergeService merges;
     private final SheetHistory history;
 
     public PersonController(PersonService service, BulkGradeService bulkGrade, WatchService watches,
-            SheetHistory history) {
+            MergeService merges, SheetHistory history) {
         this.service = service;
         this.bulkGrade = bulkGrade;
         this.watches = watches;
+        this.merges = merges;
         this.history = history;
     }
 
@@ -204,6 +206,20 @@ public class PersonController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid AliasForm form) {
         return PersonView.of(service.addAlias(sheetId, SignedIn.name(user), personId, form.alias()));
+    }
+
+    /** The person another is merged into. */
+    public record MergeForm(@NotNull Long intoId) {
+    }
+
+    /** Merge a person into another on the sheet; a steward only. The person merged into, after it. */
+    @PostMapping("/{personId}/merge")
+    public PersonView merge(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid MergeForm form) {
+        return PersonView.of(merges.merge(sheetId, SignedIn.name(user), personId, form.intoId()));
     }
 
     /** The ids of the people on the sheet the signed-in user watches. */
