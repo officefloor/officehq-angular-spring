@@ -1,0 +1,307 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java b/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
+index 518edfc2..7b3b5ffd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
+@@ -4,7 +4,6 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.Comparator;
+ import java.util.HashSet;
+-import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.function.Function;
+@@ -89,14 +88,12 @@ public class BulkMoveService {
+     }
+ 
+     /**
+-     * Reassign the selected claims to a person, each as its Reassign button would, in the order they
+-     * were selected, so their new numbers follow that order; a claim already the person's is
+-     * reassigned to them again rather than refused.
++     * Reassign the selected claims to a person, each as its Reassign button would, in list order, so
++     * their new numbers follow that order; a claim already the person's is reassigned to them again
++     * rather than refused.
+      */
+     public Result reassign(String sheetId, String user, Collection<Long> claimIds, long personId) {
+-        Set<Long> selected = new LinkedHashSet<>(claimIds);
+-        return each(sheetId, user, selected, new ArrayList<>(selected),
+-                id -> claims.reassign(sheetId, user, id, personId, true));
++        return each(sheetId, user, claimIds, id -> claims.reassign(sheetId, user, id, personId, true));
+     }
+ 
+     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 16b246bf..139b8089 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -375,13 +375,12 @@ public class Claim {
+     }
+ 
+     /**
+-     * Move the claim with its person to another sheet: its status, dates, note, fixed figures and log
+-     * are kept; it loses any figure a statement bound, its reference, its settle batch and any
++     * Move the claim with its person to another sheet: its status, dates, note, fixed figures, log
++     * and any figure a statement bound are kept; it loses its reference, its settle batch and any
+      * editor's lock. The caller gives it the other sheet's number.
+      */
+     public void transferTo(String sheetId) {
+         this.sheetId = sheetId;
+-        unbind();
+         refer(null);
+         this.settleBatch = null;
+         this.lockedBy = null;
+diff --git a/src/main/java/net/officefloor/hq/app/person/MergeService.java b/src/main/java/net/officefloor/hq/app/person/MergeService.java
+index b2136264..62872372 100644
+--- a/src/main/java/net/officefloor/hq/app/person/MergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/MergeService.java
+@@ -13,7 +13,7 @@ import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import net.officefloor.hq.app.sheet.SheetService;
+-import net.officefloor.hq.app.statement.StatementRepository;
++import net.officefloor.hq.app.statement.StatementService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -21,19 +21,21 @@ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Merging a person into another on the sheet: a steward only. The merged person's claims move to the
+- * other, numbers and dates kept, listed after the other's own in the order they were added, each
+- * losing any figure a statement bound. Their name and aliases become aliases of the other; their
++ * other, numbers, dates and any figure a statement bound kept, listed after the other's own in the
++ * order they were added. Their name and aliases become aliases of the other; their
+  * patrons are added to the other's (not the other themselves, no repeats); anyone naming them as a
+  * patron names the other instead (no repeats); their pool memberships move to the other, shares added
+- * where the other is already a member; their plans become the other's. Their statements, holds, watchers and contact are dropped, and
+- * they leave the sheet.
++ * where the other is already a member; their plans become the other's. Their statements join the
++ * other's: the other's count becomes their own plus theirs, and the other's last statement stays the
++ * other's (or, the other having none, becomes theirs). Their holds, watchers and contact are dropped,
++ * and they leave the sheet.
+  */
+ @Service
+ public class MergeService {
+ 
+     private final PersonRepository people;
+     private final ClaimRepository claims;
+-    private final StatementRepository statements;
++    private final StatementService statements;
+     private final WatchRepository watches;
+     private final PoolMemberRepository poolMembers;
+     private final PlanRepository plans;
+@@ -42,7 +44,7 @@ public class MergeService {
+     private final Rollups rollups;
+     private final Audit audit;
+ 
+-    public MergeService(PersonRepository people, ClaimRepository claims, StatementRepository statements,
++    public MergeService(PersonRepository people, ClaimRepository claims, StatementService statements,
+             WatchRepository watches, PoolMemberRepository poolMembers, PlanRepository plans, RoleService roles, SheetService sheets,
+             Rollups rollups, Audit audit) {
+         this.people = people;
+@@ -79,12 +81,11 @@ public class MergeService {
+         }
+         Rollups.Rollup before = rollups.take(sheetId);
+ 
+-        // Their claims, in the order they were added, move to the other unbound.
++        // Their claims, in the order they were added, move to the other, still bound as they were.
+         List<Claim> moved = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, from.getId()).stream()
+                 .sorted(Comparator.comparing(Claim::getId)).toList();
+         for (Claim claim : moved) {
+             claim.reassign(into.getId());
+-            claim.unbind();
+         }
+         claims.saveAll(moved);
+ 
+@@ -126,8 +127,9 @@ public class MergeService {
+             plans.save(plan);
+         }
+ 
+-        // Their statements and watchers are dropped, and they leave the sheet with their holds and contact.
+-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderBySeqDesc(sheetId, from.getId()));
++        // Their statements join the other's; their watchers are dropped, and they leave the sheet with
++        // their holds and contact.
++        statements.handOver(sheetId, from, into);
+         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+         String fromName = from.getName();
+         people.delete(from);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 8160f4de..fa976c94 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -357,6 +357,18 @@ public class Person {
+         this.statementDate = date;
+     }
+ 
++    /**
++     * Take in another person's statements as they join this one: their count is added to this
++     * person's, and this person's last statement stays theirs, or, having none, becomes the other's.
++     */
++    public void absorbStatements(Person other) {
++        if (this.statementCount == 0) {
++            this.statementTotal = other.statementTotal;
++            this.statementDate = other.statementDate;
++        }
++        this.statementCount += other.statementCount;
++    }
++
+     /**
+      * Cancel the last statement: one fewer is counted, and the one before it (its due-total, null
+      * when n/a, and date) is shown again; with none before it, no statement is shown.
+@@ -395,18 +407,14 @@ public class Person {
+     }
+ 
+     /**
+-     * Move the person to another sheet: they keep their grades, terms, contact and aliases, but name
+-     * no patrons, have no holds, and no statement is counted for them there. They show the sheet they
+-     * came from.
++     * Move the person to another sheet: they keep their grades, terms, contact, aliases and
++     * statements, but name no patrons and have no holds. They show the sheet they came from.
+      */
+     public void transferTo(String sheetId) {
+         this.originSheetId = this.sheetId;
+         this.sheetId = sheetId;
+         this.patronIds.clear();
+         this.holds.clear();
+-        this.statementCount = 0;
+-        this.statementTotal = null;
+-        this.statementDate = null;
+     }
+ 
+     /** No longer name this person as a patron; false when they were not one. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/TransferService.java b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+index 659c155f..b37cef68 100644
+--- a/src/main/java/net/officefloor/hq/app/person/TransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+@@ -16,7 +16,7 @@ import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import net.officefloor.hq.app.sheet.SheetService;
+-import net.officefloor.hq.app.statement.StatementRepository;
++import net.officefloor.hq.app.statement.StatementService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -26,19 +26,20 @@ import org.springframework.web.server.ResponseStatusException;
+  * Transferring a person to another sheet: a steward only. The person arrives on the other sheet with
+  * their grades, terms, contact and aliases, and with their claims (status, dates, notes, fixed figures
+  * and logs kept); each claim that had a number takes the other sheet's next, in the order the claims
+- * were opened, and loses any figure a statement bound and its reference. No statement is counted for
+- * them there. They leave this sheet entirely: anyone naming them as a patron no longer does, and their
+- * patrons, holds, pool memberships, statements and watchers are dropped. When someone on the other
+- * sheet already goes by their name or an alias, they are merged into that person there: their claims
+- * listed after the other's own, their name and aliases joined to the other's aliases, and their contact
+- * dropped.
++ * were opened, keeps any figure a statement bound and loses its reference. Their statements go with
++ * them. They leave this sheet entirely: anyone naming them as a patron no longer does, and their
++ * patrons, holds, pool memberships and watchers are dropped. When someone on the other sheet already
++ * goes by their name or an alias, they are merged into that person there: their claims listed after
++ * the other's own, their name and aliases joined to the other's aliases, their statements joined to
++ * the other's (the other's last staying the other's, or, the other having none, becoming theirs), and
++ * their contact dropped.
+  */
+ @Service
+ public class TransferService {
+ 
+     private final PersonRepository people;
+     private final ClaimRepository claims;
+-    private final StatementRepository statements;
++    private final StatementService statements;
+     private final WatchRepository watches;
+     private final PoolMemberRepository poolMembers;
+     private final RoleService roles;
+@@ -47,7 +48,7 @@ public class TransferService {
+     private final Rollups rollups;
+     private final Audit audit;
+ 
+-    public TransferService(PersonRepository people, ClaimRepository claims, StatementRepository statements,
++    public TransferService(PersonRepository people, ClaimRepository claims, StatementService statements,
+             WatchRepository watches, PoolMemberRepository poolMembers, RoleService roles, SheetService sheets,
+             PeriodService periods, Rollups rollups, Audit audit) {
+         this.people = people;
+@@ -100,14 +101,13 @@ public class TransferService {
+         Rollups.Rollup before = rollups.take(sheetId);
+         Rollups.Rollup toBefore = rollups.take(toSheetId);
+ 
+-        // Anyone naming them as a patron no longer does; their pool memberships, statements and watchers go.
++        // Anyone naming them as a patron no longer does; their pool memberships and watchers go.
+         for (Person other : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             if (!other.getId().equals(person.getId()) && other.removePatron(person.getId())) {
+                 people.save(other);
+             }
+         }
+         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
+-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderBySeqDesc(sheetId, person.getId()));
+         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, person.getId()));
+ 
+         if (into == null) {
+@@ -115,6 +115,7 @@ public class TransferService {
+             person.transferTo(toSheetId);
+             person.setPosition(last + 1);
+             people.saveAndFlush(person);
++            statements.follow(sheetId, person);
+         }
+ 
+         // Their claims follow, each that had a number taking the other sheet's next in the order opened.
+@@ -146,6 +147,7 @@ public class TransferService {
+             // Their name and aliases join the other's aliases, and they leave with their holds and contact.
+             into.addAlias(name);
+             person.getAliases().forEach(into::addAlias);
++            statements.handOver(sheetId, person, into);
+             people.delete(person);
+             people.flush();
+             people.saveAndFlush(into);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statement.java b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+index d3ebea02..a8c849f6 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+@@ -67,4 +67,11 @@ public class Statement {
+     public LocalDate getTakenOn() {
+         return takenOn;
+     }
++
++    /** Move the statement to a person (on a sheet) under a number among theirs. */
++    public void moveTo(String sheetId, Long personId, int seq) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.seq = seq;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 3493868a..623dae95 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -150,6 +150,34 @@ public class StatementService {
+         return new Stated(saved, stated);
+     }
+ 
++    /**
++     * Hand a person's statements to another they join (on the other's sheet): the other's count
++     * becomes their own plus theirs, numbered with theirs first, and the other's last statement stays
++     * the other's, or, having none, becomes theirs. The caller saves the other.
++     */
++    public void handOver(String fromSheetId, Person from, Person into) {
++        int moved = from.getStatementCount();
++        List<Statement> intos = statements.findBySheetIdAndPersonIdOrderBySeqDesc(into.getSheetId(), into.getId());
++        // The other's own are numbered after theirs, the last first so no two share a number.
++        for (Statement statement : intos) {
++            statement.moveTo(into.getSheetId(), into.getId(), statement.getSeq() + moved);
++            statements.saveAndFlush(statement);
++        }
++        for (Statement statement : statements.findBySheetIdAndPersonIdOrderBySeqDesc(fromSheetId, from.getId())) {
++            statement.moveTo(into.getSheetId(), into.getId(), statement.getSeq());
++            statements.saveAndFlush(statement);
++        }
++        into.absorbStatements(from);
++    }
++
++    /** Move a person's statements with them to the sheet they are now on. */
++    public void follow(String fromSheetId, Person person) {
++        for (Statement statement : statements.findBySheetIdAndPersonIdOrderBySeqDesc(fromSheetId, person.getId())) {
++            statement.moveTo(person.getSheetId(), person.getId(), statement.getSeq());
++            statements.saveAndFlush(statement);
++        }
++    }
++
+     /** Refused: the sheet, or the person, was not yet kept at the end of that date. */
+     private static ResponseStatusException notYet(LocalDate day) {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "The person was not on the sheet on " + day + ".");
