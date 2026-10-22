@@ -1,0 +1,64 @@
+{
+  "checkpoint": 86,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp86_inline-amount",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "62ee509aa998eb0e27ba03ddb0d3ae422d2b8719",
+  "reset_sha": "",
+  "preagent_sha": "75462b2b0cba6deecfacf719ac7a05554d3a8c67",
+  "prev_sha": "75462b2b0cba6deecfacf719ac7a05554d3a8c67",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8587626,
+    "input_tokens": 44,
+    "output_tokens": 9067,
+    "cache_read_tokens": 1007113,
+    "cache_creation_tokens": 59478,
+    "num_turns": 23,
+    "duration_ms": 591733,
+    "duration_api_ms": 124398,
+    "model": "claude-opus-5-5",
+    "session_id": "3209e04a-c9c6-45c9-9568-822212d2f608",
+    "stop_reason": "success",
+    "result_text": "Draft claims now have an amount entry and save button in their row, next to the edit button. The main `inline amount` test passes, and so does `scenario 2`. **`scenario 1` and `scenario 3` still fail.** They failed the same way when I ran the suite on the original code, and neither step that fails touches the inline amount.\n\n**The change** (all in `src/main/frontend/src/app/features/claims/claims.ts`):\n- Every claim row has a `claim-inline-amount` entry and a `claim-inline-save` button. They show on non-draft claims too, so that trying to change one gives the row's error instead of a missing button.\n- Saving sends the same edit request the claim form sends, with the claim's own date, note and corrected claim number. So the server applies the form's rules and writes `CLAIM_EDITED` exactly as the form does: a draft only, no closed period, the lock, viewers refused, negative amounts only for a correction. No server or database change was needed.\n- An amount with more than two decimals is refused before anything is sent. Any refusal shows the row's `claim-error` with a matching message. Typing in the entry clears that error, and a successful save empties the entry.\n- If the user had this claim open in the form, the inline save releases their lock, so the form is closed too.\n\n**The two failures, both in other features:**\n- **`scenario 1`:** the test expects a claim dated 2026-02-10 to show late entry \"no\", with no `LATE_ENTRY` line in the audit file. The server marks a claim late when its due-by date falls in a soft-closed period (here 2026-03-02, in P1). The front end's own description of the field says it depends on the period the claim is *dated* in.\n- **`scenario 3`:** after saving a floor of 0.50 from 2026-03-28, the test expects the \"floor in force\" value to be blank. The screen keeps showing the current value.\n\nMaking these pass means changing how late entries and dated settings work, which goes beyond this change request, so I left them as they are. If you want, I can look into fixing them as well.\n\nTo get the original code for that comparison run, I stripped my markup and put it back afterwards. The backup copy failed (no write access to `/tmp`), so I re-added the markup by hand. The final run above is with it restored.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8587626,
+        "num_turns": 23,
+        "duration_ms": 591733,
+        "duration_api_ms": 124398,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp86.agent.jsonl",
+  "agent_diff_file": "cp86.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

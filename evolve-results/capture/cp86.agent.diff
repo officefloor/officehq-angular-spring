@@ -1,0 +1,91 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index bd7bca24..92731f58 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -106,6 +106,22 @@ const PAST: Record<ClaimAction, string> = {
+           >
+             Edit
+           </button>
++          <label [for]="'claim-inline-amount-' + c.id">New amount</label>
++          <input
++            [id]="'claim-inline-amount-' + c.id"
++            data-testid="claim-inline-amount"
++            inputmode="decimal"
++            [value]="inlineAmounts()[c.id] ?? ''"
++            (input)="setInlineAmount(c.id, value($event))"
++          />
++          <button
++            type="button"
++            data-testid="claim-inline-save"
++            [attr.aria-label]="'Save the new amount of claim of ' + c.amount + ' on ' + c.date"
++            (click)="saveInline(c)"
++          >
++            Save amount
++          </button>
+           <button
+             type="button"
+             data-testid="claim-cancel"
+@@ -282,6 +298,8 @@ export class Claims {
+   protected readonly newDates = signal<Record<number, string>>({});
+   /** The amount typed on each claim's row to split off it, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
++  /** The amount typed on each DRAFT claim's row to change it to, by claim id. */
++  protected readonly inlineAmounts = signal<Record<number, string>>({});
+   /** The reason typed on each claim's row for rejecting it, by claim id. */
+   protected readonly rejectReasons = signal<Record<number, string>>({});
+ 
+@@ -539,6 +557,54 @@ export class Claims {
+     }
+   }
+ 
++  /** Type the new amount of a claim on its row; it clears any error left on the claim's row. */
++  protected setInlineAmount(id: number, amount: string): void {
++    this.inlineAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
++    if (this.claimError()?.id === id) this.claimError.set(null);
++  }
++
++  /**
++   * Change a claim's amount to the one typed on its row, keeping its date, note and the claim it
++   * corrects: an edit by the claim form's rules, refused with an error on its row when the amount is not
++   * one the form takes, when the claim is not a DRAFT, is due by in a closed period or is locked by
++   * another user's editor, or for a viewer.
++   */
++  protected async saveInline(claim: ClaimView): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const amount = (this.inlineAmounts()[claim.id] ?? '').trim();
++    if (!AMOUNT.test(amount)) {
++      this.claimError.set({ id: claim.id, message: 'Type an amount with up to two decimals; below 0.00 only for a correction.' });
++      return;
++    }
++    const me = this.session.user()?.trim();
++    const period = periodOn(this.periods(), claim.dueBy);
++    try {
++      const saved = await this.api.edit(sheet, claim.id, { amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? null });
++      this.saved.emit(saved);
++      this.inlineAmounts.update((amounts) => ({ ...amounts, [claim.id]: '' }));
++      // the save released this user's lock, so an editor left open on the claim is closed
++      if (this.editing() === claim.id) this.reset();
++    } catch (e) {
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      this.claimError.set({
++        id: claim.id,
++        message: status === 403
++          ? 'Your role is not allowed to edit a claim.'
++          : claim.status !== 'DRAFT'
++            ? `A ${claim.status} claim cannot be edited; void it and add a new one.`
++            : period?.closed
++              ? `Period ${period.name} is closed, so its claims cannot be edited.`
++              : status === 423 || (claim.lockedBy !== null && claim.lockedBy !== me)
++                ? this.lockedMessage(claim.lockedBy)
++                : amount.startsWith('-')
++                  ? `The claim could not be saved: a correction (an amount below 0.00) must name a SETTLED claim of ${this.personName()}.`
++                  : 'The claim could not be saved.',
++      });
++    }
++  }
++
+   /** Type the amount to split off a claim; it clears any error left on the claim's row. */
+   protected setSplitAmount(id: number, amount: string): void {
+     this.splitAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
