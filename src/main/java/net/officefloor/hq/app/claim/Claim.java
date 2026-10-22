@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
@@ -43,9 +44,20 @@ public class Claim {
     @Column(name = "claim_date", nullable = false)
     private LocalDate date;
 
-    /** The date the claim is due by, fixed when it was added from its person's own terms, else their grade's. */
+    /**
+     * The date the claim is due by: the terms-th business day after its due-from date (see
+     * {@link BusinessDays#dueBy}), worked out again whenever the sheet's holidays change.
+     */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms, in business days, fixed when the claim was added from its person's own terms, else their grade's. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
+
+    /** The date the claim's terms count from: its date when it was added (a later change of date keeps it). */
+    @Column(name = "due_from", nullable = false)
+    private LocalDate dueFrom;
 
     @Column(name = "note", nullable = false)
     private String note;
@@ -111,8 +123,10 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
-            String corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, int terms, LocalDate dueBy,
+            String note, String corrects) {
+        this.terms = terms;
+        this.dueFrom = date;
         this.dueBy = dueBy;
         this.sheetId = sheetId;
         this.personId = personId;
@@ -144,6 +158,19 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public LocalDate getDueFrom() {
+        return dueFrom;
+    }
+
+    /** Work the claim's due-by out again against the sheet's holidays now; its terms and due-from are kept. */
+    public void workOutDueBy(Set<LocalDate> holidays) {
+        this.dueBy = BusinessDays.dueBy(dueFrom, terms, holidays);
     }
 
     public String getNote() {
@@ -259,8 +286,8 @@ public class Claim {
      * bound it to. The new claim, OPEN with the split-off amount, the same date and note, names this
      * claim's number as the one it was split from; the caller numbers it and records who opened it.
      */
-    public Claim split(BigDecimal off, LocalDate newDueBy) {
-        Claim split = new Claim(sheetId, personId, off, date, newDueBy, note, null);
+    public Claim split(BigDecimal off, int newTerms, LocalDate newDueBy) {
+        Claim split = new Claim(sheetId, personId, off, date, newTerms, newDueBy, note, null);
         split.status = ClaimStatus.OPEN;
         split.splitFrom = number;
         this.amount = amount.subtract(off);

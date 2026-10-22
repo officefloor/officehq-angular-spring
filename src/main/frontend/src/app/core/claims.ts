@@ -25,7 +25,7 @@ export interface ClaimView {
   amount: string;
   /** yyyy-mm-dd */
   date: string;
-  /** yyyy-mm-dd: the date the claim is due by, fixed when it was added from its person's grade's terms. */
+  /** yyyy-mm-dd: the date the claim is due by: the terms-th business day after its date, skipping weekends and the sheet's holidays. */
   dueBy: string;
   note: string;
   status: ClaimStatus;

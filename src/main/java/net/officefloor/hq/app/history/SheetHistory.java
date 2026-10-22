@@ -199,7 +199,7 @@ public class SheetHistory {
         }
         Map<Long, Claim> claims = new LinkedHashMap<>();
         for (ClaimState c : state.claims()) {
-            Claim claim = new Claim(now.getId(), c.personId(), c.amount(), c.date(), c.dueBy(), "", c.corrects());
+            Claim claim = new Claim(now.getId(), c.personId(), c.amount(), c.date(), 0, c.dueBy(), "", c.corrects());
             claim.become(c.status());
             claim.number(c.number());
             claim.settleDue(c.settledDue());

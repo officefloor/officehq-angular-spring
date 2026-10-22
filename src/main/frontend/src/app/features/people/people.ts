@@ -115,7 +115,7 @@ function csvField(value: string): string {
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set(null)"
         />
-        <label for="person-form-terms">Terms (days)</label>
+        <label for="person-form-terms">Terms (business days)</label>
         <input
           id="person-form-terms"
           data-testid="person-form-terms"

@@ -95,7 +95,7 @@ import { Session } from '../../core/session';
           [value]="fromInput()['floor']"
           (input)="fromTyped('floor', value($event))"
         />
-        <label for="setting-terms">Terms (days)</label>
+        <label for="setting-terms">Terms (business days)</label>
         <input
           id="setting-terms"
           data-testid="setting-terms"

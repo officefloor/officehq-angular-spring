@@ -65,7 +65,7 @@ public class ClaimService {
      * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
      * while one is set, else the sheet's today. One due by in a
      * soft-closed period is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
-     * the due-by it would get (its date plus its terms) is inside a closed period, or when it is a correction that does not name a SETTLED claim
+     * the due-by it would get (the terms-th business day after its date) is inside a closed period, or when it is a correction that does not name a SETTLED claim
      * of the same person (see {@link #refuseUnlessCorrects}).
      */
     @Transactional
@@ -74,11 +74,12 @@ public class ClaimService {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
-        LocalDate dueBy = dueBy(sheets.lock(sheetId), person, dated);
+        int terms = terms(sheets.lock(sheetId), person, dated);
+        LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
-        Claim added = new Claim(sheetId, personId, money(amount), dated, dueBy, clean(note), corrects);
+        Claim added = new Claim(sheetId, personId, money(amount), dated, terms, dueBy, clean(note), corrects);
         if (periods.softClosedOn(sheetId, dueBy)) {
             added.markLateEntry();
         }
@@ -494,9 +495,10 @@ public class ClaimService {
                     "The amount split off must be above 0.00 and below the claim's " + claim.getAmount().toPlainString() + ".");
         }
         Person person = person(sheetId, claim.getPersonId());
-        LocalDate dueBy = dueBy(sheet, person, claim.getDate());
+        int terms = terms(sheet, person, claim.getDate());
+        LocalDate dueBy = holidays.dueBy(sheetId, claim.getDate(), terms);
         periods.refuseIfClosed(sheetId, dueBy);
-        Claim split = claim.split(off, dueBy);
+        Claim split = claim.split(off, terms, dueBy);
         if (periods.softClosedOn(sheetId, dueBy)) {
             split.markLateEntry();
         }
@@ -613,14 +615,12 @@ public class ClaimService {
     }
 
     /**
-     * The date a claim of the person dated on a date is due by: its date plus the first of the
-     * person's own terms, their grade's terms and the sheet's terms in force on it, moved past any
-     * holiday on the sheet now to the next day that is not one.
+     * The terms, in business days, a claim of the person dated on a date is fixed with: the first of the
+     * person's own terms, their grade's terms and the sheet's terms in force on it.
      */
-    private LocalDate dueBy(Sheet sheet, Person person, LocalDate date) {
+    private static int terms(Sheet sheet, Person person, LocalDate date) {
         Integer own = person.getTerms();
-        return holidays.pastHolidays(sheet.getId(),
-                date.plusDays(own != null ? own : sheet.termsFor(person.gradeOn(date), date)));
+        return own != null ? own : sheet.termsFor(person.gradeOn(date), date);
     }
 
     private Person person(String sheetId, long personId) {
