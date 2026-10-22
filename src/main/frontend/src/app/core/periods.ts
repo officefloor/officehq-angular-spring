@@ -50,6 +50,11 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/close`, {}));
   }
 
+  /** Reopen a closed period, making its due-total live again; refused for anyone but a steward. */
+  reopen(sheet: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/reopen`, {}));
+  }
+
   private url(sheet: string): string {
     return `/api/sheets/${encodeURIComponent(sheet)}/periods`;
   }

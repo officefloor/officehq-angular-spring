@@ -5,7 +5,8 @@ import { Session } from '../../core/session';
 
 // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
 // and one form to add a period (a unique name and inclusive from and to dates, overlapping no other).
-// A period can be closed: its due-total is then the one fixed at closing.
+// A period can be closed: its due-total is then the one fixed at closing. A steward can reopen a
+// closed period, making its due-total live again.
 @Component({
   selector: 'app-periods',
   template: `
@@ -70,6 +71,14 @@ import { Session } from '../../core/session';
                     Close
                   </button>
                 }
+                <button
+                  type="button"
+                  data-testid="period-reopen"
+                  [attr.aria-label]="'Reopen ' + p.name"
+                  (click)="reopen(p)"
+                >
+                  Reopen
+                </button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -93,6 +102,8 @@ export class Periods {
   readonly saved = output<PeriodView>();
   /** A period closed through its row. */
   readonly closed = output<PeriodView>();
+  /** A period reopened through its row. */
+  readonly reopened = output<PeriodView>();
 
   protected readonly name = signal('');
   protected readonly from = signal('');
@@ -116,6 +127,24 @@ export class Periods {
       this.closed.emit(await this.api.close(sheet, period.id));
     } catch {
       this.periodError.set({ id: period.id, message: 'The period could not be closed.' });
+    }
+  }
+
+  /** Reopen a period; a refusal (not a steward, or not closed) is shown on its row. */
+  protected async reopen(period: PeriodView): Promise<void> {
+    this.periodError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      this.reopened.emit(await this.api.reopen(sheet, period.id));
+    } catch (e) {
+      this.periodError.set({
+        id: period.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward can reopen a period.'
+            : 'The period could not be reopened.',
+      });
     }
   }
 

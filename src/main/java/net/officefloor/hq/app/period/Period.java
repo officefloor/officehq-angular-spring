@@ -13,7 +13,7 @@ import java.util.Locale;
 /**
  * A period on a sheet: a name, unique on the sheet ignoring case by its {@link #keyOf key}, and a
  * from and to date, both inclusive. No two periods on a sheet overlap. A closed period keeps the
- * due-total it had when it was closed.
+ * due-total it had when it was closed, until it is reopened.
  */
 @Entity
 @Table(name = "period")
@@ -98,6 +98,12 @@ public class Period {
     public void close(BigDecimal total) {
         this.closed = true;
         this.closedTotal = total;
+    }
+
+    /** Reopen the period: its due-total is live again. */
+    public void reopen() {
+        this.closed = false;
+        this.closedTotal = null;
     }
 
     /** Whether the date falls inside this period (inclusive). */

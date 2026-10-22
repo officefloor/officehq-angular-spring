@@ -31,7 +31,8 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
       [periods]="periods()"
       [dueTotals]="periodDueTotals()"
       (saved)="periodSaved($event)"
-      (closed)="periodClosed($event)"
+      (closed)="periodChanged($event)"
+      (reopened)="periodChanged($event)"
     />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -500,8 +501,8 @@ export class People {
     this.periods.update((list) => [...list, period].sort((a, b) => a.from.localeCompare(b.from)));
   }
 
-  /** A period closed, in its place. */
-  protected periodClosed(period: PeriodView): void {
+  /** A period closed or reopened, in its place. */
+  protected periodChanged(period: PeriodView): void {
     this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
   }
 

@@ -78,6 +78,15 @@ public class PeriodController {
         return PeriodView.of(service.close(sheetId, SignedIn.name(user), periodId));
     }
 
+    /** Reopen a closed period, making its due-total live again; a steward only. */
+    @PostMapping("/{periodId}/reopen")
+    public PeriodView reopen(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PeriodView.of(service.reopen(sheetId, SignedIn.name(user), periodId));
+    }
+
     /** Another user took the name between the check and the write: the unique index refuses it. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
