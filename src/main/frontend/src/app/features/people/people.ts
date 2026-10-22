@@ -49,6 +49,16 @@ function trimmedCents(figures: number[]): number {
   return figures.length >= 3 ? total - Math.max(...figures) - Math.min(...figures) : total;
 }
 
+/**
+ * Whether a person is active on the sheet's today: they have an OPEN or PENDING claim that counts in
+ * the live totals (see countsLive), dated within the 30 days up to and including today.
+ */
+function activeOn(claims: ClaimView[], person: PersonView, today: string): boolean {
+  if (today === '') return false;
+  const since = new Date(Date.parse(today) - 29 * 86_400_000).toISOString().slice(0, 10);
+  return claims.some((c) => isOpen(c) && countsLive(c, person, today) && since <= c.date && c.date <= today);
+}
+
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
@@ -178,6 +188,7 @@ function csvField(value: string): string {
             <th scope="col">Overdue</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
+            <th scope="col">Active</th>
             <th scope="col">On hold</th>
             <th scope="col">Watched</th>
             <th scope="col">Patrons</th>
@@ -218,6 +229,7 @@ function csvField(value: string): string {
                 <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
+              <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
                 <ul>
@@ -419,6 +431,7 @@ export class People {
       return {
         grade,
         count: on.length,
+        active: on.filter((p) => this.activeOf(p)).length,
         dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
       };
     });
@@ -558,6 +571,11 @@ export class People {
 
   private claimedCents(personId: number): number {
     return this.countingOf(personId).reduce((sum, c) => sum + cents(c.amount), 0);
+  }
+
+  /** Whether a person is active on the sheet's today (see activeOn). */
+  protected activeOf(person: PersonView): boolean {
+    return activeOn(this.claimsOf(person.id), person, this.today());
   }
 
   /** A person's overdue claims that count in the live totals (see countsLive). */
