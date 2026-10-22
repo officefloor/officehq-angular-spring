@@ -144,8 +144,8 @@ public class Dues {
     /**
      * A figure with the late charge an OPEN claim would have on the sheet's today on top: for every full
      * 30 days past its due-by plus its grade's grace (see {@link Sheet#lateFrom}), the late percent in
-     * force on that boundary date (that date plus 30, 60, 90 ... days) of the figure, rounded like the
-     * claim, the charges added up.
+     * force on that boundary date (that date plus 30, 60, 90 ... days) of the figure plus the charges of
+     * the boundaries before it (the charge compounds), rounded like the claim, the charges added up.
      */
     private BigDecimal lateOn(Claim claim, String grade, BigDecimal figure, Basis basis) {
         Sheet sheet = basis.sheet();
@@ -159,7 +159,7 @@ public class Dues {
         for (long period = 1; period <= periods; period++) {
             BigDecimal latePct = sheet.latePctOn(dueBy.plusDays(30 * period));
             if (latePct != null && latePct.signum() != 0) {
-                late = late.add(figure.multiply(latePct).movePointLeft(2).setScale(2, rounding));
+                late = late.add(figure.add(late).multiply(latePct).movePointLeft(2).setScale(2, rounding));
             }
         }
         return figure.add(late);

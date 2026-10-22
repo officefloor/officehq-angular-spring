@@ -328,6 +328,15 @@ export class Claims {
         if (claim) this.fill(claim);
       });
     });
+    // An editor whose claim has left this person's DRAFT claims (reassigned, opened or gone) is closed:
+    // the form goes back to adding a claim.
+    effect(() => {
+      const claims = this.claims();
+      untracked(() => {
+        const id = this.editing();
+        if (this.restored && id !== null && !claims.some((c) => c.id === id && c.status === 'DRAFT')) this.reset();
+      });
+    });
   }
 
   /**
@@ -802,7 +811,9 @@ export class Claims {
       return;
     }
     const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects, ref: this.ref().trim() };
-    const id = this.editing();
+    // a claim no longer this person's is not edited from their form: the form adds a claim
+    const editing = this.editing();
+    const id = this.claims().some((c) => c.id === editing) ? editing : null;
     this.busy = true;
     try {
       const claim = id === null

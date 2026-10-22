@@ -81,7 +81,8 @@ export function due(amountCents: number, pct: string | null): string {
  * the rate figure its person's last statement bound it to (unless it is PENDING), or else its amount
  * at the rate the grade has in force on the claim's date; the late charge is, for every full 30 days
  * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
- * ... days) of the figure, each rounded like the claim, added up. The floor is applied last; the one
+ * ... days) of the figure plus the charges of the boundaries before it (compounding), each rounded
+ * like the claim, added up. The floor is applied last; the one
  * given is the one in force on the claim's date. Live figures round half up when `halfUp` (see
  * roundsHalfUp), else half to even. The charge and floor are never bound by a statement. A correction
  * has no floor and no late charge. Null when there is no figure.
@@ -104,7 +105,7 @@ export function claimDueCents(
   }
   if (figure === null || isCorrection(claim)) return figure;
   const charge = lateBoundaries(claim, late)
-    .reduce((sum, on) => sum + dueCents(figure, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
+    .reduce((sum, on) => sum + dueCents(figure + sum, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
   return Math.max(figure + charge, floorCents);
 }
 
