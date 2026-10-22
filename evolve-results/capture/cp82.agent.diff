@@ -1,0 +1,68 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6955e5c5..83f86831 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -152,6 +152,8 @@ function csvField(value: string): string {
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong> claims,
+         due <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
++      <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>,
++        open in total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+       <p>
+         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
+         @if (bulkOpened(); as result) {
+@@ -245,6 +247,10 @@ function csvField(value: string): string {
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
++              <td>
++                <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) }}</span></span>
++                <span>open <span data-testid="person-open-total">{{ openTotalOf(p) }}</span></span>
++              </td>
+               <td>
+                 <ul>
+                   @for (period of periods(); track period.id) {
+@@ -530,6 +536,14 @@ export class People {
+       ),
+     ),
+   );
++  /** Everyone's settled-total added up (not trimmed). */
++  protected readonly settledTotal = computed(() =>
++    money(this.people().reduce((sum, p) => sum + this.settledCents(p), 0)),
++  );
++  /** Everyone's open-total added up (not trimmed). */
++  protected readonly openTotal = computed(() =>
++    money(this.people().reduce((sum, p) => sum + this.openCents(p), 0)),
++  );
+   /** How many overdue claims count in the live totals, across everyone. */
+   protected readonly overdueCount = computed(() =>
+     this.people().reduce((sum, p) => sum + this.overdueOf(p.id).length, 0),
+@@ -712,6 +726,28 @@ export class People {
+     return sum !== null && cap !== null && sum > cap ? cap : sum;
+   }
+ 
++  /** A person's settled-total: the due of their counting SETTLED claims at their frozen figures. */
++  protected settledTotalOf(person: PersonView): string {
++    return money(this.settledCents(person));
++  }
++
++  /** A person's open-total: the due of their counting OPEN and PENDING claims (see countsLive). */
++  protected openTotalOf(person: PersonView): string {
++    return money(this.openCents(person));
++  }
++
++  private settledCents(person: PersonView): number {
++    return this.countingOf(person.id)
++      .filter((c) => c.status === 'SETTLED')
++      .reduce((sum, c) => sum + (this.dueCents(c, person) ?? 0), 0);
++  }
++
++  private openCents(person: PersonView): number {
++    return this.countingOf(person.id)
++      .filter(isOpen)
++      .reduce((sum, c) => sum + (this.dueCents(c, person) ?? 0), 0);
++  }
++
+   /** A person's due-total for a period (see personPeriodCents). */
+   protected periodTotalOf(period: PeriodView, person: PersonView): string {
+     return money(this.personPeriodCents().get(period.id)?.get(person.id) ?? 0);
