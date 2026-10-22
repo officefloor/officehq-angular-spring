@@ -140,6 +140,12 @@ public class Claim {
     @OrderBy("id")
     private List<ClaimLogLine> log = new ArrayList<>();
 
+    /** The claim's comments, oldest first. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "claim_id", nullable = false)
+    @OrderBy("id")
+    private List<ClaimComment> comments = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -413,6 +419,15 @@ public class Claim {
     /** Lock the claim for the user's editor (null: release it); the caller checks the lock is theirs to take. */
     public void lockFor(String user) {
         this.lockedBy = user;
+    }
+
+    public List<ClaimComment> getComments() {
+        return List.copyOf(comments);
+    }
+
+    /** Add a comment to the claim, by the user on the sheet's today. */
+    public void comment(String by, LocalDate on, String text) {
+        comments.add(new ClaimComment(by, on, text));
     }
 
     public List<ClaimLogLine> getLog() {

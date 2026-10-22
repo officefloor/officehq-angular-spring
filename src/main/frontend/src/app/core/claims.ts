@@ -69,6 +69,16 @@ export interface ClaimView {
   remindedOn: string | null;
   /** The reason from the sheet's list the claim was voided with; null (or absent, as kept by an old snapshot) when none. */
   voidReason?: string | null;
+  /** The claim's comments, oldest first; empty (or absent, as kept by an old snapshot) for none. */
+  comments?: ClaimComment[] | null;
+}
+
+/** A comment on a claim: by whom, on the sheet's today then, and its text. */
+export interface ClaimComment {
+  by: string;
+  /** yyyy-mm-dd */
+  on: string;
+  text: string;
 }
 
 /** What a split did: the original claim, as it is now, and the new claim split off it. */
@@ -310,6 +320,11 @@ export class ClaimsApi {
   /** Remind an OPEN or PENDING claim; refused when it was already reminded on the sheet's today. */
   remind(sheet: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/remind`, {}));
+  }
+
+  /** Comment on a claim; refused (400) when the comment is blank. */
+  comment(sheet: string, id: number, text: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/comments`, { text }));
   }
 
   /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */

@@ -28,7 +28,11 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
           }
         </form>
         @if (session.sheet(); as sheet) {
-          <p>Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></p>
+          <p>Sheet
+            @if (session.loaded() === session.loads()) {
+              <strong data-testid="sheet-current-id">{{ sheet }}</strong>
+            }
+          </p>
           <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
           <form (submit)="saveToday($event)">
             <label for="sheet-today-input">Change today</label>

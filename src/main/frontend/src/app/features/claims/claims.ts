@@ -115,6 +115,26 @@ const PAST: Record<ClaimAction, string> = {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+            @for (comment of c.comments ?? []; track $index) {
+              <li data-testid="claim-comments-line">{{ comment.by }} on {{ comment.on }}: {{ comment.text }}</li>
+            }
+          </ol>
+          <label [for]="'claim-comment-text-' + c.id">Comment</label>
+          <input
+            [id]="'claim-comment-text-' + c.id"
+            data-testid="claim-comment-text"
+            [value]="commentTexts()[c.id] ?? ''"
+            (input)="setCommentText(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-comment-add"
+            [attr.aria-label]="'Add a comment to claim of ' + c.amount + ' on ' + c.date"
+            (click)="addComment(c)"
+          >
+            Add comment
+          </button>
           <button
             type="button"
             data-testid="claim-edit"
@@ -331,6 +351,8 @@ export class Claims {
   protected readonly newDates = signal<Record<number, string>>({});
   /** The amount typed on each claim's row to split off it, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The comment typed on each claim's row, by claim id. */
+  protected readonly commentTexts = signal<Record<number, string>>({});
   /** The amount typed on each DRAFT claim's row to change it to, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
@@ -697,6 +719,35 @@ export class Claims {
       this.splitAmounts.update((amounts) => ({ ...amounts, [claim.id]: '' }));
     } catch {
       this.claimError.set({ id: claim.id, message: refuse() });
+    }
+  }
+
+  /** Type a comment on a claim; it clears any error left on the claim's row. */
+  protected setCommentText(id: number, text: string): void {
+    this.commentTexts.update((texts) => ({ ...texts, [id]: text }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Comment on a claim; refused with an error on its row when the comment is empty or the user may not change the sheet. */
+  protected async addComment(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = (this.commentTexts()[claim.id] ?? '').trim();
+    if (!text) {
+      this.claimError.set({ id: claim.id, message: 'Type a comment to add it to the claim.' });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.comment(sheet, claim.id, text));
+      this.commentTexts.update((texts) => ({ ...texts, [claim.id]: '' }));
+    } catch (e) {
+      this.claimError.set({
+        id: claim.id,
+        message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role is not allowed to comment on a claim.'
+          : 'The comment could not be added.',
+      });
     }
   }
 

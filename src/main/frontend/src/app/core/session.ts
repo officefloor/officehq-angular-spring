@@ -96,6 +96,8 @@ export class Session {
   readonly asOf = signal('');
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
+  /** The sheet load whose people and claims are on screen; it equals loads once the latest has arrived. */
+  readonly loaded = signal(0);
 
   signIn(name: string): void {
     this.user.set(name);

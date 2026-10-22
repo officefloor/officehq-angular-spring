@@ -35,12 +35,13 @@ public class ClaimController {
      * log, oldest first, and the date it is deferred until (null when it was never deferred), and its proofs count,
      * and the number of the claim it was split from (null unless it was split off another), and the user whose open
      * editor locks it (null when none does), and the last day it was reminded (null when never), and its
-     * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted.
+     * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
+     * and the reason it was voided with (null when none), and its comments, oldest first.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags, List<String> tagsUsed, String voidReason) {
+            String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -50,7 +51,8 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
-                    claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason());
+                    claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason(),
+                    claim.getComments().stream().map(CommentView::of).toList());
         }
     }
 
@@ -61,6 +63,18 @@ public class ClaimController {
             return new LogLineView(line.getStatus(), line.getBy(), line.getOn(),
                     line.getDue() == null ? "n/a" : line.getDue().toPlainString());
         }
+    }
+
+    /** A comment on a claim: by whom, on the sheet's today then, and its text. */
+    public record CommentView(String by, LocalDate on, String text) {
+
+        public static CommentView of(ClaimComment comment) {
+            return new CommentView(comment.getBy(), comment.getOn(), comment.getText());
+        }
+    }
+
+    /** A comment as typed on the claim; blank is refused. */
+    public record CommentForm(@NotBlank @Size(max = 1000) String text) {
     }
 
     /**
@@ -282,6 +296,16 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.addProof(sheetId, SignedIn.name(user), claimId));
+    }
+
+    /** Comment on a claim; refused when the comment is blank. */
+    @PostMapping("/claims/{claimId}/comments")
+    public ClaimView comment(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid CommentForm form) {
+        return ClaimView.of(service.comment(sheetId, SignedIn.name(user), claimId, form.text()));
     }
 
     /** Remind an OPEN or PENDING claim, once per sheet's today. */

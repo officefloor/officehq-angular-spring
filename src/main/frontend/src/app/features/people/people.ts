@@ -1252,20 +1252,25 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, watched, claims, rates, periods] = await Promise.all([
-      this.api.list(sheet),
-      this.api.watched(sheet),
-      this.claimsApi.list(sheet),
-      this.ratesApi.list(sheet),
-      this.periodsApi.list(sheet),
-    ]);
-    // A later load may have started while this one was in flight: only the latest is shown.
-    if (this.session.sheet() === sheet && this.session.loads() === loads) {
-      this.claims.set(claims);
-      this.rates.set(rates);
-      this.periods.set(periods);
-      this.watched.set(new Set(watched));
-      this.people.set(people);
+    try {
+      const [people, watched, claims, rates, periods] = await Promise.all([
+        this.api.list(sheet),
+        this.api.watched(sheet),
+        this.claimsApi.list(sheet),
+        this.ratesApi.list(sheet),
+        this.periodsApi.list(sheet),
+      ]);
+      // A later load may have started while this one was in flight: only the latest is shown.
+      if (this.session.sheet() === sheet && this.session.loads() === loads) {
+        this.claims.set(claims);
+        this.rates.set(rates);
+        this.periods.set(periods);
+        this.watched.set(new Set(watched));
+        this.people.set(people);
+      }
+    } finally {
+      // The sheet shows as loaded once its people and claims are on screen (or could not be read).
+      if (this.session.loads() === loads) this.session.loaded.set(loads);
     }
   }
 }

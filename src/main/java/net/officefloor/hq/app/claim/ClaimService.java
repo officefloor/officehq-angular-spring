@@ -331,6 +331,25 @@ public class ClaimService {
     }
 
     /**
+     * Comment on a claim, in any status: the comment is kept with the user and the sheet's today, and
+     * audited as COMMENT_ADDED ending text=&lt;text&gt;. Refused when the text is blank.
+     */
+    @Transactional
+    public Claim comment(String sheetId, String user, long claimId, String text) {
+        String trimmed = clean(text);
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A comment cannot be empty.");
+        }
+        LocalDate today = sheets.lock(sheetId).getToday();
+        Claim claim = claim(sheetId, claimId);
+        claim.comment(user, today, trimmed);
+        Claim saved = claims.saveAndFlush(claim);
+        audited("COMMENT_ADDED", sheetId, user, person(sheetId, saved.getPersonId()), saved, saved.getNumber(),
+                " text=" + trimmed);
+        return saved;
+    }
+
+    /**
      * Remind an OPEN or PENDING claim: the claim shows the sheet's today as its reminded date. Refused
      * when the claim is in any other status, or was already reminded on the sheet's today.
      */
