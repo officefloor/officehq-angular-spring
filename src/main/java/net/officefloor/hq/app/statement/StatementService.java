@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -35,10 +36,12 @@ public class StatementService {
     private final ClaimService claimService;
     private final RateRepository rates;
     private final SheetService sheets;
+    private final Rollups rollups;
     private final Audit audit;
 
     public StatementService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
-            RateRepository rates, SheetService sheets, Audit audit) {
+            RateRepository rates, SheetService sheets, Rollups rollups, Audit audit) {
+        this.rollups = rollups;
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
@@ -53,6 +56,7 @@ public class StatementService {
         LocalDate today = sheets.today(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        Rollups.Rollup before = rollups.take(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean fixed = false;
@@ -79,6 +83,7 @@ public class StatementService {
         List<Claim> bound = claims.saveAllAndFlush(theirs);
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " due-total=" + (total != null ? total.toPlainString() : NO_RATE) + " claims=" + counted);
+        rollups.audit(sheetId, user, before);
         return new Stated(saved, bound);
     }
 }

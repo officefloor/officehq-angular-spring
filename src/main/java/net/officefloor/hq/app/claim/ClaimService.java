@@ -7,8 +7,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,16 +23,18 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final Dues dues;
     private final SheetService sheets;
+    private final Rollups rollups;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
+            Rollups rollups, Audit audit) {
         this.claims = claims;
         this.people = people;
-        this.rates = rates;
+        this.dues = dues;
         this.sheets = sheets;
+        this.rollups = rollups;
         this.audit = audit;
     }
 
@@ -46,20 +47,24 @@ public class ClaimService {
     /** Add a claim for a person on the sheet; with no date it is dated the sheet's today. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+        Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, clean(note)));
         audited("CLAIM_ADDED", sheetId, user, person, claim);
+        rollups.audit(sheetId, user, before);
         return claim;
     }
 
     /** Change a claim's amount, date and note; with no date it keeps its own. */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+        Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = claim(sheetId, claimId);
         claim.change(money(amount), date != null ? date : claim.getDate(), clean(note));
         Claim saved = claims.saveAndFlush(claim);
         audited("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
+        rollups.audit(sheetId, user, before);
         return saved;
     }
 
@@ -75,6 +80,7 @@ public class ClaimService {
         // Opening takes the sheet's lock before reading the claim, so concurrent opens on the
         // sheet are serialised: each sees the other's committed claim and number.
         Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
+        Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = claim(sheetId, claimId);
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -94,7 +100,7 @@ public class ClaimService {
             claim.openedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
-            claim.settleDue(claim.isStated() ? claim.getStatedDue() : liveDue(claim, person.getGrade()));
+            claim.settleDue(claim.isStated() ? claim.getStatedDue() : dues.live(claim, person.getGrade()));
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
@@ -107,6 +113,7 @@ public class ClaimService {
                 ? " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
                 : "";
         audited(event, sheetId, user, person, saved, next == ClaimStatus.VOID ? had : saved.getNumber(), suffix);
+        rollups.audit(sheetId, user, before);
         return saved;
     }
 
@@ -132,28 +139,9 @@ public class ClaimService {
                 + (number != null ? " number=" + number : "") + suffix);
     }
 
-    /**
-     * The due figure a claim shows: the one fixed when it was settled, else the one its person's last
-     * statement bound it to, else its amount at the rate the grade has in force on the claim's date;
-     * null (n/a) when there is none.
-     */
+    /** The due figure a claim shows (see {@link Dues#figure}). */
     public BigDecimal figure(Claim claim, String grade) {
-        if (claim.getSettledDue() != null) {
-            return claim.getSettledDue();
-        }
-        return claim.isStated() ? claim.getStatedDue() : liveDue(claim, grade);
-    }
-
-    /** A claim's amount at the rate the grade has in force on the claim's date; null when it has none. */
-    private BigDecimal liveDue(Claim claim, String grade) {
-        return rates.findInForce(claim.getSheetId(), grade, claim.getDate())
-                .map(rate -> due(claim.getAmount(), rate))
-                .orElse(null);
-    }
-
-    /** What is due on an amount at a rate: the amount times the percent over 100, rounded half to even. */
-    private static BigDecimal due(BigDecimal amount, Rate rate) {
-        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        return dues.figure(claim, grade);
     }
 
     private static BigDecimal money(BigDecimal amount) {

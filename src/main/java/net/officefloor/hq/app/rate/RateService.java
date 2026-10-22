@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,11 +16,13 @@ public class RateService {
 
     private final RateRepository rates;
     private final SheetService sheets;
+    private final Rollups rollups;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, Rollups rollups, Audit audit) {
         this.rates = rates;
         this.sheets = sheets;
+        this.rollups = rollups;
         this.audit = audit;
     }
 
@@ -36,6 +39,7 @@ public class RateService {
     @Transactional
     public synchronized Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
         sheets.load(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
         BigDecimal percent = pct.setScale(2, RoundingMode.UNNECESSARY);
         Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from)
                 .orElseGet(() -> new Rate(sheetId, grade, from, percent));
@@ -44,6 +48,7 @@ public class RateService {
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + saved.getGrade() + " rate=" + saved.getPct().toPlainString()
                 + (saved.getFromDate() != null ? " from=" + saved.getFromDate() : ""));
+        rollups.audit(sheetId, user, before);
         return saved;
     }
 }

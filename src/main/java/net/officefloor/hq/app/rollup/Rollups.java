@@ -1,0 +1,131 @@
+package net.officefloor.hq.app.rollup;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.stereotype.Service;
+
+/**
+ * The sheet's figures as the screen shows them: what each person has claimed and their due-total,
+ * and the sheet's claimed-total and due-total. A change takes them before it writes and has them
+ * audited after its own records, so every figure it moves is recorded.
+ */
+@Service
+public class Rollups {
+
+    /** Shown in place of a due-total when the grade has no rate. */
+    private static final String NO_RATE = "n/a";
+
+    /** A person's figures: what they have claimed and their due-total (null when n/a). */
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal) {
+
+        boolean sameAs(Figures other) {
+            return other != null && same(claimed, other.claimed) && same(dueTotal, other.dueTotal);
+        }
+    }
+
+    /** The sheet's figures: each person's by id, in the order they were added, and the sheet's totals. */
+    public record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal) {
+    }
+
+    private final PersonRepository people;
+    private final ClaimRepository claims;
+    private final RateRepository rates;
+    private final SheetRepository sheets;
+    private final Dues dues;
+    private final Audit audit;
+
+    public Rollups(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
+            Dues dues, Audit audit) {
+        this.people = people;
+        this.claims = claims;
+        this.rates = rates;
+        this.sheets = sheets;
+        this.dues = dues;
+        this.audit = audit;
+    }
+
+    /** The sheet's figures as they stand now in the current transaction. */
+    public Rollup take(String sheetId) {
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        Map<Long, List<Claim>> byPerson = new LinkedHashMap<>();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (claim.getStatus().counts()) {
+                byPerson.computeIfAbsent(claim.getPersonId(), id -> new ArrayList<>()).add(claim);
+            }
+        }
+        Map<Long, Figures> figures = new LinkedHashMap<>();
+        BigDecimal claimedTotal = zero();
+        BigDecimal dueTotal = zero();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of());
+            BigDecimal claimed = zero();
+            BigDecimal due = zero();
+            boolean fixed = false;
+            for (Claim claim : counting) {
+                claimed = claimed.add(claim.getAmount());
+                BigDecimal figure = dues.figure(claim, person.getGrade());
+                if (figure != null) {
+                    due = due.add(figure);
+                }
+                fixed |= claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null);
+            }
+            // As on the screen: n/a when the grade has no rate today, unless a claim keeps a fixed figure.
+            boolean rated = today != null && rates.findInForce(sheetId, person.getGrade(), today).isPresent();
+            if (!rated && !fixed) {
+                due = null;
+            }
+            figures.put(person.getId(), new Figures(person.getName(), claimed, due));
+            claimedTotal = claimedTotal.add(claimed);
+            if (due != null) {
+                dueTotal = dueTotal.add(due);
+            }
+        }
+        return new Rollup(figures, claimedTotal, dueTotal);
+    }
+
+    /**
+     * Record, once the change commits, one ROLLUP line per person whose figures moved since
+     * {@code before} (a person new since then counts as moved), then a TOTALS line when the sheet's
+     * totals moved.
+     */
+    public void audit(String sheetId, String user, Rollup before) {
+        Rollup after = take(sheetId);
+        after.people().forEach((id, figures) -> {
+            if (!figures.sameAs(before.people().get(id))) {
+                audit.recordOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + figures.name()
+                        + " claimed=" + figures.claimed().toPlainString() + " due-total=" + shown(figures.dueTotal()));
+            }
+        });
+        if (!same(after.claimedTotal(), before.claimedTotal()) || !same(after.dueTotal(), before.dueTotal())) {
+            audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user
+                    + " claimed-total=" + after.claimedTotal().toPlainString()
+                    + " due-total=" + after.dueTotal().toPlainString());
+        }
+    }
+
+    /** Whether two figures are the same amount, or both n/a. */
+    private static boolean same(BigDecimal a, BigDecimal b) {
+        return a == null ? b == null : b != null && a.compareTo(b) == 0;
+    }
+
+    private static String shown(BigDecimal due) {
+        return due != null ? due.toPlainString() : NO_RATE;
+    }
+
+    private static BigDecimal zero() {
+        return BigDecimal.ZERO.setScale(2);
+    }
+}

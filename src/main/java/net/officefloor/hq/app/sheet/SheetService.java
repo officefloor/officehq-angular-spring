@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.rollup.Rollups;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,9 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final Rollups rollups;
 
-    public SheetService(SheetRepository sheets) {
+    public SheetService(SheetRepository sheets, Rollups rollups) {
         this.sheets = sheets;
+        this.rollups = rollups;
     }
 
     /** Load a sheet; a new sheet's today starts as the real date. */
@@ -40,11 +43,14 @@ public class SheetService {
         return sheets.findLockedById(id).orElseThrow().nextClaimNumber();
     }
 
-    /** Change the sheet's today. */
+    /** Change the sheet's today, auditing the figures that moves. */
     @Transactional
-    public synchronized Sheet setToday(String id, LocalDate today) {
+    public synchronized Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id);
+        Rollups.Rollup before = rollups.take(id);
         sheet.setToday(today);
-        return sheets.save(sheet);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        rollups.audit(id, user, before);
+        return saved;
     }
 }

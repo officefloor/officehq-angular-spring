@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -14,11 +15,13 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Rollups rollups;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetService sheets, Rollups rollups, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.rollups = rollups;
         this.audit = audit;
     }
 
@@ -33,8 +36,10 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId);
         requireNameFree(sheetId, name, null);
+        Rollups.Rollup before = rollups.take(sheetId);
         Person person = people.saveAndFlush(new Person(sheetId, name, grade));
         audited("PERSON_ADDED", sheetId, user, person);
+        rollups.audit(sheetId, user, before);
         return person;
     }
 
@@ -51,10 +56,12 @@ public class PersonService {
                     "Someone else has saved this person since it was opened.");
         }
         requireNameFree(sheetId, name, person.getId());
+        Rollups.Rollup before = rollups.take(sheetId);
         person.setName(name);
         person.setGrade(grade);
         Person saved = people.saveAndFlush(person);
         audited("PERSON_EDITED", sheetId, user, saved);
+        rollups.audit(sheetId, user, before);
         return saved;
     }
 
