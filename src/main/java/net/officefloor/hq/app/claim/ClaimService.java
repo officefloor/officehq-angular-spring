@@ -138,6 +138,9 @@ public class ClaimService {
         BigDecimal settledDue = next == ClaimStatus.SETTLED
                 ? dues.settling(claim, person.gradeOn(claim.getDate()))
                 : null;
+        if (next == ClaimStatus.SETTLED) {
+            refuseUnproved(sheetId, claim, settledDue);
+        }
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settledDue)) {
             next = ClaimStatus.PENDING;
             settledDue = null;
@@ -163,6 +166,22 @@ public class ClaimService {
                 : "";
         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
         rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /** Raise a claim's proofs count by one; refused when the claim is SETTLED or VOID. */
+    @Transactional
+    public Claim addProof(String sheetId, String user, long claimId) {
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot take a proof.");
+        }
+        claim.addProof();
+        Claim saved = claims.saveAndFlush(claim);
+        audited("CLAIM_PROOF_ADDED", sheetId, user, person(sheetId, saved.getPersonId()), saved, saved.getNumber(),
+                " proofs=" + saved.getProofs());
         return saved;
     }
 
@@ -208,7 +227,9 @@ public class ClaimService {
                     "The user who opened a claim cannot approve it.");
         }
         Person person = person(sheetId, claim.getPersonId());
-        claim.settleDue(dues.approving(claim, person.gradeOn(claim.getDate())));
+        BigDecimal approvedDue = dues.approving(claim, person.gradeOn(claim.getDate()));
+        refuseUnproved(sheetId, claim, approvedDue);
+        claim.settleDue(approvedDue);
         claim.become(ClaimStatus.SETTLED);
         Claim saved = logged(claims.saveAndFlush(claim), user, person);
         audited("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(),
@@ -314,6 +335,19 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim.");
         }
         return claim;
+    }
+
+    /**
+     * Refuse settling or approving a claim with no proofs whose due is above the sheet's proof threshold
+     * in force on the claim's date (a due of n/a is within any threshold).
+     */
+    private void refuseUnproved(String sheetId, Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheets.load(sheetId).proofThresholdOn(claim.getDate());
+        if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim's due is above the proof threshold of " + threshold.toPlainString()
+                            + ": it needs a proof before it is settled.");
+        }
     }
 
     /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit. */

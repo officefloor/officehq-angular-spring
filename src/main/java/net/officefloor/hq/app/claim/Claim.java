@@ -82,6 +82,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs the claim has; 0 when added. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /** The claim's status log, oldest first. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "claim_id", nullable = false)
@@ -223,6 +227,15 @@ public class Claim {
      */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Raise the claim's proofs count by one; the caller checks the claim can take a proof. */
+    public void addProof() {
+        proofs++;
     }
 
     public List<ClaimLogLine> getLog() {

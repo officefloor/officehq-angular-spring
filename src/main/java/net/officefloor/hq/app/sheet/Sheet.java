@@ -28,6 +28,7 @@ public class Sheet {
     public static final String FLOOR = "floor";
     public static final String TERMS = "terms";
     public static final String LATE_PCT = "late-pct";
+    public static final String PROOF_THRESHOLD = "proof-threshold";
 
     @Id
     private String id;
@@ -50,6 +51,10 @@ public class Sheet {
     /** The starting cap (before every from-date): a person's due-total is at most it; null for no cap. */
     @Column(name = "cap")
     private BigDecimal cap;
+
+    /** The starting proof threshold (before every from-date): a claim whose due is above it cannot be settled or approved with no proofs; null for none. */
+    @Column(name = "proof_threshold")
+    private BigDecimal proofThreshold;
 
     /** The starting floor (before every from-date): a claim's live due is at least it. */
     @Column(name = "floor", nullable = false)
@@ -131,6 +136,16 @@ public class Sheet {
     public BigDecimal capped(BigDecimal sum) {
         BigDecimal cap = getCap();
         return sum != null && cap != null && sum.compareTo(cap) > 0 ? cap : sum;
+    }
+
+    /** The proof threshold in force on the sheet's today, with two decimals; null when there is none. */
+    public BigDecimal getProofThreshold() {
+        return proofThresholdOn(today);
+    }
+
+    /** The proof threshold in force on a date, with two decimals; null when there is none. */
+    public BigDecimal proofThresholdOn(LocalDate date) {
+        return decimal(valueOn(PROOF_THRESHOLD, date, plain(proofThreshold)));
     }
 
     /** The floor in force on the sheet's today, with two decimals. */

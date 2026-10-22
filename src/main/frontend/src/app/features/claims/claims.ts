@@ -87,6 +87,7 @@ const PAST: Record<ClaimAction, string> = {
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
@@ -117,6 +118,14 @@ const PAST: Record<ClaimAction, string> = {
               {{ a.label }}
             </button>
           }
+          <button
+            type="button"
+            data-testid="claim-proof"
+            [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date"
+            (click)="addProof(c)"
+          >
+            Add proof
+          </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
             [id]="'claim-defer-date-' + c.id"
@@ -327,6 +336,23 @@ export class Claims {
     }
   }
 
+  /** Raise a claim's proofs count by one; refused with an error on its row when the claim is SETTLED or VOID. */
+  protected async addProof(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      this.saved.emit(await this.api.addProof(sheet, claim.id));
+    } catch {
+      this.claimError.set({
+        id: claim.id,
+        message: claim.status === 'SETTLED' || claim.status === 'VOID'
+          ? `A ${claim.status} claim cannot take a proof.`
+          : 'The proof could not be added.',
+      });
+    }
+  }
+
   /** Choose the person to reassign a claim to; it clears any error left on the claim's row. */
   protected setReassignTo(id: number, personId: string): void {
     this.reassignTo.update((chosen) => ({ ...chosen, [id]: Number(personId) }));
@@ -380,6 +406,8 @@ export class Claims {
       const mine = claim.openedBy === this.session.user()?.trim();
       const own = (action === 'settle' && claim.status === 'OPEN' && mine)
         || (action === 'approve' && claim.status === 'PENDING' && mine);
+      const unproved = e instanceof HttpErrorResponse && e.status === 409 && claim.proofs === 0
+        && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'));
       const steward = e instanceof HttpErrorResponse && e.status === 403
         && (((action === 'approve' || action === 'reject') && claim.status === 'PENDING')
           || (action === 'resettle' && claim.status === 'SETTLED'));
@@ -389,6 +417,8 @@ export class Claims {
           ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be settled before then.`
           : own
             ? `You opened this claim, so someone else must ${action} it.`
+            : unproved
+              ? `The claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
             : steward
               ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
               : `A ${claim.status} claim cannot be ${PAST[action]}.`,

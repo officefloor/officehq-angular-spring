@@ -30,11 +30,11 @@ public class ClaimController {
      * opened it (null until opened), and whether it is bound by its person's last statement, with the
      * figure it was bound to (null when unbound, or when it was n/a), and the number of the claim it
      * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
-     * log, oldest first, and the date it is deferred until (null when it was never deferred).
+     * log, oldest first, and the date it is deferred until (null when it was never deferred), and its proofs count.
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
-            LocalDate deferredUntil) {
+            LocalDate deferredUntil, int proofs) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -42,7 +42,8 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil());
+                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
+                    claim.getProofs());
         }
     }
 
@@ -218,6 +219,15 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.VOID));
+    }
+
+    /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
+    @PostMapping("/claims/{claimId}/proof")
+    public ClaimView addProof(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.addProof(sheetId, SignedIn.name(user), claimId));
     }
 
     /** Defer an OPEN claim until a date after the sheet's today. */
