@@ -52,6 +52,18 @@ function trimmedCents(figures: number[]): number {
   return figures.length >= 3 ? total - Math.max(...figures) - Math.min(...figures) : total;
 }
 
+/** A whole number over a positive whole number, rounded half to even. */
+function halfEven(numerator: number, denominator: number): number {
+  const whole = Math.floor(numerator / denominator);
+  const twice = (numerator - whole * denominator) * 2;
+  return twice > denominator || (twice === denominator && whole % 2 !== 0) ? whole + 1 : whole;
+}
+
+/** Cents times a share in hundredths of a percent, over 100: whole cents rounded half to even. */
+function shareOf(cents: number, share: number): number {
+  return halfEven(cents * share, 10000);
+}
+
 /**
  * Whether a person is active on the sheet's today: they have an OPEN or PENDING claim that counts in
  * the live totals (see countsLive), dated within the 30 days up to and including today.
@@ -935,20 +947,24 @@ export class People {
     return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), floor, late, halfUp);
   }
 
-  /** A person's patrons' names, sorted, comma and space separated. */
+  /** A person's patrons, each as their name and share, sorted by name, comma and space separated. */
   protected patronsOf(person: PersonView): string {
-    return this.patrons(person)
-      .map((p) => p.name)
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    return this.patronShares(person)
+      .map(({ patron, share }) => ({ name: patron.name, text: `${patron.name} ${money(share)}` }))
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .map((p) => p.text)
       .join(', ');
   }
 
   /**
-   * A person's backing: the settled figures of their patrons' SETTLED claims dated within the 90 days
-   * up to and including the sheet's today, each at its frozen figure (one with none adds nothing).
+   * A person's backing: over their patrons, the settled figures of the patron's SETTLED claims dated
+   * within the 90 days up to and including the sheet's today, each at its frozen figure (one with none
+   * adds nothing), times the patron's share over 100, rounded half to even.
    */
   protected backingOf(person: PersonView): string {
-    return money(this.patrons(person).reduce((sum, p) => sum + this.recentSettledCents(p.id), 0));
+    return money(
+      this.patronShares(person).reduce((sum, { patron, share }) => sum + shareOf(this.recentSettledCents(patron.id), share), 0),
+    );
   }
 
   private recentSettledCents(personId: number): number {
@@ -960,8 +976,18 @@ export class People {
       .reduce((sum, c) => sum + (c.settledDue === null ? 0 : cents(c.settledDue)), 0);
   }
 
-  private patrons(person: PersonView): PersonView[] {
-    return this.people().filter((p) => person.patronIds.includes(p.id));
+  /**
+   * A person's patrons in the order they were named, each with their share in hundredths of a percent:
+   * 100.00 split equally, each rounded half to even, the remainder to the first named.
+   */
+  private patronShares(person: PersonView): { patron: PersonView; share: number }[] {
+    const patrons = person.patronIds
+      .map((id) => this.people().find((p) => p.id === id))
+      .filter((p): p is PersonView => p !== undefined);
+    if (patrons.length === 0) return [];
+    const shares = patrons.map((patron) => ({ patron, share: halfEven(10000, patrons.length) }));
+    shares[0].share += 10000 - shares.reduce((sum, s) => sum + s.share, 0);
+    return shares;
   }
 
   /** A person's aliases, sorted as names are compared, comma and space separated. */

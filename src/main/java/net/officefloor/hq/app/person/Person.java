@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
@@ -94,11 +95,12 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<Hold> holds = new ArrayList<>();
 
-    /** The ids of the other people on the sheet the person has named as their patrons. */
+    /** The ids of the other people on the sheet the person has named as their patrons, in the order named. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_patron", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "patron_order")
     @Column(name = "patron_id", nullable = false)
-    private Set<Long> patronIds = new HashSet<>();
+    private List<Long> patronIds = new ArrayList<>();
 
     /** The other names the person goes by, each unique on the sheet with the names by its key. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -292,8 +294,9 @@ public class Person {
         this.statementDate = previousDate;
     }
 
-    public Set<Long> getPatronIds() {
-        return Collections.unmodifiableSet(patronIds);
+    /** The ids of the person's patrons, in the order they were named. */
+    public List<Long> getPatronIds() {
+        return Collections.unmodifiableList(patronIds);
     }
 
     /** The person's aliases, sorted as names are compared. */
@@ -320,6 +323,9 @@ public class Person {
 
     /** Name another person as a patron; false when they already are one. */
     public boolean addPatron(Long patronId) {
+        if (patronIds.contains(patronId)) {
+            return false;
+        }
         return patronIds.add(patronId);
     }
 }

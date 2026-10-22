@@ -38,7 +38,8 @@ public class PersonController {
     /**
      * What the screen is told about a person, with their statement count, and the last statement's
      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
-     * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons.
+     * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons
+     * in the order they were named.
      * Their grades are listed by the date each is in force from, the first with none (from the
      * beginning of time).
      */
@@ -55,7 +56,7 @@ public class PersonController {
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
                     person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
-                    person.getPatronIds().stream().sorted().toList(), person.getAliases());
+                    person.getPatronIds(), person.getAliases());
         }
     }
 
