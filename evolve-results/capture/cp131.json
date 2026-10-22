@@ -1,0 +1,64 @@
+{
+  "checkpoint": 131,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp131_plans",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person can have plans: an amount, a start date, every N days (a whole number, at least 1) and an\nend date, from a form on the row (PLAN_ADDED name=<name> amount=<amount> start=<date>\nevery=<n> end=<date>; an end before the start or a bad amount or interval is refused with an error\non the row). A generate button on the screen makes, for every plan on the sheet in the order they\nwere added, a DRAFT claim with the plan's amount for every plan date (the start, then every N days)\nup to the end and the sheet's today that has none yet, dated that day with an empty note, by the\nclaim form's rules (a date the form refuses is skipped and tried again next time). Show how many\nwere made, and on each plan how many claims it has made so far.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person can have plans: an amount, a start date, every N days (a whole number, at least 1) and an\nend date, from a form on the row (PLAN_ADDED name=<name> amount=<amount> start=<date>\nevery=<n> end=<date>; an end before the start or a bad amount or interval is refused with an error\non the row). A generate button on the screen makes, for every plan on the sheet in the order they\nwere added, a DRAFT claim with the plan's amount for every plan date (the start, then every N days)\nup to the end and the sheet's today that has none yet, dated that day with an empty note, by the\nclaim form's rules (a date the form refuses is skipped and tried again next time). Show how many\nwere made, and on each plan how many claims it has made so far.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d4405da957a7c6c4aa695e8dad5cb9f87d29dfb4",
+  "reset_sha": "",
+  "preagent_sha": "90f043acd63df765995527f9770186c0fa3b05a9",
+  "prev_sha": "90f043acd63df765995527f9770186c0fa3b05a9",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9027315999999999,
+    "input_tokens": 78,
+    "output_tokens": 25510,
+    "cache_read_tokens": 2795418,
+    "cache_creation_tokens": 104142,
+    "num_turns": 40,
+    "duration_ms": 321535,
+    "duration_api_ms": 244948,
+    "model": "claude-opus-5-5",
+    "session_id": "1969665c-4680-4796-b66a-9e77dfe0bd83",
+    "stop_reason": "success",
+    "result_text": "Plans are in, and the two tests that cover them, `plans` and `plans scenario 1`, now pass under `bin/e2e`. The other two tests, `plans scenario 2` and `plans scenario 3`, still fail. They failed the same way on a run before I changed anything, and neither involves plans.\n\n**Why those two fail:**\n- **Scenario 2** (`acceptance.spec.ts:696`) expects the parent sheet to read the literal text `__SHEET__-p`. The app correctly shows the real id (e.g. `smvk2wmshjmb2-p`). This looks like a placeholder the spec forgot to fill in, and no correct app can pass it. I can't edit the spec, so it needs fixing on your side.\n- **Scenario 3** (audit line 48, expected at spec lines 1328\u20131329) expects bulk reassign to handle claims in list order, newest first. The app handles them in the order they were selected, which is what its code says it should do (`BulkMoveService.reassign`). I left that alone because changing it is a separate change that would alter how an existing feature behaves. If you want list order, it's a small edit in that method.\n\n**What I added:**\n- **Stored data:** a new migration `V75__plan.sql` adds a `plan` table and a `plan_claim` table, which records the claim each plan made for each date.\n- **Server:** a new `plan` package with an entity, repository, service and controller.\n  - **Adding a plan** refuses a bad amount, an interval below 1, or an end before the start, and writes nothing in that case. When it succeeds it writes `PLAN_ADDED \u2026 name= amount= start= every= end=` to the audit file.\n  - **Generate** goes through plans in the order they were added. For each date from the start, every N days, up to the end and the sheet's today, it makes a DRAFT claim with an empty note if that date has none yet. Each claim goes through the normal add-claim rules in its own transaction. A refused date is skipped and tried again on the next generate.\n  - **Merging people:** when one person is merged into another, their plans now move to the person they were merged into.\n- **Front end:** a new `features/plans/plans.ts` has two parts:\n  - **The row form:** it lists the person's plans, each showing how many claims it has made so far.\n  - **The Generate button:** it shows how many claims were made, and the new claims appear in the list straight away.\n\n  Plan data is loaded and refreshed on every sheet load, like templates are.\n\nOne gap: transferring a person to another sheet doesn't move their plans. The plans stay behind, hidden, and generate skips them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9027315999999999,
+        "num_turns": 40,
+        "duration_ms": 321535,
+        "duration_api_ms": 244948,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp131.agent.jsonl",
+  "agent_diff_file": "cp131.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
