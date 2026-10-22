@@ -259,6 +259,7 @@ function csvField(value: string): string {
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th>
+            <th scope="col">Aliases</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
             <th scope="col">Contact</th>
@@ -292,6 +293,25 @@ function csvField(value: string): string {
                 />
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
+              <td>
+                <span data-testid="person-aliases">{{ aliasesOf(p) }}</span>
+                <label [for]="'person-alias-input-' + p.id">Add alias</label>
+                <input
+                  type="text"
+                  [id]="'person-alias-input-' + p.id"
+                  data-testid="person-alias-input"
+                  [value]="aliasDrafts.get(p.id) ?? ''"
+                  (input)="aliasDrafts.set(p.id, value($event)); personError.set(null)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-alias-add"
+                  [attr.aria-label]="'Add an alias for ' + p.name"
+                  (click)="addAlias(p)"
+                >
+                  Add
+                </button>
+              </td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -667,6 +687,9 @@ export class People {
   protected readonly patronChoices = new Map<number, string>();
   /** The ids of the people the signed-in user watches. */
   protected readonly watched = signal<ReadonlySet<number>>(new Set());
+  /** The alias typed on each row, by person id. */
+  protected readonly aliasDrafts = new Map<number, string>();
+
   /** The refusal of the last patron added on a person's row, shown on that row. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -711,6 +734,7 @@ export class People {
         this.holdDrafts.set(new Map());
         this.patronError.set(null);
         this.patronChoices.clear();
+        this.aliasDrafts.clear();
         this.selectedClaims.set(new Set());
         this.bulkOpened.set(null);
         this.bulkOpenError.set(null);
@@ -914,6 +938,35 @@ export class People {
 
   private patrons(person: PersonView): PersonView[] {
     return this.people().filter((p) => person.patronIds.includes(p.id));
+  }
+
+  /** A person's aliases, sorted as names are compared, comma and space separated. */
+  protected aliasesOf(person: PersonView): string {
+    const key = (name: string) => name.trim().toLowerCase();
+    return [...(person.aliases ?? [])]
+      .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : a < b ? -1 : a > b ? 1 : 0))
+      .join(', ');
+  }
+
+  /** Give a person the alias typed on their row; a blank one, or one already in use, is refused. */
+  protected async addAlias(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const alias = (this.aliasDrafts.get(person.id) ?? '').trim();
+    const refuse = (message: string) => this.personError.set({ id: person.id, message });
+    if (!alias) {
+      refuse('Type an alias to add.');
+      return;
+    }
+    try {
+      const saved = await this.api.addAlias(sheet, person.id, alias);
+      if (this.session.sheet() !== sheet) return;
+      this.aliasDrafts.delete(person.id);
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch {
+      refuse('That alias could not be added: it may already be in use on this sheet.');
+    }
   }
 
   /** Name the person chosen on a person's row as their patron. */

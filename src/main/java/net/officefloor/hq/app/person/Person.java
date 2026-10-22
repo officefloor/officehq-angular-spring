@@ -100,6 +100,11 @@ public class Person {
     @Column(name = "patron_id", nullable = false)
     private Set<Long> patronIds = new HashSet<>();
 
+    /** The other names the person goes by, each unique on the sheet with the names by its key. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    private Set<Alias> aliases = new HashSet<>();
+
     protected Person() {
     }
 
@@ -289,6 +294,23 @@ public class Person {
 
     public Set<Long> getPatronIds() {
         return Collections.unmodifiableSet(patronIds);
+    }
+
+    /** The person's aliases, sorted as names are compared. */
+    public List<String> getAliases() {
+        return aliases.stream().sorted(java.util.Comparator.comparing(Alias::getAliasKey).thenComparing(Alias::getAlias))
+                .map(Alias::getAlias).toList();
+    }
+
+    /** Whether the person goes by this name or alias, compared as names are. */
+    public boolean goesBy(String name) {
+        String key = keyOf(name);
+        return nameKey.equals(key) || aliases.stream().anyMatch(alias -> alias.getAliasKey().equals(key));
+    }
+
+    /** Add an alias, kept as names are kept. */
+    public void addAlias(String alias) {
+        aliases.add(new Alias(alias));
     }
 
     /** Name another person as a patron; false when they already are one. */

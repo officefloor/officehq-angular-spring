@@ -56,7 +56,7 @@ public class SheetHistory {
     }
 
     record PersonState(long id, String name, String grade, List<GradeState> grades, Integer terms,
-            List<HoldState> holds, LocalDate retiredFrom, String contact) {
+            List<HoldState> holds, LocalDate retiredFrom, String contact, List<String> aliases) {
     }
 
     record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
@@ -192,6 +192,9 @@ public class SheetHistory {
             Person person = new Person(now.getId(), p.name(), p.grade(), p.terms(), p.contact());
             p.grades().forEach(g -> person.gradeFrom(g.grade(), g.from()));
             p.holds().forEach(h -> person.hold(h.from(), h.to()));
+            if (p.aliases() != null) {
+                p.aliases().forEach(person::addAlias);
+            }
             if (p.retiredFrom() != null) {
                 person.retire(p.retiredFrom());
             }
@@ -220,7 +223,7 @@ public class SheetHistory {
         return new PersonState(p.getId(), p.getName(), p.getGrade(),
                 p.getGradesFrom().entrySet().stream().map(e -> new GradeState(e.getKey(), e.getValue())).toList(),
                 p.getTerms(), p.getHolds().stream().map(h -> new HoldState(h.getFromDate(), h.getToDate())).toList(),
-                p.getRetiredFrom(), p.getContact());
+                p.getRetiredFrom(), p.getContact(), p.getAliases());
     }
 
     private static ClaimState kept(Claim c) {

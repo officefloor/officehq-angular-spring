@@ -50,6 +50,8 @@ export interface PersonView {
   holds: HoldView[];
   /** The ids of the other people on the sheet the person has named as their patrons. */
   patronIds: number[];
+  /** The other names the person goes by; absent from a view kept before aliases were. */
+  aliases?: string[];
 }
 
 /** A hold on a person, from a date to a date (yyyy-mm-dd, both included); to is null with no end. */
@@ -151,6 +153,11 @@ export class PeopleApi {
   /** Name another person on the sheet as a patron of this one. */
   addPatron(sheet: string, id: number, patronId: number): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/patrons`, { patronId }));
+  }
+
+  /** Give a person an alias: it must not equal, as names are compared, any name or alias on the sheet. */
+  addAlias(sheet: string, id: number, alias: string): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/aliases`, { alias }));
   }
 
   /** The ids of the people on the sheet the signed-in user watches. */

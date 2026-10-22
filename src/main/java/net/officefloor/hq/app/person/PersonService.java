@@ -144,6 +144,27 @@ public class PersonService {
     }
 
     /**
+     * Give a person an alias; refused when it is blank, or when it equals, as names are compared, any
+     * name or alias on the sheet.
+     */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long personId, String alias) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (alias == null || alias.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An alias is required.");
+        }
+        if (people.findBySheetIdAndName(sheetId, alias).isPresent()) {
+            throw nameInUse();
+        }
+        person.addAlias(alias);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " alias=" + Person.clean(alias));
+        return saved;
+    }
+
+    /**
      * Record the change to the person, with the grade in force on the sheet's today and, on an edit or
      * an add that gave them, their own terms and contact (blank when they have none), once it is committed.
      */
@@ -169,9 +190,14 @@ public class PersonService {
                 });
     }
 
-    /** Refuse a name already held on the sheet by anyone other than {@code self}. */
+    /** Refuse a name already held on the sheet, as a name or an alias, by anyone other than {@code self}. */
     private void requireNameFree(String sheetId, String name, Long self) {
         people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
+                .filter(holder -> !holder.getId().equals(self))
+                .ifPresent(holder -> {
+                    throw nameInUse();
+                });
+        people.findBySheetIdAndAliasKey(sheetId, Person.keyOf(name))
                 .filter(holder -> !holder.getId().equals(self))
                 .ifPresent(holder -> {
                     throw nameInUse();

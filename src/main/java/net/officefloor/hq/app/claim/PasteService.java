@@ -79,7 +79,7 @@ public class PasteService {
         if (name.isEmpty()) {
             throw refused("Line " + number + " has no name.");
         }
-        Person person = people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
+        Person person = people.findBySheetIdAndName(sheetId, name)
                 .orElseThrow(() -> refused("Line " + number + ": " + name + " is not on this sheet."));
         String amount = fields[1].trim();
         if (!AMOUNT.matcher(amount).matches()) {

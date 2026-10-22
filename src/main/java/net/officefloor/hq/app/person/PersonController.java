@@ -44,7 +44,7 @@ public class PersonController {
      */
     public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
-            List<HoldView> holds, List<Long> patronIds) {
+            List<HoldView> holds, List<Long> patronIds, List<String> aliases) {
 
         public static PersonView of(Person person) {
             List<GradeView> grades = new ArrayList<>();
@@ -55,7 +55,7 @@ public class PersonController {
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
                     person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
-                    person.getPatronIds().stream().sorted().toList());
+                    person.getPatronIds().stream().sorted().toList(), person.getAliases());
         }
     }
 
@@ -190,6 +190,20 @@ public class PersonController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PatronForm form) {
         return PersonView.of(service.addPatron(sheetId, SignedIn.name(user), personId, form.patronId()));
+    }
+
+    /** An alias a person goes by. */
+    public record AliasForm(@Size(max = 200) String alias) {
+    }
+
+    /** Give a person an alias. */
+    @PostMapping("/{personId}/aliases")
+    public PersonView addAlias(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid AliasForm form) {
+        return PersonView.of(service.addAlias(sheetId, SignedIn.name(user), personId, form.alias()));
     }
 
     /** The ids of the people on the sheet the signed-in user watches. */

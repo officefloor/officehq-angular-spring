@@ -36,7 +36,7 @@ public class QuickAddService {
 
     @Transactional
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
-        Person existing = people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name)).orElse(null);
+        Person existing = people.findBySheetIdAndName(sheetId, name).orElse(null);
         Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE, null, null);
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null);
         return new Added(person, existing == null, claim);
