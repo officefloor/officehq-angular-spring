@@ -106,9 +106,9 @@ export class Claims {
     { action: 'void', label: 'Void' },
   ];
 
-  /** What is due on a claim: its amount at the person's grade's rate. */
+  /** What is due on a claim: the due fixed when it was settled, or else its amount at the person's grade's rate. */
   protected dueOf(claim: ClaimView): string {
-    return due(cents(claim.amount), this.pct());
+    return claim.settledDue ?? due(cents(claim.amount), this.pct());
   }
 
   protected value(event: Event): string {

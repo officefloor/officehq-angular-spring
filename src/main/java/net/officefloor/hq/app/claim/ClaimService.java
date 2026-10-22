@@ -7,6 +7,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -17,14 +19,20 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ClaimService {
 
+    /** Shown in place of a due when the grade has no rate. */
+    private static final String NO_RATE = "n/a";
+
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -57,7 +65,8 @@ public class ClaimService {
 
     /**
      * Move a claim to a new status, recording the event; refused (and nothing written) when the
-     * claim's current status does not allow the move.
+     * claim's current status does not allow the move. Settling fixes the claim's due at the
+     * person's grade's current rate.
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -70,9 +79,15 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
         Integer had = claim.getNumber();
+        Person person = person(sheetId, claim.getPersonId());
         claim.become(next);
         if (next == ClaimStatus.OPEN || next == ClaimStatus.VOID) {
             claim.number(number);
+        }
+        if (next == ClaimStatus.SETTLED) {
+            claim.settleDue(rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+                    .map(rate -> due(claim.getAmount(), rate))
+                    .orElse(null));
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
@@ -81,8 +96,10 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audited(event, sheetId, user, person(sheetId, saved.getPersonId()), saved,
-                next == ClaimStatus.VOID ? had : saved.getNumber());
+        String suffix = next == ClaimStatus.SETTLED
+                ? " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
+                : "";
+        audited(event, sheetId, user, person, saved, next == ClaimStatus.VOID ? had : saved.getNumber(), suffix);
         return saved;
     }
 
@@ -98,13 +115,19 @@ public class ClaimService {
 
     /** Record the change to the claim once it is committed; a claim with a number carries it. */
     private void audited(String event, String sheetId, String user, Person person, Claim claim) {
-        audited(event, sheetId, user, person, claim, claim.getNumber());
+        audited(event, sheetId, user, person, claim, claim.getNumber(), "");
     }
 
-    private void audited(String event, String sheetId, String user, Person person, Claim claim, Integer number) {
+    private void audited(String event, String sheetId, String user, Person person, Claim claim, Integer number,
+            String suffix) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
-                + (number != null ? " number=" + number : ""));
+                + (number != null ? " number=" + number : "") + suffix);
+    }
+
+    /** What is due on an amount at a rate: the amount times the percent over 100, rounded half up. */
+    private static BigDecimal due(BigDecimal amount, Rate rate) {
+        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal money(BigDecimal amount) {
