@@ -1,9 +1,12 @@
 import { Component, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, ClaimView, ClaimsApi, cents } from '../../core/claims';
+import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents } from '../../core/claims';
 import { due } from '../../core/rates';
 import { Session } from '../../core/session';
 
-// A person's claims: listed newest first, added and edited through one form on the person's row.
+// A person's claims: listed newest first, added and edited through one form on the person's row,
+// and moved through their statuses (open, settle, void) from each claim's row.
+const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
+
 @Component({
   selector: 'app-claims',
   template: `
@@ -48,6 +51,7 @@ import { Session } from '../../core/session';
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span data-testid="claim-status">{{ c.status }}</span>
           <button
             type="button"
             data-testid="claim-edit"
@@ -56,6 +60,19 @@ import { Session } from '../../core/session';
           >
             Edit
           </button>
+          @for (a of actions; track a.action) {
+            <button
+              type="button"
+              [attr.data-testid]="'claim-' + a.action"
+              [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date"
+              (click)="act(c, a.action)"
+            >
+              {{ a.label }}
+            </button>
+          }
+          @if (claimError()?.id === c.id) {
+            <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
+          }
         </li>
       }
     </ul>
@@ -80,6 +97,13 @@ export class Claims {
   /** The id of the claim open in the form, or null when the form adds a new claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** The refusal of the last action taken on a claim's row, shown on that row. */
+  protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  protected readonly actions: { action: ClaimAction; label: string }[] = [
+    { action: 'open', label: 'Open' },
+    { action: 'settle', label: 'Settle' },
+    { action: 'void', label: 'Void' },
+  ];
 
   /** What is due on a claim: its amount at the person's grade's rate. */
   protected dueOf(claim: ClaimView): string {
@@ -92,11 +116,24 @@ export class Claims {
 
   /** Open a claim's editor: the form takes its values. */
   protected open(claim: ClaimView): void {
+    this.claimError.set(null);
     this.editing.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.error.set(null);
+  }
+
+  /** Move a claim's status; a move its status does not allow is refused with an error on its row. */
+  protected async act(claim: ClaimView, action: ClaimAction): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      this.saved.emit(await this.api.act(sheet, claim.id, action));
+    } catch {
+      this.claimError.set({ id: claim.id, message: `A ${claim.status} claim cannot be ${PAST[action]}.` });
+    }
   }
 
   protected reset(): void {

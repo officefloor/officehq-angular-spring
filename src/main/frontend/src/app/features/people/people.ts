@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { ClaimView, ClaimsApi, cents, money } from '../../core/claims';
+import { ClaimView, ClaimsApi, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
 import { RateView, RatesApi, dueCents, due } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -109,7 +109,7 @@ export class People {
   });
   /** The sheet's rates; a grade with no rate is not listed. */
   protected readonly rates = signal<RateView[]>([]);
-  protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = computed(() =>
     money(
@@ -144,13 +144,13 @@ export class People {
     return this.byPerson().get(personId) ?? [];
   }
 
-  /** What a person has claimed: the sum of their claims' amounts. */
+  /** What a person has claimed: the sum of their OPEN and SETTLED claims' amounts. */
   protected claimed(personId: number): string {
     return money(this.claimedCents(personId));
   }
 
   private claimedCents(personId: number): number {
-    return this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0);
+    return this.claimsOf(personId).filter(counts).reduce((sum, c) => sum + cents(c.amount), 0);
   }
 
   /** The rate for a grade (a two-decimal percent), or null when the grade has none. */
@@ -168,7 +168,7 @@ export class People {
     this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade), rate]);
   }
 
-  /** A claim added (listed first, as the newest) or saved (in its place). */
+  /** A claim added (listed first, as the newest) or saved or moved (in its place). */
   protected claimSaved(claim: ClaimView): void {
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],

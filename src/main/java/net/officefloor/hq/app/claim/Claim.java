@@ -2,6 +2,8 @@ package net.officefloor.hq.app.claim;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -9,7 +11,10 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A claim a person on a sheet makes: an amount (0.00 or more, two decimals), a date and a note. */
+/**
+ * A claim a person on a sheet makes: an amount (0.00 or more, two decimals), a date, a note and a
+ * status (DRAFT when added).
+ */
 @Entity
 @Table(name = "claim")
 public class Claim {
@@ -32,6 +37,10 @@ public class Claim {
 
     @Column(name = "note", nullable = false)
     private String note;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private ClaimStatus status = ClaimStatus.DRAFT;
 
     protected Claim() {
     }
@@ -66,6 +75,15 @@ public class Claim {
 
     public String getNote() {
         return note;
+    }
+
+    public ClaimStatus getStatus() {
+        return status;
+    }
+
+    /** Move the claim to a new status; the caller checks the move is allowed. */
+    public void become(ClaimStatus status) {
+        this.status = status;
     }
 
     /** Change the claim's amount, date and note. */

@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,11 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** What the screen is told about a claim; the amount with two decimals. */
-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote());
+                    claim.getDate(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -76,5 +75,32 @@ public class ClaimController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.edit(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()), form.date(), form.note()));
+    }
+
+    /** Open a DRAFT claim. */
+    @PostMapping("/claims/{claimId}/open")
+    public ClaimView open(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.OPEN));
+    }
+
+    /** Settle an OPEN claim. */
+    @PostMapping("/claims/{claimId}/settle")
+    public ClaimView settle(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.SETTLED));
+    }
+
+    /** Void a DRAFT or OPEN claim. */
+    @PostMapping("/claims/{claimId}/void")
+    public ClaimView voidClaim(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.VOID));
     }
 }

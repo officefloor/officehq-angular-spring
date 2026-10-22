@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The claims people on a sheet make: listed, added and edited. */
+/** The claims people on a sheet make: listed, added, edited and moved through their statuses. */
 @Service
 public class ClaimService {
 
@@ -48,12 +48,39 @@ public class ClaimService {
     /** Change a claim's amount, date and note; with no date it keeps its own. */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
-        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        Claim claim = claim(sheetId, claimId);
         claim.change(money(amount), date != null ? date : claim.getDate(), clean(note));
         Claim saved = claims.saveAndFlush(claim);
         audited("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
         return saved;
+    }
+
+    /**
+     * Move a claim to a new status, recording the event; refused (and nothing written) when the
+     * claim's current status does not allow the move.
+     */
+    @Transactional
+    public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
+        Claim claim = claim(sheetId, claimId);
+        if (!claim.getStatus().canBecome(next)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot become " + next + ".");
+        }
+        claim.become(next);
+        Claim saved = claims.saveAndFlush(claim);
+        String event = switch (next) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException();
+        };
+        audited(event, sheetId, user, person(sheetId, saved.getPersonId()), saved);
+        return saved;
+    }
+
+    private Claim claim(String sheetId, long claimId) {
+        return claims.findByIdAndSheetId(claimId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
     }
 
     private Person person(String sheetId, long personId) {

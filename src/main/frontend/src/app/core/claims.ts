@@ -2,6 +2,12 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
+/** DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT or OPEN → VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** A move of a claim's status: open, settle or void. */
+export type ClaimAction = 'open' | 'settle' | 'void';
+
 export interface ClaimView {
   id: number;
   personId: number;
@@ -10,6 +16,12 @@ export interface ClaimView {
   /** yyyy-mm-dd */
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+/** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED claims do. */
+export function counts(claim: ClaimView): boolean {
+  return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
 export interface ClaimForm {
@@ -49,6 +61,11 @@ export class ClaimsApi {
 
   edit(sheet: string, id: number, form: ClaimForm): Promise<ClaimView> {
     return firstValueFrom(this.http.put<ClaimView>(`${this.url(sheet)}/claims/${id}`, form));
+  }
+
+  /** Move a claim's status; refused (409) when its status does not allow the move. */
+  act(sheet: string, id: number, action: ClaimAction): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, null));
   }
 
   private url(sheet: string): string {
