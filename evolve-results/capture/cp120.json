@@ -1,0 +1,72 @@
+{
+  "checkpoint": 120,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp120_hold-pauses-cuts",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    115,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp115_nested-pools.spec.ts::nested pools",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "A person with a hold in force on the sheet's today (a hold whose dates include today) gets no cut\nfrom any pool, and their share is spread over the other members with a cut in proportion to those\nmembers' shares: each member's cut is the pot times their share divided by the shares of the members\nwith a cut, added up, rounded half to even, with the remainder to the largest share as before. The\npool's total share and balance are unchanged by the hold.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person with a hold in force on the sheet's today (a hold whose dates include today) gets no cut\nfrom any pool, and their share is spread over the other members with a cut in proportion to those\nmembers' shares: each member's cut is the pot times their share divided by the shares of the members\nwith a cut, added up, rounded half to even, with the remainder to the largest share as before. The\npool's total share and balance are unchanged by the hold.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "dffc0320b6d378f56fbbe5d951770fa451e3708d",
+  "reset_sha": "",
+  "preagent_sha": "258d77c06051ecda0b989f65212a336b79f685cc",
+  "prev_sha": "258d77c06051ecda0b989f65212a336b79f685cc",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1436186,
+    "input_tokens": 64,
+    "output_tokens": 13883,
+    "cache_read_tokens": 1568633,
+    "cache_creation_tokens": 68997,
+    "num_turns": 33,
+    "duration_ms": 272045,
+    "duration_api_ms": 163526,
+    "model": "claude-opus-5-5",
+    "session_id": "bbd4b52d-a884-4510-ab52-701f9703d64b",
+    "stop_reason": "success",
+    "result_text": "I made the change, but **only 3 of the 4 tests in `bin/e2e` pass**. Scenario 3 still fails, on a claim reassignment rather than on anything to do with pools or holds.\n\n**The change:** pool cuts are worked out in the front end, so the whole change is in `src/main/frontend/src/app/features/pools/pools.ts`.\n- A person whose hold covers the sheet's today now gets a cut of 0, like a retired person already did.\n- Everyone else with a cut gets the pot \u00d7 their share \u00f7 the shares of the members with a cut, rounded half to even. The leftover cents go to the member with a cut who has the largest share (the earliest added on a tie), so a held person never gets the leftover.\n- A held person's share still counts toward the pool's total share and its \"balanced\" check, so neither changes.\n- If every member is held or retired, everyone's cut is 0.00.\n- The person's cut total and the sheet's cut total come from the same figures, so they follow automatically. No server or database changes were needed: the server already stores holds and never works out cuts.\n\n**Test results:**\n- Passing: the main \"hold pauses cuts\" test and scenarios 1 and 2. Between them they cover a hold that ended before today, a hold covering today (pot 10.00 split 7.14 / 0.00 / 2.86), two people held at once, and changing today.\n- Failing: scenario 3, at `e2e/specs/acceptance.spec.ts:981`. The test expects reassigning Ben's DRAFT claim (dated 2026-03-05, due by 2026-03-27) to Cam to be refused. The app allows it and writes `CLAIM_REASSIGNED`.\n\nNone of the server's existing refusal rules for a reassignment applies here, and my change only touches pool cuts, so this fails no matter what I did. I haven't seen it fail on the original code, though, because there's no git history to go back to.\n\nThe test doesn't show which rule should refuse it. Any of these would make it pass:\n1. **Use the new person's terms:** a reassigned claim gets its due-by worked out again from the new person's terms. Cam has 3-day terms, giving 2026-03-10, which is inside the closed period P1, so it's refused.\n2. **Statement date:** refuse a claim dated before the new person's latest statement (Cam's was 2026-03-10).\n3. **Retired person:** refuse moving a claim off a person who retired before its date (Ben retired 2026-02-25).\n\nEach of these changes how reassigning works across the app, which this request didn't ask for, so I didn't guess. If you tell me which rule is intended, I'll add it and re-run `bin/e2e`. Option 1 seems most likely to me.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1436186,
+        "num_turns": 33,
+        "duration_ms": 272045,
+        "duration_api_ms": 163526,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp120.agent.jsonl",
+  "agent_diff_file": "cp120.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
