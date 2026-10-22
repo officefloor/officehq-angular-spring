@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/pools")
@@ -35,11 +36,14 @@ public class PoolController {
         }
     }
 
-    /** A pool's member: the person, their name, and their share percent with two decimals. */
-    public record MemberView(long personId, String name, String share) {
+    /**
+     * A pool's member: the person or the member pool (the other null), its name, and its share percent with
+     * two decimals.
+     */
+    public record MemberView(Long personId, Long poolId, String name, String share) {
 
         static MemberView of(PoolService.Member member) {
-            return new MemberView(member.member().getPersonId(), member.name(),
+            return new MemberView(member.member().getPersonId(), member.member().getMemberPoolId(), member.name(),
                     member.member().getShare().toPlainString());
         }
     }
@@ -48,8 +52,11 @@ public class PoolController {
     public record PoolForm(@NotNull @Size(max = 100) String name) {
     }
 
-    /** A member as entered on the pool's row: a person and a share percent with up to two decimals. */
-    public record MemberForm(@NotNull Long personId, @NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String share) {
+    /**
+     * A member as entered on the pool's row: a person or another pool (exactly one of them) and a share
+     * percent with up to two decimals.
+     */
+    public record MemberForm(Long personId, Long poolId, @NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String share) {
     }
 
     private final PoolService service;
@@ -81,6 +88,13 @@ public class PoolController {
             @PathVariable long poolId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid MemberForm form) {
+        if ((form.personId() == null) == (form.poolId() == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a person or a pool.");
+        }
+        if (form.poolId() != null) {
+            return PoolView.of(service.addPoolMember(sheetId, SignedIn.name(user), poolId, form.poolId(),
+                    new BigDecimal(form.share())));
+        }
         return PoolView.of(service.addMember(sheetId, SignedIn.name(user), poolId, form.personId(),
                 new BigDecimal(form.share())));
     }

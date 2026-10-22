@@ -2,6 +2,7 @@ package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -21,10 +22,14 @@ public class PoolService {
 
     private static final BigDecimal MAX_SHARE = new BigDecimal("100.00");
 
+    /** How many pools deep a chain of pools may be, the pool that is a member of none counting as one. */
+    private static final int MAX_DEPTH = 3;
+
     /** A pool with its members in the order they were added, each with the person's name. */
     public record PoolWithMembers(Pool pool, List<Member> members) {
     }
 
+    /** A member with its name: the person's, or the member pool's. */
     public record Member(PoolMember member, String name) {
     }
 
@@ -49,8 +54,10 @@ public class PoolService {
         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, String> names = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Person::getName));
+        Map<Long, String> poolNames = all.stream().collect(Collectors.toMap(Pool::getId, Pool::getName));
         Map<Long, List<Member>> byPool = members.findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList())
-                .stream().map(m -> new Member(m, names.get(m.getPersonId())))
+                .stream().map(m -> new Member(m, m.getMemberPoolId() != null ? poolNames.get(m.getMemberPoolId())
+                        : names.get(m.getPersonId())))
                 .collect(Collectors.groupingBy(m -> m.member().getPoolId()));
         return all.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()))).toList();
     }
@@ -94,5 +101,62 @@ public class PoolService {
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + person.getName() + " share=" + scaled.toPlainString());
         return list(sheetId).stream().filter(p -> p.pool().getId().equals(poolId)).findFirst().orElseThrow();
+    }
+
+    /**
+     * Add another pool on the sheet to a pool with a share percent; refused when the share is bad, the pool
+     * would contain itself through any chain, the member pool is already a member of a pool, or the chain of
+     * pools would be more than three deep.
+     */
+    @Transactional
+    public PoolWithMembers addPoolMember(String sheetId, String user, long poolId, long memberPoolId,
+            BigDecimal share) {
+        if (share.scale() > 2 || share.signum() <= 0 || share.compareTo(MAX_SHARE) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A share is more than 0.00 and at most 100.00, with two decimals.");
+        }
+        sheets.lock(sheetId);
+        Pool pool = pools.findBySheetIdAndId(sheetId, poolId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool."));
+        Pool member = pools.findBySheetIdAndId(sheetId, memberPoolId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool."));
+        // Each member pool's parent, and each pool's member pools, across the sheet.
+        List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+        Map<Long, Long> parents = new HashMap<>();
+        for (PoolMember m : members.findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList())) {
+            if (m.getMemberPoolId() != null) parents.put(m.getMemberPoolId(), m.getPoolId());
+        }
+        for (Long up = pool.getId(); up != null; up = parents.get(up)) {
+            if (up.equals(member.getId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "A pool cannot contain itself.");
+            }
+        }
+        if (parents.containsKey(member.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool.");
+        }
+        if (depth(pool.getId(), parents) + height(member.getId(), parents) > MAX_DEPTH) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A chain of pools is at most three deep.");
+        }
+        BigDecimal scaled = share.setScale(2, RoundingMode.UNNECESSARY);
+        members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, scaled));
+        audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+                + " name=" + member.getName() + " share=" + scaled.toPlainString());
+        return list(sheetId).stream().filter(p -> p.pool().getId().equals(poolId)).findFirst().orElseThrow();
+    }
+
+    /** How deep a pool is in its chain: 1 for a pool that is a member of none. */
+    private static int depth(Long poolId, Map<Long, Long> parents) {
+        int depth = 1;
+        for (Long up = parents.get(poolId); up != null; up = parents.get(up)) depth++;
+        return depth;
+    }
+
+    /** How many pools deep the chain below a pool is, the pool itself counting as one. */
+    private static int height(Long poolId, Map<Long, Long> parents) {
+        int height = 1;
+        for (Map.Entry<Long, Long> e : parents.entrySet()) {
+            if (e.getValue().equals(poolId)) height = Math.max(height, 1 + height(e.getKey(), parents));
+        }
+        return height;
     }
 }

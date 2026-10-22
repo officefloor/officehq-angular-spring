@@ -2,9 +2,10 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-/** A pool's member: a person on the sheet and their share percent with two decimals. */
+/** A pool's member: a person on the sheet or another pool (the other null), its name, and its share percent with two decimals. */
 export interface PoolMemberView {
-  personId: number;
+  personId: number | null;
+  poolId: number | null;
   name: string;
   share: string;
 }
@@ -31,9 +32,12 @@ export class PoolsApi {
     return firstValueFrom(this.http.post<PoolView>(this.url(sheet), { name }));
   }
 
-  /** Add a person to a pool with a share; refused when they are in it already or the share is bad. */
-  addMember(sheet: string, poolId: number, personId: number, share: string): Promise<PoolView> {
-    return firstValueFrom(this.http.post<PoolView>(`${this.url(sheet)}/${poolId}/members`, { personId, share }));
+  /**
+   * Add a person, or another pool, to a pool with a share; refused when the person is in it already, the
+   * share is bad, or the member pool is in a pool already, would contain itself, or would be too deep.
+   */
+  addMember(sheet: string, poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<PoolView> {
+    return firstValueFrom(this.http.post<PoolView>(`${this.url(sheet)}/${poolId}/members`, { ...member, share }));
   }
 
   private url(sheet: string): string {
