@@ -254,6 +254,15 @@ export class ClaimsApi {
   }
 
   /**
+   * Re-date an OPEN or PENDING claim; refused (403) when the user is not a steward, and (409) when the
+   * claim is not OPEN or PENDING, either date is inside a closed period, or the new date is after its
+   * person's retirement.
+   */
+  redate(sheet: string, id: number, date: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/redate`, { date }));
+  }
+
+  /**
    * Move a DRAFT, OPEN or PENDING claim to another person on the sheet; refused (403) when the user is
    * not a steward, and (409) when the claim is SETTLED or VOID or cannot go to that person.
    */

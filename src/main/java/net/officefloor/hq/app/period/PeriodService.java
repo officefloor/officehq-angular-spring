@@ -222,6 +222,16 @@ public class PeriodService {
                 .orElseGet(() -> "X-" + sheet.nextUnperiodClaimNumber());
     }
 
+    /** The name of the period a date falls in on the sheet; null when it falls in none. */
+    @Transactional(readOnly = true)
+    public String periodOn(String sheetId, LocalDate date) {
+        return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> p.contains(date))
+                .findFirst()
+                .map(Period::getName)
+                .orElse(null);
+    }
+
     /** Refuse a change to a claim dated inside one of the sheet's closed periods. */
     public void refuseIfClosed(String sheetId, LocalDate date) {
         if (periods.findBySheetIdAndClosedTrue(sheetId).stream().anyMatch(p -> p.contains(date))) {

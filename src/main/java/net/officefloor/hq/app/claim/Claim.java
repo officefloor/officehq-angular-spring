@@ -205,6 +205,11 @@ public class Claim {
         this.statedDue = due;
     }
 
+    /** Move the claim to a new date; its due-by, number and any bound figure are kept. */
+    public void redate(LocalDate date) {
+        this.date = date;
+    }
+
     /** Move the claim to another person on the sheet. */
     public void reassign(Long personId) {
         this.personId = personId;

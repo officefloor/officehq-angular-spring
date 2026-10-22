@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.PeriodService;
@@ -344,6 +345,42 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audited("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber(),
                 " from=" + from.getName() + " to=" + to.getName());
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Re-date an OPEN or PENDING claim: it keeps the due-by fixed when it was added and any figure a
+     * statement bound it to, and belongs to the period its new date falls in. While the sheet numbers by
+     * period and the claim's period changes, it takes the next number of its new period's sequence; its
+     * old number is never given out again. Only a steward re-dates; refused when the claim is not OPEN
+     * or PENDING, when its date or the new date is inside a closed period, or when the new date is after
+     * its person's retirement.
+     */
+    @Transactional
+    public Claim redate(String sheetId, String user, long claimId, LocalDate date) {
+        Sheet sheet = sheets.lock(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-dates a claim.");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-dated; only an OPEN or PENDING one can.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        periods.refuseIfClosed(sheetId, date);
+        Person person = person(sheetId, claim.getPersonId());
+        refuseIfRetired(person, date);
+        LocalDate old = claim.getDate();
+        boolean moves = !Objects.equals(periods.periodOn(sheetId, old), periods.periodOn(sheetId, date));
+        claim.redate(date);
+        if (moves && sheet.numbersByPeriod()) {
+            claim.number(periods.nextClaimNumber(sheetId, date));
+        }
+        Claim saved = claims.saveAndFlush(claim);
+        audited("CLAIM_REDATED", sheetId, user, person, saved, saved.getNumber(), " old=" + old + " new=" + date);
         rollups.audit(sheetId, user, before);
         return saved;
     }

@@ -77,6 +77,10 @@ public class ClaimController {
     public record DeferForm(@NotNull LocalDate until) {
     }
 
+    /** The new date of a re-dated claim. */
+    public record RedateForm(@NotNull LocalDate date) {
+    }
+
     /** The amount split off an OPEN claim: above 0.00, with up to two decimals. */
     public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
     }
@@ -268,5 +272,15 @@ public class ClaimController {
             @RequestBody @Valid SplitForm form) {
         ClaimService.Split split = service.split(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()));
         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+    }
+
+    /** Re-date an OPEN or PENDING claim; only a steward. */
+    @PostMapping("/claims/{claimId}/redate")
+    public ClaimView redate(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid RedateForm form) {
+        return ClaimView.of(service.redate(sheetId, SignedIn.name(user), claimId, form.date()));
     }
 }

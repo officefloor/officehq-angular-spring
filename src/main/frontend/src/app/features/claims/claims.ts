@@ -8,7 +8,7 @@ import { Session, valueOn } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row,
 // moved through their statuses (open, settle, approve, reject with a reason, void, re-settle) from each
-// claim's row, deferred there until a date, split there into two, and reassigned there to another person.
+// claim's row, deferred there until a date, split there into two, re-dated there, and reassigned there to another person.
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
   settle: 'settled',
@@ -143,6 +143,22 @@ const PAST: Record<ClaimAction, string> = {
           >
             Defer
           </button>
+          <label [for]="'claim-date-new-' + c.id">New date</label>
+          <input
+            [id]="'claim-date-new-' + c.id"
+            type="date"
+            data-testid="claim-date-new"
+            [value]="newDates()[c.id] ?? ''"
+            (input)="setNewDate(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-redate"
+            [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date"
+            (click)="redate(c)"
+          >
+            Re-date
+          </button>
           <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -235,6 +251,8 @@ export class Claims {
   protected readonly reassignTo = signal<Record<number, number>>({});
   /** The date entered on each claim's row to defer it until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The new date entered on each claim's row to re-date it to, by claim id. */
+  protected readonly newDates = signal<Record<number, string>>({});
   /** The amount typed on each claim's row to split off it, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
@@ -352,6 +370,44 @@ export class Claims {
             : period?.closed
               ? `Period ${period.name} is closed, so its claims cannot be deferred.`
               : 'The claim could not be deferred.',
+      });
+    }
+  }
+
+  /** Enter the new date to re-date a claim to; it clears any error left on the claim's row. */
+  protected setNewDate(id: number, date: string): void {
+    this.newDates.update((dates) => ({ ...dates, [id]: date }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Re-date a claim to the date entered on its row; refused with an error on its row when no date is
+   * entered, when the user is not a steward, when the claim is not OPEN or PENDING, when its date or
+   * the new date is in a closed period, or when the new date is after its person's retirement.
+   */
+  protected async redate(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const date = (this.newDates()[claim.id] ?? '').trim();
+    if (date === '') {
+      this.claimError.set({ id: claim.id, message: 'Enter a new date for the claim.' });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.redate(sheet, claim.id, date));
+      this.newDates.update((dates) => ({ ...dates, [claim.id]: '' }));
+    } catch (e) {
+      const closed = [periodOn(this.periods(), claim.date), periodOn(this.periods(), date)].find((p) => p?.closed);
+      this.claimError.set({
+        id: claim.id,
+        message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can re-date a claim.'
+          : claim.status !== 'OPEN' && claim.status !== 'PENDING'
+            ? `A ${claim.status} claim cannot be re-dated; only an OPEN or PENDING one can.`
+            : closed
+              ? `Period ${closed.name} is closed, so a claim cannot be re-dated into or out of it.`
+              : 'The claim could not be re-dated to that date.',
       });
     }
   }
