@@ -1,0 +1,229 @@
+diff --git a/src/main/frontend/src/app/core/audit.ts b/src/main/frontend/src/app/core/audit.ts
+new file mode 100644
+index 00000000..1719a68c
+--- /dev/null
++++ b/src/main/frontend/src/app/core/audit.ts
+@@ -0,0 +1,17 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++// The sheet's audit lines, read from the audit file as it holds them.
++@Injectable({ providedIn: 'root' })
++export class AuditApi {
++  private readonly http = inject(HttpClient);
++
++  /** The sheet's audit lines, newest first; with a name, only the lines about that person. */
++  lines(sheet: string, name: string): Promise<string[]> {
++    const params: Record<string, string> = name.trim() ? { name } : {};
++    return firstValueFrom(
++      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit`, { params }),
++    );
++  }
++}
+diff --git a/src/main/frontend/src/app/features/audit/audit.ts b/src/main/frontend/src/app/features/audit/audit.ts
+new file mode 100644
+index 00000000..af8226e6
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/audit.ts
+@@ -0,0 +1,74 @@
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { AuditApi } from '../../core/audit';
++import { Session } from '../../core/session';
++
++// The audit viewer: the sheet's audit lines as the file holds them, newest first, or with a name in
++// the filter only the lines about that person. It reads the file; it records nothing.
++@Component({
++  selector: 'app-audit-viewer',
++  template: `
++    <section aria-labelledby="audit-heading">
++      <h2 id="audit-heading">Audit</h2>
++      <form (submit)="show($event)" aria-label="Show audit lines">
++        <label for="audit-filter">Person</label>
++        <input
++          id="audit-filter"
++          data-testid="audit-filter"
++          [value]="filter()"
++          (input)="filter.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="audit-show">Show</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="audit-error">{{ message }}</p>
++        }
++      </form>
++      <ol aria-label="Audit lines">
++        @for (line of lines(); track $index) {
++          <li data-testid="audit-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class AuditViewer {
++  private readonly session = inject(Session);
++  private readonly api = inject(AuditApi);
++
++  protected readonly filter = signal('');
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  /** Counts the shows asked for, so only the latest one's answer is shown. */
++  private shows = 0;
++
++  constructor() {
++    // A sheet load clears what was shown for the sheet before.
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      untracked(() => {
++        this.shows++;
++        this.lines.set([]);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected async show(event: Event): Promise<void> {
++    event.preventDefault();
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const show = ++this.shows;
++    this.lines.set([]);
++    try {
++      const lines = await this.api.lines(sheet, this.filter());
++      if (show === this.shows) this.lines.set(lines);
++    } catch {
++      if (show === this.shows) this.error.set('The audit lines could not be read.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index d0fcc3d5..5ae31150 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -5,11 +5,12 @@ import { Settings } from '../settings/settings';
+ import { Delegation } from '../delegation/delegation';
+ import { Holidays } from '../holidays/holidays';
+ import { VoidReasonsList } from '../void-reasons/void-reasons';
++import { AuditViewer } from '../audit/audit';
+ 
+ // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
+ @Component({
+   selector: 'app-home',
+-  imports: [People, Settings, Delegation, Holidays, VoidReasonsList],
++  imports: [People, Settings, Delegation, Holidays, VoidReasonsList, AuditViewer],
+   template: `
+     @if (session.user(); as user) {
+       <section aria-label="Session">
+@@ -65,6 +66,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+           <app-holidays />
+           <app-void-reasons />
+           <app-people />
++          <app-audit-viewer />
+         }
+         <p data-testid="home-empty">Nothing here yet.</p>
+       </section>
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index b1f191ab..0d0a701c 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -6,6 +6,12 @@ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++import java.util.Locale;
++import java.util.regex.Matcher;
++import net.officefloor.hq.app.person.Person;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.support.TransactionSynchronization;
+@@ -87,6 +93,43 @@ public class Audit {
+         });
+     }
+ 
++    /** A field naming a person: name=&lt;value&gt; or person=&lt;value&gt;, the value running to the next field. */
++    private static final java.util.regex.Pattern PERSON_FIELD =
++            java.util.regex.Pattern.compile(" (?:name|person)=(.*?)(?= [^ =]+=|$)");
++
++    /**
++     * The sheet's lines exactly as the file holds them, newest first. With a name (not blank), only
++     * the lines carrying name=&lt;it&gt; or person=&lt;it&gt;, compared as names are compared.
++     */
++    public synchronized List<String> linesOf(String sheetId, String name) {
++        List<String> lines;
++        try {
++            lines = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
++        } catch (IOException e) {
++            throw new UncheckedIOException(e);
++        }
++        String sheetField = " sheet=" + sheetId + " ";
++        String key = name == null || name.isBlank() ? null : Person.keyOf(name);
++        List<String> shown = new ArrayList<>();
++        for (String line : lines) {
++            if (line.contains(sheetField) && (key == null || isAbout(line, key))) {
++                shown.add(line);
++            }
++        }
++        Collections.reverse(shown);
++        return shown;
++    }
++
++    private static boolean isAbout(String line, String key) {
++        Matcher field = PERSON_FIELD.matcher(line);
++        while (field.find()) {
++            if (Person.keyOf(field.group(1)).equals(key)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/AuditController.java b/src/main/java/net/officefloor/hq/app/AuditController.java
+new file mode 100644
+index 00000000..6c2fcb3f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/AuditController.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The audit viewer: the sheet's audit lines as the file holds them, newest first. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/audit")
++@Validated
++public class AuditController {
++
++    private final Audit audit;
++
++    public AuditController(Audit audit) {
++        this.audit = audit;
++    }
++
++    /** The sheet's audit lines, newest first; with a name, only the lines about that person. */
++    @GetMapping
++    public List<String> lines(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestParam(required = false) @Size(max = 200) String name) {
++        return audit.linesOf(sheetId, name);
++    }
++}
