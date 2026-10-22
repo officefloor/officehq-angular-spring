@@ -90,6 +90,8 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
             <th scope="col">On hold</th>
+            <th scope="col">Patrons</th>
+            <th scope="col">Backing</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -115,6 +117,32 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td>
+                <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
+                <label [for]="'person-patron-select-' + p.id">Add patron</label>
+                <select
+                  [id]="'person-patron-select-' + p.id"
+                  data-testid="person-patron-select"
+                  (change)="patronChoices.set(p.id, value($event)); patronError.set(null)"
+                >
+                  <option value="">Choose a person</option>
+                  @for (other of people(); track other.id) {
+                    <option [value]="other.id">{{ other.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-patron-add"
+                  [attr.aria-label]="'Add a patron for ' + p.name"
+                  (click)="addPatron(p)"
+                >
+                  Add
+                </button>
+                @if (patronError()?.id === p.id) {
+                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
+                }
+              </td>
+              <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -253,6 +281,10 @@ export class People {
   protected readonly error = signal<string | null>(null);
   /** The refusal of the last action taken on a person's row, shown on that row. */
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
+  /** The person chosen in each row's patron list, by person id. */
+  protected readonly patronChoices = new Map<number, string>();
+  /** The refusal of the last patron added on a person's row, shown on that row. */
+  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
 
@@ -269,6 +301,8 @@ export class People {
         this.reset();
         this.personError.set(null);
         this.retireDates.clear();
+        this.patronError.set(null);
+        this.patronChoices.clear();
         if (sheet) void this.reload(sheet);
       });
     });
@@ -336,6 +370,52 @@ export class People {
   /** A claim's due in whole cents at its person's grade, with its late charge (see claimDueCents). */
   private dueCents(claim: ClaimView, person: PersonView): number | null {
     return claimDueCents(claim, this.rates(), person.grade, this.floorCents(), this.late());
+  }
+
+  /** A person's patrons' names, sorted, comma and space separated. */
+  protected patronsOf(person: PersonView): string {
+    return this.patrons(person)
+      .map((p) => p.name)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      .join(', ');
+  }
+
+  /** A person's backing: their patrons' due-totals added up, skipping those shown as n/a. */
+  protected backingOf(person: PersonView): string {
+    return money(this.patrons(person).reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0));
+  }
+
+  private patrons(person: PersonView): PersonView[] {
+    return this.people().filter((p) => person.patronIds.includes(p.id));
+  }
+
+  /** Name the person chosen on a person's row as their patron. */
+  protected async addPatron(person: PersonView): Promise<void> {
+    this.patronError.set(null);
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const patronId = Number(this.patronChoices.get(person.id) ?? '');
+    const refuse = (message: string) => this.patronError.set({ id: person.id, message });
+    if (!patronId) {
+      refuse('Choose a person to add as a patron.');
+      return;
+    }
+    if (patronId === person.id) {
+      refuse('A person cannot be their own patron.');
+      return;
+    }
+    if (person.patronIds.includes(patronId)) {
+      refuse('That person is already a patron.');
+      return;
+    }
+    try {
+      const saved = await this.api.addPatron(sheet, person.id, patronId);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch {
+      refuse('The patron could not be added.');
+    }
   }
 
   /** The last statement's due-total: n/a when it was, empty when none was taken. */

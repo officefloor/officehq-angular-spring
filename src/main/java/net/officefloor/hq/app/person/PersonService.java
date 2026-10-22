@@ -99,6 +99,28 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * Name another person on the sheet as a patron of this one; refused for the person themselves and
+     * for someone already their patron.
+     */
+    @Transactional
+    public Person addPatron(String sheetId, String user, long personId, long patronId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        Person patron = people.findByIdAndSheetId(patronId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such patron on this sheet."));
+        if (person.getId().equals(patron.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A person cannot be their own patron.");
+        }
+        if (!person.addPatron(patron.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is already a patron.");
+        }
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " patron=" + patron.getName());
+        return saved;
+    }
+
     /** Record the change to the person once it is committed. */
     private void audited(String event, String sheetId, String user, Person person) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user

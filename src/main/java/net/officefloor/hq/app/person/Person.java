@@ -1,15 +1,22 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
 /**
@@ -60,6 +67,12 @@ public class Person {
     /** Whether the person is on hold: their OPEN claims count in no live total. */
     @Column(name = "held", nullable = false)
     private boolean held;
+
+    /** The ids of the other people on the sheet the person has named as their patrons. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_patron", joinColumns = @JoinColumn(name = "person_id"))
+    @Column(name = "patron_id", nullable = false)
+    private Set<Long> patronIds = new HashSet<>();
 
     protected Person() {
     }
@@ -157,5 +170,14 @@ public class Person {
         this.statementCount++;
         this.statementTotal = total;
         this.statementDate = date;
+    }
+
+    public Set<Long> getPatronIds() {
+        return Collections.unmodifiableSet(patronIds);
+    }
+
+    /** Name another person as a patron; false when they already are one. */
+    public boolean addPatron(Long patronId) {
+        return patronIds.add(patronId);
     }
 }

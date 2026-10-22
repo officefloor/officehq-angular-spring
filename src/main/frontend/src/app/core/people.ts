@@ -22,6 +22,8 @@ export interface PersonView {
   retiredFrom: string | null;
   /** Whether the person is on hold: their OPEN claims count in no live total. */
   held: boolean;
+  /** The ids of the other people on the sheet the person has named as their patrons. */
+  patronIds: number[];
 }
 
 /** A statement taken: the person as stated and their claims, newest first. */
@@ -68,6 +70,11 @@ export class PeopleApi {
   /** Put a person on hold, or take them off it. */
   hold(sheet: string, id: number, held: boolean): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/${held ? 'hold' : 'release'}`, null));
+  }
+
+  /** Name another person on the sheet as a patron of this one. */
+  addPatron(sheet: string, id: number, patronId: number): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/patrons`, { patronId }));
   }
 
   private url(sheet: string): string {
