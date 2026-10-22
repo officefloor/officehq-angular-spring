@@ -31,17 +31,19 @@ public class PeriodController {
     /**
      * What the screen is told about a period: its name, its inclusive from and to dates, whether it
      * is closed, the due-total fixed when it was closed (null while open), and each person's due-total
-     * for it fixed then, by person id (empty while open).
+     * for it fixed then, by person id (empty while open), and whether it is soft-closed (its figures
+     * fixed as on a close, while not closed).
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal, Map<Long, String> personTotals) {
+            String closedTotal, Map<Long, String> personTotals, boolean softClosed) {
 
         static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
                     period.getPersonTotals().entrySet().stream()
-                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())));
+                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
+                    period.isSoftClosed());
         }
     }
 
@@ -95,6 +97,15 @@ public class PeriodController {
             @PathVariable long periodId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return PeriodView.of(service.close(sheetId, SignedIn.name(user), periodId));
+    }
+
+    /** Soft-close a period, fixing its figures while its claims stay open to change. */
+    @PostMapping("/{periodId}/soft-close")
+    public PeriodView softClose(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PeriodView.of(service.softClose(sheetId, SignedIn.name(user), periodId));
     }
 
     /** Reopen a closed period, making its due-total live again; a steward only. */

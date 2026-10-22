@@ -6,7 +6,8 @@ import { Session } from '../../core/session';
 // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
 // and one form to add a period (a unique name and inclusive from and to dates, overlapping no other).
 // Its due-total is the sum of the people's figures for it. A period can be closed: each person's figure
-// is then the one fixed at closing. A permitted role (a steward by default) can reopen a
+// is then the one fixed at closing. It can instead be soft-closed: the figures are fixed the same way
+// but its claims can still change; a soft-closed period can then be closed or reopened. A permitted role (a steward by default) can reopen a
 // closed period, making its due-total live again. A second form generates a period per calendar month
 // over a range of dates, named yyyy-mm, leaving out months whose name is taken or that overlap a period.
 @Component({
@@ -86,7 +87,7 @@ import { Session } from '../../core/session';
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 @if (!p.closed) {
                   <button
@@ -96,6 +97,14 @@ import { Session } from '../../core/session';
                     (click)="close(p)"
                   >
                     Close
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="period-soft-close"
+                    [attr.aria-label]="'Soft-close ' + p.name"
+                    (click)="softClose(p)"
+                  >
+                    Soft-close
                   </button>
                 }
                 <button
@@ -164,6 +173,24 @@ export class Periods {
           e instanceof HttpErrorResponse && e.status === 403
             ? 'Your role is not allowed to close a period.'
             : 'The period could not be closed.',
+      });
+    }
+  }
+
+  /** Soft-close a period; a refusal is shown on its row. */
+  protected async softClose(period: PeriodView): Promise<void> {
+    this.periodError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      this.closed.emit(await this.api.softClose(sheet, period.id));
+    } catch (e) {
+      this.periodError.set({
+        id: period.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Your role is not allowed to close a period.'
+            : 'The period could not be soft-closed.',
       });
     }
   }

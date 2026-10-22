@@ -19,6 +19,16 @@ export interface PeriodView {
    * empty while open. A person added since has none: 0.00.
    */
   personTotals: Record<string, string>;
+  /**
+   * Soft-closed: the due-total and each person's figure are fixed as on a close, but claims dated in
+   * the period can still be added and changed. A soft-closed period is not closed.
+   */
+  softClosed: boolean;
+}
+
+/** Whether a period's figures are fixed: it is closed or soft-closed. */
+export function fixed(period: PeriodView): boolean {
+  return period.closed || period.softClosed;
 }
 
 export interface PeriodForm {
@@ -64,7 +74,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/close`, {}));
   }
 
-  /** Reopen a closed period, making its due-total live again; refused for anyone but a steward. */
+  /** Soft-close a period, fixing its due-total; refused when it is already closed or soft-closed. */
+  softClose(sheet: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/soft-close`, {}));
+  }
+
+  /** Reopen a closed or soft-closed period, making its due-total live again; refused for anyone but a steward. */
   reopen(sheet: string, id: number): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/reopen`, {}));
   }

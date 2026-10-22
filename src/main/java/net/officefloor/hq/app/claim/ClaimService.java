@@ -59,7 +59,8 @@ public class ClaimService {
     }
 
     /**
-     * Add a claim for a person on the sheet; with no date it is dated the sheet's today. Refused when
+     * Add a claim for a person on the sheet; with no date it is dated the sheet's today. One dated in a
+     * soft-closed period is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
      * it is dated inside a closed period, or when it is a correction that does not name a SETTLED claim
      * of the same person (see {@link #refuseUnlessCorrects}).
      */
@@ -73,9 +74,16 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, dated);
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, dueBy, clean(note), corrects));
+        Claim added = new Claim(sheetId, personId, money(amount), dated, dueBy, clean(note), corrects);
+        if (periods.softClosedOn(sheetId, dated)) {
+            added.markLateEntry();
+        }
+        Claim claim = claims.saveAndFlush(added);
         claim = logged(claim, user, person);
         audited("CLAIM_ADDED", sheetId, user, person, claim);
+        if (claim.isLateEntry()) {
+            audited("LATE_ENTRY", sheetId, user, person, claim);
+        }
         rollups.audit(sheetId, user, before);
         return claim;
     }

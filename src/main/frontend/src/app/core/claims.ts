@@ -57,6 +57,8 @@ export interface ClaimView {
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null when none does. */
   lockedBy: string | null;
+  /** Whether the claim was added while the period it is dated in was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** What a split did: the original claim, as it is now, and the new claim split off it. */

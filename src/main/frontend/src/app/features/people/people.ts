@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView, gradeOn, heldOn } from '../../core/people';
-import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
+import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
 import { Session, valueOn } from '../../core/session';
@@ -391,7 +391,7 @@ export class People {
    * Each person's due-total for each period, in whole cents, by period id then person id. While the
    * period is open it is live: the sum of the due figures, as shown now, of the person's claims dated in
    * it that were OPEN, PENDING or SETTLED at the end of its last day, each at the grade in force on its
-   * date (a claim with no figure adds nothing), leaving out those held or deferred (see countsInPeriod). Once closed it is the figure fixed at closing,
+   * date (a claim with no figure adds nothing), leaving out those held or deferred (see countsInPeriod). Once closed or soft-closed it is the figure fixed then,
    * 0 for a person added since.
    */
   private readonly personPeriodCents = computed(() => {
@@ -399,7 +399,7 @@ export class People {
       this.periods().map((period) => [
         period.id,
         new Map(
-          this.people().map((p) => [p.id, period.closed ? cents(period.personTotals[p.id] ?? '0.00') : 0]),
+          this.people().map((p) => [p.id, fixed(period) ? cents(period.personTotals[p.id] ?? '0.00') : 0]),
         ),
       ]),
     );
@@ -407,7 +407,7 @@ export class People {
     for (const c of this.claims()) {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (!period || period.closed || !person || !countsInPeriod(c, person, this.today(), period)) continue;
+      if (!period || fixed(period) || !person || !countsInPeriod(c, person, this.today(), period)) continue;
       const row = figures.get(period.id)!;
       row.set(person.id, row.get(person.id)! + (this.dueCents(c, person) ?? 0));
     }
