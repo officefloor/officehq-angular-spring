@@ -938,6 +938,8 @@ export class Claims {
     event.preventDefault();
     if (this.busy) return;
     this.error.set(null);
+    // submitting the form is the next action on its claims, so an error left on a claim's row goes
+    this.claimError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const amount = this.amount().trim();
