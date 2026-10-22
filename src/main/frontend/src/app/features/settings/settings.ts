@@ -1,8 +1,8 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
-import { FLOOR, LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
+import { FLOOR, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the floor, the terms, the late percent and the policy date) and the roles user names have on it (clerk by default,
+// The sheet's settings (the clerk limit, the floor, the terms, the late percent, the policy date and period numbering from) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form.
 @Component({
   selector: 'app-settings',
@@ -49,6 +49,13 @@ import { Session } from '../../core/session';
           [value]="policyDateInput()"
           (input)="policyDateInput.set(value($event)); policyDateEdited = true; settingsError.set(null)"
         />
+        <label for="setting-period-numbering-from">Period numbering from (yyyy-mm-dd; empty: off)</label>
+        <input
+          id="setting-period-numbering-from"
+          data-testid="setting-period-numbering-from"
+          [value]="periodNumberingFromInput()"
+          (input)="periodNumberingFromInput.set(value($event)); periodNumberingFromEdited = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -59,6 +66,7 @@ import { Session } from '../../core/session';
       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
+      <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
       <h3>Roles</h3>
       <form (submit)="saveRole($event)" aria-label="Set a role">
         <label for="role-form-user">User</label>
@@ -112,12 +120,15 @@ export class Settings {
   protected readonly termsInput = signal('');
   protected readonly latePctInput = signal('');
   protected readonly policyDateInput = signal('');
+  protected readonly periodNumberingFrom = signal('');
+  protected readonly periodNumberingFromInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
   protected floorEdited = false;
   protected termsEdited = false;
   protected latePctEdited = false;
   protected policyDateEdited = false;
+  protected periodNumberingFromEdited = false;
   protected readonly roleUser = signal('');
   protected readonly roleName = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -134,6 +145,7 @@ export class Settings {
       const loads = this.session.loads();
       untracked(() => {
         this.clerkLimit.set(null);
+        this.periodNumberingFrom.set('');
         this.roles.set([]);
         this.settingsError.set(null);
         this.roleError.set(null);
@@ -157,12 +169,16 @@ export class Settings {
     const terms = this.termsInput().trim();
     const latePct = this.latePctInput().trim();
     const policyDate = this.policyDateInput().trim();
+    const periodNumberingFrom = this.periodNumberingFromInput().trim();
     const saveLimit =
-      this.limitEdited || (!this.floorEdited && !this.termsEdited && !this.latePctEdited && !this.policyDateEdited);
+      this.limitEdited ||
+      (!this.floorEdited && !this.termsEdited && !this.latePctEdited && !this.policyDateEdited &&
+        !this.periodNumberingFromEdited);
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
+    const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     if (saveLimit && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it empty for no limit.');
       return;
@@ -183,12 +199,17 @@ export class Settings {
       this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it empty for the sheet\'s today.');
       return;
     }
+    if (savePeriodNumberingFrom && !PERIOD_NUMBERING_FROM.test(periodNumberingFrom)) {
+      this.settingsError.set('Type the date period numbering is from as yyyy-mm-dd, or leave it empty for off.');
+      return;
+    }
     // What was typed is taken now: anything typed meanwhile is saved by the next submit.
     if (saveLimit) this.limitEdited = false;
     if (saveFloor) this.floorEdited = false;
     if (saveTerms) this.termsEdited = false;
     if (saveLatePct) this.latePctEdited = false;
     if (savePolicyDate) this.policyDateEdited = false;
+    if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
     const write = async () => {
       try {
         if (saveLimit) {
@@ -211,6 +232,11 @@ export class Settings {
           const view = await this.api.setPolicyDate(sheet, policyDate);
           this.session.policyDate.set(view.policyDate ?? '');
           if (!this.policyDateEdited) this.policyDateInput.set(view.policyDate ?? '');
+        }
+        if (savePeriodNumberingFrom) {
+          const view = await this.api.setPeriodNumberingFrom(sheet, periodNumberingFrom);
+          this.periodNumberingFrom.set(view.periodNumberingFrom ?? '');
+          if (!this.periodNumberingFromEdited) this.periodNumberingFromInput.set(view.periodNumberingFrom ?? '');
         }
       } catch {
         this.settingsError.set('The settings could not be saved.');
@@ -263,6 +289,10 @@ export class Settings {
       // The policy date's input starts at the date in force, so clearing it is a change.
       this.policyDateInput.set(settings.policyDate ?? '');
       this.policyDateEdited = false;
+      // Period numbering from starts at the date in force too, so clearing it is a change.
+      this.periodNumberingFrom.set(settings.periodNumberingFrom ?? '');
+      this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
+      this.periodNumberingFromEdited = false;
       this.roles.set(roles);
     }
   }

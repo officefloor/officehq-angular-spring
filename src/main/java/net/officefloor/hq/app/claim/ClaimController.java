@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -33,7 +32,7 @@ public class ClaimController {
      * corrects (null unless it is a correction).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Integer number, String settledDue, String openedBy, boolean stated, String statedDue, Integer corrects) {
+            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -54,7 +53,7 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 500) String note,
-            @Positive Integer corrects) {
+            @Pattern(regexp = "[1-9]\\d{0,8}|\\S.{0,200}-[1-9]\\d{0,8}") String corrects) {
     }
 
     /** The claims selected to be opened together. */

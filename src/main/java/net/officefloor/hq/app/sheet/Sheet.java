@@ -48,6 +48,14 @@ public class Sheet {
     @Column(name = "policy_date")
     private LocalDate policyDate;
 
+    /** Period numbering from: a claim opened on or after it is numbered within its period; null for off. */
+    @Column(name = "period_numbering_from")
+    private LocalDate periodNumberingFrom;
+
+    /** The last X-number given to a claim in no period while period numbering is on; 0 before any. */
+    @Column(name = "last_unperiod_claim_number", nullable = false)
+    private int lastUnperiodClaimNumber;
+
     protected Sheet() {
     }
 
@@ -125,6 +133,25 @@ public class Sheet {
     public RoundingMode roundingOn(LocalDate date) {
         LocalDate policy = policyDate == null ? today : policyDate;
         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+    }
+
+    /** The period-numbering-from date as set; null when blank (off). */
+    public LocalDate getPeriodNumberingFrom() {
+        return periodNumberingFrom;
+    }
+
+    public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
+        this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    /** Whether a claim opened now is numbered within its period: the setting is a date on or before today. */
+    public boolean numbersByPeriod() {
+        return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
+    }
+
+    /** Give out the sheet's next number for a claim in no period: 1 for the first, then 2, and so on. */
+    public int nextUnperiodClaimNumber() {
+        return ++lastUnperiodClaimNumber;
     }
 
     /** Give out the sheet's next claim number: 1 for the first, then 2, and so on. */

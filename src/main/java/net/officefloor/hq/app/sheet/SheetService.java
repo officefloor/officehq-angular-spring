@@ -39,16 +39,6 @@ public class SheetService {
     }
 
     /**
-     * Give out the sheet's next claim number, holding the sheet's lock until the caller's
-     * transaction ends so two claims opened at once get different numbers.
-     */
-    @Transactional
-    public int nextClaimNumber(String id) {
-        load(id);
-        return sheets.findLockedById(id).orElseThrow().nextClaimNumber();
-    }
-
-    /**
      * Take the sheet's lock, holding it until the caller's transaction ends, so changes that check
      * the sheet's other rows before writing are made one at a time.
      */
@@ -134,6 +124,17 @@ public class SheetService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=policy-date value="
                 + (saved.getPolicyDate() == null ? "" : saved.getPolicyDate().toString()));
         rollups.audit(id, user, before);
+        return saved;
+    }
+
+    /** Change the sheet's period-numbering-from date (null: off), auditing the change. */
+    @Transactional
+    public Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {
+        Sheet sheet = lock(id);
+        sheet.setPeriodNumberingFrom(from);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=period-numbering-from value="
+                + (saved.getPeriodNumberingFrom() == null ? "" : saved.getPeriodNumberingFrom().toString()));
         return saved;
     }
 }

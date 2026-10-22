@@ -203,7 +203,7 @@ export class Claims {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
-    this.corrects.set(claim.corrects === null ? '' : String(claim.corrects));
+    this.corrects.set(claim.corrects ?? '');
     this.error.set(null);
   }
 
@@ -253,7 +253,7 @@ export class Claims {
       this.error.set('Type the number of the claim it corrects.');
       return;
     }
-    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : Number(corrects) };
+    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects };
     const id = this.editing();
     this.busy = true;
     try {

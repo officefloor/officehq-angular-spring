@@ -22,6 +22,8 @@ export interface SettingsView {
   latePct: string;
   /** The policy date (yyyy-mm-dd); null when blank (the sheet's today is then the policy date). */
   policyDate: string | null;
+  /** Period numbering from (yyyy-mm-dd): claims opened on or after it are numbered within their period; null when off. */
+  periodNumberingFrom: string | null;
 }
 
 /** A clerk limit as the form takes it: up to two decimals, or blank for no limit. */
@@ -35,6 +37,9 @@ export const LATE_PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
 /** A policy date as the form takes it: yyyy-mm-dd, or blank for the sheet's today. */
 export const POLICY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
+
+/** A period-numbering-from date as the form takes it: yyyy-mm-dd, or blank for off. */
+export const PERIOD_NUMBERING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
 
 /** Terms as the form takes them: a whole number of days. */
 export const TERMS = /^\d{1,4}$/;
@@ -71,6 +76,11 @@ export class SettingsApi {
   /** Set the policy date; a blank value means the sheet's today. */
   setPolicyDate(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/policy-date`, { value }));
+  }
+
+  /** Set the period-numbering-from date; a blank value turns period numbering off. */
+  setPeriodNumberingFrom(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/period-numbering-from`, { value }));
   }
 
   /** The roles set on the sheet, by user name. */

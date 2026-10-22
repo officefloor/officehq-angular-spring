@@ -44,6 +44,10 @@ public class Period {
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
 
+    /** The last number the period gave a claim opened in it under period numbering; 0 before any. */
+    @Column(name = "last_claim_number", nullable = false)
+    private int lastClaimNumber;
+
     protected Period() {
     }
 
@@ -114,5 +118,10 @@ public class Period {
     /** Whether this period shares any day with the inclusive range {@code from} to {@code to}. */
     public boolean overlaps(LocalDate from, LocalDate to) {
         return !fromDate.isAfter(to) && !toDate.isBefore(from);
+    }
+
+    /** Give out the period's next claim number: 1 for the first, then 2, and so on. */
+    public int nextClaimNumber() {
+        return ++lastClaimNumber;
     }
 }

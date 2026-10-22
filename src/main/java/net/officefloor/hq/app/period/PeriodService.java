@@ -13,6 +13,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -124,6 +125,25 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
         return saved;
+    }
+
+    /**
+     * Give out the number for a claim dated on a date as it is opened, holding the sheet's lock until
+     * the caller's transaction ends. While the sheet numbers by period (see {@link Sheet#numbersByPeriod})
+     * it is the next within the period the date falls in, {@code <period name>-<n>}, or {@code X-<n>}
+     * when it falls in none; otherwise it is the sheet's next sheet-wide number.
+     */
+    @Transactional
+    public String nextClaimNumber(String sheetId, LocalDate date) {
+        Sheet sheet = sheets.lock(sheetId);
+        if (!sheet.numbersByPeriod()) {
+            return String.valueOf(sheet.nextClaimNumber());
+        }
+        return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> p.contains(date))
+                .findFirst()
+                .map(p -> p.getName() + "-" + p.nextClaimNumber())
+                .orElseGet(() -> "X-" + sheet.nextUnperiodClaimNumber());
     }
 
     /** Refuse a change to a claim dated inside one of the sheet's closed periods. */

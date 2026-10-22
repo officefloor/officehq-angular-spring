@@ -45,7 +45,7 @@ public class Claim {
 
     /** The sheet's number given to the claim when opened; null while DRAFT, and kept once VOID. */
     @Column(name = "claim_number")
-    private Integer number;
+    private String number;
 
     /** The due fixed when the claim was settled; null otherwise, or when the grade had no rate then. */
     @Column(name = "settled_due", precision = 14, scale = 2)
@@ -65,13 +65,13 @@ public class Claim {
 
     /** The number of the claim this one corrects; null unless it is a correction. */
     @Column(name = "corrects")
-    private Integer corrects;
+    private String corrects;
 
     protected Claim() {
     }
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -108,7 +108,7 @@ public class Claim {
         return status;
     }
 
-    public Integer getNumber() {
+    public String getNumber() {
         return number;
     }
 
@@ -136,11 +136,11 @@ public class Claim {
     }
 
     /** Give the claim its number when it is opened; it keeps it from then on. */
-    public void number(Integer number) {
+    public void number(String number) {
         this.number = number;
     }
 
-    public Integer getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
@@ -150,7 +150,7 @@ public class Claim {
     }
 
     /** Change the claim's amount, date, note and the number it corrects. */
-    public void change(BigDecimal amount, LocalDate date, String note, Integer corrects) {
+    public void change(BigDecimal amount, LocalDate date, String note, String corrects) {
         this.amount = amount;
         this.date = date;
         this.note = note;

@@ -13,7 +13,7 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
 
     /** The claim of a person on the sheet with a number. */
-    Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, Integer number);
+    Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 }

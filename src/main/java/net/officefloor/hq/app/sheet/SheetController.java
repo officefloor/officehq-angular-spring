@@ -41,13 +41,14 @@ public class SheetController {
 
     /** What the screen is told about the sheet's settings: the clerk limit with two decimals, null for none,
      * the floor with two decimals, the terms in days, the late percent with two decimals, and the policy
-     * date, null for none (the sheet's today). */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate) {
+     * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off). */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+            LocalDate periodNumberingFrom) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(),
-                    sheet.getPolicyDate());
+                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom());
         }
     }
 
@@ -67,8 +68,18 @@ public class SheetController {
     public record LatePctChange(@NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String value) {
     }
 
-    /** A policy date as entered: yyyy-mm-dd, or blank (or null) for none. */
-    public record PolicyDateChange(@Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String value) {
+    /** A date setting as entered: yyyy-mm-dd, or blank (or null) for none. */
+    public record DateChange(@Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String value) {
+
+        /** The date entered; null when blank. */
+        LocalDate date() {
+            String text = value == null ? "" : value.trim();
+            try {
+                return text.isEmpty() ? null : LocalDate.parse(text);
+            } catch (DateTimeParseException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + text);
+            }
+        }
     }
 
     private final SheetService service;
@@ -143,14 +154,16 @@ public class SheetController {
     public SettingsView setPolicyDate(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
-            @RequestBody @Valid PolicyDateChange change) {
-        String value = change.value() == null ? "" : change.value().trim();
-        LocalDate date;
-        try {
-            date = value.isEmpty() ? null : LocalDate.parse(value);
-        } catch (DateTimeParseException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + value);
-        }
-        return SettingsView.of(service.setPolicyDate(id, SignedIn.name(user), date));
+            @RequestBody @Valid DateChange change) {
+        return SettingsView.of(service.setPolicyDate(id, SignedIn.name(user), change.date()));
+    }
+
+    /** Change the sheet's period-numbering-from date; a blank value turns period numbering off. */
+    @PutMapping("/{id}/settings/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid DateChange change) {
+        return SettingsView.of(service.setPeriodNumberingFrom(id, SignedIn.name(user), change.date()));
     }
 }

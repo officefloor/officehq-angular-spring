@@ -17,8 +17,11 @@ export interface ClaimView {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The sheet's number given when the claim was opened; null while DRAFT, and kept once VOID. */
-  number: number | null;
+  /**
+   * The number given when the claim was opened: sheet-wide (e.g. "3"), or under period numbering
+   * within its period (e.g. "P1-2", or "X-1" in no period); null while DRAFT, and kept once VOID.
+   */
+  number: string | null;
   /**
    * The due fixed when the claim was settled, with two decimals; null when it is not fixed (not
    * settled, or the grade had no rate then), so its due follows the current rate.
@@ -31,7 +34,7 @@ export interface ClaimView {
   /** The figure the statement bound the claim to, with two decimals; null when unbound, or when it was n/a. */
   statedDue: string | null;
   /** The number of the SETTLED claim this one corrects; null unless it is a correction. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** Whether a claim is a correction: its amount is below 0.00. It has no floor and no late charge. */
@@ -97,14 +100,14 @@ export interface ClaimForm {
   date: string | null;
   note: string;
   /** The number of the claim a correction corrects; null on any other claim. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** An amount as a claim takes it: up to two decimals, below 0.00 only on a correction. */
 export const AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
 
-/** A claim number as the form takes it. */
-export const CLAIM_NUMBER = /^[1-9]\d{0,8}$/;
+/** A claim number as the form takes it: sheet-wide (e.g. "3") or within a period (e.g. "P1-2", "X-1"). */
+export const CLAIM_NUMBER = /^([1-9]\d{0,8}|\S.{0,200}-[1-9]\d{0,8})$/;
 
 /** A two-decimal amount in whole cents, so sums are exact. */
 export function cents(amount: string): number {

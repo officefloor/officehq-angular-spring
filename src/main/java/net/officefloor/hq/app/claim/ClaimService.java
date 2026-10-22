@@ -58,7 +58,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
@@ -80,7 +80,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Rollups.Rollup before = rollups.take(sheetId);
         sheets.lock(sheetId);
         Claim claim = claim(sheetId, claimId);
@@ -113,11 +113,10 @@ public class ClaimService {
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
-        // Opening takes the sheet's lock before reading the claim, so concurrent opens on the
+        // Every move takes the sheet's lock before reading the claim, so concurrent opens on the
         // sheet are serialised: each sees the other's committed claim and number.
-        Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
-        Rollups.Rollup before = rollups.take(sheetId);
         sheets.lock(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = claim(sheetId, claimId);
         periods.refuseIfClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
@@ -137,7 +136,7 @@ public class ClaimService {
         }
         claim.become(next);
         if (next == ClaimStatus.OPEN) {
-            claim.number(number);
+            claim.number(periods.nextClaimNumber(sheetId, claim.getDate()));
             claim.openedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
@@ -174,7 +173,7 @@ public class ClaimService {
      * Refuse a correction (an amount below 0.00) unless it names, by number, a SETTLED claim of the
      * same person; and refuse naming a claim to correct on any other claim.
      */
-    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private void refuseUnlessCorrects(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -214,7 +213,7 @@ public class ClaimService {
         audited(event, sheetId, user, person, claim, claim.getNumber(), "");
     }
 
-    private void audited(String event, String sheetId, String user, Person person, Claim claim, Integer number,
+    private void audited(String event, String sheetId, String user, Person person, Claim claim, String number,
             String suffix) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
