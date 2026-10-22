@@ -1,0 +1,64 @@
+{
+  "checkpoint": 87,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp87_external-reference",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim may carry an external reference: a text on the claim form (surrounding spaces removed),\nshown on the claim. A reference already used on the sheet, comparing without regard to case, is\nrefused with an error on the form, and nothing is saved; a blank reference is no reference. A\npasted line gives it at the end of its note as ` #<reference>` (a space, a hash, the reference:\nthat part is the reference, not part of the note), checked the same way and refusing the whole\npaste on a repeat, within the paste too. CLAIM_ADDED gains ref=<reference> at its end when one was\ngiven.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim may carry an external reference: a text on the claim form (surrounding spaces removed),\nshown on the claim. A reference already used on the sheet, comparing without regard to case, is\nrefused with an error on the form, and nothing is saved; a blank reference is no reference. A\npasted line gives it at the end of its note as ` #<reference>` (a space, a hash, the reference:\nthat part is the reference, not part of the note), checked the same way and refusing the whole\npaste on a repeat, within the paste too. CLAIM_ADDED gains ref=<reference> at its end when one was\ngiven.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8dd99351bcf2937e5400b0a557ccbcda495841fc",
+  "reset_sha": "",
+  "preagent_sha": "f9ce88fca1471ab1946d82a4340c82436a63c7e7",
+  "prev_sha": "f9ce88fca1471ab1946d82a4340c82436a63c7e7",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9986044000000001,
+    "input_tokens": 48,
+    "output_tokens": 12163,
+    "cache_read_tokens": 1163482,
+    "cache_creation_tokens": 65307,
+    "num_turns": 26,
+    "duration_ms": 233432,
+    "duration_api_ms": 116052,
+    "model": "claude-opus-5-5",
+    "session_id": "d273363d-4d86-4d41-bf03-da0afd0f8e16",
+    "stop_reason": "success",
+    "result_text": "I've added the external reference to claims, and all 4 acceptance tests pass on `bin/e2e`.\n\n**What it does now**\n- The claim form has a Reference field (`claim-form-ref`). The reference shows on each claim row (`claim-ref`), and spaces around it are removed. A blank reference means the claim has none.\n- **Repeats:** a reference already used on the sheet, in any case, is refused with an error on the form and nothing is saved. This holds for both adding and editing; when editing, the claim's own reference doesn't count as a repeat.\n- **Paste:** if a line's note ends in ` #<reference>`, that part becomes the claim's reference and is dropped from the note (`note #INV-4` gives note `note` and reference `INV-4`). If the note starts with `#` (for example `, #inv-4`), there is no space before the hash once the spaces are trimmed. So the `#inv-4` stays in the note and there is no reference, which is what the test expects. A repeated reference, whether already on the sheet or used twice in the same paste, refuses the whole paste and writes nothing to the store or the audit file.\n- **Audit:** `CLAIM_ADDED` ends with ` ref=<reference>` only when a reference was given. `CLAIM_EDITED` is unchanged.\n\n**Changes**\n- **Database:** migration `V54__claim_ref.sql` adds a `ref` column and a lower-case `ref_key` column. A unique index on `(sheet_id, ref_key)` backs up the check in the server.\n- **Server:**\n  - `Claim`, `ClaimRepository` and `ClaimService` now store the reference and run the repeat check.\n  - `ClaimController`'s form and view carry the new `ref` field.\n  - `PasteService` splits the ` #<reference>` off the note.\n- **Front end:** `core/claims.ts` and `features/claims/claims.ts` gained the form field, the row display and the error message. Editing an amount inline on the row keeps the claim's reference.\n\n**Choices I made beyond the request**\n- A claim split off another does not copy its reference, so the reference stays unique on the sheet.\n- Old claims and snapshots have no reference.\n- An edit that sends no reference at all keeps the claim's current one. The claim form always sends the field, so clearing it there still removes the reference.\n\n**One loose end:** the server refuses a repeated reference with the same 409 status it uses for other refusals, such as a closed period. So the form says the reference \"may already be used\" rather than saying so for certain. A distinct status code or showing the server's own message would make it exact; tell me if you want that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9986044000000001,
+        "num_turns": 26,
+        "duration_ms": 233432,
+        "duration_api_ms": 116052,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp87.agent.jsonl",
+  "agent_diff_file": "cp87.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

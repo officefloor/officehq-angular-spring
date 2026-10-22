@@ -1,0 +1,390 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 112e823b..65812f36 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -47,6 +47,8 @@ export interface ClaimView {
+   statedDue: string | null;
+   /** The number of the SETTLED claim this one corrects; null unless it is a correction. */
+   corrects: string | null;
++  /** The claim's external reference; null when it has none. */
++  ref: string | null;
+   /** The claim's status log, oldest first: one line per status it has had. */
+   log: ClaimLogLine[];
+   /** yyyy-mm-dd: the date the claim is deferred until; null when it was never deferred. */
+@@ -196,6 +198,8 @@ export interface ClaimForm {
+   note: string;
+   /** The number of the claim a correction corrects; null on any other claim. */
+   corrects: string | null;
++  /** The claim's external reference, used at most once on the sheet; blank for none. */
++  ref: string;
+ }
+ 
+ /** An amount as a claim takes it: up to two decimals, below 0.00 only on a correction. */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 92731f58..5a429017 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -55,6 +55,13 @@ const PAST: Record<ClaimAction, string> = {
+         [value]="corrects()"
+         (input)="corrects.set(value($event)); typed()"
+       />
++      <label [for]="'claim-form-ref-' + personId()">Reference</label>
++      <input
++        [id]="'claim-form-ref-' + personId()"
++        data-testid="claim-form-ref"
++        [value]="ref()"
++        (input)="ref.set(value($event)); typed()"
++      />
+       <button type="submit" data-testid="claim-form-submit">
+         {{ editing() === null ? 'Add claim' : 'Save claim' }}
+       </button>
+@@ -79,6 +86,7 @@ const PAST: Record<ClaimAction, string> = {
+           <span data-testid="claim-amount">{{ c.amount }}</span>
+           <span data-testid="claim-date">{{ c.date }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
++          <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
+@@ -267,6 +275,8 @@ export class Claims {
+   protected readonly note = signal('');
+   /** The number of the SETTLED claim a correction corrects; empty on any other claim. */
+   protected readonly corrects = signal('');
++  /** The claim's external reference; empty for none. */
++  protected readonly ref = signal('');
+   /** Whose form this is: the signed-in user's, on the sheet, for the person. */
+   private readonly editorKey = computed(() => `${this.session.user()}/${this.session.sheet()}/${this.personId()}`);
+   /** The id of the claim open in the form, or null when the form adds a new claim. */
+@@ -466,6 +476,7 @@ export class Claims {
+     this.date.set(claim.date);
+     this.note.set(claim.note);
+     this.corrects.set(claim.corrects ?? '');
++    this.ref.set(claim.ref ?? '');
+     this.error.set(null);
+   }
+ 
+@@ -581,7 +592,7 @@ export class Claims {
+     const me = this.session.user()?.trim();
+     const period = periodOn(this.periods(), claim.dueBy);
+     try {
+-      const saved = await this.api.edit(sheet, claim.id, { amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? null });
++      const saved = await this.api.edit(sheet, claim.id, { amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? null, ref: claim.ref ?? '' });
+       this.saved.emit(saved);
+       this.inlineAmounts.update((amounts) => ({ ...amounts, [claim.id]: '' }));
+       // the save released this user's lock, so an editor left open on the claim is closed
+@@ -770,6 +781,7 @@ export class Claims {
+     this.date.set('');
+     this.note.set('');
+     this.corrects.set('');
++    this.ref.set('');
+     this.error.set(null);
+   }
+ 
+@@ -789,7 +801,7 @@ export class Claims {
+       this.error.set('Type the number of the claim it corrects.');
+       return;
+     }
+-    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects };
++    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects, ref: this.ref().trim() };
+     const id = this.editing();
+     this.busy = true;
+     try {
+@@ -802,6 +814,8 @@ export class Claims {
+       const verb = id === null ? 'added' : 'saved';
+       this.error.set(e instanceof HttpErrorResponse && e.status === 423
+         ? this.lockedMessage(null)
++        : e instanceof HttpErrorResponse && e.status === 409 && form.ref !== ''
++        ? `The claim could not be ${verb}: the reference ${form.ref} may already be used on this sheet.`
+         : amount.startsWith('-') || corrects !== ''
+         ? `The claim could not be ${verb}: a correction (an amount below 0.00) must name a SETTLED claim of ${this.personName()}, and only a correction names one.`
+         : `The claim could not be ${verb}.`);
+@@ -811,6 +825,7 @@ export class Claims {
+         this.date.set('');
+         this.note.set('');
+         this.corrects.set('');
++        this.ref.set('');
+       }
+     } finally {
+       this.busy = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 90c98265..60bc532b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -90,6 +90,14 @@ public class Claim {
+     @Column(name = "corrects")
+     private String corrects;
+ 
++    /** The claim's external reference; null when it has none. */
++    @Column(name = "ref")
++    private String ref;
++
++    /** The reference as compared on the sheet (lower case); null when it has none. */
++    @Column(name = "ref_key")
++    private String refKey;
++
+     /** The date the claim is deferred until; null when it was never deferred. */
+     @Column(name = "deferred_until")
+     private LocalDate deferredUntil;
+@@ -217,6 +225,21 @@ public class Claim {
+         return corrects;
+     }
+ 
++    public String getRef() {
++        return ref;
++    }
++
++    /** Give the claim an external reference; null for none. */
++    public void refer(String ref) {
++        this.ref = ref;
++        this.refKey = keyOf(ref);
++    }
++
++    /** A reference as compared on a sheet, without regard to case; null for none. */
++    public static String keyOf(String ref) {
++        return ref == null ? null : ref.toLowerCase(java.util.Locale.ROOT);
++    }
++
+     /** Whether the claim is a correction: its amount is below 0.00. */
+     public boolean isCorrection() {
+         return amount.signum() < 0;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 2310fce1..2ad16b71 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -34,11 +34,13 @@ public class ClaimController {
+      * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
+      * log, oldest first, and the date it is deferred until (null when it was never deferred), and its proofs count,
+      * and the number of the claim it was split from (null unless it was split off another), and the user whose open
+-     * editor locks it (null when none does), and the last day it was reminded (null when never).
++     * editor locks it (null when none does), and the last day it was reminded (null when never), and its
++     * external reference (null when it has none).
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
+-            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn) {
++            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
++            String ref) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -47,7 +49,8 @@ public class ClaimController {
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
+-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn());
++                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
++                    claim.getRef());
+         }
+     }
+ 
+@@ -63,13 +66,15 @@ public class ClaimController {
+     /**
+      * A claim's values as entered on the form: the amount is required, with up to two decimals, and
+      * below 0.00 only on a correction, which names the number of the claim it corrects; no date means
+-     * the sheet's today (or, on an edit, the claim's own); the note may be empty.
++     * the sheet's today (or, on an edit, the claim's own); the note may be empty; a blank reference is
++     * none (and on an edit, no reference at all keeps the claim's own).
+      */
+     public record ClaimForm(
+             @NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount,
+             LocalDate date,
+             @Size(max = 500) String note,
+-            @Pattern(regexp = "[1-9]\\d{0,8}|\\S.{0,200}-[1-9]\\d{0,8}") String corrects) {
++            @Pattern(regexp = "[1-9]\\d{0,8}|\\S.{0,200}-[1-9]\\d{0,8}") String corrects,
++            @Size(max = 200) String ref) {
+     }
+ 
+     /** Why a steward rejects a PENDING claim. */
+@@ -144,7 +149,7 @@ public class ClaimController {
+             @PathVariable long personId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid ClaimForm form) {
+-        return ClaimView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects()));
++        return ClaimView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects(), form.ref()));
+     }
+ 
+     /** Add a DRAFT claim per pasted line, in order; nothing is added when any line is refused. */
+@@ -163,7 +168,7 @@ public class ClaimController {
+             @PathVariable long claimId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid ClaimForm form) {
+-        return ClaimView.of(service.edit(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects()));
++        return ClaimView.of(service.edit(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects(), form.ref()));
+     }
+ 
+     /** Open a claim's editor, locking the claim for every other user. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index 17cfda94..a1cee92a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -18,6 +18,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     /** The claim of a person on the sheet with a number. */
+     Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
+ 
++    /** The claim on the sheet with a reference key. */
++    Optional<Claim> findBySheetIdAndRefKey(String sheetId, String refKey);
++
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+ 
+     /** Release every editor's lock on the sheet's claims. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 1d02a2c9..b0e9b0d4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -71,6 +71,17 @@ public class ClaimService {
+     @Transactional
+     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+             String corrects) {
++        return add(sheetId, user, personId, amount, date, note, corrects, null);
++    }
++
++    /**
++     * Add a claim (see {@link #add(String, String, long, BigDecimal, LocalDate, String, String)}) with an
++     * external reference (blank: none); refused when the reference is already used on the sheet, comparing
++     * without regard to case. CLAIM_ADDED ends with ref=&lt;reference&gt; when one was given.
++     */
++    @Transactional
++    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
++            String corrects, String ref) {
+         Rollups.Rollup before = rollups.take(sheetId);
+         Person person = person(sheetId, personId);
+         LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
+@@ -79,13 +90,17 @@ public class ClaimService {
+         periods.refuseIfClosed(sheetId, dueBy);
+         refuseIfRetired(person, dated);
+         refuseUnlessCorrects(sheetId, personId, amount, corrects);
++        String referred = reference(ref);
++        refuseIfReferred(sheetId, referred, null);
+         Claim added = new Claim(sheetId, personId, money(amount), dated, terms, dueBy, clean(note), corrects);
++        added.refer(referred);
+         if (periods.softClosedOn(sheetId, dueBy)) {
+             added.markLateEntry();
+         }
+         Claim claim = claims.saveAndFlush(added);
+         claim = logged(claim, user, person);
+-        audited("CLAIM_ADDED", sheetId, user, person, claim);
++        audited("CLAIM_ADDED", sheetId, user, person, claim, claim.getNumber(),
++                referred != null ? " ref=" + referred : "");
+         if (claim.isLateEntry()) {
+             audited("LATE_ENTRY", sheetId, user, person, claim);
+         }
+@@ -97,11 +112,12 @@ public class ClaimService {
+      * Change a claim's amount, date, note and the number it corrects; with no date it keeps its own. Only a DRAFT claim can be
+      * edited: an OPEN one is changed by voiding it and adding a new one. It keeps the due-by fixed when it
+      * was added, and so its period. Refused when the claim's due-by is inside a closed period, or when it
+-     * would be a correction that does not name a SETTLED claim of the same person.
++     * would be a correction that does not name a SETTLED claim of the same person, or when its external
++     * reference (null: kept as it is; blank: none) is already used by another claim on the sheet.
+      */
+     @Transactional
+     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
+-            String corrects) {
++            String corrects, String ref) {
+         Rollups.Rollup before = rollups.take(sheetId);
+         sheets.lock(sheetId);
+         Claim claim = claim(sheetId, claimId);
+@@ -110,6 +126,9 @@ public class ClaimService {
+             refuseIfRetired(person(sheetId, claim.getPersonId()), date);
+         }
+         refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
++        String referred = ref == null ? claim.getRef() : reference(ref);
++        refuseIfReferred(sheetId, referred, claim.getId());
++        claim.refer(referred);
+         claim.change(money(amount), date != null ? date : claim.getDate(), clean(note), corrects);
+         claim.lockFor(null);
+         Claim saved = claims.saveAndFlush(claim);
+@@ -659,6 +678,24 @@ public class ClaimService {
+         return dues.due(claim, grade);
+     }
+ 
++    /** Refuse a reference already used on the sheet by a claim other than the one given (null: any). */
++    private void refuseIfReferred(String sheetId, String ref, Long self) {
++        if (ref == null) {
++            return;
++        }
++        claims.findBySheetIdAndRefKey(sheetId, Claim.keyOf(ref))
++                .filter((other) -> !other.getId().equals(self))
++                .ifPresent((other) -> {
++                    throw new ResponseStatusException(HttpStatus.CONFLICT,
++                            "The reference " + ref + " is already used on this sheet.");
++                });
++    }
++
++    /** A reference as typed, without surrounding spaces; null when blank. */
++    static String reference(String ref) {
++        return ref == null || ref.isBlank() ? null : ref.trim();
++    }
++
+     private static BigDecimal money(BigDecimal amount) {
+         return amount.setScale(2, RoundingMode.UNNECESSARY);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/PasteService.java b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+index ca136844..d3b8fc0c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/PasteService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+@@ -16,7 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * The paste box: lines of name,amount,date,note each add a DRAFT claim, in order, for the named
+  * person on the sheet. The date may be blank (the sheet's entry date while set, else its today) and the note, which may hold commas,
+- * may be absent. Every line is held to the claim form's rules; it is one change, so when any line is
++ * may be absent. A note ending in " #<reference>" gives the claim that external reference, which is not
++ * part of the note. Every line is held to the claim form's rules; it is one change, so when any line is
+  * refused nothing is added and nothing is recorded.
+  */
+ @Service
+@@ -28,11 +29,14 @@ public class PasteService {
+     /** The longest note the claim form takes. */
+     private static final int NOTE_MAX = 500;
+ 
++    /** The longest reference the claim form takes. */
++    private static final int REF_MAX = 200;
++
+     /** The most lines one paste takes. */
+     static final int LINES_MAX = 1000;
+ 
+     /** A line read from the paste, checked against the form's rules. */
+-    private record Line(Person person, BigDecimal amount, LocalDate date, String note) {
++    private record Line(Person person, BigDecimal amount, LocalDate date, String note, String ref) {
+     }
+ 
+     private final PersonRepository people;
+@@ -61,7 +65,7 @@ public class PasteService {
+         }
+         List<Claim> added = new ArrayList<>();
+         for (Line line : lines) {
+-            added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null));
++            added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null, line.ref()));
+         }
+         return added;
+     }
+@@ -91,10 +95,19 @@ public class PasteService {
+             }
+         }
+         String note = fields.length > 3 ? fields[3].trim() : "";
++        String ref = null;
++        int hash = note.lastIndexOf(" #");
++        if (hash >= 0 && ClaimService.reference(note.substring(hash + 2)) != null) {
++            ref = ClaimService.reference(note.substring(hash + 2));
++            note = note.substring(0, hash).trim();
++        }
++        if (ref != null && ref.length() > REF_MAX) {
++            throw refused("Line " + number + ": the reference is longer than " + REF_MAX + " characters.");
++        }
+         if (note.length() > NOTE_MAX) {
+             throw refused("Line " + number + ": the note is longer than " + NOTE_MAX + " characters.");
+         }
+-        return new Line(person, new BigDecimal(amount), date, note);
++        return new Line(person, new BigDecimal(amount), date, note, ref);
+     }
+ 
+     private static ResponseStatusException refused(String reason) {
+diff --git a/src/main/resources/db/migration/V54__claim_ref.sql b/src/main/resources/db/migration/V54__claim_ref.sql
+new file mode 100644
+index 00000000..92b36484
+--- /dev/null
++++ b/src/main/resources/db/migration/V54__claim_ref.sql
+@@ -0,0 +1,4 @@
++-- A claim's external reference (null: none), and its key (lower case): a reference is used at most once on a sheet.
++ALTER TABLE claim ADD COLUMN ref VARCHAR(200);
++ALTER TABLE claim ADD COLUMN ref_key VARCHAR(200);
++CREATE UNIQUE INDEX claim_sheet_ref ON claim (sheet_id, ref_key);
