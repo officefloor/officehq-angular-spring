@@ -1,0 +1,64 @@
+{
+  "checkpoint": 74,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp74_as-of-view",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An as-of date can be set on the screen (an entry, a set button and a clear button; show the\nas-of date, or nothing). While it is set, every figure and flag on the screen for the signed-in\nuser, in every row, every total, the header, the periods, the rates and the summary, is shown as\nit stood at the end of the last day on or before that date: every change made while the sheet's\ntoday was on or before the as-of date counts, every later change does not, and the as-of date\nstands in for the sheet's today in every figure (overdue, late charges, holds, deferrals,\nretirements, the grade and rate in force). The audit file is unaffected, and every change,\na statement as of a date included, is refused with its usual error while the as-of date is set.\nThe as-of date belongs to the signed-in user's screen; other users are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn as-of date can be set on the screen (an entry, a set button and a clear button; show the\nas-of date, or nothing). While it is set, every figure and flag on the screen for the signed-in\nuser, in every row, every total, the header, the periods, the rates and the summary, is shown as\nit stood at the end of the last day on or before that date: every change made while the sheet's\ntoday was on or before the as-of date counts, every later change does not, and the as-of date\nstands in for the sheet's today in every figure (overdue, late charges, holds, deferrals,\nretirements, the grade and rate in force). The audit file is unaffected, and every change,\na statement as of a date included, is refused with its usual error while the as-of date is set.\nThe as-of date belongs to the signed-in user's screen; other users are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d18eec6ced6937af7437ce1c8b237e54e075ea84",
+  "reset_sha": "",
+  "preagent_sha": "acc8fc14ca781cb543905919cff3b872d28fd1f2",
+  "prev_sha": "acc8fc14ca781cb543905919cff3b872d28fd1f2",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9715467999999996,
+    "input_tokens": 60,
+    "output_tokens": 23669,
+    "cache_read_tokens": 2563834,
+    "cache_creation_tokens": 123145,
+    "num_turns": 32,
+    "duration_ms": 469654,
+    "duration_api_ms": 254015,
+    "model": "claude-opus-5-5",
+    "session_id": "d2bc2583-2b26-476f-b3c9-cd039233d767",
+    "stop_reason": "success",
+    "result_text": "The as-of date is in, and all 4 tests in `bin/e2e` pass.\n\n**How it works:** the app already saves a copy of the sheet each time the sheet's today moves past a date. I extended it to work like this:\n\n- **What's saved:** each copy now also stores the lists the screen reads its figures from: people, claims, rates and periods, plus whether the sheet was archived. This comes from a new migration, `V49__sheet_snapshot_views.sql`.\n- **How the screen asks:** while an as-of date is set, the browser sends it in an `X-As-Of` header on every request. Other users don't send it, so their screens are unaffected.\n- **What the server returns:** if the as-of date is before the sheet's today, it returns the last copy saved on or before that date. If no copy exists that early, it returns an empty sheet. The settings are the ones in force then, and the as-of date is given as the sheet's today. If the as-of date is on or after today, it returns the live data with the as-of date as today.\n- **Figures:** the front end already works out every figure from those lists and the sheet's today. So overdue, late charges, holds, deferrals, retirements, grade and rate all follow the as-of date with no further changes.\n- **Refusals:** a new `AsOfGuard` turns away every change while the date is set, with a 409, except loading the sheet. It acts before the request is handled, so nothing is written to the store or the audit file. Each form then shows its usual error.\n- **Screen:** the as-of entry, set and clear buttons, and the shown date (`asof-date`, `asof-set`, `asof-clear`, `sheet-asof`) are in `home.ts`. Setting or clearing the date reloads the sheet.\n\n**Things to know:**\n- **Fix outside the request:** scenario 2 was failing before it reached any as-of step. If a \"statement as of\" was refused, the date stayed in the row's input, so the next plain statement sent it again and was refused too. The date is now cleared after a refusal as well as after success (`people.ts`).\n- **\"Today\" on screen:** while an as-of date is set, the \"Today\" line shows the as-of date, not the sheet's real today.\n- **Older copies:** copies saved before this change don't have the new lists, so an as-of date that lands on one shows an empty sheet.\n- **Today moved backwards:** if someone moves the sheet's today backwards, the copy picked for an as-of date can include changes made while today was later than that date.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9715467999999996,
+        "num_turns": 32,
+        "duration_ms": 469654,
+        "duration_api_ms": 254015,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp74.agent.jsonl",
+  "agent_diff_file": "cp74.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
