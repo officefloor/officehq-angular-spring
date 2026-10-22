@@ -1,0 +1,464 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index cdb5d645..3b1d1b13 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -13,7 +13,7 @@ export interface RoleView {
+ }
+ 
+ /** The settings that carry a figure: each is saved from a from-date and shown as in force on the sheet's today. */
+-export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'note-threshold';
++export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'proof-threshold-A' | 'proof-threshold-B' | 'proof-threshold-C' | 'note-threshold';
+ 
+ /** A from-date as a dated setting takes it: yyyy-mm-dd, or blank for the sheet's today. */
+ export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
+@@ -56,6 +56,8 @@ export interface SettingsView {
+   graceC: number | null;
+   /** Each grade's grace values by from-date (a value null when none), its starting value (none) first. */
+   graceHistory: Record<string, DatedValue[]>;
++  /** Each grade's proof threshold with two decimals: its claims use it in place of the sheet's; null when none. */
++  gradeProofThresholds: Record<Grade, string | null>;
+   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
+   permissions: Record<PermissionAction, string>;
+ }
+@@ -129,6 +131,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/cap`, { value, from }));
+   }
+ 
++  /** Set a grade's proof threshold from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */
++  setGradeProofThreshold(sheet: string, grade: Grade, value: string, from: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/proof-threshold-${grade}`, { value, from }));
++  }
++
+   /** Set the proof threshold from a date (blank: the sheet's today); a blank value means none. */
+   setProofThreshold(sheet: string, value: string, from: string): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/proof-threshold`, { value, from }));
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 42c0d436..b632dbad 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -5,7 +5,7 @@ import {
+ } from '../../core/settings';
+ import { Session } from '../../core/session';
+ 
+-// The sheet's settings (the clerk limit, the cap, the proof threshold, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles user names have on it (clerk by default,
++// The sheet's settings (the clerk limit, the cap, the proof threshold and each grade's own, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles user names have on it (clerk by default,
+ // or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
+ // sheet's today unless one is typed) and shown as in force on the sheet's today.
+ @Component({
+@@ -63,6 +63,23 @@ import { Session } from '../../core/session';
+           [value]="fromInput()['proof-threshold']"
+           (input)="fromTyped('proof-threshold', value($event))"
+         />
++        @for (g of grades; track g) {
++          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (empty: the sheet's)</label>
++          <input
++            [id]="'setting-proof-threshold-' + g"
++            [attr.data-testid]="'setting-proof-threshold-' + g"
++            inputmode="decimal"
++            [value]="gradeProofThresholdInput()[g]"
++            (input)="gradeProofThresholdTyped(g, value($event))"
++          />
++          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from (yyyy-mm-dd; empty: the sheet's today)</label>
++          <input
++            [id]="'setting-proof-threshold-' + g + '-from'"
++            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
++            [value]="fromInput()[proofKey(g)]"
++            (input)="fromTyped(proofKey(g), value($event))"
++          />
++        }
+         <label for="setting-note-threshold">Note threshold (empty: none)</label>
+         <input
+           id="setting-note-threshold"
+@@ -212,6 +229,10 @@ import { Session } from '../../core/session';
+       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+       <p>Cap in force: <span data-testid="setting-cap-current">{{ session.cap() }}</span></p>
+       <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
++      @for (g of grades; track g) {
++        <p>Proof threshold for grade {{ g }} in force:
++          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThreshold()[g] ?? '' }}</span></p>
++      }
+       <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
+       <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
+       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
+@@ -284,6 +305,9 @@ export class Settings {
+   protected readonly capInput = signal('');
+   protected readonly proofThreshold = signal<string | null>(null);
+   protected readonly proofThresholdInput = signal('');
++  /** Each grade's proof threshold in force; null when it has none (the sheet's applies). */
++  protected readonly gradeProofThreshold = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
++  protected readonly gradeProofThresholdInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
+   protected readonly noteThreshold = signal<string | null>(null);
+   protected readonly noteThresholdInput = signal('');
+   protected readonly floorInput = signal('');
+@@ -315,6 +339,7 @@ export class Settings {
+   protected latePctEdited = false;
+   protected gradeTermsEdited = new Set<Grade>();
+   protected gradeGraceEdited = new Set<Grade>();
++  protected gradeProofThresholdEdited = new Set<Grade>();
+   protected policyDateEdited = false;
+   protected periodNumberingFromEdited = false;
+   protected entryDateEdited = false;
+@@ -339,7 +364,7 @@ export class Settings {
+   private saving: Promise<void> = Promise.resolve();
+ 
+   private static noFroms(): Record<DatedKey, string> {
+-    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'note-threshold': '' };
++    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '' };
+   }
+ 
+   private static noPermissions(): Record<PermissionAction, string> {
+@@ -357,6 +382,7 @@ export class Settings {
+         this.noteThreshold.set(null);
+         this.gradeTerms.set({ A: null, B: null, C: null });
+         this.gradeGrace.set({ A: null, B: null, C: null });
++        this.gradeProofThreshold.set({ A: null, B: null, C: null });
+         this.periodNumberingFrom.set('');
+         this.entryDate.set('');
+         this.graceDays.set('');
+@@ -391,6 +417,7 @@ export class Settings {
+     else if (key === 'floor') this.floorEdited = true;
+     else if (key === 'terms') this.termsEdited = true;
+     else if (key === 'late-pct') this.latePctEdited = true;
++    else if (key.startsWith('proof-threshold-')) this.gradeProofThresholdEdited.add(key.slice('proof-threshold-'.length) as Grade);
+     else if (key.startsWith('grace-')) this.gradeGraceEdited.add(key.slice('grace-'.length) as Grade);
+     else this.gradeTermsEdited.add(key.slice('terms-'.length) as Grade);
+     this.settingsError.set(null);
+@@ -404,6 +431,10 @@ export class Settings {
+     return `grace-${grade}`;
+   }
+ 
++  protected proofKey(grade: Grade): DatedKey {
++    return `proof-threshold-${grade}`;
++  }
++
+   /**
+    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
+    * change, so a save sets it empty.
+@@ -447,6 +478,12 @@ export class Settings {
+     this.settingsError.set(null);
+   }
+ 
++  protected gradeProofThresholdTyped(grade: Grade, value: string): void {
++    this.gradeProofThresholdInput.update((all) => ({ ...all, [grade]: value }));
++    this.gradeProofThresholdEdited.add(grade);
++    this.settingsError.set(null);
++  }
++
+   protected permissionTyped(action: PermissionAction, value: string): void {
+     this.permissionInput.update((all) => ({ ...all, [action]: value }));
+     this.permissionsEdited.add(action);
+@@ -476,7 +513,7 @@ export class Settings {
+     const graceDays = this.graceDaysInput().trim();
+     const saveLimit =
+       this.limitEdited ||
+-      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
++      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+         !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && this.permissionsEdited.size === 0);
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+@@ -487,6 +524,8 @@ export class Settings {
+       .map((g) => ({ grade: g, value: this.gradeTermsInput()[g].trim() }));
+     const saveGradeGrace = GRADES.filter((g) => this.gradeGraceEdited.has(g))
+       .map((g) => ({ grade: g, value: this.gradeGraceInput()[g].trim() }));
++    const saveGradeProofThresholds = GRADES.filter((g) => this.gradeProofThresholdEdited.has(g))
++      .map((g) => ({ grade: g, value: this.gradeProofThresholdInput()[g].trim() }));
+     const saveLatePct = this.latePctEdited;
+     const savePolicyDate = this.policyDateEdited;
+     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
+@@ -500,6 +539,7 @@ export class Settings {
+       ...(saveLimit ? (['clerk-limit'] as const) : []),
+       ...(saveCap ? (['cap'] as const) : []),
+       ...(saveProofThreshold ? (['proof-threshold'] as const) : []),
++      ...saveGradeProofThresholds.map((t) => this.proofKey(t.grade)),
+       ...(saveNoteThreshold ? (['note-threshold'] as const) : []),
+       ...(saveFloor ? (['floor'] as const) : []),
+       ...(saveTerms ? (['terms'] as const) : []),
+@@ -523,6 +563,10 @@ export class Settings {
+       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it empty for none.');
+       return;
+     }
++    if (saveGradeProofThresholds.some((t) => !PROOF_THRESHOLD.test(t.value))) {
++      this.settingsError.set('Type a grade\'s proof threshold of 0.00 or more, with up to two decimals, or leave it empty for the sheet\'s.');
++      return;
++    }
+     if (saveNoteThreshold && !NOTE_THRESHOLD.test(noteThreshold)) {
+       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it empty for none.');
+       return;
+@@ -571,6 +615,7 @@ export class Settings {
+     if (saveLimit) this.limitEdited = false;
+     if (saveCap) this.capEdited = false;
+     if (saveProofThreshold) this.proofThresholdEdited = false;
++    for (const t of saveGradeProofThresholds) this.gradeProofThresholdEdited.delete(t.grade);
+     if (saveNoteThreshold) this.noteThresholdEdited = false;
+     if (saveFloor) this.floorEdited = false;
+     if (saveTerms) this.termsEdited = false;
+@@ -602,6 +647,9 @@ export class Settings {
+           this.inForce(view);
+           if (!this.proofThresholdEdited) this.proofThresholdInput.set(view.proofThreshold ?? '');
+         }
++        for (const t of saveGradeProofThresholds) {
++          this.inForce(await this.api.setGradeProofThreshold(sheet, t.grade, t.value, from(this.proofKey(t.grade))));
++        }
+         if (saveNoteThreshold) {
+           const view = await this.api.setNoteThreshold(sheet, noteThreshold, from('note-threshold'));
+           this.inForce(view);
+@@ -693,6 +741,7 @@ export class Settings {
+     this.clerkLimit.set(view.clerkLimit);
+     this.session.cap.set(view.cap ?? '');
+     this.proofThreshold.set(view.proofThreshold);
++    this.gradeProofThreshold.set({ A: view.gradeProofThresholds['A'], B: view.gradeProofThresholds['B'], C: view.gradeProofThresholds['C'] });
+     this.noteThreshold.set(view.noteThreshold);
+     this.session.floor.set(view.floor);
+     this.session.floorHistory.set(view.floorHistory);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 2f1dda8e..3c2916b0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -46,7 +46,7 @@ public class Claim {
+ 
+     /**
+      * The date the claim is due by: the terms-th business day after its due-from date (see
+-     * {@link BusinessDays#dueBy}), worked out again whenever the sheet's holidays change.
++     * {@link BusinessDays#dueBy}), worked out again whenever the sheet's holidays change unless it is a DRAFT.
+      */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a77f7202..bfc76d42 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -66,8 +66,8 @@ public class ClaimService {
+ 
+     /**
+      * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
+-     * while one is set, else the sheet's today. One due by in a
+-     * soft-closed period is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
++     * while one is set, else the sheet's today. One due by in a soft-closed period, or that would be
++     * with the terms in force on the sheet's today, is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
+      * the due-by it would get (the terms-th business day after its date) is inside a closed period, or when it is a correction that does not name a SETTLED claim
+      * of the same person (see {@link #refuseUnlessCorrects}).
+      */
+@@ -99,7 +99,8 @@ public class ClaimService {
+         Rollups.Rollup before = rollups.take(sheetId);
+         Person person = person(sheetId, personId);
+         LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
+-        int terms = terms(sheets.lock(sheetId), person, dated);
++        Sheet sheet = sheets.lock(sheetId);
++        int terms = terms(sheet, person, dated);
+         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
+         periods.refuseIfClosed(sheetId, dueBy);
+         refuseIfRetired(person, dated);
+@@ -110,7 +111,8 @@ public class ClaimService {
+         added.refer(referred);
+         List<String> tagged = Claim.tagsOf(tags);
+         added.tag(tagged);
+-        if (periods.softClosedOn(sheetId, dueBy)) {
++        if (periods.softClosedOn(sheetId, dueBy) || periods.softClosedOn(sheetId, holidays.dueBy(sheetId, dated,
++                terms(sheet, person, sheet.getToday())))) {
+             added.markLateEntry();
+         }
+         Claim claim = claims.saveAndFlush(added);
+@@ -128,7 +130,8 @@ public class ClaimService {
+     /**
+      * Change a claim's amount, date, note and the number it corrects; with no date it keeps its own. Only a DRAFT claim can be
+      * edited: an OPEN one is changed by voiding it and adding a new one. It keeps the due-by fixed when it
+-     * was added, and so its period. Refused when the claim's due-by is inside a closed period, or when it
++     * was added, and so its period. Refused when the claim's due-by, or the due-by a new date would give it
++     * (the terms-th business day after it), is inside a closed period, or when it
+      * would be a correction that does not name a SETTLED claim of the same person, or when its external
+      * reference (null: kept as it is; blank: none) is already used by another claim on the sheet. Its tags
+      * (null: kept as they are) are set from the comma separated text (see {@link Claim#tagsOf}).
+@@ -142,6 +145,9 @@ public class ClaimService {
+         refuseUnlessEditable(sheetId, user, claim);
+         if (date != null) {
+             refuseIfRetired(person(sheetId, claim.getPersonId()), date);
++            if (!date.equals(claim.getDate())) {
++                periods.refuseIfClosed(sheetId, holidays.dueBy(sheetId, date, claim.getTerms()));
++            }
+         }
+         refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
+         String referred = ref == null ? claim.getRef() : reference(ref);
+@@ -274,7 +280,7 @@ public class ClaimService {
+             refuseUnnoted(sheetId, claim, dues.due(claim, person.gradeOn(claim.getDate())));
+         }
+         if (next == ClaimStatus.SETTLED) {
+-            refuseUnproved(sheetId, claim, settledDue);
++            refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), settledDue);
+         }
+         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settledDue)) {
+             next = ClaimStatus.PENDING;
+@@ -414,7 +420,7 @@ public class ClaimService {
+         }
+         Person person = person(sheetId, claim.getPersonId());
+         BigDecimal approvedDue = dues.approving(claim, person.gradeOn(claim.getDate()));
+-        refuseUnproved(sheetId, claim, approvedDue);
++        refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), approvedDue);
+         claim.settleDue(approvedDue);
+         claim.become(ClaimStatus.SETTLED);
+         Claim saved = logged(claims.saveAndFlush(claim), user, person);
+@@ -617,11 +623,12 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Refuse settling or approving a claim with no proofs whose due is above the sheet's proof threshold
+-     * in force on the claim's date (a due of n/a is within any threshold).
++     * Refuse settling or approving a claim with no proofs whose due is above the proof threshold in force
++     * on the claim's date: its person's grade's (the grade in force then) when one is set, else the
++     * sheet's (a due of n/a is within any threshold).
+      */
+-    private void refuseUnproved(String sheetId, Claim claim, BigDecimal due) {
+-        BigDecimal threshold = sheets.load(sheetId).proofThresholdOn(claim.getDate());
++    private void refuseUnproved(String sheetId, Claim claim, String grade, BigDecimal due) {
++        BigDecimal threshold = sheets.load(sheetId).proofThresholdFor(grade, claim.getDate());
+         if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "The claim's due is above the proof threshold of " + threshold.toPlainString()
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index ac5f3cbd..2fda4ae6 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.BusinessDays;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -42,7 +43,7 @@ public class HolidayService {
+ 
+     /**
+      * Add a holiday to the sheet; refused when the date is already on its list. Every claim's due-by on
+-     * the sheet is worked out again against the holidays now, and the figures that moves are audited.
++     * the sheet but a DRAFT's (which keeps the one it was added with) is worked out again against the holidays now, and the figures that moves are audited.
+      */
+     @Transactional
+     public Holiday add(String sheetId, String user, LocalDate date) {
+@@ -55,7 +56,9 @@ public class HolidayService {
+         Holiday saved = holidays.saveAndFlush(new Holiday(sheetId, date));
+         Set<LocalDate> days = days(sheetId);
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+-            claim.workOutDueBy(days);
++            if (claim.getStatus() != ClaimStatus.DRAFT) {
++                claim.workOutDueBy(days);
++            }
+         }
+         claims.flush();
+         audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user + " date=" + date);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index e3842bb1..55951773 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -186,6 +186,25 @@ public class Sheet {
+         return decimal(valueOn(PROOF_THRESHOLD, date, plain(proofThreshold)));
+     }
+ 
++    /** A grade's proof threshold in force on the sheet's today, with two decimals; null when it has none. */
++    public BigDecimal getGradeProofThreshold(String grade) {
++        return gradeProofThresholdOn(grade, today);
++    }
++
++    /** A grade's proof threshold in force on a date, with two decimals; null when it has none (as before every from-date). */
++    public BigDecimal gradeProofThresholdOn(String grade, LocalDate date) {
++        return decimal(valueOn(gradeProofThresholdKey(grade), date, null));
++    }
++
++    /**
++     * The proof threshold for a grade's claims dated on a date: the grade's own in force then when it
++     * has one, else the sheet's; null when there is none.
++     */
++    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
++        BigDecimal own = grade == null ? null : gradeProofThresholdOn(grade, date);
++        return own != null ? own : proofThresholdOn(date);
++    }
++
+     /** The note threshold in force on the sheet's today, with two decimals; null when there is none. */
+     public BigDecimal getNoteThreshold() {
+         return noteThresholdOn(today);
+@@ -283,6 +302,11 @@ public class Sheet {
+         return GRACE + "-" + grade;
+     }
+ 
++    /** The key a grade's proof threshold is recorded under. */
++    public static String gradeProofThresholdKey(String grade) {
++        return PROOF_THRESHOLD + "-" + grade;
++    }
++
+     /** A grade's grace values (see {@link #history}), none before every from-date. */
+     public List<DatedSetting> gradeGraceHistory(String grade) {
+         return history(gradeGraceKey(grade), null);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index fe9bcbd3..fb34ce92 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -71,12 +71,13 @@ public class SheetController {
+      * each grade's own terms in days, null for none (the sheet's terms), and the cap with two decimals, null
+      * for none, and the proof threshold with two decimals, null for none, and the note threshold with two
+      * decimals, null for none, and the entry date, null for none (off), and each grade's grace in days,
+-     * null for none, with each grade's grace values by from-date. */
++     * null for none, with each grade's grace values by from-date, and each grade's proof threshold with two
++     * decimals, null for none (the sheet's applies). */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
+             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
+-            Integer graceC, Map<String, List<DatedValue>> graceHistory) {
++            Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds) {
+ 
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -89,7 +90,17 @@ public class SheetController {
+                     permissions(sheet),
+                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
+                     sheet.getEntryDate(), sheet.getGradeGrace("A"), sheet.getGradeGrace("B"), sheet.getGradeGrace("C"),
+-                    SheetView.graceHistory(sheet));
++                    SheetView.graceHistory(sheet), gradeProofThresholds(sheet));
++        }
++
++        /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
++        private static Map<String, String> gradeProofThresholds(Sheet sheet) {
++            Map<String, String> all = new TreeMap<>();
++            for (String grade : GRADES) {
++                BigDecimal threshold = sheet.getGradeProofThreshold(grade);
++                all.put(grade, threshold == null ? null : threshold.toPlainString());
++            }
++            return all;
+         }
+ 
+         /** The roles set for each action of the permission matrix; blank when it keeps its standing rule. */
+@@ -275,6 +286,18 @@ public class SheetController {
+                 value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
+     }
+ 
++    /** Record a grade's proof threshold from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */
++    @PutMapping("/{id}/settings/proof-threshold-{grade}")
++    public SettingsView setGradeProofThreshold(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid SettingChange change) {
++        String value = change.value() == null ? "" : change.value().trim();
++        return SettingsView.of(service.setGradeProofThreshold(id, SignedIn.name(user), grade,
++                value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
++    }
++
+     /** Record the sheet's note threshold from a date (blank: the sheet's today); a blank value means none. */
+     @PutMapping("/{id}/settings/note-threshold")
+     public SettingsView setNoteThreshold(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index cddab841..fffe63e2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -118,6 +118,12 @@ public class SheetService {
+         return setDated(id, user, Sheet.PROOF_THRESHOLD, money(threshold), from, false);
+     }
+ 
++    /** Record a grade's proof threshold (null: none, the sheet's applies) from a date, auditing the change. */
++    @Transactional
++    public Sheet setGradeProofThreshold(String id, String user, String grade, BigDecimal threshold, LocalDate from) {
++        return setDated(id, user, Sheet.gradeProofThresholdKey(grade), money(threshold), from, false);
++    }
++
+     /** Record the sheet's note threshold (null: none) from a date, auditing the change. */
+     @Transactional
+     public Sheet setNoteThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
