@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -13,10 +14,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     /** The sheet's people in the order they were added. */
@@ -27,21 +30,31 @@ public class PersonService {
 
     /** Add a person to the sheet; refused when the name is already in use on it. */
     @Transactional
-    public Person add(String sheetId, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId);
         requireNameFree(sheetId, name, null);
-        return people.saveAndFlush(new Person(sheetId, name, grade));
+        Person person = people.saveAndFlush(new Person(sheetId, name, grade));
+        audited("PERSON_ADDED", sheetId, user, person);
+        return person;
     }
 
     /** Change a person's name and grade; refused when the name is in use by another person. */
     @Transactional
-    public Person edit(String sheetId, long personId, String name, String grade) {
+    public Person edit(String sheetId, String user, long personId, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         requireNameFree(sheetId, name, person.getId());
         person.setName(name);
         person.setGrade(grade);
-        return people.saveAndFlush(person);
+        Person saved = people.saveAndFlush(person);
+        audited("PERSON_EDITED", sheetId, user, saved);
+        return saved;
+    }
+
+    /** Record the change to the person once it is committed. */
+    private void audited(String event, String sheetId, String user, Person person) {
+        audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " grade=" + person.getGrade());
     }
 
     /** Refuse a name already held on the sheet by anyone other than {@code self}. */
