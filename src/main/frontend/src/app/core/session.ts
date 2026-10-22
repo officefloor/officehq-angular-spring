@@ -8,6 +8,8 @@ export interface SheetView {
   today: string;
   /** The sheet's floor with two decimals: a claim's live due is at least it. */
   floor: string;
+  /** The sheet's terms in days: a claim is due by its date plus them. */
+  terms: number;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -22,6 +24,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** The active sheet's floor with two decimals: a claim's live due is at least it. */
   readonly floor = signal('1.00');
+  /** The active sheet's terms in days: a claim is due by its date plus them. */
+  readonly terms = signal(14);
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -52,5 +56,6 @@ export class Session {
     this.sheet.set(view.id);
     this.today.set(view.today);
     this.floor.set(view.floor);
+    this.terms.set(view.terms);
   }
 }

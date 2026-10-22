@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { ClaimView, ClaimsApi, cents, counts, money } from '../../core/claims';
+import { ClaimView, ClaimsApi, cents, counts, money, overdue } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
@@ -77,6 +77,8 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
       </p>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong> claims,
+        due <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <table>
         <thead>
           <tr>
@@ -84,6 +86,7 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Overdue</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
             <th scope="col">On hold</th>
@@ -98,6 +101,10 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td>
+                <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
+                <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</span></span>
+              </td>
               <td>
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
@@ -227,6 +234,14 @@ export class People {
       this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0),
     ),
   );
+  /** How many overdue claims count in the live totals, across everyone. */
+  protected readonly overdueCount = computed(() =>
+    this.people().reduce((sum, p) => sum + this.overdueOf(p.id).length, 0),
+  );
+  /** The due of everyone's counting overdue claims added up. */
+  protected readonly overdueTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + this.overdueCents(p), 0)),
+  );
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   /** The id of the person open in the form, or null when the form adds a new person. */
@@ -274,6 +289,23 @@ export class People {
 
   private claimedCents(personId: number): number {
     return this.countingOf(personId).reduce((sum, c) => sum + cents(c.amount), 0);
+  }
+
+  /** A person's overdue claims that count in the live totals (see countsLive). */
+  protected overdueOf(personId: number): ClaimView[] {
+    return this.countingOf(personId).filter((c) => overdue(c, this.session.terms(), this.today()));
+  }
+
+  /** The due of a person's counting overdue claims added up (a claim with no figure adds nothing). */
+  protected overdueTotalOf(person: PersonView): string {
+    return money(this.overdueCents(person));
+  }
+
+  private overdueCents(person: PersonView): number {
+    return this.overdueOf(person.id).reduce(
+      (sum, c) => sum + (claimDueCents(c, this.rates(), person.grade, this.floorCents()) ?? 0),
+      0,
+    );
   }
 
   /** The rate a grade has in force on the sheet's today (a two-decimal percent), or null when it has none. */

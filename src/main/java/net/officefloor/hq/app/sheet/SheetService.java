@@ -98,4 +98,14 @@ public class SheetService {
         rollups.audit(id, user, before);
         return saved;
     }
+
+    /** Change the sheet's terms, in days, auditing the change. */
+    @Transactional
+    public Sheet setTerms(String id, String user, int terms) {
+        Sheet sheet = lock(id);
+        sheet.setTerms(terms);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + saved.getTerms());
+        return saved;
+    }
 }

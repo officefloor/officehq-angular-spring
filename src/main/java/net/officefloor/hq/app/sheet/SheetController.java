@@ -24,10 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** What the screen is told about a loaded sheet. */
-    public record SheetView(String id, LocalDate today, String floor) {
+    public record SheetView(String id, LocalDate today, String floor, int terms) {
 
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms());
         }
     }
 
@@ -36,12 +36,12 @@ public class SheetController {
     }
 
     /** What the screen is told about the sheet's settings: the clerk limit with two decimals, null for none,
-     * and the floor with two decimals. */
-    public record SettingsView(String clerkLimit, String floor) {
+     * the floor with two decimals, and the terms in days. */
+    public record SettingsView(String clerkLimit, String floor, int terms) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString());
+                    sheet.getFloor().toPlainString(), sheet.getTerms());
         }
     }
 
@@ -51,6 +51,10 @@ public class SheetController {
 
     /** A floor as entered: up to two decimals; it cannot be blank. */
     public record FloorChange(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String value) {
+    }
+
+    /** Terms as entered: a whole number of days; they cannot be blank. */
+    public record TermsChange(@NotNull @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value) {
     }
 
     private final SheetService service;
@@ -100,5 +104,14 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid FloorChange change) {
         return SettingsView.of(service.setFloor(id, SignedIn.name(user), new BigDecimal(change.value().trim())));
+    }
+
+    /** Change the sheet's terms, in days. */
+    @PutMapping("/{id}/settings/terms")
+    public SettingsView setTerms(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid TermsChange change) {
+        return SettingsView.of(service.setTerms(id, SignedIn.name(user), Integer.parseInt(change.value().trim())));
     }
 }

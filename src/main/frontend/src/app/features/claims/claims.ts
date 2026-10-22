@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents, money } from '../../core/claims';
+import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents, dueBy, money, overdue } from '../../core/claims';
 import { Grade } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -55,6 +55,8 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+          <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
@@ -128,6 +130,16 @@ export class Claims {
     return figure === null ? NO_RATE : money(figure);
   }
 
+  /** A claim's due-by: its date plus the sheet's terms. */
+  protected dueByOf(claim: ClaimView): string {
+    return dueBy(claim, this.session.terms());
+  }
+
+  /** Whether a claim is OPEN and due by a date before the sheet's today. */
+  protected overdueOf(claim: ClaimView): boolean {
+    return overdue(claim, this.session.terms(), this.session.today() ?? '');
+  }
+
   /** The name of the period a claim's date falls in; empty when it falls in none. */
   protected periodOf(claim: ClaimView): string {
     return periodOn(this.periods(), claim.date)?.name ?? '';
@@ -139,7 +151,8 @@ export class Claims {
 
   /**
    * Open a claim's editor: the form takes its values. Only a DRAFT claim can be edited; any other is
-   * refused with an error on its row (to change an OPEN claim, void it and add a new one).
+   * refused with an error on its row (to change an OPEN claim, void it and add a new one), as is one
+   * dated in a closed period.
    */
   protected open(claim: ClaimView): void {
     this.claimError.set(null);
@@ -149,6 +162,12 @@ export class Claims {
         id: claim.id,
         message: `A ${claim.status} claim cannot be edited; void it and add a new one.`,
       });
+      return;
+    }
+    const period = periodOn(this.periods(), claim.date);
+    if (period?.closed) {
+      this.reset();
+      this.claimError.set({ id: claim.id, message: `Period ${period.name} is closed, so its claims cannot be edited.` });
       return;
     }
     this.editing.set(claim.id);

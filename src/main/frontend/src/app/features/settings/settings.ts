@@ -1,5 +1,5 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
-import { FLOOR, LIMIT, ROLES, RoleName, RoleView, SettingsApi } from '../../core/settings';
+import { FLOOR, LIMIT, ROLES, TERMS, RoleName, RoleView, SettingsApi } from '../../core/settings';
 import { Session } from '../../core/session';
 
 // The sheet's settings (the clerk limit and the floor) and the roles user names have on it (clerk by default,
@@ -26,6 +26,14 @@ import { Session } from '../../core/session';
           [value]="floorInput()"
           (input)="floorInput.set(value($event)); floorEdited = true; settingsError.set(null)"
         />
+        <label for="setting-terms">Terms (days)</label>
+        <input
+          id="setting-terms"
+          data-testid="setting-terms"
+          inputmode="numeric"
+          [value]="termsInput()"
+          (input)="termsInput.set(value($event)); termsEdited = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -33,6 +41,7 @@ import { Session } from '../../core/session';
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
+      <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       <h3>Roles</h3>
       <form (submit)="saveRole($event)" aria-label="Set a role">
         <label for="role-form-user">User</label>
@@ -83,9 +92,11 @@ export class Settings {
   protected readonly roles = signal<RoleView[]>([]);
   protected readonly limit = signal('');
   protected readonly floorInput = signal('');
+  protected readonly termsInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
   protected floorEdited = false;
+  protected termsEdited = false;
   protected readonly roleUser = signal('');
   protected readonly roleName = signal('');
   protected readonly settingsError = signal<string | null>(null);
@@ -121,14 +132,20 @@ export class Settings {
     const limit = this.limit().trim();
     const floor = this.floorInput().trim();
     // With nothing typed since the last save, saving sets the clerk limit again as it stands.
-    const saveLimit = this.limitEdited || !this.floorEdited;
+    const terms = this.termsInput().trim();
+    const saveLimit = this.limitEdited || (!this.floorEdited && !this.termsEdited);
     const saveFloor = this.floorEdited;
+    const saveTerms = this.termsEdited;
     if (saveLimit && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it empty for no limit.');
       return;
     }
     if (saveFloor && !FLOOR.test(floor)) {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (saveTerms && !TERMS.test(terms)) {
+      this.settingsError.set('Type terms as a whole number of days.');
       return;
     }
     this.busy = true;
@@ -142,6 +159,11 @@ export class Settings {
         const view = await this.api.setFloor(sheet, floor);
         this.session.floor.set(view.floor);
         this.floorEdited = false;
+      }
+      if (saveTerms) {
+        const view = await this.api.setTerms(sheet, terms);
+        this.session.terms.set(view.terms);
+        this.termsEdited = false;
       }
     } catch {
       this.settingsError.set('The settings could not be saved.');
@@ -187,6 +209,7 @@ export class Settings {
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.clerkLimit.set(settings.clerkLimit);
       this.session.floor.set(settings.floor);
+      this.session.terms.set(settings.terms);
       this.roles.set(roles);
     }
   }

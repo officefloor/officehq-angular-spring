@@ -16,6 +16,8 @@ export interface SettingsView {
   clerkLimit: string | null;
   /** The floor with two decimals, e.g. "1.00": a claim's live due is at least it. */
   floor: string;
+  /** The terms in days: a claim is due by its date plus them. */
+  terms: number;
 }
 
 /** A clerk limit as the form takes it: up to two decimals, or blank for no limit. */
@@ -23,6 +25,9 @@ export const LIMIT = /^(\d{1,12}(\.\d{1,2})?)?$/;
 
 /** A floor as the form takes it: 0.00 or more, with up to two decimals. */
 export const FLOOR = /^\d{1,12}(\.\d{1,2})?$/;
+
+/** Terms as the form takes them: a whole number of days. */
+export const TERMS = /^\d{1,4}$/;
 
 // The sheet's settings and the roles its user names have, read from and written to the store.
 @Injectable({ providedIn: 'root' })
@@ -41,6 +46,11 @@ export class SettingsApi {
   /** Set the floor. */
   setFloor(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/floor`, { value }));
+  }
+
+  /** Set the terms, in days. */
+  setTerms(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/terms`, { value }));
   }
 
   /** The roles set on the sheet, by user name. */
