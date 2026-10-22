@@ -93,7 +93,7 @@ public class TransferService {
         Rollups.Rollup toBefore = rollups.take(toSheetId);
 
         // Anyone naming them as a patron no longer does; their pool memberships, statements and watchers go.
-        for (Person other : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person other : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (!other.getId().equals(person.getId()) && other.removePatron(person.getId())) {
                 people.save(other);
             }
@@ -102,7 +102,9 @@ public class TransferService {
         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderBySeqDesc(sheetId, person.getId()));
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, person.getId()));
 
+        int last = people.findMaxPositionBySheetId(toSheetId);
         person.transferTo(toSheetId);
+        person.setPosition(last + 1);
         people.saveAndFlush(person);
 
         // Their claims follow, each that had a number taking the other sheet's next in the order opened.

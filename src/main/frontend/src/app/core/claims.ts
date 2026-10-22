@@ -378,7 +378,7 @@ export class ClaimsApi {
   }
 
   /**
-   * Open the selected claims together, in list order (people in the order they were added, each
+   * Open the selected claims together, in list order (people in list order, each
    * person's claims newest first); those that cannot be opened are refused and left as they are.
    */
   openAll(sheet: string, claimIds: number[]): Promise<BulkOpenView> {

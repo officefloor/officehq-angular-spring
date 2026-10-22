@@ -52,7 +52,7 @@ public class PoolService {
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId) {
         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
-        Map<Long, String> names = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, String> names = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Person::getName));
         Map<Long, String> poolNames = all.stream().collect(Collectors.toMap(Pool::getId, Pool::getName));
         Map<Long, List<Member>> byPool = members.findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList())

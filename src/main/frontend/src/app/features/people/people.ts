@@ -80,7 +80,7 @@ function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-// The active sheet's people: listed in the order they were added, added and edited through one form,
+// The active sheet's people: listed by their position in the list, added and edited through one form,
 // each with their claims, what they have claimed and what is due (the sum of their claims' due
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
@@ -433,6 +433,22 @@ function csvField(value: string): string {
                 />
               </td>
               <td>
+                <button
+                  type="button"
+                  data-testid="person-move-up"
+                  [attr.aria-label]="'Move ' + p.name + ' up the list'"
+                  (click)="move(p, 'up')"
+                >
+                  Up
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-move-down"
+                  [attr.aria-label]="'Move ' + p.name + ' down the list'"
+                  (click)="move(p, 'down')"
+                >
+                  Down
+                </button>
                 <button
                   type="button"
                   [attr.data-testid]="'person-edit-' + p.id"
@@ -1193,6 +1209,27 @@ export class People {
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
     } catch {
       this.personError.set({ id: person.id, message: 'The statement could not be cancelled.' });
+    }
+  }
+
+  /**
+   * Swap a person with the one above (up) or below (down) them in the list; the top person cannot move
+   * up nor the bottom one down. The list then shows the order the store holds.
+   */
+  protected async move(person: PersonView, direction: 'up' | 'down'): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      await this.api.move(sheet, person.id, direction);
+      const people = await this.api.list(sheet);
+      if (this.session.sheet() !== sheet) return;
+      this.people.set(people);
+    } catch {
+      this.personError.set({
+        id: person.id,
+        message: direction === 'up' ? 'The top person cannot move up.' : 'The bottom person cannot move down.',
+      });
     }
   }
 

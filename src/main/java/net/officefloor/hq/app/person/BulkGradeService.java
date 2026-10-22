@@ -13,8 +13,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Giving the selected people a grade together, from a date (null: the sheet's today). Each is edited
- * on its own, as the person form would, keeping their name and own terms, in list order: the people in
- * the order they were added. A person who cannot be edited (or is not on the sheet) is left as they
+ * on its own, as the person form would, keeping their name and own terms, in list order: the people by
+ * their position. A person who cannot be edited (or is not on the sheet) is left as they
  * are, writing nothing; the others are still edited. For a viewer, nobody is edited.
  */
 @Service
@@ -37,7 +37,7 @@ public class BulkGradeService {
         if (Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
             return changed;
         }
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (!selected.contains(person.getId())) {
                 continue;
             }

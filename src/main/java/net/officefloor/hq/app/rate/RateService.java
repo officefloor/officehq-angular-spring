@@ -64,7 +64,7 @@ public class RateService {
                 .filter(rate -> !rate.getGrade().equals(grade)).toList());
         candidate.add(new Rate(sheetId, grade, null, pct.setScale(2, RoundingMode.UNNECESSARY)));
         Dues.Basis previewed = new Dues.Basis(current.sheet(), candidate, current.inherited(), current.corrected());
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         int count = 0;
         BigDecimal diff = BigDecimal.ZERO.setScale(2);

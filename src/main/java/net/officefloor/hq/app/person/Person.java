@@ -52,6 +52,10 @@ public class Person {
     @Column(name = "grade", nullable = false)
     private String grade;
 
+    /** The person's place in the sheet's list: the list and every action taken in list order follow it. */
+    @Column(name = "list_position", nullable = false)
+    private int position;
+
     /** The grades recorded since the first, by the date each is in force from. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
@@ -151,6 +155,16 @@ public class Person {
     public void setName(String name) {
         this.name = clean(name);
         this.nameKey = keyOf(name);
+    }
+
+    /** The person's place in the sheet's list, lowest first. */
+    public int getPosition() {
+        return position;
+    }
+
+    /** Put the person at a place in the sheet's list. */
+    public void setPosition(int position) {
+        this.position = position;
     }
 
     /** The first grade the person was given: in force from the beginning of time. */

@@ -93,7 +93,7 @@ public class MergeService {
             }
         }
         // Anyone naming them as a patron names the other instead.
-        for (Person other : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person other : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (other.getId().equals(from.getId()) || !other.removePatron(from.getId())) {
                 continue;
             }

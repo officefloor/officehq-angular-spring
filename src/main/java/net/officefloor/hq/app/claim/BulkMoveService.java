@@ -20,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Moving the selected claims together: opening, settling or reassigning them. Each is moved on its own, as its
- * own button would, in list order: the people in the order they were added, each person's claims
+ * own button would, in list order: the people by their position, each person's claims
  * newest first (the latest dated first, and of those dated alike the last added), so numbers follow
  * that order. A claim that cannot be moved (or is not on the sheet)
  * is refused and left as it is, writing nothing; the others are still moved (except in a bulk settle,
@@ -112,7 +112,7 @@ public class BulkMoveService {
     private List<Long> listOrder(String sheetId, Set<Long> selected) {
         List<Long> ordered = new ArrayList<>();
         List<Claim> sheetClaims = claims.list(sheetId);
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             sheetClaims.stream()
                     .filter(claim -> claim.getPersonId().equals(person.getId()) && selected.contains(claim.getId()))
                     .sorted(NEWEST_FIRST)

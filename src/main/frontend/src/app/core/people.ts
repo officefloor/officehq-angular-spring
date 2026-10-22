@@ -114,7 +114,7 @@ export interface ImportView {
 export class PeopleApi {
   private readonly http = inject(HttpClient);
 
-  /** The sheet's people in the order they were added. */
+  /** The sheet's people in list order: by their position. */
   list(sheet: string): Promise<PersonView[]> {
     return firstValueFrom(this.http.get<PersonView[]>(this.url(sheet)));
   }
@@ -137,7 +137,7 @@ export class PeopleApi {
 
   /**
    * Give the selected people a grade from a date (null: the sheet's today) together, each as the person
-   * form would, in the order they were added: the people changed.
+   * form would, in list order: the people changed.
    */
   gradeAll(sheet: string, personIds: number[], grade: Grade, from: string | null): Promise<PersonView[]> {
     return firstValueFrom(this.http.post<PersonView[]>(`${this.url(sheet)}/grade`, { personIds, grade, from }));
@@ -154,6 +154,11 @@ export class PeopleApi {
   /** Cancel the last statement: the claims it bound are live again, the one before it shown. */
   unstate(sheet: string, id: number): Promise<StatementView> {
     return firstValueFrom(this.http.delete<StatementView>(`${this.url(sheet)}/${id}/statements/last`));
+  }
+
+  /** Swap a person with the one above (up) or below (down) them in the list. */
+  move(sheet: string, id: number, direction: 'up' | 'down'): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/move/${direction}`, null));
   }
 
   /** Retire a person from a date; with none, from the sheet's today. */

@@ -39,7 +39,7 @@ public class Rollups {
         }
     }
 
-    /** The sheet's figures: each person's by id, in the order they were added, and the sheet's totals. */
+    /** The sheet's figures: each person's by id, in list order, and the sheet's totals. */
     public record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
             BigDecimal overdueTotal) {
     }
@@ -74,7 +74,7 @@ public class Rollups {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of()).stream()
                     .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today))
                     .toList();

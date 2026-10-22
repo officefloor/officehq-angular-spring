@@ -122,7 +122,7 @@ public class PersonController {
         this.history = history;
     }
 
-    /** The sheet's people in the order they were added; with an as-of date, as they stood at the end of it. */
+    /** The sheet's people in list order; with an as-of date, as they stood at the end of it. */
     @GetMapping
     public List<PersonView> list(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
@@ -185,6 +185,16 @@ public class PersonController {
             @RequestBody @Valid BulkGradeForm form) {
         return bulkGrade.grade(sheetId, SignedIn.name(user), form.personIds(), form.grade(), form.from()).stream()
                 .map(PersonView::of).toList();
+    }
+
+    /** Swap a person with the one above them in the list (up) or below them (down). */
+    @PostMapping("/{personId}/move/{direction}")
+    public PersonView move(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @PathVariable @Pattern(regexp = "up|down") String direction,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return view(service.move(sheetId, SignedIn.name(user), personId, "up".equals(direction)));
     }
 
     /** The date a person is retired from; with none, the sheet's today. */

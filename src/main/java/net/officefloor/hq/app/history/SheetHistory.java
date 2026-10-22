@@ -109,7 +109,7 @@ public class SheetHistory {
         String sheetId = leaving.sheetId();
         Sheet sheet = sheets.findById(sheetId).orElseThrow();
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
-        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
         State state = new State(sheet.getPolicyDate(),
                 sheet.getDated().stream().map(d -> new SettingState(d.getKey(), d.getFromDate(), d.getValue())).toList(),

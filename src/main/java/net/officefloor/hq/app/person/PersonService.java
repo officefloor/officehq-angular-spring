@@ -33,10 +33,10 @@ public class PersonService {
         this.audit = audit;
     }
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in list order. */
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** The ids of the sheet's people whose name or an alias is in use, as a name or alias, on another sheet of its tree. */
@@ -44,7 +44,7 @@ public class PersonService {
     public Set<Long> clashing(String sheetId) {
         Set<String> used = treeKeys(sheetId);
         Set<Long> ids = new HashSet<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             if (person.goesByAny(used)) {
                 ids.add(person.getId());
             }
@@ -68,7 +68,9 @@ public class PersonService {
         requireNameFree(sheetId, name, null);
         requireContactFree(sheetId, contact, null);
         Rollups.Rollup before = rollups.take(sheetId);
-        Person person = people.saveAndFlush(new Person(sheetId, name, grade, terms, contact));
+        Person added = new Person(sheetId, name, grade, terms, contact);
+        added.setPosition(people.findMaxPositionBySheetId(sheetId) + 1);
+        Person person = people.saveAndFlush(added);
         audited("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId), terms != null,
                 person.getContact() != null);
         rollups.audit(sheetId, user, before);
@@ -109,6 +111,43 @@ public class PersonService {
         audited("PERSON_EDITED", sheetId, user, saved, today, withTerms, withContact);
         rollups.audit(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Swap a person with the one above them in the list (up) or below them (down); refused for the top
+     * person moving up and the bottom one moving down. PERSON_MOVED carries their new position, counting
+     * from 1.
+     */
+    @Transactional
+    public Person move(String sheetId, String user, long personId, boolean up) {
+        List<Person> listed = new ArrayList<>(people.findBySheetIdOrderByPositionAscIdAsc(sheetId));
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId() == personId) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    up ? "The top person cannot move up." : "The bottom person cannot move down.");
+        }
+        java.util.Collections.swap(listed, at, to);
+        for (int i = 0; i < listed.size(); i++) {
+            Person each = listed.get(i);
+            if (each.getPosition() != i + 1) {
+                each.setPosition(i + 1);
+                people.save(each);
+            }
+        }
+        people.flush();
+        Person moved = listed.get(to);
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user
+                + " name=" + moved.getName() + " position=" + (to + 1));
+        return moved;
     }
 
     /**

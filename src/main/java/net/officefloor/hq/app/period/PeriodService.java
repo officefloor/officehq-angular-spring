@@ -189,7 +189,7 @@ public class PeriodService {
 
     /** Each person's due-total for the period as of today, by person id (see {@link #close}). */
     private Map<Long, BigDecimal> totals(String sheetId, Period period, LocalDate today) {
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, person -> person));
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
