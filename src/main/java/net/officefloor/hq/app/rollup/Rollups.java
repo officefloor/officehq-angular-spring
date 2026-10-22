@@ -141,14 +141,14 @@ public class Rollups {
         Rollup after = take(sheetId);
         after.people().forEach((id, figures) -> {
             if (!figures.sameAs(before.people().get(id))) {
-                audit.recordOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + figures.name()
+                audit.recordFiguresOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + figures.name()
                         + " claimed=" + figures.claimed().toPlainString() + " due-total=" + shown(figures.dueTotal())
                         + " overdue-total=" + figures.overdueTotal().toPlainString());
             }
         });
         if (!same(after.claimedTotal(), before.claimedTotal()) || !same(after.dueTotal(), before.dueTotal())
                 || !same(after.overdueTotal(), before.overdueTotal())) {
-            audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user
+            audit.recordFiguresOnCommit("TOTALS sheet=" + sheetId + " by=" + user
                     + " claimed-total=" + after.claimedTotal().toPlainString()
                     + " due-total=" + after.dueTotal().toPlainString()
                     + " overdue-total=" + after.overdueTotal().toPlainString());

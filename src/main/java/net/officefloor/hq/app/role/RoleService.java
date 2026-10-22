@@ -12,11 +12,13 @@ public class RoleService {
 
     private final RoleRepository roles;
     private final SheetService sheets;
+    private final DelegationService delegations;
     private final Audit audit;
 
-    public RoleService(RoleRepository roles, SheetService sheets, Audit audit) {
+    public RoleService(RoleRepository roles, SheetService sheets, DelegationService delegations, Audit audit) {
         this.roles = roles;
         this.sheets = sheets;
+        this.delegations = delegations;
         this.audit = audit;
     }
 
@@ -26,9 +28,15 @@ public class RoleService {
         return roles.findBySheetIdOrderByUserNameAsc(sheetId);
     }
 
-    /** The role a user name has on the sheet: the one set for it, else clerk. */
+    /**
+     * The role a user name acts in on the sheet: steward while a delegation to it is in force on the
+     * sheet's today, else the one set for it, else clerk.
+     */
     @Transactional(readOnly = true)
     public String roleOf(String sheetId, String userName) {
+        if (delegations.actingFor(sheetId, userName).isPresent()) {
+            return Role.STEWARD;
+        }
         return roles.findBySheetIdAndUserName(sheetId, userName).map(Role::getRole).orElse(Role.CLERK);
     }
 

@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 
 /**
  * Audit sink: appends one record per line to a KNOWN FILE (app.audit.file, default .run/audit.log)
@@ -22,6 +24,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  */
 @Service
 public class Audit {
+
+    /**
+     * The request attribute naming the steward the signed-in user acts for, under a delegation in
+     * force on the sheet's today: each record of the change then ends with for=&lt;steward&gt;.
+     */
+    public static final String ACTING_FOR = Audit.class.getName() + ".actingFor";
 
     private final Path file;
 
@@ -48,6 +56,25 @@ public class Audit {
      * rolled back writes nothing. Records outside a transaction are appended at once.
      */
     public void recordOnCommit(String entry) {
+        recordAfterCommit(entry + actingFor());
+    }
+
+    /**
+     * Append a record of the figures a change moved (ROLLUP and TOTALS) once the current transaction
+     * commits; unlike the change's own records it never names a steward acted for.
+     */
+    public void recordFiguresOnCommit(String entry) {
+        recordAfterCommit(entry);
+    }
+
+    /** " for=<steward>" when the signed-in user acts for a steward in this request, else empty. */
+    private static String actingFor() {
+        RequestAttributes request = RequestContextHolder.getRequestAttributes();
+        Object steward = request == null ? null : request.getAttribute(ACTING_FOR, RequestAttributes.SCOPE_REQUEST);
+        return steward instanceof String name ? " for=" + name : "";
+    }
+
+    private void recordAfterCommit(String entry) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             record(entry);
             return;
