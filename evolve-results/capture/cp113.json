@@ -1,0 +1,64 @@
+{
+  "checkpoint": 113,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp113_import-people",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be pasted in as lines of name,grade,terms,contact into an import box (the last two may\nbe absent or blank). Every line is checked first with exactly the person form's rules (names, aliases,\ncontacts, grades, terms; a name or contact repeated within the paste is an error): if any line\nfails, an error shows on the box and nothing is imported; otherwise every person is added in order,\neach as the form would add them (PERSON_ADDED with the same fields). Show how many were added.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be pasted in as lines of name,grade,terms,contact into an import box (the last two may\nbe absent or blank). Every line is checked first with exactly the person form's rules (names, aliases,\ncontacts, grades, terms; a name or contact repeated within the paste is an error): if any line\nfails, an error shows on the box and nothing is imported; otherwise every person is added in order,\neach as the form would add them (PERSON_ADDED with the same fields). Show how many were added.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ef342e9c70485ccb0c1247aa70d0a6e569543614",
+  "reset_sha": "",
+  "preagent_sha": "e8960e5b00cf94e46240cc0ec53fffd1e4c9e38c",
+  "prev_sha": "e8960e5b00cf94e46240cc0ec53fffd1e4c9e38c",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.687034600000001,
+    "input_tokens": 88,
+    "output_tokens": 17260,
+    "cache_read_tokens": 3000213,
+    "cache_creation_tokens": 92680,
+    "num_turns": 45,
+    "duration_ms": 588615,
+    "duration_api_ms": 179349,
+    "model": "claude-opus-5-5",
+    "session_id": "0c8d1898-89a3-4177-a9c8-3f2a8a6c25cb",
+    "stop_reason": "success",
+    "result_text": "I've added the people import box, but only 1 of the 4 tests in the spec passes. The main \"import people\" test passes. The other three fail on things outside the import: two expect a literal placeholder, and one adds a claim that the existing rules refuse. I didn't change the spec or the claim and period rules.\n\n**What I built**\n- **Server:** a new `ImportService.java` and a `POST /api/sheets/{sheetId}/people/import` endpoint in `PersonController`. Blank lines are skipped. Every line is checked against the person form's rules before anything is written:\n  - a name is required, up to 200 characters;\n  - the grade must be A, B or C;\n  - terms, if given, must be a whole number of days up to 36500;\n  - a contact, if given, is up to 200 characters.\n\n  A name (ignoring case) or a contact repeated within the paste is refused. Each person is then added through the same code the form uses, so you get the same `PERSON_ADDED` and `ROLLUP` audit records. A clash with someone already on the sheet, by name, alias or contact, refuses the whole import, and nothing is written or audited. Viewers are refused by the existing role check.\n- **Front end:** a new `import-people` component, built like the paste-claims box and placed next to it on the people screen. It has `import-people`, `import-submit`, `import-added` (how many were added) and `import-error`. Imported people appear in the table straight away.\n\n**Why the other three tests fail**\n- **Scenarios 1 and 2:** they expect `sheet-parent` to read the literal text `\"__SHEET__-p\"`, but the screen shows the real sheet id, e.g. `smvjyklie1uqn-p`. The spec's placeholder was never filled in, so this can't pass. All the import steps before that line do pass.\n- **Scenario 3:** the import itself works. The test then adds a claim for Eve dated 2026-03-01 and expects it to go through. The sheet's terms of 10 only take effect from today (2026-04-05), so on 03-01 the default 14 business days applies. That makes the claim due on 2026-03-19, inside period P2, which is closed. The existing claim rules refuse that for anyone, imported or not, so I didn't loosen them to fit the test.\n\n**To run the tests:** `PORT` is set to 3001 in this environment, and another process is already using that port, so the app can't start there. I ran the tests with `PORT=3047 bin/e2e`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.687034600000001,
+        "num_turns": 45,
+        "duration_ms": 588615,
+        "duration_api_ms": 179349,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp113.agent.jsonl",
+  "agent_diff_file": "cp113.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
