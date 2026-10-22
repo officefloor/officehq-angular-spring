@@ -24,7 +24,8 @@ function reasonOf(e: unknown): string | null {
             every {{ plan.every }} days
           }
           to {{ plan.end }};
-          made <span data-testid="plan-generated">{{ plan.generated }}</span>
+          made <span data-testid="plan-generated">{{ plan.generated }}</span>;
+          next <span data-testid="plan-next-dates">{{ plan.nextDates.join(', ') }}</span>
         </li>
       }
     </ul>

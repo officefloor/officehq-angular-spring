@@ -1,0 +1,36 @@
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/202610221-as/tmp
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan preview › plan preview (6.7s)
+  ✓  2 [chromium] › acceptance.spec.ts:81:7 › plan preview › plan preview scenario 1 (24.1s)
+  ✘  3 [chromium] › acceptance.spec.ts:398:7 › plan preview › plan preview scenario 2 (19.8s)
+  ✓  4 [chromium] › acceptance.spec.ts:830:7 › plan preview › plan preview scenario 3 (14.5s)
+
+
+  1) [chromium] › acceptance.spec.ts:398:7 › plan preview › plan preview scenario 2 ────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m4[39m
+    Received: [31m5[39m
+
+    Call Log:
+    - Timeout 8000ms exceeded while waiting on the predicate
+
+       at ../support/ui.ts:1265
+
+      1263 |   await page.getByTestId('audit-show').click();
+      1264 |   const lines = page.getByTestId('audit-line');
+    > 1265 |   await expect.poll(() => lines.count(), { timeout: WAIT }).toBe(expected.length);
+           |   ^
+      1266 |   const texts = (await lines.allTextContents()).map((t) => t.trim());
+      1267 |   texts.forEach((line, i) => {
+      1268 |     const e = expected[i];
+
+        at Object.expectAuditView (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1265:3)
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:460:5
+
+  1 failed
+    [chromium] › acceptance.spec.ts:398:7 › plan preview › plan preview scenario 2 ─────────────────
+  3 passed (1.1m)

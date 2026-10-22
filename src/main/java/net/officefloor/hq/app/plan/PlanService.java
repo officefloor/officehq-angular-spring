@@ -52,6 +52,11 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    /** The sheet's today, from which a plan's next dates are counted. */
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
+    }
+
     /**
      * Add a plan on a person: an amount (not below 0.00), claimed every N days (at least 1) or monthly on a
      * day of the month (1 to 31), exactly one of the two, from a start date to an end date; refused when the

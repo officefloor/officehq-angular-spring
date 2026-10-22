@@ -26,14 +26,14 @@ public class PlanController {
 
     /**
      * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
-     * the month, the other null), and how many claims it has made.
+     * the month, the other null), how many claims it has made, and its next five dates after the sheet's today.
      */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated) {
+            LocalDate end, int generated, List<LocalDate> nextDates) {
 
-        static PlanView of(Plan plan) {
+        static PlanView of(Plan plan, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated());
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5));
         }
     }
 
@@ -63,7 +63,8 @@ public class PlanController {
     @GetMapping("/plans")
     public List<PlanView> list(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
-        return service.list(sheetId).stream().map(PlanView::of).toList();
+        LocalDate today = service.today(sheetId);
+        return service.list(sheetId).stream().map(plan -> PlanView.of(plan, today)).toList();
     }
 
     /** Add a plan on a person. */
@@ -73,8 +74,9 @@ public class PlanController {
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PlanForm form) {
-        return PlanView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
-                form.start(), number(form.every()), number(form.day()), form.end()));
+        Plan added = service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
+                form.start(), number(form.every()), number(form.day()), form.end());
+        return PlanView.of(added, service.today(sheetId));
     }
 
     /** A whole number typed on the form, or null when left out. */
@@ -88,7 +90,8 @@ public class PlanController {
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         PlanService.Generated generated = service.generate(sheetId, SignedIn.name(user));
+        LocalDate today = service.today(sheetId);
         return new GeneratedView(generated.claims().size(), generated.claims().stream().map(ClaimView::of).toList(),
-                generated.plans().stream().map(PlanView::of).toList());
+                generated.plans().stream().map(plan -> PlanView.of(plan, today)).toList());
     }
 }

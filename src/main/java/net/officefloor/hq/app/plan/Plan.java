@@ -98,6 +98,11 @@ public class Plan {
         return dates;
     }
 
+    /** The first count plan dates after the given day, oldest first, on or before the plan's end. */
+    public List<LocalDate> nextDates(LocalDate today, int count) {
+        return datesUpTo(null).stream().filter(d -> d.isAfter(today)).limit(count).toList();
+    }
+
     /** Whether the plan has made a claim for the date. */
     public boolean hasMade(LocalDate date) {
         return made.containsKey(date);

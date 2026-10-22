@@ -21,6 +21,8 @@ export interface PlanView {
   end: string;
   /** How many claims the plan has made so far. */
   generated: number;
+  /** The first five plan dates after the sheet's today and on or before the end, oldest first. */
+  nextDates: string[];
 }
 
 /** A plan as typed on the form. */
@@ -67,7 +69,7 @@ export class PlansApi {
 }
 
 // The active sheet's plans, shared by each person's plans and the generate button; re-read from the
-// store on every sheet load.
+// store on every sheet load and every change of the sheet's today, which their next dates count from.
 @Injectable({ providedIn: 'root' })
 export class Plans {
   private readonly session = inject(Session);
@@ -82,6 +84,13 @@ export class Plans {
       untracked(() => {
         this.list.set([]);
         if (sheet) void this.reload(sheet, loads);
+      });
+    });
+    effect(() => {
+      const today = this.session.today();
+      untracked(() => {
+        const sheet = this.session.sheet();
+        if (sheet && today) void this.reload(sheet, this.session.loads());
       });
     });
   }
