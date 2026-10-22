@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -24,6 +25,14 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
         Optional<Person> named = findBySheetIdAndNameKey(sheetId, key);
         return named.isPresent() ? named : findBySheetIdAndAliasKey(sheetId, key);
     }
+
+    /** The name keys of the people on these sheets. */
+    @Query("select p.nameKey from Person p where p.sheetId in :sheetIds")
+    List<String> findNameKeysBySheetIdIn(@Param("sheetIds") Collection<String> sheetIds);
+
+    /** The alias keys of the people on these sheets. */
+    @Query("select a.aliasKey from Person p join p.aliases a where p.sheetId in :sheetIds")
+    List<String> findAliasKeysBySheetIdIn(@Param("sheetIds") Collection<String> sheetIds);
 
     /** The person on the sheet holding this contact, if any. */
     Optional<Person> findBySheetIdAndContact(String sheetId, String contact);

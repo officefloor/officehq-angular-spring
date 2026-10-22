@@ -1,9 +1,13 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollups;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,12 +20,15 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final SheetRepository sheetStore;
     private final Rollups rollups;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, Rollups rollups, Audit audit) {
+    public PersonService(PersonRepository people, SheetService sheets, SheetRepository sheetStore, Rollups rollups,
+            Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.sheetStore = sheetStore;
         this.rollups = rollups;
         this.audit = audit;
     }
@@ -30,6 +37,25 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** The ids of the sheet's people whose name or an alias is in use, as a name or alias, on another sheet of its tree. */
+    @Transactional(readOnly = true)
+    public Set<Long> clashing(String sheetId) {
+        Set<String> used = treeKeys(sheetId);
+        Set<Long> ids = new HashSet<>();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (person.goesByAny(used)) {
+                ids.add(person.getId());
+            }
+        }
+        return ids;
+    }
+
+    /** Whether the person's name or an alias is in use, as a name or alias, on another sheet of its tree. */
+    @Transactional(readOnly = true)
+    public boolean clashing(Person person) {
+        return person.goesByAny(treeKeys(person.getSheetId()));
     }
 
     /**
@@ -66,6 +92,9 @@ public class PersonService {
                     "Someone else has saved this person since it was opened.");
         }
         requireNameFree(sheetId, name, person.getId());
+        if (person.getAliases().stream().map(Person::keyOf).anyMatch(treeKeys(sheetId)::contains)) {
+            throw nameInUse();
+        }
         requireContactFree(sheetId, contact, person.getId());
         Rollups.Rollup before = rollups.take(sheetId);
         LocalDate today = sheets.today(sheetId);
@@ -154,7 +183,8 @@ public class PersonService {
         if (alias == null || alias.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An alias is required.");
         }
-        if (people.findBySheetIdAndName(sheetId, alias).isPresent()) {
+        if (people.findBySheetIdAndName(sheetId, alias).isPresent()
+                || treeKeys(sheetId).contains(Person.keyOf(alias))) {
             throw nameInUse();
         }
         person.addAlias(alias);
@@ -190,8 +220,14 @@ public class PersonService {
                 });
     }
 
-    /** Refuse a name already held on the sheet, as a name or an alias, by anyone other than {@code self}. */
+    /**
+     * Refuse a name already held on the sheet, as a name or an alias, by anyone other than {@code self},
+     * or held as a name or alias on any other sheet of its tree.
+     */
     private void requireNameFree(String sheetId, String name, Long self) {
+        if (treeKeys(sheetId).contains(Person.keyOf(name))) {
+            throw nameInUse();
+        }
         people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
                 .filter(holder -> !holder.getId().equals(self))
                 .ifPresent(holder -> {
@@ -202,6 +238,22 @@ public class PersonService {
                 .ifPresent(holder -> {
                     throw nameInUse();
                 });
+    }
+
+    /**
+     * The keys of the names and aliases in use on the other sheets of the sheet's tree: its ancestors,
+     * its descendants and theirs, among the sheets that exist.
+     */
+    private Set<String> treeKeys(String sheetId) {
+        List<String> tree = new ArrayList<>(sheetStore.ancestors(sheetId));
+        tree.addAll(sheetStore.descendants(sheetId));
+        tree.remove(sheetId);
+        if (tree.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> keys = new HashSet<>(people.findNameKeysBySheetIdIn(tree));
+        keys.addAll(people.findAliasKeysBySheetIdIn(tree));
+        return keys;
     }
 
     static ResponseStatusException nameInUse() {

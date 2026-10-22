@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -39,15 +40,20 @@ public class PersonController {
      * What the screen is told about a person, with their statement count, and the last statement's
      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
      * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons
-     * in the order they were named.
+     * in the order they were named, and whether their name or an alias is in use on another sheet of the
+     * sheet's tree (clashing).
      * Their grades are listed by the date each is in force from, the first with none (from the
      * beginning of time).
      */
     public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
-            List<HoldView> holds, List<Long> patronIds, List<String> aliases) {
+            List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing) {
 
         public static PersonView of(Person person) {
+            return of(person, false);
+        }
+
+        public static PersonView of(Person person, boolean clashing) {
             List<GradeView> grades = new ArrayList<>();
             grades.add(new GradeView(person.getGrade(), null));
             person.getGradesFrom().forEach((from, grade) -> grades.add(new GradeView(grade, from)));
@@ -56,7 +62,7 @@ public class PersonController {
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
                     person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
-                    person.getPatronIds(), person.getAliases());
+                    person.getPatronIds(), person.getAliases(), clashing);
         }
     }
 
@@ -116,7 +122,11 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
         return history.views(sheetId, AsOfGuard.date(asOf)).map(SheetHistory.Views::people)
-                .orElseGet(() -> service.list(sheetId).stream().map(PersonView::of).toList());
+                .orElseGet(() -> {
+                    Set<Long> clashing = service.clashing(sheetId);
+                    return service.list(sheetId).stream()
+                            .map(person -> PersonView.of(person, clashing.contains(person.getId()))).toList();
+                });
     }
 
     /** Add a person to the sheet. */
@@ -125,7 +135,7 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonForm form) {
-        return PersonView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms(),
+        return view(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms(),
                 form.contact()));
     }
 
@@ -139,7 +149,7 @@ public class PersonController {
         if (form.version() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required.");
         }
-        return PersonView.of(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
+        return view(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
                 form.grade(), form.gradeFrom(), form.terms(), form.contact(), form.termsGiven(), form.contactGiven()));
     }
 
@@ -164,7 +174,7 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody(required = false) RetireForm form) {
-        return PersonView.of(service.retire(sheetId, SignedIn.name(user), personId,
+        return view(service.retire(sheetId, SignedIn.name(user), personId,
                 form == null ? null : form.from()));
     }
 
@@ -179,7 +189,7 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody(required = false) HoldForm form) {
-        return PersonView.of(service.hold(sheetId, SignedIn.name(user), personId,
+        return view(service.hold(sheetId, SignedIn.name(user), personId,
                 form == null ? null : form.from(), form == null ? null : form.to()));
     }
 
@@ -194,7 +204,7 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PatronForm form) {
-        return PersonView.of(service.addPatron(sheetId, SignedIn.name(user), personId, form.patronId()));
+        return view(service.addPatron(sheetId, SignedIn.name(user), personId, form.patronId()));
     }
 
     /** An alias a person goes by. */
@@ -208,7 +218,7 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid AliasForm form) {
-        return PersonView.of(service.addAlias(sheetId, SignedIn.name(user), personId, form.alias()));
+        return view(service.addAlias(sheetId, SignedIn.name(user), personId, form.alias()));
     }
 
     /** The person another is merged into. */
@@ -222,7 +232,7 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid MergeForm form) {
-        return PersonView.of(merges.merge(sheetId, SignedIn.name(user), personId, form.intoId()));
+        return view(merges.merge(sheetId, SignedIn.name(user), personId, form.intoId()));
     }
 
     /** The sheet a person is transferred to. */
@@ -266,6 +276,11 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         watches.unwatch(sheetId, SignedIn.name(user), personId);
+    }
+
+    /** What the screen is told about a person, with whether they clash. */
+    private PersonView view(Person person) {
+        return PersonView.of(person, service.clashing(person));
     }
 
     /** Someone else saved the person between the version check and the write. */

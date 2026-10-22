@@ -275,6 +275,7 @@ function csvField(value: string): string {
             <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th>
             <th scope="col">Aliases</th>
+            <th scope="col">Clashing</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
             <th scope="col">Contact</th>
@@ -327,6 +328,7 @@ function csvField(value: string): string {
                   Add
                 </button>
               </td>
+              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -1572,7 +1574,7 @@ export class People {
         await this.showCurrent(sheet, id);
         this.error.set('Someone else has saved this person since you opened it. The form shows their values now.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set('That name or contact is already in use on this sheet.');
+        this.error.set('That name or contact is already in use on this sheet or its tree.');
       } else {
         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }

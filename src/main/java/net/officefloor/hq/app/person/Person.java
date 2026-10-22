@@ -311,6 +311,11 @@ public class Person {
         return nameKey.equals(key) || aliases.stream().anyMatch(alias -> alias.getAliasKey().equals(key));
     }
 
+    /** Whether the person's name or any alias, compared as names are, is among these keys. */
+    public boolean goesByAny(java.util.Set<String> keys) {
+        return keys.contains(nameKey) || aliases.stream().anyMatch(alias -> keys.contains(alias.getAliasKey()));
+    }
+
     /** Add an alias, kept as names are kept. */
     public void addAlias(String alias) {
         aliases.add(new Alias(alias));

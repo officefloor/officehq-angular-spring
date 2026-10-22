@@ -52,6 +52,8 @@ export interface PersonView {
   patronIds: number[];
   /** The other names the person goes by; absent from a view kept before aliases were. */
   aliases?: string[];
+  /** Whether the person's name or an alias is in use on another sheet of the sheet's tree; absent from a view kept before this was. */
+  clashing?: boolean;
 }
 
 /** A hold on a person, from a date to a date (yyyy-mm-dd, both included); to is null with no end. */
