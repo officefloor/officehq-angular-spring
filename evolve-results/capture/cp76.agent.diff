@@ -1,0 +1,59 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 71d25113..80e7dd1d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -133,13 +133,13 @@ public class PersonService {
+ 
+     /**
+      * Record the change to the person, with the grade in force on the sheet's today and, when the form
+-     * gave them, their own terms (empty when cleared), once it is committed.
++     * gave them, their own terms (left off when they have none), once it is committed.
+      */
+     private void audited(String event, String sheetId, String user, Person person, LocalDate today,
+             boolean withTerms) {
+         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
+                 + " name=" + person.getName() + " grade=" + person.gradeOn(today)
+-                + (withTerms ? " terms=" + (person.getTerms() == null ? "" : person.getTerms()) : ""));
++                + (withTerms && person.getTerms() != null ? " terms=" + person.getTerms() : ""));
+     }
+ 
+     /** Refuse a name already held on the sheet by anyone other than {@code self}. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index 22e6da6b..e7659934 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -169,7 +169,8 @@ public class Rollups {
+         return a == null ? b == null : b != null && a.compareTo(b) == 0;
+     }
+ 
+-    private static String shown(BigDecimal due) {
++    /** A due-total as shown: two decimals, or n/a. */
++    public static String shown(BigDecimal due) {
+         return due != null ? due.toPlainString() : NO_RATE;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index fc969b94..e68bd384 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -54,8 +54,9 @@ public class SheetService {
+     }
+ 
+     /**
+-     * Change the sheet's today, auditing the figures that moves. The sheet as it stood at the end of
+-     * the today it leaves is kept first (see {@link TodayLeaving}). The periods it puts past their grace
++     * Change the sheet's today, auditing the figures that moves. When it moves, each person's due-total
++     * as it stood on the day being left is audited first, in list order, and the sheet as it stood at
++     * the end of that day is kept (see {@link TodayLeaving}). The periods it puts past their grace
+      * days are closed (see {@link TodayChanged}) before those figures are audited.
+      */
+     @Transactional
+@@ -63,6 +64,8 @@ public class SheetService {
+         Sheet sheet = load(id);
+         Rollups.Rollup before = rollups.take(id);
+         if (!today.equals(sheet.getToday())) {
++            before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
++                    + " name=" + figures.name() + " due-total=" + Rollups.shown(figures.dueTotal())));
+             events.publishEvent(new TodayLeaving(id, sheet.getToday()));
+         }
+         sheet.setToday(today);
