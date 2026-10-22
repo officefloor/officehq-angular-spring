@@ -6,6 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import net.officefloor.hq.app.person.Person;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -85,6 +91,43 @@ public class Audit {
                 record(entry);
             }
         });
+    }
+
+    /** A field naming a person: name=&lt;value&gt; or person=&lt;value&gt;, the value running to the next field. */
+    private static final java.util.regex.Pattern PERSON_FIELD =
+            java.util.regex.Pattern.compile(" (?:name|person)=(.*?)(?= [^ =]+=|$)");
+
+    /**
+     * The sheet's lines exactly as the file holds them, newest first. With a name (not blank), only
+     * the lines carrying name=&lt;it&gt; or person=&lt;it&gt;, compared as names are compared.
+     */
+    public synchronized List<String> linesOf(String sheetId, String name) {
+        List<String> lines;
+        try {
+            lines = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        String sheetField = " sheet=" + sheetId + " ";
+        String key = name == null || name.isBlank() ? null : Person.keyOf(name);
+        List<String> shown = new ArrayList<>();
+        for (String line : lines) {
+            if (line.contains(sheetField) && (key == null || isAbout(line, key))) {
+                shown.add(line);
+            }
+        }
+        Collections.reverse(shown);
+        return shown;
+    }
+
+    private static boolean isAbout(String line, String key) {
+        Matcher field = PERSON_FIELD.matcher(line);
+        while (field.find()) {
+            if (Person.keyOf(field.group(1)).equals(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Truncate the audit file. */
