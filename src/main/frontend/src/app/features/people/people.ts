@@ -10,6 +10,10 @@ import { Claims } from '../claims/claims';
 import { Periods } from '../periods/periods';
 import { QuickAdd } from '../quick-add/quick-add';
 import { Rates } from '../rates/rates';
+import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+
+/** The statuses the summary counts claims by, in the order it lists them. */
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
 /**
  * Whether a person's claim counts in the live totals: OPEN and SETTLED claims do, but not an OPEN one
@@ -24,7 +28,7 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, QuickAdd, Rates],
+  imports: [Claims, Periods, QuickAdd, Rates, Summary],
   template: `
     <app-rates [rates]="rates()" [today]="today()" (saved)="rateSaved($event)" />
     <app-periods
@@ -34,6 +38,7 @@ function countsLive(claim: ClaimView, person: PersonView): boolean {
       (closed)="periodChanged($event)"
       (reopened)="periodChanged($event)"
     />
+    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add a person' : 'Edit a person'">
@@ -258,6 +263,33 @@ export class People {
     }
     return new Map([...totals].map(([id, total]) => [id, money(total)]));
   });
+  /**
+   * Per grade: the people not retired who have it in force on the sheet's today, and their due-totals
+   * added up, skipping those shown as n/a.
+   */
+  protected readonly gradeSummary = computed<GradeSummary[]>(() => {
+    const current = this.people().filter((p) => p.retiredFrom === null);
+    return GRADES.map((grade) => {
+      const on = current.filter((p) => this.gradeOf(p) === grade);
+      return {
+        grade,
+        count: on.length,
+        dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
+      };
+    });
+  });
+  /** Per period: its due-total as its row shows it (the one fixed at closing, once closed). */
+  protected readonly periodSummary = computed<PeriodSummary[]>(() => {
+    const totals = this.periodDueTotals();
+    return this.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? totals.get(p.id) ?? '0.00' }));
+  });
+  /** Per status: how many of the sheet's claims have it. */
+  protected readonly statusSummary = computed<StatusSummary[]>(() =>
+    SUMMARY_STATUSES.map((status) => ({
+      status,
+      count: this.claims().filter((c) => c.status === status).length,
+    })),
+  );
   /** The sheet's floor in whole cents: a claim's live due is at least it. */
   private readonly floorCents = computed(() => cents(this.session.floor()));
   /** The sheet's today, on which each grade's rate in force is read. */
