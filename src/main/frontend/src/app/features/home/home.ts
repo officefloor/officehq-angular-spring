@@ -3,11 +3,12 @@ import { Session } from '../../core/session';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
 import { Delegation } from '../delegation/delegation';
+import { Holidays } from '../holidays/holidays';
 
 // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [People, Settings, Delegation],
+  imports: [People, Settings, Delegation, Holidays],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session">
@@ -56,6 +57,7 @@ import { Delegation } from '../delegation/delegation';
           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
           <app-settings />
           <app-delegation />
+          <app-holidays />
           <app-people />
         }
         <p data-testid="home-empty">Nothing here yet.</p>

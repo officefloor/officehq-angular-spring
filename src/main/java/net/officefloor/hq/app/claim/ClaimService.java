@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -36,11 +37,14 @@ public class ClaimService {
     private final PeriodService periods;
     private final RoleService roles;
     private final WatchService watches;
+    private final HolidayService holidays;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
-            Rollups rollups, PeriodService periods, RoleService roles, WatchService watches, Audit audit) {
+            Rollups rollups, PeriodService periods, RoleService roles, WatchService watches, HolidayService holidays,
+            Audit audit) {
         this.watches = watches;
+        this.holidays = holidays;
         this.periods = periods;
         this.roles = roles;
         this.claims = claims;
@@ -610,11 +614,13 @@ public class ClaimService {
 
     /**
      * The date a claim of the person dated on a date is due by: its date plus the first of the
-     * person's own terms, their grade's terms and the sheet's terms in force on it.
+     * person's own terms, their grade's terms and the sheet's terms in force on it, moved past any
+     * holiday on the sheet now to the next day that is not one.
      */
-    private static LocalDate dueBy(Sheet sheet, Person person, LocalDate date) {
+    private LocalDate dueBy(Sheet sheet, Person person, LocalDate date) {
         Integer own = person.getTerms();
-        return date.plusDays(own != null ? own : sheet.termsFor(person.gradeOn(date), date));
+        return holidays.pastHolidays(sheet.getId(),
+                date.plusDays(own != null ? own : sheet.termsFor(person.gradeOn(date), date)));
     }
 
     private Person person(String sheetId, long personId) {

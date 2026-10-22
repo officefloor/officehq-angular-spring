@@ -2,7 +2,6 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -62,12 +61,11 @@ public class PersonService {
         requireNameFree(sheetId, name, person.getId());
         Rollups.Rollup before = rollups.take(sheetId);
         LocalDate today = sheets.today(sheetId);
-        boolean termsChanged = !Objects.equals(person.getTerms(), terms);
         person.setName(name);
         person.setTerms(terms);
         person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
         Person saved = people.saveAndFlush(person);
-        audited("PERSON_EDITED", sheetId, user, saved, today, termsChanged);
+        audited("PERSON_EDITED", sheetId, user, saved, today, true);
         rollups.audit(sheetId, user, before);
         return saved;
     }
@@ -134,14 +132,14 @@ public class PersonService {
     }
 
     /**
-     * Record the change to the person, with the grade in force on the sheet's today and, when the form
-     * gave or changed them, their own terms (left off when they have none), once it is committed.
+     * Record the change to the person, with the grade in force on the sheet's today and, on an edit or
+     * an add that gave them, their own terms (blank when they have none), once it is committed.
      */
     private void audited(String event, String sheetId, String user, Person person, LocalDate today,
             boolean withTerms) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.gradeOn(today)
-                + (withTerms && person.getTerms() != null ? " terms=" + person.getTerms() : ""));
+                + (withTerms ? " terms=" + (person.getTerms() != null ? person.getTerms() : "") : ""));
     }
 
     /** Refuse a name already held on the sheet by anyone other than {@code self}. */
