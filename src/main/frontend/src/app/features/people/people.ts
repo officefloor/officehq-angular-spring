@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
+import { downloadCsv } from '../../core/csv';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
 import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
@@ -48,7 +49,6 @@ function countsInPeriod(claim: ClaimView, person: PersonView, today: string, per
   return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today));
 }
 
-/** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
 /**
  * The sum of the people's figures in whole cents, leaving out the single highest and the single
  * lowest when there are three or more.
@@ -78,10 +78,6 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
   if (today === '') return false;
   const since = new Date(Date.parse(today) - 29 * 86_400_000).toISOString().slice(0, 10);
   return claims.some((c) => isOpen(c) && countsLive(c, person, today) && since <= c.date && c.date <= today);
-}
-
-function csvField(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
 // The active sheet's people: listed by their position in the list, added and edited through one form,
@@ -1504,13 +1500,7 @@ export class People {
   }
 
   private download(lines: string[][], name: string): void {
-    const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${name}-${this.session.sheet() ?? 'sheet'}.csv`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url));
+    downloadCsv(lines, name, this.session.sheet());
   }
 
   /** A rate set for a grade, in place of any it had from the same date. */

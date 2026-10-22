@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { cents, money } from '../../core/claims';
+import { downloadCsv } from '../../core/csv';
 import { PersonView, heldOn, retiredOn } from '../../core/people';
 import { PoolMemberView, PoolView, PoolsApi, memberOn } from '../../core/pools';
 import { Session } from '../../core/session';
@@ -97,6 +98,7 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
           <p role="alert" data-testid="pool-form-error">{{ message }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools as CSV</button>
       <ul aria-label="Pools">
         @for (line of lines(); track line.pool.id) {
           <li [attr.data-testid]="'pool-row-' + line.pool.name">
@@ -279,6 +281,26 @@ export class Pools {
       return next;
     });
     this.setError(poolId, null);
+  }
+
+  /**
+   * Download the pools as a CSV file: a header line, then one line per member, pools in the order added
+   * and each pool's members in the order added, a pool member as pool:<name>, and the cut as shown
+   * (empty when none). Each line ends with a line feed.
+   */
+  protected exportCsv(): void {
+    const lines = [
+      ['pool', 'member', 'share', 'cut'],
+      ...this.lines().flatMap((line) =>
+        line.pool.members.map((m) => [
+          line.pool.name,
+          m.poolId !== null ? `pool:${m.name}` : m.name,
+          m.share,
+          line.cuts.get(key(m)) ?? '',
+        ]),
+      ),
+    ];
+    downloadCsv(lines, 'pools', this.session.sheet());
   }
 
   protected async add(event: Event): Promise<void> {
