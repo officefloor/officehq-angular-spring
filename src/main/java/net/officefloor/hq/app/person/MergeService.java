@@ -5,6 +5,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.plan.Plan;
+import net.officefloor.hq.app.plan.PlanRepository;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.Role;
@@ -23,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
  * losing any figure a statement bound. Their name and aliases become aliases of the other; their
  * patrons are added to the other's (not the other themselves, no repeats); anyone naming them as a
  * patron names the other instead (no repeats); their pool memberships move to the other, shares added
- * where the other is already a member. Their statements, holds, watchers and contact are dropped, and
+ * where the other is already a member; their plans become the other's. Their statements, holds, watchers and contact are dropped, and
  * they leave the sheet.
  */
 @Service
@@ -34,19 +36,21 @@ public class MergeService {
     private final StatementRepository statements;
     private final WatchRepository watches;
     private final PoolMemberRepository poolMembers;
+    private final PlanRepository plans;
     private final RoleService roles;
     private final SheetService sheets;
     private final Rollups rollups;
     private final Audit audit;
 
     public MergeService(PersonRepository people, ClaimRepository claims, StatementRepository statements,
-            WatchRepository watches, PoolMemberRepository poolMembers, RoleService roles, SheetService sheets,
+            WatchRepository watches, PoolMemberRepository poolMembers, PlanRepository plans, RoleService roles, SheetService sheets,
             Rollups rollups, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.statements = statements;
         this.watches = watches;
         this.poolMembers = poolMembers;
+        this.plans = plans;
         this.roles = roles;
         this.sheets = sheets;
         this.rollups = rollups;
@@ -114,6 +118,12 @@ public class MergeService {
                 member.moveTo(into.getId());
                 poolMembers.save(member);
             }
+        }
+
+        // Their plans become the other's.
+        for (Plan plan : plans.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId())) {
+            plan.moveTo(into.getId());
+            plans.save(plan);
         }
 
         // Their statements and watchers are dropped, and they leave the sheet with their holds and contact.

@@ -10,6 +10,7 @@ import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
 import { Periods } from '../periods/periods';
+import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Pools } from '../pools/pools';
 import { ImportPeople } from '../import-people/import-people';
 import { PasteClaims } from '../paste-claims/paste-claims';
@@ -85,7 +86,7 @@ function csvField(value: string): string {
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, Pools, QuickAdd, Rates, Summary],
+  imports: [Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, QuickAdd, Rates, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -164,6 +165,7 @@ function csvField(value: string): string {
       <app-quick-add (added)="quickAdded($event)" />
       <app-import-people (added)="imported($event)" />
       <app-paste-claims (added)="pasted($event)" />
+      <app-plan-generate (generated)="pasted($event)" />
       <p>
         <input
           id="show-retired"
@@ -317,6 +319,7 @@ function csvField(value: string): string {
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
             <th scope="col">Cut</th>
+            <th scope="col">Plans</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -447,6 +450,9 @@ function csvField(value: string): string {
               </td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td data-testid="person-cut-total">{{ cutTotalOf(p) }}</td>
+              <td>
+                <app-person-plans [personId]="p.id" [personName]="p.name" />
+              </td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -1674,7 +1680,7 @@ export class People {
     ]);
   }
 
-  /** Claims pasted, in the order added: each listed first in turn, so the last is the newest. */
+  /** Claims pasted or made by the plans, in the order added: each listed first in turn, so the last is the newest. */
   protected pasted(claims: ClaimView[]): void {
     for (const claim of claims) this.claimSaved(claim);
   }
