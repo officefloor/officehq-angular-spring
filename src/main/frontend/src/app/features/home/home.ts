@@ -39,6 +39,8 @@ import { Delegation } from '../delegation/delegation';
             />
             <button type="submit" data-testid="sheet-today-save">Save today</button>
           </form>
+          <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+          <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
           <app-settings />
           <app-delegation />
           <app-people />
@@ -71,6 +73,8 @@ export class Home {
   protected readonly sheetError = signal<string | null>(null);
   /** A today change is waiting for its answer: a second submit meanwhile is ignored. */
   private savingToday = false;
+  /** An archive is waiting for its answer: a second click meanwhile is ignored. */
+  private archiving = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -118,6 +122,19 @@ export class Home {
       this.sheetError.set(`Today could not be changed to ${date}.`);
     } finally {
       this.savingToday = false;
+    }
+  }
+
+  protected async archive(): Promise<void> {
+    if (this.archiving) return;
+    this.sheetError.set(null);
+    this.archiving = true;
+    try {
+      await this.session.archive();
+    } catch {
+      this.sheetError.set('The sheet could not be archived.');
+    } finally {
+      this.archiving = false;
     }
   }
 }

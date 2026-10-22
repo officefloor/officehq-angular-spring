@@ -9,6 +9,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -16,7 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
  * Moving the selected claims together: opening or settling them. Each is moved on its own, as its
  * own button would, in list order: the people in the order they were added, each person's claims
  * newest first, so numbers follow that order. A claim that cannot be moved (or is not on the sheet)
- * is refused and left as it is, writing nothing; the others are still moved.
+ * is refused and left as it is, writing nothing; the others are still moved. On an archived sheet, or
+ * for a viewer, every claim is refused.
  */
 @Service
 public class BulkMoveService {
@@ -28,11 +30,13 @@ public class BulkMoveService {
     private final ClaimService claims;
     private final PersonRepository people;
     private final RoleService roles;
+    private final SheetService sheets;
 
-    public BulkMoveService(ClaimService claims, PersonRepository people, RoleService roles) {
+    public BulkMoveService(ClaimService claims, PersonRepository people, RoleService roles, SheetService sheets) {
         this.claims = claims;
         this.people = people;
         this.roles = roles;
+        this.sheets = sheets;
     }
 
     /** Open the selected claims, each as its Open button would. */
@@ -50,7 +54,7 @@ public class BulkMoveService {
 
     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
         Set<Long> selected = new HashSet<>(claimIds);
-        if (Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
+        if (Role.VIEWER.equals(roles.roleOf(sheetId, user)) || sheets.archived(sheetId)) {
             return new Result(List.of(), selected.size());
         }
         List<Long> ordered = new ArrayList<>();

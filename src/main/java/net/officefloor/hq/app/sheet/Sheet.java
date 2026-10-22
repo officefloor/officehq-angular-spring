@@ -101,6 +101,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Archived: everything on the sheet stays visible but nothing on it may change. */
+    @Column(name = "archived", nullable = false)
+    private boolean archived;
+
     /** The last X-number given to a claim in no period while period numbering is on; 0 before any. */
     @Column(name = "last_unperiod_claim_number", nullable = false)
     private int lastUnperiodClaimNumber;
@@ -140,6 +144,14 @@ public class Sheet {
 
     public void setToday(LocalDate today) {
         this.today = today;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 
     /** The clerk limit in force on the sheet's today, with two decimals; null when there is none. */

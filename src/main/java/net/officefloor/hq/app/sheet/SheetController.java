@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.SignedIn;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,13 +34,13 @@ public class SheetController {
 
     /** What the screen is told about a loaded sheet. */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
-            String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory) {
+            String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
-                    DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()));
+                    DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived());
         }
     }
 
@@ -165,9 +167,11 @@ public class SheetController {
     }
 
     private final SheetService service;
+    private final RoleService roles;
 
-    public SheetController(SheetService service) {
+    public SheetController(SheetService service, RoleService roles) {
         this.service = service;
+        this.roles = roles;
     }
 
     /** Load a sheet by id, starting an empty one if the id was never used. */
@@ -184,6 +188,18 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid TodayChange change) {
         return SheetView.of(service.setToday(id, SignedIn.name(user), change.today()));
+    }
+
+    /** Archive the sheet: only a steward may. */
+    @PostMapping("/{id}/archive")
+    public SheetView archive(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        String name = SignedIn.name(user);
+        if (!Role.STEWARD.equals(roles.roleOf(id, name))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may archive the sheet.");
+        }
+        return SheetView.of(service.archive(id, name));
     }
 
     /** The sheet's settings. */

@@ -39,6 +39,8 @@ export interface SheetView {
   floorHistory: DatedValue[];
   /** The late percent's values by from-date, its starting value first. */
   latePctHistory: DatedValue[];
+  /** Whether the sheet is archived: everything stays visible but nothing on it may change. */
+  archived: boolean;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -68,6 +70,8 @@ export class Session {
   readonly policyDate = signal('');
   /** The active sheet's cap in force on its today, with two decimals: a person's due-total is at most it; empty when there is none. */
   readonly cap = signal('');
+  /** Whether the active sheet is archived. */
+  readonly archived = signal(false);
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -94,6 +98,16 @@ export class Session {
     this.show(view);
   }
 
+  /** Archive the active sheet in the store. */
+  async archive(): Promise<void> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet is loaded.');
+    const view = await firstValueFrom(
+      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null),
+    );
+    this.show(view);
+  }
+
   private show(view: SheetView): void {
     this.sheet.set(view.id);
     this.today.set(view.today);
@@ -104,5 +118,6 @@ export class Session {
     this.latePctHistory.set(view.latePctHistory);
     this.policyDate.set(view.policyDate ?? '');
     this.cap.set(view.cap ?? '');
+    this.archived.set(view.archived);
   }
 }

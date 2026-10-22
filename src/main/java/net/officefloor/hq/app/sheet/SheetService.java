@@ -7,6 +7,8 @@ import net.officefloor.hq.app.Audit;
 import java.time.LocalDate;
 import net.officefloor.hq.app.rollup.Rollups;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,6 +65,25 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         events.publishEvent(new TodayChanged(id, user, today, saved.getGraceDays()));
         rollups.audit(id, user, before);
+        return saved;
+    }
+
+    /** Whether the sheet is archived: nothing on it may change. */
+    @Transactional(readOnly = true)
+    public boolean archived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+    }
+
+    /** Archive the sheet; refused when it already is. */
+    @Transactional
+    public Sheet archive(String id, String user) {
+        Sheet sheet = lock(id);
+        if (sheet.isArchived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is already archived.");
+        }
+        sheet.setArchived(true);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + user);
         return saved;
     }
 
