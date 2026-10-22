@@ -26,6 +26,10 @@ export interface ClaimView {
   settledDue: string | null;
   /** The user who opened the claim; null until it is opened. The opener cannot settle it. */
   openedBy: string | null;
+  /** Whether the claim is bound by its person's last statement to the figure it had then. */
+  stated: boolean;
+  /** The figure the statement bound the claim to, with two decimals; null when unbound, or when it was n/a. */
+  statedDue: string | null;
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED claims do. */

@@ -7,6 +7,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Locale;
 
 /**
@@ -37,6 +39,18 @@ public class Person {
     @Version
     @Column(name = "version", nullable = false)
     private long version;
+
+    /** How many statements have been taken for the person. */
+    @Column(name = "statement_count", nullable = false)
+    private int statementCount;
+
+    /** The last statement's due-total; null with no statement, or when it was n/a. */
+    @Column(name = "statement_total", precision = 14, scale = 2)
+    private BigDecimal statementTotal;
+
+    /** The sheet's today when the last statement was taken; null with no statement. */
+    @Column(name = "statement_date")
+    private LocalDate statementDate;
 
     protected Person() {
     }
@@ -84,5 +98,24 @@ public class Person {
 
     public long getVersion() {
         return version;
+    }
+
+    public int getStatementCount() {
+        return statementCount;
+    }
+
+    public BigDecimal getStatementTotal() {
+        return statementTotal;
+    }
+
+    public LocalDate getStatementDate() {
+        return statementDate;
+    }
+
+    /** Record a statement taken on a date with its due-total (null when n/a). */
+    public void stated(BigDecimal total, LocalDate date) {
+        this.statementCount++;
+        this.statementTotal = total;
+        this.statementDate = date;
     }
 }

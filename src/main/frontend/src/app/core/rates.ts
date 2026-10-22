@@ -65,11 +65,13 @@ export function due(amountCents: number, pct: string | null): string {
 }
 
 /**
- * A claim's due figure in whole cents: the due fixed when it was settled, or else its amount at the
- * rate the grade has in force on the claim's date; null when there is neither.
+ * A claim's due figure in whole cents: the due fixed when it was settled, or else the figure its
+ * person's last statement bound it to, or else its amount at the rate the grade has in force on the
+ * claim's date; null when there is none.
  */
 export function claimDueCents(claim: ClaimView, rates: RateView[], grade: Grade): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
+  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const pct = rateOn(rates, grade, claim.date);
   return pct === null ? null : dueCents(cents(claim.amount), pct);
 }

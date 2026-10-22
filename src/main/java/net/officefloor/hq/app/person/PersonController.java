@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -28,11 +29,18 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class PersonController {
 
-    /** What the screen is told about a person. */
-    public record PersonView(long id, String name, String grade, long version) {
+    /**
+     * What the screen is told about a person, with their statement count, and the last statement's
+     * due-total (null when n/a or none taken) and date (null when none taken).
+     */
+    public record PersonView(long id, String name, String grade, long version, int statementCount,
+            String statementTotal, LocalDate statementDate) {
 
-        static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+        public static PersonView of(Person person) {
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    person.getStatementCount(),
+                    person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
+                    person.getStatementDate());
         }
     }
 

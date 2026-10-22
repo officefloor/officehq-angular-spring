@@ -66,7 +66,8 @@ public class ClaimService {
     /**
      * Move a claim to a new status, recording the event; refused (and nothing written) when the
      * claim's current status does not allow the move. Settling fixes the claim's due at the rate
-     * the person's grade has in force on the claim's date. Opening records who opened the claim, and
+     * the person's grade has in force on the claim's date, or at the figure a statement bound it to.
+     * Opening records who opened the claim, and
      * that user is refused when settling it.
      */
     @Transactional
@@ -93,9 +94,7 @@ public class ClaimService {
             claim.openedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
-            claim.settleDue(rates.findInForce(sheetId, person.getGrade(), claim.getDate())
-                    .map(rate -> due(claim.getAmount(), rate))
-                    .orElse(null));
+            claim.settleDue(claim.isStated() ? claim.getStatedDue() : liveDue(claim, person.getGrade()));
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
@@ -131,6 +130,25 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "") + suffix);
+    }
+
+    /**
+     * The due figure a claim shows: the one fixed when it was settled, else the one its person's last
+     * statement bound it to, else its amount at the rate the grade has in force on the claim's date;
+     * null (n/a) when there is none.
+     */
+    public BigDecimal figure(Claim claim, String grade) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
+        return claim.isStated() ? claim.getStatedDue() : liveDue(claim, grade);
+    }
+
+    /** A claim's amount at the rate the grade has in force on the claim's date; null when it has none. */
+    private BigDecimal liveDue(Claim claim, String grade) {
+        return rates.findInForce(claim.getSheetId(), grade, claim.getDate())
+                .map(rate -> due(claim.getAmount(), rate))
+                .orElse(null);
     }
 
     /** What is due on an amount at a rate: the amount times the percent over 100, rounded half to even. */

@@ -55,6 +55,7 @@ import { Rates } from '../rates/rates';
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Statements</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -66,6 +67,11 @@ import { Rates } from '../rates/rates';
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td>
+                <span data-testid="person-statement-count">{{ p.statementCount }}</span>
+                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
+                <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+              </td>
               <td>
                 <app-claims
                   [personId]="p.id"
@@ -85,6 +91,17 @@ import { Rates } from '../rates/rates';
                 >
                   Edit
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-statement"
+                  [attr.aria-label]="'Take a statement for ' + p.name"
+                  (click)="statement(p)"
+                >
+                  Statement
+                </button>
+                @if (personError()?.id === p.id) {
+                  <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                }
               </td>
             </tr>
           }
@@ -126,6 +143,8 @@ export class People {
   /** The version of the person open in the form, as it was loaded. */
   private readonly version = signal(0);
   protected readonly error = signal<string | null>(null);
+  /** The refusal of the last action taken on a person's row, shown on that row. */
+  protected readonly personError = signal<{ id: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
 
@@ -139,6 +158,7 @@ export class People {
         this.claims.set([]);
         this.rates.set([]);
         this.reset();
+        this.personError.set(null);
         if (sheet) void this.reload(sheet);
       });
     });
@@ -171,12 +191,35 @@ export class People {
   /**
    * A person's due-total in whole cents: the sum of the due figures of their OPEN and SETTLED claims
    * (0 with none). Null (n/a) when their grade has no rate on the sheet's today, unless a settled
-   * claim keeps a fixed figure: then it is the sum of the figures there are.
+   * or stated claim keeps a fixed figure: then it is the sum of the figures there are.
    */
   private dueTotalCents(person: PersonView): number | null {
     const counting = this.claimsOf(person.id).filter(counts);
-    if (this.pctOf(person.grade) === null && !counting.some((c) => c.settledDue !== null)) return null;
+    const fixed = (c: ClaimView) => c.settledDue !== null || (c.stated && c.statedDue !== null);
+    if (this.pctOf(person.grade) === null && !counting.some(fixed)) return null;
     return counting.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), person.grade) ?? 0), 0);
+  }
+
+  /** The last statement's due-total: n/a when it was, empty when none was taken. */
+  protected statedTotalOf(person: PersonView): string {
+    if (person.statementCount === 0) return '';
+    return person.statementTotal ?? NO_RATE;
+  }
+
+  /** Take a statement for a person: the row and their claims show what the store holds after it. */
+  protected async statement(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      const stated = await this.api.statement(sheet, person.id);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === stated.person.id ? stated.person : p)));
+      const byId = new Map(stated.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+    } catch {
+      this.personError.set({ id: person.id, message: 'The statement could not be taken.' });
+    }
   }
 
   /** A rate set for a grade, in place of any it had from the same date. */
@@ -201,6 +244,7 @@ export class People {
 
   /** Open a person's editor: the form takes their values. */
   protected open(person: PersonView): void {
+    this.personError.set(null);
     this.editing.set(person.id);
     this.version.set(person.version);
     this.name.set(person.name);

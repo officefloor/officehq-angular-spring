@@ -1,0 +1,84 @@
+package net.officefloor.hq.app.statement;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+/**
+ * A person's statements: taking one records their due-total on the sheet's today, binds each of
+ * their counting claims to the due figure it shows then, and leaves the rest unbound.
+ */
+@Service
+public class StatementService {
+
+    /** Shown in place of a due-total when the grade has no rate. */
+    private static final String NO_RATE = "n/a";
+
+    /** The person as stated, with all of their claims, newest first. */
+    public record Stated(Person person, List<Claim> claims) {
+    }
+
+    private final PersonRepository people;
+    private final ClaimRepository claims;
+    private final ClaimService claimService;
+    private final RateRepository rates;
+    private final SheetService sheets;
+    private final Audit audit;
+
+    public StatementService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
+            RateRepository rates, SheetService sheets, Audit audit) {
+        this.people = people;
+        this.claims = claims;
+        this.claimService = claimService;
+        this.rates = rates;
+        this.sheets = sheets;
+        this.audit = audit;
+    }
+
+    /** Take a statement for a person on the sheet. */
+    @Transactional
+    public Stated take(String sheetId, String user, long personId) {
+        LocalDate today = sheets.today(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        boolean fixed = false;
+        int counted = 0;
+        for (Claim claim : theirs) {
+            if (!claim.getStatus().counts()) {
+                claim.unbind();
+                continue;
+            }
+            BigDecimal figure = claimService.figure(claim, person.getGrade());
+            fixed |= figure != null && (claim.getSettledDue() != null || claim.isStated());
+            claim.bind(figure);
+            counted++;
+            if (figure != null) {
+                total = total.add(figure);
+            }
+        }
+        // As on the screen: n/a when the grade has no rate today, unless a claim keeps a fixed figure.
+        if (rates.findInForce(sheetId, person.getGrade(), today).isEmpty() && !fixed) {
+            total = null;
+        }
+        person.stated(total, today);
+        Person saved = people.saveAndFlush(person);
+        List<Claim> bound = claims.saveAllAndFlush(theirs);
+        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " due-total=" + (total != null ? total.toPlainString() : NO_RATE) + " claims=" + counted);
+        return new Stated(saved, bound);
+    }
+}

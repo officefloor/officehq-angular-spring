@@ -16,4 +16,9 @@ public enum ClaimStatus {
             case DRAFT -> false;
         };
     }
+
+    /** Whether a claim in this status counts toward what is claimed and due. */
+    public boolean counts() {
+        return this == OPEN || this == SETTLED;
+    }
 }

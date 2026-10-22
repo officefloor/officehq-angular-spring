@@ -54,6 +54,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <button
             type="button"
@@ -113,7 +114,8 @@ export class Claims {
   ];
 
   /**
-   * What is due on a claim: the due fixed when it was settled, or else its amount at the rate the
+   * What is due on a claim: the due fixed when it was settled, or else the figure its person's last
+   * statement bound it to, or else its amount at the rate the
    * person's grade has in force on the claim's date (n/a when it is dated before every rate).
    */
   protected dueOf(claim: ClaimView): string {
