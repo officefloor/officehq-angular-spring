@@ -242,6 +242,24 @@ public class Claim {
         return List.copyOf(log);
     }
 
+    /**
+     * The status the claim had at the end of a day, as its status log records it: the last line dated
+     * on or before it, or null when the claim was added after it. A claim with no log (added before
+     * the log) has its current status.
+     */
+    public ClaimStatus statusAt(LocalDate day) {
+        if (log.isEmpty()) {
+            return status;
+        }
+        ClaimStatus then = null;
+        for (ClaimLogLine line : log) {
+            if (!line.getOn().isAfter(day)) {
+                then = line.getStatus();
+            }
+        }
+        return then;
+    }
+
     /** Add a line to the claim's status log for the status it now has. */
     public void logged(String by, LocalDate on, BigDecimal due) {
         log.add(new ClaimLogLine(status, by, on, due));

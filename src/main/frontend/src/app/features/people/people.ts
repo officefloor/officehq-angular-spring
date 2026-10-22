@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp } from '../../core/claims';
+import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView, gradeOn, heldOn } from '../../core/people';
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
@@ -24,6 +24,17 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
  */
 function countsLive(claim: ClaimView, person: PersonView, today: string): boolean {
   return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && heldOn(person, claim.date));
+}
+
+/**
+ * Whether a person's claim counts in a period's live figures: by the live rules, but by the status it
+ * had at the end of the period's last day (see statusAt); one added after then does not count.
+ */
+function countsInPeriod(claim: ClaimView, person: PersonView, today: string, period: PeriodView): boolean {
+  const then = statusAt(claim, period.to);
+  if (then === null) return false;
+  const openThen = then === 'OPEN' || then === 'PENDING';
+  return (openThen || then === 'SETTLED') && !deferred(claim, today) && !(openThen && !claim.stated && heldOn(person, claim.date));
 }
 
 /** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
@@ -332,9 +343,9 @@ export class People {
   protected readonly periods = signal<PeriodView[]>([]);
   /**
    * Each person's due-total for each period, in whole cents, by period id then person id. While the
-   * period is open it is live: the sum of the due figures of the person's OPEN and SETTLED claims dated
-   * in it, each at the grade in force on its date (a claim with no figure adds nothing), leaving out the
-   * OPEN claims dated within their hold (see countsLive). Once closed it is the figure fixed at closing,
+   * period is open it is live: the sum of the due figures, as shown now, of the person's claims dated in
+   * it that were OPEN, PENDING or SETTLED at the end of its last day, each at the grade in force on its
+   * date (a claim with no figure adds nothing), leaving out those held or deferred (see countsInPeriod). Once closed it is the figure fixed at closing,
    * 0 for a person added since.
    */
   private readonly personPeriodCents = computed(() => {
@@ -350,7 +361,7 @@ export class People {
     for (const c of this.claims()) {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (!period || period.closed || !person || !countsLive(c, person, this.today())) continue;
+      if (!period || period.closed || !person || !countsInPeriod(c, person, this.today(), period)) continue;
       const row = figures.get(period.id)!;
       row.set(person.id, row.get(person.id)! + (this.dueCents(c, person) ?? 0));
     }

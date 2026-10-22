@@ -68,6 +68,20 @@ export function isCorrection(claim: ClaimView): boolean {
   return claim.amount.startsWith('-') && cents(claim.amount) !== 0;
 }
 
+/**
+ * The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it: the last line
+ * dated on or before it, or null when the claim was added after it. A claim with no log (added before
+ * the log) has its current status.
+ */
+export function statusAt(claim: ClaimView, day: string): ClaimStatus | null {
+  if (claim.log.length === 0) return claim.status;
+  let then: ClaimStatus | null = null;
+  for (const line of claim.log) {
+    if (line.on <= day) then = line.status;
+  }
+  return then;
+}
+
 /** Whether a claim counts toward what is claimed and due: only OPEN, PENDING and SETTLED claims do. */
 export function counts(claim: ClaimView): boolean {
   return isOpen(claim) || claim.status === 'SETTLED';

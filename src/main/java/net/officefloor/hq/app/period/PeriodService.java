@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -74,9 +75,10 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures of the OPEN and
-     * SETTLED claims dated in it, each at the grade its person has in force on its date (a claim with no figure adds nothing),
-     * leaving out the OPEN and PENDING claims dated within their person's hold, unless bound by a statement. Refused when the period is already closed.
+     * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures,
+     * as computed now, of the claims dated in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
+     * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those OPEN or PENDING then and dated
+     * within their person's hold, unless bound by a statement, and those deferred on today. Refused when the period is already closed.
      */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
@@ -93,7 +95,11 @@ public class PeriodService {
         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today)) || !period.contains(claim.getDate())) {
+            if (person == null || !period.contains(claim.getDate())) {
+                continue;
+            }
+            ClaimStatus then = claim.statusAt(period.getToDate());
+            if (then == null || !person.countsLive(then, claim.getDate(), claim.isStated(), claim.isDeferredOn(today))) {
                 continue;
             }
             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));

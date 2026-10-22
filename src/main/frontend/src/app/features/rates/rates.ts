@@ -157,9 +157,10 @@ export class Rates {
       return;
     }
     if (from !== '' && to !== '' && to < from) {
-      // The refused to-date is cleared, so it is not carried into the next rate set.
+      // The refused dates are cleared, so they are not carried into the next rate set.
+      this.from.set('');
       this.to.set('');
-      this.error.set(`A to-date cannot be before the from-date; ${to} was cleared.`);
+      this.error.set(`A to-date cannot be before the from-date; ${from} and ${to} were cleared.`);
       return;
     }
     this.busy = true;
