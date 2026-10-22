@@ -1,0 +1,129 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 588ba858..d9035d25 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -151,6 +151,11 @@ export class PeopleApi {
+     return firstValueFrom(this.http.put<PersonView>(`${this.url(sheet)}/${id}`, form));
+   }
+ 
++  /** Record the grade chosen on a person's row from the sheet's today, from the version the row shows. */
++  grade(sheet: string, id: number, grade: Grade, version: number): Promise<PersonView> {
++    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/grade`, { grade, version }));
++  }
++
+   /**
+    * Give the selected people a grade from a date (null: the sheet's today) together, each as the person
+    * form would, in list order: the people changed.
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index dd50a048..b1d77265 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -534,6 +534,24 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 >
+                   Cancel statement
+                 </button>
++                <label [for]="'person-inline-grade-' + p.id">Grade</label>
++                <select
++                  [id]="'person-inline-grade-' + p.id"
++                  data-testid="person-inline-grade"
++                  (change)="inlineGrades.set(p.id, $any(value($event))); personError.set(null)"
++                >
++                  @for (g of grades; track g) {
++                    <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
++                  }
++                </select>
++                <button
++                  type="button"
++                  data-testid="person-inline-grade-save"
++                  [attr.aria-label]="'Save the grade chosen for ' + p.name"
++                  (click)="saveInlineGrade(p)"
++                >
++                  Save grade
++                </button>
+                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                 <input
+                   type="date"
+@@ -669,6 +687,8 @@ export class People {
+   });
+   /** The retire-from date typed on each person's row, by person id; none means the sheet's today. */
+   protected readonly retireDates = new Map<number, string>();
++  /** The grade chosen on each person's row. */
++  protected readonly inlineGrades = new Map<number, Grade>();
+   /** The hold dates typed on each person's row, by person id; an empty from means the sheet's today. */
+   protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
+   /** The sheet's claims, newest first. */
+@@ -1371,6 +1391,22 @@ export class People {
+     }
+   }
+ 
++  /** Record the grade chosen on a person's row from the sheet's today, as the person form would. */
++  protected async saveInlineGrade(person: PersonView): Promise<void> {
++    this.personError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const grade = this.inlineGrades.get(person.id) ?? this.gradeOf(person);
++    try {
++      const saved = await this.api.grade(sheet, person.id, grade, person.version);
++      if (this.session.sheet() !== sheet) return;
++      this.inlineGrades.delete(person.id);
++      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++    } catch {
++      this.personError.set({ id: person.id, message: 'The grade could not be saved.' });
++    }
++  }
++
+   /** Retire a person from the date typed on their row, or from the sheet's today with none. */
+   protected async retire(person: PersonView): Promise<void> {
+     this.personError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 18828e80..54a8601b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -110,6 +110,10 @@ public class PersonController {
+             LocalDate from) {
+     }
+ 
++    /** A grade chosen on a person's row, from the version of the person the row shows. */
++    public record RowGradeForm(@NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
++    }
++
+     /** The people selected to be retired together, and the date they are retired from (none: the sheet's today). */
+     public record BulkRetireForm(
+             @NotNull @Size(min = 1, max = 1000) List<@NotNull Long> personIds,
+@@ -207,6 +211,16 @@ public class PersonController {
+                 .map(PersonView::of).toList();
+     }
+ 
++    /** Record the grade chosen on the person's row from the sheet's today, as the person form would. */
++    @PostMapping("/{personId}/grade")
++    public PersonView gradeRow(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long personId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid RowGradeForm form) {
++        return view(service.grade(sheetId, SignedIn.name(user), personId, form.version(), form.grade()));
++    }
++
+     /** Retire the selected people from a date together, each as the row's retire would: the people retired. */
+     @PostMapping("/retire")
+     public List<PersonView> retireAll(
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 11af842a..d1831dcc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -134,6 +134,15 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /** Record a person's grade from the sheet's today, keeping the rest of them, as the person form would. */
++    @Transactional
++    public Person grade(String sheetId, String user, long personId, long version, String grade) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        return edit(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(),
++                person.getContact(), false, false);
++    }
++
+     /**
+      * Swap a person with the one above them in the list (up) or below them (down); refused for the top
+      * person moving up and the bottom one moving down. PERSON_MOVED carries their new position, counting
