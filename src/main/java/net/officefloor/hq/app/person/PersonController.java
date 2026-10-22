@@ -145,13 +145,22 @@ public class PersonController {
                 form.contact()));
     }
 
-    /** Add a person per imported line, in order, each as the person form would; nothing is added when any line is refused. */
+    /** The people an import added and those it updated, each in the order of their lines. */
+    public record ImportView(List<PersonView> added, List<PersonView> updated) {
+    }
+
+    /**
+     * Add a person per imported line, in order, each as the person form would, or update the person the
+     * line names; nothing is imported when any line is refused.
+     */
     @PostMapping("/import")
-    public List<PersonView> importPeople(
+    public ImportView importPeople(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ImportForm form) {
-        return imports.importPeople(sheetId, SignedIn.name(user), form.text()).stream().map(this::view).toList();
+        ImportService.Imported imported = imports.importPeople(sheetId, SignedIn.name(user), form.text());
+        return new ImportView(imported.added().stream().map(this::view).toList(),
+                imported.updated().stream().map(this::view).toList());
     }
 
     /** Change a person's name and record their grade from its date, from the version of the person the form loaded. */

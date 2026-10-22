@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
-import { GRADES, Grade, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
+import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -1470,9 +1470,12 @@ export class People {
     this.claimSaved(added.claim);
   }
 
-  /** People imported, in the order added: each listed last in turn. */
-  protected imported(added: PersonView[]): void {
-    this.people.update((list) => [...list, ...added]);
+  /** People imported: those updated replaced where they stand, those added each listed last in turn. */
+  protected imported(imported: ImportView): void {
+    this.people.update((list) => [
+      ...list.map((p) => imported.updated.find((u) => u.id === p.id) ?? p),
+      ...imported.added,
+    ]);
   }
 
   /** Claims pasted, in the order added: each listed first in turn, so the last is the newest. */

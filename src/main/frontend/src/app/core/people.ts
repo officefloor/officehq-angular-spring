@@ -104,6 +104,12 @@ export interface PersonForm {
 }
 
 // The people kept on a sheet, read from and written to the store.
+/** The people an import added and those it updated, each in the order of their lines. */
+export interface ImportView {
+  added: PersonView[];
+  updated: PersonView[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class PeopleApi {
   private readonly http = inject(HttpClient);
@@ -117,9 +123,12 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(this.url(sheet), form));
   }
 
-  /** Add a person per pasted line of name,grade,terms,contact, in order, each as the form would; refused (400) as a whole. */
-  importPeople(sheet: string, text: string): Promise<PersonView[]> {
-    return firstValueFrom(this.http.post<PersonView[]>(`${this.url(sheet)}/import`, { text }));
+  /**
+   * Add a person per pasted line of name,grade,terms,contact, in order, each as the form would, or update
+   * the person a line names; refused (400 or 409) as a whole.
+   */
+  importPeople(sheet: string, text: string): Promise<ImportView> {
+    return firstValueFrom(this.http.post<ImportView>(`${this.url(sheet)}/import`, { text }));
   }
 
   edit(sheet: string, id: number, form: PersonForm): Promise<PersonView> {

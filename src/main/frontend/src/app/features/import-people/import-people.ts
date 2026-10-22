@@ -1,10 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, output, signal, untracked } from '@angular/core';
-import { PeopleApi, PersonView } from '../../core/people';
+import { ImportView, PeopleApi } from '../../core/people';
 import { Session } from '../../core/session';
 
-// The import box: lines of name,grade,terms,contact each add a person as the person form would, all or
-// none; how many were added is shown.
+// The import box: lines of name,grade,terms,contact each add a person as the person form would, or update
+// the person a line names, all or none; how many were added and how many updated is shown.
 @Component({
   selector: 'app-import-people',
   template: `
@@ -19,7 +19,10 @@ import { Session } from '../../core/session';
       ></textarea>
       <button type="submit" data-testid="import-submit">Import people</button>
       @if (added() !== null) {
-        <p role="status">Added <strong data-testid="import-added">{{ added() }}</strong> people.</p>
+        <p role="status">
+          Added <strong data-testid="import-added">{{ added() }}</strong> people, updated
+          <strong data-testid="import-updated">{{ updated() }}</strong>.
+        </p>
       }
       @if (error(); as message) {
         <p role="alert" data-testid="import-error">{{ message }}</p>
@@ -31,11 +34,12 @@ export class ImportPeople {
   private readonly session = inject(Session);
   private readonly api = inject(PeopleApi);
 
-  /** The people imported, in the order they were added. */
-  readonly imported = output<PersonView[]>({ alias: 'added' });
+  /** The people imported: those added and those updated, each in the order of their lines. */
+  readonly imported = output<ImportView>({ alias: 'added' });
 
   protected readonly text = signal('');
   protected readonly added = signal<number | null>(null);
+  protected readonly updated = signal<number>(0);
   protected readonly error = signal<string | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
@@ -71,14 +75,15 @@ export class ImportPeople {
     }
     this.busy = true;
     try {
-      const people = await this.api.importPeople(sheet, text);
+      const imported = await this.api.importPeople(sheet, text);
       if (this.session.sheet() !== sheet) return;
-      this.imported.emit(people);
-      this.added.set(people.length);
+      this.imported.emit(imported);
+      this.updated.set(imported.updated.length);
+      this.added.set(imported.added.length);
       this.text.set('');
     } catch (e) {
       const reason = e instanceof HttpErrorResponse && (e.status === 400 || e.status === 409) && typeof e.error?.detail === 'string' ? e.error.detail : null;
-      this.error.set(reason ?? 'The people could not be imported; nothing was added.');
+      this.error.set(reason ?? 'The people could not be imported; nothing was changed.');
     } finally {
       this.busy = false;
     }
