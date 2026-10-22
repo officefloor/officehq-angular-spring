@@ -4,6 +4,8 @@ import { firstValueFrom } from 'rxjs';
 
 export interface SheetView {
   id: string;
+  /** The sheet's today (yyyy-mm-dd): every date-dependent decision and default date uses it. */
+  today: string;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -14,6 +16,8 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheet = signal<string | null>(null);
+  /** The active sheet's today; features use it, never the real clock. */
+  readonly today = signal<string | null>(null);
 
   signIn(name: string): void {
     this.user.set(name);
@@ -24,6 +28,21 @@ export class Session {
     const view = await firstValueFrom(
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
     );
+    this.show(view);
+  }
+
+  /** Change the active sheet's today in the store. */
+  async setToday(date: string): Promise<void> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet is loaded.');
+    const view = await firstValueFrom(
+      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/today`, { today: date }),
+    );
+    this.show(view);
+  }
+
+  private show(view: SheetView): void {
     this.sheet.set(view.id);
+    this.today.set(view.today);
   }
 }
