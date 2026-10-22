@@ -46,7 +46,7 @@ public class Claim {
 
     /**
      * The date the claim is due by: the terms-th business day after its due-from date (see
-     * {@link BusinessDays#dueBy}), worked out again whenever the sheet's holidays change unless it is a DRAFT.
+     * {@link BusinessDays#dueBy}), worked out again when a holiday on or before it is added unless it is SETTLED or VOID.
      */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;

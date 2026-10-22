@@ -42,8 +42,9 @@ public class HolidayService {
     }
 
     /**
-     * Add a holiday to the sheet; refused when the date is already on its list. Every claim's due-by on
-     * the sheet but a DRAFT's (which keeps the one it was added with) is worked out again against the holidays now, and the figures that moves are audited.
+     * Add a holiday to the sheet; refused when the date is already on its list. Every claim on the sheet
+     * that is not SETTLED or VOID and is due by the holiday or later has its due-by worked out again from
+     * its date, with the terms it was fixed with, against the holidays now; the figures that moves are audited.
      */
     @Transactional
     public Holiday add(String sheetId, String user, LocalDate date) {
@@ -56,7 +57,8 @@ public class HolidayService {
         Holiday saved = holidays.saveAndFlush(new Holiday(sheetId, date));
         Set<LocalDate> days = days(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            if (claim.getStatus() != ClaimStatus.DRAFT) {
+            ClaimStatus status = claim.getStatus();
+            if (status != ClaimStatus.SETTLED && status != ClaimStatus.VOID && !claim.getDueBy().isBefore(date)) {
                 claim.workOutDueBy(days);
             }
         }
