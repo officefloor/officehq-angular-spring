@@ -1,0 +1,64 @@
+{
+  "checkpoint": 17,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp17_periods",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has periods, added on the screen: a name (unique on the sheet) and a from and to date,\ninclusive, no two periods overlapping; a bad period is refused with an error on the period form.\nA claim belongs to the period whose dates contain its date, or to none. Show each claim's period,\nand for each period its due-total: the due of the claims that count whose date falls in it.\nAdding a period writes PERIOD_ADDED period=<name> from=<date> to=<date>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has periods, added on the screen: a name (unique on the sheet) and a from and to date,\ninclusive, no two periods overlapping; a bad period is refused with an error on the period form.\nA claim belongs to the period whose dates contain its date, or to none. Show each claim's period,\nand for each period its due-total: the due of the claims that count whose date falls in it.\nAdding a period writes PERIOD_ADDED period=<name> from=<date> to=<date>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f67d509be05699f8d66b369b6f73ce394161bde0",
+  "reset_sha": "",
+  "preagent_sha": "a19e3fab2ecb667f8c0dd358a99b3cde55877668",
+  "prev_sha": "a19e3fab2ecb667f8c0dd358a99b3cde55877668",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0515847999999999,
+    "input_tokens": 30,
+    "output_tokens": 11495,
+    "cache_read_tokens": 652784,
+    "cache_creation_tokens": 86376,
+    "num_turns": 15,
+    "duration_ms": 150461,
+    "duration_api_ms": 94502,
+    "model": "claude-opus-5-5",
+    "session_id": "96377427-46dd-4cc8-98bf-a25c0ce04d60",
+    "stop_reason": "success",
+    "result_text": "I've added periods to the sheet, and all 4 acceptance tests pass (`bin/e2e`, 4 passed).\n\n**What it does**\n- **Adding a period:** there's a new Periods section on the screen with a form for a name, a from date and a to date. Both dates count as part of the period.\n- **Refusals:** a period is refused, with an error on the period form, when:\n  - its from date is after its to date,\n  - its name is already used on the sheet, or\n  - it shares any day with another period.\n  \n  A refused period writes nothing to the store or the audit file.\n- **Audit:** an added period writes `PERIOD_ADDED sheet=<id> by=<user> period=<name> from=<date> to=<date>` once the save is committed.\n- **Claim's period:** each claim row shows the name of the period its date falls in, or nothing if it falls in none.\n- **Period due-total:** each period row shows the sum of the dues of the open and settled claims dated in it. Each claim uses its own person's grade, the same way claim dues are worked out now. A claim with no due figure (no rate on its date) adds nothing.\n\n**Choices the request didn't specify**\n- Period names are unique ignoring case and surrounding spaces, the same rule as person names. So \"p1\" is refused once \"P1\" exists.\n- To stop two users adding overlapping periods at the same moment, adding a period takes the sheet's lock first. A database unique index is a second guard on the name.\n\n**Where the changes are**\n- **Database:** a new migration, `V14__period.sql`, adds the `period` table.\n- **Server:** a new `period` package with the entity, repository, service and controller, and a new `lock` method in `SheetService`.\n- **Front end:**\n  - new: `core/periods.ts` and `features/periods/periods.ts`\n  - changed: `claims.ts` shows the claim's period; `people.ts` loads the periods and works out each period's due-total.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0515847999999999,
+        "num_turns": 15,
+        "duration_ms": 150461,
+        "duration_api_ms": 94502,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp17.agent.jsonl",
+  "agent_diff_file": "cp17.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
