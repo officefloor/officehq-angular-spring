@@ -1,0 +1,354 @@
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 73f05cce..29bc4ab0 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -4,14 +4,20 @@ import { firstValueFrom } from 'rxjs';
+ import { ClaimView } from './claims';
+ import { Session } from './session';
+ 
+-/** A plan on a person: an amount claimed every N days from a start date to an end date (yyyy-mm-dd). */
++/**
++ * A plan on a person: an amount claimed every N days, or monthly on a day of the month, from a start date to
++ * an end date (yyyy-mm-dd).
++ */
+ export interface PlanView {
+   id: number;
+   personId: number;
+   /** The amount with two decimals, e.g. "12.50". */
+   amount: string;
+   start: string;
+-  every: number;
++  /** Every N days, or null for a monthly plan. */
++  every: number | null;
++  /** The day of the month (1 to 31) of a monthly plan, or null for one every N days. */
++  day: number | null;
+   end: string;
+   /** How many claims the plan has made so far. */
+   generated: number;
+@@ -21,7 +27,10 @@ export interface PlanView {
+ export interface PlanForm {
+   amount: string;
+   start: string;
++  /** Every N days, blank for a monthly plan. */
+   every: string;
++  /** The day of the month, blank for a plan every N days. */
++  day: string;
+   end: string;
+ }
+ 
+@@ -42,7 +51,7 @@ export class PlansApi {
+     return firstValueFrom(this.http.get<PlanView[]>(`${this.url(sheet)}/plans`));
+   }
+ 
+-  /** Add a plan on a person; refused (400) for a bad amount or interval, or an end before the start. */
++  /** Add a plan on a person; refused (400) for a bad amount, interval or day of the month, or an end before the start. */
+   add(sheet: string, personId: number, form: PlanForm): Promise<PlanView> {
+     return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/people/${personId}/plans`, form));
+   }
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index fa1eb2b4..3d11278a 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -10,14 +10,20 @@ function reasonOf(e: unknown): string | null {
+ }
+ 
+ // A person's plans, each with how many claims it has made so far, and the form adding one: an amount,
+-// a start date, every N days and an end date.
++// a start date, every N days or a day of the month, and an end date.
+ @Component({
+   selector: 'app-person-plans',
+   template: `
+     <ul>
+       @for (plan of plans(); track plan.id) {
+         <li [attr.data-testid]="'plan-row-' + plan.id">
+-          {{ plan.amount }} from {{ plan.start }} every {{ plan.every }} days to {{ plan.end }};
++          {{ plan.amount }} from {{ plan.start }}
++          @if (plan.day !== null) {
++            monthly on day {{ plan.day }}
++          } @else {
++            every {{ plan.every }} days
++          }
++          to {{ plan.end }};
+           made <span data-testid="plan-generated">{{ plan.generated }}</span>
+         </li>
+       }
+@@ -47,6 +53,14 @@ function reasonOf(e: unknown): string | null {
+         [value]="every()"
+         (input)="every.set(value($event)); error.set(null)"
+       />
++      <label [for]="'plan-form-day-' + personId()">Or monthly on day</label>
++      <input
++        [id]="'plan-form-day-' + personId()"
++        data-testid="plan-form-day"
++        inputmode="numeric"
++        [value]="day()"
++        (input)="day.set(value($event)); error.set(null)"
++      />
+       <label [for]="'plan-form-end-' + personId()">End</label>
+       <input
+         type="date"
+@@ -74,6 +88,7 @@ export class PersonPlans {
+   protected readonly amount = signal('');
+   protected readonly start = signal('');
+   protected readonly every = signal('');
++  protected readonly day = signal('');
+   protected readonly end = signal('');
+   protected readonly error = signal<string | null>(null);
+   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+@@ -89,15 +104,29 @@ export class PersonPlans {
+     this.error.set(null);
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+-    const form = { amount: this.amount().trim(), start: this.start(), every: this.every().trim(), end: this.end() };
++    const form = {
++      amount: this.amount().trim(),
++      start: this.start(),
++      every: this.every().trim(),
++      day: this.day().trim(),
++      end: this.end(),
++    };
+     if (!/^\d{1,12}(\.\d{1,2})?$/.test(form.amount)) {
+       this.error.set('Type an amount of 0.00 or more, with at most two decimals.');
+       return;
+     }
+-    if (!/^\d{1,5}$/.test(form.every) || Number(form.every) < 1) {
++    if ((form.every === '') === (form.day === '')) {
++      this.error.set('Type either every how many days or a day of the month.');
++      return;
++    }
++    if (form.every !== '' && (!/^\d{1,5}$/.test(form.every) || Number(form.every) < 1)) {
+       this.error.set('Type a whole number of days, 1 or more.');
+       return;
+     }
++    if (form.day !== '' && (!/^\d{1,2}$/.test(form.day) || Number(form.day) < 1 || Number(form.day) > 31)) {
++      this.error.set('Type a day of the month from 1 to 31.');
++      return;
++    }
+     if (!form.start || !form.end) {
+       this.error.set('Choose a start and an end date.');
+       return;
+@@ -112,6 +141,7 @@ export class PersonPlans {
+       this.amount.set('');
+       this.start.set('');
+       this.every.set('');
++      this.day.set('');
+       this.end.set('');
+     } catch (e) {
+       this.error.set(reasonOf(e) ?? 'The plan could not be added.');
+@@ -151,10 +181,12 @@ export class PlanGenerate {
+   private busy = false;
+ 
+   constructor() {
+-    // A sheet load starts afresh.
++    // A sheet load starts afresh, and so does a change of the sheet's today: the count shown was made up
++    // to the old one.
+     effect(() => {
+       this.session.sheet();
+       this.session.loads();
++      this.session.today();
+       untracked(() => {
+         this.count.set(null);
+         this.error.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index cecb9081..7d1efe8c 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -13,14 +13,15 @@ import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.time.YearMonth;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
+ 
+ /**
+- * A plan on a person: an amount claimed every N days from its start date up to its end date, both
+- * included, with the claims it has made so far by the plan date each was made for.
++ * A plan on a person: an amount claimed every N days, or monthly on a day of the month, from its start
++ * date up to its end date, both included, with the claims it has made so far by the plan date each was made for.
+  */
+ @Entity
+ @Table(name = "plan")
+@@ -42,8 +43,13 @@ public class Plan {
+     @Column(name = "start_on", nullable = false)
+     private LocalDate start;
+ 
+-    @Column(name = "every_days", nullable = false)
+-    private int every;
++    /** Every N days, or null for a monthly plan. */
++    @Column(name = "every_days")
++    private Integer every;
++
++    /** The day of the month (1 to 31) of a monthly plan, or null for one every N days. */
++    @Column(name = "day_of_month")
++    private Integer day;
+ 
+     @Column(name = "end_on", nullable = false)
+     private LocalDate end;
+@@ -58,19 +64,34 @@ public class Plan {
+     protected Plan() {
+     }
+ 
+-    public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, int every, LocalDate end) {
++    public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, Integer every,
++            Integer day, LocalDate end) {
+         this.sheetId = sheetId;
+         this.personId = personId;
+         this.amount = amount;
+         this.start = start;
+         this.every = every;
++        this.day = day;
+         this.end = end;
+     }
+ 
+-    /** The plan's dates, oldest first, from its start every N days up to its end and the given day. */
++    /**
++     * The plan's dates, oldest first, up to its end and the given day: from its start every N days, or for a
++     * monthly plan its day in every month from the start's month (the month's last day when the month is
++     * shorter), leaving out those before the start.
++     */
+     public List<LocalDate> datesUpTo(LocalDate today) {
+         LocalDate last = today == null || end.isBefore(today) ? end : today;
+         List<LocalDate> dates = new ArrayList<>();
++        if (day != null) {
++            for (YearMonth month = YearMonth.from(start); !month.atDay(1).isAfter(last); month = month.plusMonths(1)) {
++                LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
++                if (!d.isBefore(start) && !d.isAfter(last)) {
++                    dates.add(d);
++                }
++            }
++            return dates;
++        }
+         for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
+             dates.add(d);
+         }
+@@ -112,10 +133,16 @@ public class Plan {
+         return start;
+     }
+ 
+-    public int getEvery() {
++    /** Every N days, or null for a monthly plan. */
++    public Integer getEvery() {
+         return every;
+     }
+ 
++    /** The day of the month of a monthly plan, or null for one every N days. */
++    public Integer getDay() {
++        return day;
++    }
++
+     public LocalDate getEnd() {
+         return end;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index ee0c597d..c944b779 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -24,21 +24,28 @@ import org.springframework.web.bind.annotation.RestController;
+ @Validated
+ public class PlanController {
+ 
+-    /** What the screen is told about a plan: its amount with two decimals, its dates, and how many claims it has made. */
+-    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end,
+-            int generated) {
++    /**
++     * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
++     * the month, the other null), and how many claims it has made.
++     */
++    public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
++            LocalDate end, int generated) {
+ 
+         static PlanView of(Plan plan) {
+             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
+-                    plan.getEvery(), plan.getEnd(), plan.getGenerated());
++                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated());
+         }
+     }
+ 
+-    /** A plan as entered on the form: an amount as the claim form takes it, a start, every N days, and an end. */
++    /**
++     * A plan as entered on the form: an amount as the claim form takes it, a start, every N days or a day of the
++     * month (one of the two, the other absent or blank), and an end.
++     */
+     public record PlanForm(
+             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
+             @NotNull LocalDate start,
+-            @NotNull @Pattern(regexp = "\\d{1,5}") String every,
++            @Pattern(regexp = "|\\d{1,5}") String every,
++            @Pattern(regexp = "|\\d{1,2}") String day,
+             @NotNull LocalDate end) {
+     }
+ 
+@@ -67,7 +74,12 @@ public class PlanController {
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PlanForm form) {
+         return PlanView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
+-                form.start(), Integer.parseInt(form.every()), form.end()));
++                form.start(), number(form.every()), number(form.day()), form.end()));
++    }
++
++    /** A whole number typed on the form, or null when left out. */
++    private static Integer number(String typed) {
++        return typed == null || typed.isEmpty() ? null : Integer.valueOf(typed);
+     }
+ 
+     /** Make the claims every plan on the sheet is due up to the sheet's today. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index df1be116..439c7a1b 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -53,16 +53,24 @@ public class PlanService {
+     }
+ 
+     /**
+-     * Add a plan on a person: an amount (not below 0.00), claimed every N days (at least 1) from a start
+-     * date to an end date; refused when the end is before the start.
++     * Add a plan on a person: an amount (not below 0.00), claimed every N days (at least 1) or monthly on a
++     * day of the month (1 to 31), exactly one of the two, from a start date to an end date; refused when the
++     * end is before the start.
+      */
+     @Transactional
+-    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
+-            LocalDate end) {
++    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
++            Integer day, LocalDate end) {
+         if (amount.signum() < 0) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount cannot be below 0.00.");
+         }
+-        if (every < 1) {
++        if ((every == null) == (day == null)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A plan repeats either every N days or monthly on a day of the month.");
++        }
++        if (day != null && (day < 1 || day > 31)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's day of the month is 1 to 31.");
++        }
++        if (every != null && every < 1) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan repeats every 1 day or more.");
+         }
+         if (end.isBefore(start)) {
+@@ -72,9 +80,9 @@ public class PlanService {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+         BigDecimal money = amount.setScale(2, RoundingMode.UNNECESSARY);
+-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, end));
++        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, day, end));
+         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+-                + " amount=" + money.toPlainString() + " start=" + start + " every=" + every + " end=" + end);
++                + " amount=" + money.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+         return saved;
+     }
+ 
+diff --git a/src/main/resources/db/migration/V78__plan_day_of_month.sql b/src/main/resources/db/migration/V78__plan_day_of_month.sql
+new file mode 100644
+index 00000000..70f6d4f5
+--- /dev/null
++++ b/src/main/resources/db/migration/V78__plan_day_of_month.sql
+@@ -0,0 +1,5 @@
++-- A plan may instead run monthly on a day of the month (1 to 31): its dates are that day in every month
++-- from the start's month, a day beyond the month's length falling on its last day, dates before the start
++-- left out. A plan has exactly one of every_days and day_of_month.
++ALTER TABLE plan ALTER COLUMN every_days SET NULL;
++ALTER TABLE plan ADD COLUMN day_of_month INT;

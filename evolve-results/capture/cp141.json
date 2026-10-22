@@ -1,0 +1,64 @@
+{
+  "checkpoint": 141,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp141_monthly-plans",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan may instead run monthly on a day of the month (1 to 31): the plan dates are that day in\nevery month from the start's month, a day beyond the month's length falling on its last day, dates\nbefore the start left out (PLAN_ADDED ends day=<day> end=<date> instead of every=).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan may instead run monthly on a day of the month (1 to 31): the plan dates are that day in\nevery month from the start's month, a day beyond the month's length falling on its last day, dates\nbefore the start left out (PLAN_ADDED ends day=<day> end=<date> instead of every=).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3ac5c3fbdb3e5429183832243a3408fa102e9a15",
+  "reset_sha": "",
+  "preagent_sha": "08e21678cace95af99902c6f952426d8d6461fbd",
+  "prev_sha": "08e21678cace95af99902c6f952426d8d6461fbd",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7954508000000001,
+    "input_tokens": 46,
+    "output_tokens": 10655,
+    "cache_read_tokens": 929794,
+    "cache_creation_tokens": 49526,
+    "num_turns": 23,
+    "duration_ms": 433126,
+    "duration_api_ms": 117972,
+    "model": "claude-opus-5-5",
+    "session_id": "890078f0-8a96-4c9f-bc28-9e5bc2bce87b",
+    "stop_reason": "success",
+    "result_text": "A plan can now run monthly on a day of the month (1 to 31). Two of the four tests pass: \"monthly plans\" and \"monthly plans scenario 1\". The other two fail on mistakes in the test spec itself, which I'm not allowed to edit.\n\n**What changed**\n- **Stored data:** new migration `V78__plan_day_of_month.sql` adds a `day_of_month` column and lets `every_days` be empty. A plan has one or the other.\n- **Server:**\n  - `Plan.datesUpTo` uses the plan's day in every month from the start's month. If the month is too short it uses the month's last day (31 \u2192 Feb 28), and it leaves out dates before the start.\n  - `PlanService.add` refuses a day outside 1\u201331, and refuses a plan that gives both \"every\" and \"day\", or neither.\n  - The audit line now reads `PLAN_ADDED \u2026 start=<d> day=<n> end=<d>`; plans every N days still write `every=`.\n  - `PlanView` now includes `day`, and `PlanForm` accepts either field.\n- **Front end:** the plan form has a \"monthly on day\" input (`plan-form-day`) checked the same way as on the server. A plan's row says \"monthly on day N\" or \"every N days\".\n- **One extra front-end change:** the \"Made N claims\" count after Generate now clears when the sheet's today changes. Without this the first test can't pass: the test helper waits for the count to change, and two generates in a row both made 2.\n\n**The two failing tests**\n- **Scenario 2** (`acceptance.spec.ts:869`) expects `sheet-parent` to show the literal text `\"__SHEET__-p\"`. The placeholder was never filled in with the real sheet id; the screen shows the right value (e.g. `smvk6boef9wxy-p`).\n- **Scenario 3** (`acceptance.spec.ts:1033`) expects adding \"Ben\" to succeed. But the attempt just before it, adding \"Ada\" with contact `ben@x`, is correctly refused, and the form keeps what was typed. Ben's step doesn't fill in a contact, so it sends `ben@x` again and is refused as a duplicate of Cam's. Passing it would mean clearing the people form after a refusal, which has nothing to do with plans, so I left that alone.\n\nBoth failures stop their tests before any plan steps, so the monthly-plan checks in those two scenarios haven't run yet.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7954508000000001,
+        "num_turns": 23,
+        "duration_ms": 433126,
+        "duration_api_ms": 117972,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp141.agent.jsonl",
+  "agent_diff_file": "cp141.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
