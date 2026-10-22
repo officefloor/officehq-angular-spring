@@ -1,0 +1,85 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java b/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
+index 72e84392..f6b0bc0f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkMoveService.java
+@@ -4,6 +4,7 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.Comparator;
+ import java.util.HashSet;
++import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.function.Function;
+@@ -88,11 +89,14 @@ public class BulkMoveService {
+     }
+ 
+     /**
+-     * Reassign the selected claims to a person, each as its Reassign button would; a claim already the
+-     * person's is reassigned to them again rather than refused.
++     * Reassign the selected claims to a person, each as its Reassign button would, in the order they
++     * were selected, so their new numbers follow that order; a claim already the person's is
++     * reassigned to them again rather than refused.
+      */
+     public Result reassign(String sheetId, String user, Collection<Long> claimIds, long personId) {
+-        return each(sheetId, user, claimIds, id -> claims.reassign(sheetId, user, id, personId, true));
++        Set<Long> selected = new LinkedHashSet<>(claimIds);
++        return each(sheetId, user, selected, new ArrayList<>(selected),
++                id -> claims.reassign(sheetId, user, id, personId, true));
+     }
+ 
+     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
+@@ -101,9 +105,11 @@ public class BulkMoveService {
+ 
+     private Result each(String sheetId, String user, Collection<Long> claimIds, Function<Long, Claim> action) {
+         Set<Long> selected = new HashSet<>(claimIds);
+-        if (Role.VIEWER.equals(roles.roleOf(sheetId, user)) || sheets.archived(sheetId)) {
+-            return new Result(List.of(), selected.size());
+-        }
++        return each(sheetId, user, selected, listOrder(sheetId, selected), action);
++    }
++
++    /** The selected claims in list order. */
++    private List<Long> listOrder(String sheetId, Set<Long> selected) {
+         List<Long> ordered = new ArrayList<>();
+         List<Claim> sheetClaims = claims.list(sheetId);
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+@@ -112,6 +118,14 @@ public class BulkMoveService {
+                     .sorted(NEWEST_FIRST)
+                     .forEach(claim -> ordered.add(claim.getId()));
+         }
++        return ordered;
++    }
++
++    private Result each(String sheetId, String user, Set<Long> selected, List<Long> ordered,
++            Function<Long, Claim> action) {
++        if (Role.VIEWER.equals(roles.roleOf(sheetId, user)) || sheets.archived(sheetId)) {
++            return new Result(List.of(), selected.size());
++        }
+         List<Claim> moved = new ArrayList<>();
+         for (Long id : ordered) {
+             try {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2d4ccfe4..dfd6b62e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -507,8 +507,8 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Move a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its number and
+-     * date, and loses any figure a statement bound it to, its due live again until its new person's
++     * Move a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its date, takes the
++     * next number in the sequence it is numbered in (its old one never used again; a DRAFT gets none), and loses any figure a statement bound it to, its due live again until its new person's
+      * next statement. Only a role the sheet's permission matrix allows (a steward by
+      * default) reassigns. Refused when the claim is SETTLED or VOID, when it is
+      * due by inside a closed period, when the new person is its own, is retired before its date, or (for
+@@ -546,6 +546,9 @@ public class ClaimService {
+         refuseUnlessCorrects(sheetId, personId, claim.getAmount(), claim.getCorrects());
+         claim.reassign(to.getId());
+         claim.unbind();
++        if (claim.getNumber() != null) {
++            claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
++        }
+         Claim saved = claims.saveAndFlush(claim);
+         audited("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber(),
+                 " from=" + from.getName() + " to=" + to.getName());
