@@ -1,0 +1,272 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index c4a1934f..6788e96f 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -45,6 +45,18 @@ export interface ClaimView {
+   statedDue: string | null;
+   /** The number of the SETTLED claim this one corrects; null unless it is a correction. */
+   corrects: string | null;
++  /** The claim's status log, oldest first: one line per status it has had. */
++  log: ClaimLogLine[];
++}
++
++/** A status a claim moved to, by whom, on the sheet's today then, with its due as computed then. */
++export interface ClaimLogLine {
++  status: ClaimStatus;
++  by: string;
++  /** yyyy-mm-dd */
++  on: string;
++  /** The due with two decimals, or n/a. */
++  due: string;
+ }
+ 
+ /** Whether a claim is a correction: its amount is below 0.00. It has no floor and no late charge. */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e3b67533..b3e34a3d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -84,6 +84,11 @@ const PAST: Record<ClaimAction, string> = {
+           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
++          <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
++            @for (line of c.log; track $index) {
++              <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
++            }
++          </ol>
+           <button
+             type="button"
+             data-testid="claim-edit"
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 0add30fc..0d529e7f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -1,15 +1,22 @@
+ package net.officefloor.hq.app.claim;
+ 
++import jakarta.persistence.CascadeType;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+ import jakarta.persistence.Enumerated;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.OneToMany;
++import jakarta.persistence.OrderBy;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
+ 
+ /**
+  * A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
+@@ -71,6 +78,12 @@ public class Claim {
+     @Column(name = "corrects")
+     private String corrects;
+ 
++    /** The claim's status log, oldest first. */
++    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
++    @JoinColumn(name = "claim_id", nullable = false)
++    @OrderBy("id")
++    private List<ClaimLogLine> log = new ArrayList<>();
++
+     protected Claim() {
+     }
+ 
+@@ -190,4 +203,13 @@ public class Claim {
+         this.stated = false;
+         this.statedDue = null;
+     }
++
++    public List<ClaimLogLine> getLog() {
++        return List.copyOf(log);
++    }
++
++    /** Add a line to the claim's status log for the status it now has. */
++    public void logged(String by, LocalDate on, BigDecimal due) {
++        log.add(new ClaimLogLine(status, by, on, due));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index ce0eef47..6b6424ad 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -29,10 +29,11 @@ public class ClaimController {
+      * was settled (null when not fixed, so its due is worked out from the current rate), and who
+      * opened it (null until opened), and whether it is bound by its person's last statement, with the
+      * figure it was bound to (null when unbound, or when it was n/a), and the number of the claim it
+-     * corrects (null unless it is a correction), and the date it is due by, fixed when it was added.
++     * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
++     * log, oldest first.
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
+-            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects) {
++            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -40,7 +41,16 @@ public class ClaimController {
+                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+-                    claim.getCorrects());
++                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList());
++        }
++    }
++
++    /** A line of a claim's status log; the due with two decimals, or n/a. */
++    public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
++
++        public static LogLineView of(ClaimLogLine line) {
++            return new LogLineView(line.getStatus(), line.getBy(), line.getOn(),
++                    line.getDue() == null ? "n/a" : line.getDue().toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimLogLine.java b/src/main/java/net/officefloor/hq/app/claim/ClaimLogLine.java
+new file mode 100644
+index 00000000..0c366f65
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimLogLine.java
+@@ -0,0 +1,64 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/**
++ * A line of a claim's status log: a status the claim moved to, by whom, on the sheet's today then,
++ * and the claim's due as computed at that moment (null when n/a).
++ */
++@Entity
++@Table(name = "claim_log")
++public class ClaimLogLine {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Enumerated(EnumType.STRING)
++    @Column(name = "status", nullable = false)
++    private ClaimStatus status;
++
++    @Column(name = "by_user", nullable = false)
++    private String by;
++
++    @Column(name = "on_date", nullable = false)
++    private LocalDate on;
++
++    @Column(name = "due", precision = 14, scale = 2)
++    private BigDecimal due;
++
++    protected ClaimLogLine() {
++    }
++
++    public ClaimLogLine(ClaimStatus status, String by, LocalDate on, BigDecimal due) {
++        this.status = status;
++        this.by = by;
++        this.on = on;
++        this.due = due;
++    }
++
++    public ClaimStatus getStatus() {
++        return status;
++    }
++
++    public String getBy() {
++        return by;
++    }
++
++    public LocalDate getOn() {
++        return on;
++    }
++
++    public BigDecimal getDue() {
++        return due;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ab2ca92c..4d49c728 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -67,6 +67,7 @@ public class ClaimService {
+         refuseIfRetired(person, dated);
+         refuseUnlessCorrects(sheetId, personId, amount, corrects);
+         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, dueBy, clean(note), corrects));
++        claim = logged(claim, user, person);
+         audited("CLAIM_ADDED", sheetId, user, person, claim);
+         rollups.audit(sheetId, user, before);
+         return claim;
+@@ -144,7 +145,7 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED) {
+             claim.settleDue(settledDue);
+         }
+-        Claim saved = claims.saveAndFlush(claim);
++        Claim saved = logged(claims.saveAndFlush(claim), user, person);
+         String event = switch (next) {
+             case OPEN -> "CLAIM_OPENED";
+             case SETTLED -> "CLAIM_SETTLED";
+@@ -176,7 +177,7 @@ public class ClaimService {
+         Person person = person(sheetId, claim.getPersonId());
+         claim.settleDue(dues.approving(claim, person.gradeOn(claim.getDate())));
+         claim.become(ClaimStatus.SETTLED);
+-        Claim saved = claims.saveAndFlush(claim);
++        Claim saved = logged(claims.saveAndFlush(claim), user, person);
+         audited("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(),
+                 " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE));
+         rollups.audit(sheetId, user, before);
+@@ -193,7 +194,7 @@ public class ClaimService {
+         Rollups.Rollup before = rollups.take(sheetId);
+         Claim claim = pending(sheetId, user, claimId);
+         claim.become(ClaimStatus.OPEN);
+-        Claim saved = claims.saveAndFlush(claim);
++        Claim saved = logged(claims.saveAndFlush(claim), user, person(sheetId, claim.getPersonId()));
+         audited("CLAIM_REJECTED", sheetId, user, person(sheetId, saved.getPersonId()), saved, saved.getNumber(),
+                 " reason=" + reason.trim());
+         rollups.audit(sheetId, user, before);
+@@ -301,6 +302,15 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+     }
+ 
++    /**
++     * Add a line to the claim's status log for the status it now has: by the user, on the sheet's
++     * today, with its due as computed now.
++     */
++    private Claim logged(Claim claim, String user, Person person) {
++        claim.logged(user, sheets.today(claim.getSheetId()), dues.due(claim, person.gradeOn(claim.getDate())));
++        return claims.saveAndFlush(claim);
++    }
++
+     /** Record the change to the claim once it is committed; a claim with a number carries it. */
+     private void audited(String event, String sheetId, String user, Person person, Claim claim) {
+         audited(event, sheetId, user, person, claim, claim.getNumber(), "");
+diff --git a/src/main/resources/db/migration/V29__claim_log.sql b/src/main/resources/db/migration/V29__claim_log.sql
+new file mode 100644
+index 00000000..2d6ba913
+--- /dev/null
++++ b/src/main/resources/db/migration/V29__claim_log.sql
+@@ -0,0 +1,12 @@
++-- A claim's status log: one line per status it has had, oldest first (by id), with the user who
++-- moved it there, the sheet's today then, and the claim's due as computed at that moment (null: n/a).
++-- Claims added before the log have no lines.
++CREATE TABLE claim_log (
++    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
++    claim_id   BIGINT         NOT NULL REFERENCES claim (id),
++    status     VARCHAR(16)    NOT NULL,
++    by_user    VARCHAR(200)   NOT NULL,
++    on_date    DATE           NOT NULL,
++    due        DECIMAL(14, 2)
++);
++CREATE INDEX claim_log_claim ON claim_log (claim_id, id);
