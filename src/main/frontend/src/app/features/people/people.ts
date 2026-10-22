@@ -122,7 +122,16 @@ function csvField(value: string): string {
           data-testid="person-form-terms"
           inputmode="numeric"
           [value]="terms()"
-          (input)="terms.set(value($event)); error.set(null)"
+          (focus)="termsGiven.set(true)"
+          (input)="terms.set(value($event)); termsGiven.set(true); error.set(null)"
+        />
+        <label for="person-form-contact">Contact</label>
+        <input
+          id="person-form-contact"
+          data-testid="person-form-contact"
+          [value]="contact()"
+          (focus)="contactGiven.set(true)"
+          (input)="contact.set(value($event)); contactGiven.set(true); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
@@ -252,6 +261,7 @@ function csvField(value: string): string {
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
+            <th scope="col">Contact</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Due by period</th>
@@ -284,6 +294,7 @@ function csvField(value: string): string {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td>
@@ -640,6 +651,11 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms as typed: a whole number of days, or blank for none. */
   protected readonly terms = signal('');
+  /** The person's contact as typed: blank for none. */
+  protected readonly contact = signal('');
+  /** Whether the terms or the contact were taken up on the form since it was opened. */
+  protected readonly termsGiven = signal(false);
+  protected readonly contactGiven = signal(false);
   /** The id of the person open in the form, or null when the form adds a new person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person open in the form, as it was loaded. */
@@ -1264,15 +1280,39 @@ export class People {
     return (event.target as HTMLSelectElement).value as Grade;
   }
 
-  /** Open a person's editor: the form takes their values. */
-  protected open(person: PersonView): void {
+  /**
+   * Open a person's editor: the form takes their values as the store holds them now, so it edits from
+   * their current version. The form stays empty until they are read.
+   */
+  protected async open(person: PersonView): Promise<void> {
     this.personError.set(null);
     this.editing.set(person.id);
+    this.name.set('');
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    let current = person;
+    if (sheet) {
+      try {
+        current = (await this.api.list(sheet)).find((p) => p.id === person.id) ?? person;
+      } catch {
+        // the editor takes the values shown
+      }
+      if (this.session.sheet() !== sheet || this.editing() !== person.id) return;
+      this.people.update((list) => list.map((p) => (p.id === current.id ? current : p)));
+    }
+    this.fill(current);
+  }
+
+  /** The form takes the person's values. */
+  private fill(person: PersonView): void {
     this.version.set(person.version);
     this.name.set(person.name);
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set(this.today());
     this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.contact.set(person.contact ?? '');
+    this.termsGiven.set(false);
+    this.contactGiven.set(false);
     this.error.set(null);
   }
 
@@ -1282,6 +1322,9 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set(this.today());
     this.terms.set('');
+    this.contact.set('');
+    this.termsGiven.set(false);
+    this.contactGiven.set(false);
     this.error.set(null);
   }
 
@@ -1298,12 +1341,18 @@ export class People {
       this.error.set('Terms are a whole number of days, or blank for none.');
       return;
     }
-    const form = { name: this.name(), grade: this.grade(), terms: typedTerms === '' ? null : Number(typedTerms) };
+    const form = { name: this.name(), grade: this.grade(), terms: typedTerms === '' ? null : Number(typedTerms),
+      contact: this.contact(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven() };
     if (!form.name.trim()) {
       this.error.set('Type a name for the person.');
       return;
     }
     const id = this.editing();
+    const contactKey = form.contact.trim().toLowerCase();
+    if (contactKey !== '' && this.people().some((p) => p.id !== id && p.contact === contactKey)) {
+      this.error.set('That contact is already in use on this sheet.');
+      return;
+    }
     this.busy = true;
     try {
       if (id === null) {
@@ -1320,7 +1369,7 @@ export class People {
         await this.showCurrent(sheet, id);
         this.error.set('Someone else has saved this person since you opened it. The form shows their values now.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set('That name is already in use on this sheet.');
+        this.error.set('That name or contact is already in use on this sheet.');
       } else {
         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
@@ -1339,6 +1388,7 @@ export class People {
       this.name.set(current.name);
       this.grade.set(this.gradeOf(current));
       this.terms.set(current.terms === null ? '' : String(current.terms));
+      this.contact.set(current.contact ?? '');
     } catch {
       // the form keeps what was typed; the refusal is still shown
     }

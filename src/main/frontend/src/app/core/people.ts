@@ -32,6 +32,8 @@ export interface PersonView {
   grades: GradeView[];
   /** The person's own terms in days; null when they have none and take their grade's terms. */
   terms: number | null;
+  /** The person's contact, trimmed and lower-cased; null when they have none. */
+  contact: string | null;
   /** Raised on every save of the person. */
   version: number;
   /** How many statements have been taken for the person. */
@@ -87,6 +89,12 @@ export interface PersonForm {
   gradeFrom?: string | null;
   /** The person's own terms in days; null for none. */
   terms: number | null;
+  /** The person's contact as typed; blank for none. */
+  contact: string;
+  /** On an edit, whether the terms were typed on the form: PERSON_EDITED then carries them. */
+  termsGiven?: boolean;
+  /** On an edit, whether the contact was typed on the form: PERSON_EDITED then carries it. */
+  contactGiven?: boolean;
   /** On an edit, the version of the person the form loaded. */
   version?: number;
 }

@@ -87,7 +87,7 @@ public class ClaimService {
 
     /**
      * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
-     * while one is set, else the sheet's today. One due by in a soft-closed period, or that would be
+     * while one is set, else the sheet's today. One dated or due by in a soft-closed period, or that would be
      * with the terms in force on the sheet's today, is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
      * the due-by it would get (the terms-th business day after its date) is inside a closed period, or when it is a correction that does not name a SETTLED claim
      * of the same person (see {@link #refuseUnlessCorrects}).
@@ -132,8 +132,8 @@ public class ClaimService {
         added.refer(referred);
         List<String> tagged = Claim.tagsOf(tags);
         added.tag(tagged);
-        if (periods.softClosedOn(sheetId, dueBy) || periods.softClosedOn(sheetId, holidays.dueBy(sheetId, dated,
-                terms(sheet, person, sheet.getToday())))) {
+        if (periods.softClosedOn(sheetId, dated) || periods.softClosedOn(sheetId, dueBy)
+                || periods.softClosedOn(sheetId, holidays.dueBy(sheetId, dated, terms(sheet, person, sheet.getToday())))) {
             added.markLateEntry();
         }
         Claim claim = claims.saveAndFlush(added);

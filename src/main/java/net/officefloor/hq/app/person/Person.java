@@ -62,6 +62,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's contact, kept trimmed and lower-cased; null when they have none. Unique on the sheet. */
+    @Column(name = "contact")
+    private String contact;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -99,11 +103,20 @@ public class Person {
     protected Person() {
     }
 
-    public Person(String sheetId, String name, String grade, Integer terms) {
+    public Person(String sheetId, String name, String grade, Integer terms, String contact) {
         this.sheetId = sheetId;
         setName(name);
         this.grade = grade;
         this.terms = terms;
+        setContact(contact);
+    }
+
+    /** A contact as it is kept: surrounding spaces removed and lower-cased; null when blank or none. */
+    public static String contactOf(String contact) {
+        if (contact == null || contact.isBlank()) {
+            return null;
+        }
+        return contact.trim().toLowerCase(Locale.ROOT);
     }
 
     /** The name as it is kept: surrounding spaces removed. */
@@ -172,6 +185,16 @@ public class Person {
     /** Set the person's own terms in days; null for none. */
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The person's contact; null when they have none. */
+    public String getContact() {
+        return contact;
+    }
+
+    /** Set the person's contact, kept as {@link #contactOf cleaned}; blank or null for none. */
+    public void setContact(String contact) {
+        this.contact = contactOf(contact);
     }
 
     public long getVersion() {

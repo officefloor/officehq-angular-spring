@@ -42,7 +42,7 @@ public class PersonController {
      * Their grades are listed by the date each is in force from, the first with none (from the
      * beginning of time).
      */
-    public record PersonView(long id, String name, List<GradeView> grades, Integer terms, long version, int statementCount,
+    public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
             List<HoldView> holds, List<Long> patronIds) {
 
@@ -50,7 +50,7 @@ public class PersonController {
             List<GradeView> grades = new ArrayList<>();
             grades.add(new GradeView(person.getGrade(), null));
             person.getGradesFrom().forEach((from, grade) -> grades.add(new GradeView(grade, from)));
-            return new PersonView(person.getId(), person.getName(), grades, person.getTerms(), person.getVersion(),
+            return new PersonView(person.getId(), person.getName(), grades, person.getTerms(), person.getContact(), person.getVersion(),
                     person.getStatementCount(),
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
                     person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
@@ -71,13 +71,17 @@ public class PersonController {
      * A person's values as entered on the form: a name is required, the grade is A, B or C. On an edit
      * the grade is recorded from its date (none: the sheet's today); a person's first grade applies
      * from the beginning of time. Their own terms are a whole number of days, none for no terms of
-     * their own. An edit carries the version of the person the form loaded.
+     * their own. A contact is kept trimmed and lower-cased, blank for none. An edit says whether the
+     * terms and the contact were typed on the form (PERSON_EDITED then carries them), and carries the version of the person the form loaded.
      */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
             @PositiveOrZero @Max(36500) Integer terms,
+            @Size(max = 200) String contact,
+            boolean termsGiven,
+            boolean contactGiven,
             Long version) {
     }
 
@@ -116,7 +120,8 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonForm form) {
-        return PersonView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms()));
+        return PersonView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms(),
+                form.contact()));
     }
 
     /** Change a person's name and record their grade from its date, from the version of the person the form loaded. */
@@ -130,7 +135,7 @@ public class PersonController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required.");
         }
         return PersonView.of(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
-                form.grade(), form.gradeFrom(), form.terms()));
+                form.grade(), form.gradeFrom(), form.terms(), form.contact(), form.termsGiven(), form.contactGiven()));
     }
 
     /** Give the selected people a grade from a date together, each as the person form would: the people changed. */
@@ -221,7 +226,7 @@ public class PersonController {
     public void savedMeanwhile() {
     }
 
-    /** Another user took the name between the check and the write: the unique index refuses it. */
+    /** Another user took the name or contact between the check and the write: the unique index refuses it. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public void nameTaken() {
