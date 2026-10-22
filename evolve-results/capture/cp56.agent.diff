@@ -1,0 +1,167 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index cc3cee9e..bd3dd059 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -1,6 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
++import type { DatedValue } from './session';
+ 
+ /**
+  * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID. A clerk settling a claim
+@@ -108,10 +109,10 @@ export function overdue(claim: ClaimView, today: string): boolean {
+   return isOpen(claim) && today !== '' && dueBy(claim) < today && !deferred(claim, today);
+ }
+ 
+-/** What a late charge is worked from: the sheet's late percent and today. */
++/** What a late charge is worked from: the sheet's late percent by from-date and its today. */
+ export interface LateTerms {
+-  /** The late percent with two decimals. */
+-  pct: string;
++  /** The late percent's values by from-date (see valueOn). */
++  history: DatedValue[];
+   /** The sheet's today (yyyy-mm-dd); empty when none is loaded. */
+   today: string;
+ }
+@@ -137,6 +138,16 @@ export function latePeriods(claim: ClaimView, late: LateTerms): number {
+   return Math.floor(days / 30);
+ }
+ 
++/**
++ * The 30-day boundary dates (yyyy-mm-dd) an overdue claim has passed on the sheet's today: its due-by
++ * plus 30, 60, 90 ... days, one for every full 30 days it is overdue.
++ */
++export function lateBoundaries(claim: ClaimView, late: LateTerms): string[] {
++  const from = Date.parse(dueBy(claim));
++  return Array.from({ length: latePeriods(claim, late) }, (_, i) =>
++    new Date(from + (i + 1) * 30 * 86_400_000).toISOString().slice(0, 10));
++}
++
+ /** What a bulk open did: the claims opened, as they are now, and how many were refused. */
+ export interface BulkOpenView {
+   opened: ClaimView[];
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index d358bcce..230e00d2 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -1,7 +1,8 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+-import { ClaimView, LateTerms, cents, isCorrection, latePeriods, money } from './claims';
++import { ClaimView, LateTerms, cents, isCorrection, lateBoundaries, money } from './claims';
++import { valueOn } from './session';
+ import { Grade } from './people';
+ 
+ export interface RateView {
+@@ -78,8 +79,9 @@ export function due(amountCents: number, pct: string | null): string {
+  * A claim's due in whole cents: the due fixed when it was settled (its late charge frozen in), or
+  * else its figure — the one its person's last statement bound it to (unless it is PENDING), or else its amount at the rate
+  * the grade has in force on the claim's date raised to the floor (in whole cents) when below it —
+- * with the late charge on top: the late percent of the figure for every full 30 days the claim
+- * is overdue. The floor and late percent given are those in force on the claim's date. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
++ * with the late charge on top: for every full 30 days the claim is overdue, the late percent in force
++ * on that boundary date (its due-by plus 30, 60, 90 ... days) of the figure, each rounded like the
++ * claim, added up. The floor given is the one in force on the claim's date. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
+  * charge is never bound by a statement. A correction has no floor and no late charge. Null when there
+  * is no figure.
+  */
+@@ -101,7 +103,9 @@ export function claimDueCents(
+     figure = live === null || isCorrection(claim) ? live : Math.max(live, floorCents);
+   }
+   if (figure === null || isCorrection(claim)) return figure;
+-  return figure + dueCents(figure, late.pct, latePeriods(claim, late), halfUp);
++  const charge = lateBoundaries(claim, late)
++    .reduce((sum, on) => sum + dueCents(figure, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
++  return figure + charge;
+ }
+ 
+ // The rates for the grades on a sheet, read from and written to the store.
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 139fadf5..fe9390f5 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -225,10 +225,10 @@ export class Claims {
+    * What is due on a claim: the due fixed when it was settled, or else the figure its person's last
+    * statement bound it to, or else its amount at the rate the
+    * person's grade has in force on the claim's date (n/a when it is dated before every rate) raised to
+-   * the floor in force then, with its late charge (at the late percent in force then) on top while it is overdue.
++   * the floor in force then, with its late charge (at the late percent in force on each 30-day boundary) on top while it is overdue.
+    */
+   protected dueOf(claim: ClaimView): string {
+-    const late = { pct: valueOn(this.session.latePctHistory(), claim.date, '0.00'), today: this.session.today() ?? '' };
++    const late = { history: this.session.latePctHistory(), today: this.session.today() ?? '' };
+     const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
+     const halfUp = roundsHalfUp(claim, this.claims(), this.session.policyDate(), late.today);
+     const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), floor, late, halfUp);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3ed78102..bfe47369 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -579,12 +579,12 @@ export class People {
+ 
+   /**
+    * A claim's due in whole cents at the grade its person has in force on its date, with the floor
+-   * and late percent in force on its date (see claimDueCents).
++   * in force on its date and the late percent on each 30-day boundary (see claimDueCents).
+    */
+   private dueCents(claim: ClaimView, person: PersonView): number | null {
+     const halfUp = roundsHalfUp(claim, this.claimsOf(person.id), this.session.policyDate(), this.today());
+     const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
+-    const late = { pct: valueOn(this.session.latePctHistory(), claim.date, '0.00'), today: this.today() };
++    const late = { history: this.session.latePctHistory(), today: this.today() };
+     return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), floor, late, halfUp);
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 2b5e02d7..6c577f71 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -85,9 +85,9 @@ public class Dues {
+     }
+ 
+     /**
+-     * A figure with the claim's late charge on top: the late percent in force on the claim's date of the figure for every
+-     * full 30 days an OPEN or PENDING claim is past its due-by (fixed when it was added) on the sheet's
+-     * today, rounded by the claim's date against the policy date. The charge is never bound: it always follows the sheet's today.
++     * A figure with the claim's late charge on top while an OPEN or PENDING claim is past its due-by
++     * (fixed when it was added) on the sheet's today (see {@link #lateOn}), rounded by the claim's date
++     * against the policy date. The charge is never bound: it always follows the sheet's today.
+      * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue).
+      */
+     private BigDecimal withLate(Claim claim, BigDecimal figure) {
+@@ -101,20 +101,26 @@ public class Dues {
+         return lateOn(claim, figure);
+     }
+ 
+-    /** A figure with the late charge an OPEN claim would have on the sheet's today on top. */
++    /**
++     * A figure with the late charge an OPEN claim would have on the sheet's today on top: for every full
++     * 30 days past its due-by, the late percent in force on that boundary date (the due-by plus 30, 60,
++     * 90 ... days) of the figure, rounded like the claim, the charges added up.
++     */
+     private BigDecimal lateOn(Claim claim, BigDecimal figure) {
+         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+-        BigDecimal latePct = sheet == null ? null : sheet.latePctOn(claim.getDate());
+-        if (latePct == null || latePct.signum() == 0) {
++        if (sheet == null) {
+             return figure;
+         }
+         LocalDate dueBy = claim.getDueBy();
+         long periods = ChronoUnit.DAYS.between(dueBy, sheet.getToday()) / 30;
+-        if (periods <= 0) {
+-            return figure;
++        RoundingMode rounding = rounding(claim, sheet);
++        BigDecimal late = BigDecimal.ZERO.setScale(2);
++        for (long period = 1; period <= periods; period++) {
++            BigDecimal latePct = sheet.latePctOn(dueBy.plusDays(30 * period));
++            if (latePct != null && latePct.signum() != 0) {
++                late = late.add(figure.multiply(latePct).movePointLeft(2).setScale(2, rounding));
++            }
+         }
+-        BigDecimal late = figure.multiply(latePct).multiply(BigDecimal.valueOf(periods))
+-                .movePointLeft(2).setScale(2, rounding(claim, sheet));
+         return figure.add(late);
+     }
+ 
