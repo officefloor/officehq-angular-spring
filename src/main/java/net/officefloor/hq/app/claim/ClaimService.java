@@ -185,6 +185,35 @@ public class ClaimService {
     }
 
     /**
+     * Re-settle a SETTLED claim: its due is fixed again at the figure it would have today as an OPEN
+     * claim bound by no statement (today's rates, grades, floor and late charge). Only a steward
+     * re-settles; refused when the claim is not SETTLED or is dated inside a closed period.
+     */
+    @Transactional
+    public Claim resettle(String sheetId, String user, long claimId) {
+        sheets.lock(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-settles a claim.");
+        }
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-settled; only a SETTLED one can.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        Person person = person(sheetId, claim.getPersonId());
+        BigDecimal old = claim.getSettledDue();
+        claim.settleDue(dues.resettling(claim, person.gradeOn(claim.getDate())));
+        Claim saved = logged(claims.saveAndFlush(claim), user, person);
+        audited("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber(),
+                " old=" + (old != null ? old.toPlainString() : NO_RATE)
+                        + " new=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE));
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Reject a PENDING claim with a reason: it is OPEN again, bound again by its person's last
      * statement when that statement included it. Only a steward rejects.
      */

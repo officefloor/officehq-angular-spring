@@ -7,7 +7,7 @@ import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row,
-// moved through their statuses (open, settle, approve, reject with a reason, void) from each
+// moved through their statuses (open, settle, approve, reject with a reason, void, re-settle) from each
 // claim's row, and reassigned there to another person.
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
@@ -15,6 +15,7 @@ const PAST: Record<ClaimAction, string> = {
   approve: 'approved',
   reject: 'rejected',
   void: 'voided',
+  resettle: 're-settled',
 };
 
 @Component({
@@ -182,6 +183,7 @@ export class Claims {
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
     { action: 'void', label: 'Void' },
+    { action: 'resettle', label: 'Re-settle' },
   ];
   /** The people a claim of this person can be reassigned to. */
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
@@ -314,14 +316,15 @@ export class Claims {
       const mine = claim.openedBy === this.session.user()?.trim();
       const own = (action === 'settle' && claim.status === 'OPEN' && mine)
         || (action === 'approve' && claim.status === 'PENDING' && mine);
-      const steward = (action === 'approve' || action === 'reject') && claim.status === 'PENDING'
-        && e instanceof HttpErrorResponse && e.status === 403;
+      const steward = e instanceof HttpErrorResponse && e.status === 403
+        && (((action === 'approve' || action === 'reject') && claim.status === 'PENDING')
+          || (action === 'resettle' && claim.status === 'SETTLED'));
       this.claimError.set({
         id: claim.id,
         message: own
           ? `You opened this claim, so someone else must ${action} it.`
           : steward
-            ? `Only a steward can ${action} a PENDING claim.`
+            ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
             : `A ${claim.status} claim cannot be ${PAST[action]}.`,
       });
     }

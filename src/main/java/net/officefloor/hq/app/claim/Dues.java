@@ -75,6 +75,16 @@ public class Dues {
     }
 
     /**
+     * The due a SETTLED claim is re-settled at: what it would show today as an OPEN claim bound by no
+     * statement, its live figure with the late charge it would have on the sheet's today on top; null
+     * when it has no figure.
+     */
+    public BigDecimal resettling(Claim claim, String grade) {
+        BigDecimal figure = live(claim, grade);
+        return figure == null || claim.isCorrection() ? figure : lateOn(claim, figure);
+    }
+
+    /**
      * A figure with the claim's late charge on top: the sheet's late percent of the figure for every
      * full 30 days an OPEN or PENDING claim is past its due-by (fixed when it was added) on the sheet's
      * today, rounded by the claim's date against the policy date. The charge is never bound: it always follows the sheet's today.
@@ -84,6 +94,11 @@ public class Dues {
         if (figure == null || claim.isCorrection() || !claim.getStatus().isOpen() || claim.getSettledDue() != null) {
             return figure;
         }
+        return lateOn(claim, figure);
+    }
+
+    /** A figure with the late charge an OPEN claim would have on the sheet's today on top. */
+    private BigDecimal lateOn(Claim claim, BigDecimal figure) {
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
         if (sheet == null || sheet.getLatePct().signum() == 0) {
             return figure;

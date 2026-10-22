@@ -172,6 +172,15 @@ public class ClaimController {
         return ClaimView.of(service.approve(sheetId, SignedIn.name(user), claimId));
     }
 
+    /** Re-settle a SETTLED claim at its figure today; only a steward. */
+    @PostMapping("/claims/{claimId}/resettle")
+    public ClaimView resettle(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.resettle(sheetId, SignedIn.name(user), claimId));
+    }
+
     /** Reject a PENDING claim with a reason, back to OPEN; only a steward. */
     @PostMapping("/claims/{claimId}/reject")
     public ClaimView reject(

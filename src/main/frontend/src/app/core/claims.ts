@@ -8,8 +8,8 @@ import { firstValueFrom } from 'rxjs';
  */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
-/** A move of a claim's status: open, settle, approve, reject or void. */
-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
+/** A move of a claim's status: open, settle, approve, reject, void, or re-settle a SETTLED one. */
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle';
 
 /** Whether a claim is open: OPEN, or PENDING a steward's approval. */
 export function isOpen(claim: ClaimView): boolean {
@@ -170,7 +170,8 @@ export class ClaimsApi {
   /**
    * Move a claim's status; refused (409) when its status does not allow the move, or when the user
    * settling or approving it is the one who opened it, and (403) when approving or rejecting it is
-   * not a steward. A reject carries its reason.
+   * not a steward. A reject carries its reason. Re-settling is a steward's (403 otherwise), of a
+   * SETTLED claim (409 otherwise).
    */
   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
     const body = action === 'reject' ? { reason: reason ?? '' } : null;
