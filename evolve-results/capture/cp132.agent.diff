@@ -1,0 +1,97 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8265e997..19b67441 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1782,6 +1782,8 @@ export class People {
+       }
+       this.reset();
+     } catch (e) {
++      // A refused add leaves nothing typed behind for the next person added.
++      if (id === null) this.reset();
+       if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
+         await this.showCurrent(sheet, id);
+         this.error.set('Someone else has saved this person since you opened it. The form shows their values now.');
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 2656a17e..2b75a12b 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -237,13 +237,19 @@ public class PeriodService {
+      * Give out the number for a claim due by a date (its due-by) as it is opened, holding the sheet's lock until
+      * the caller's transaction ends. While the sheet numbers by period (see {@link Sheet#numbersByPeriod})
+      * it is the next within the period the date falls in, {@code <period name>-<n>}, or {@code X-<n>}
+-     * when it falls in none; otherwise it is the sheet's next sheet-wide number.
++     * when it falls in none; otherwise it is the next sheet-wide number of the sheet's tree, after the
++     * last given on any sheet of it. The tree's root is locked too, so the sheets of a tree take their
++     * numbers one at a time.
+      */
+     @Transactional
+     public String nextClaimNumber(String sheetId, LocalDate date) {
+         Sheet sheet = sheets.lock(sheetId);
+         if (!sheet.numbersByPeriod()) {
+-            return String.valueOf(sheet.nextClaimNumber());
++            List<String> tree = sheets.tree(sheetId);
++            sheets.lock(tree.get(0));
++            int lastInTree = tree.stream().filter(id -> !id.equals(sheetId))
++                    .mapToInt(id -> sheets.load(id).getLastClaimNumber()).max().orElse(0);
++            return String.valueOf(sheet.nextClaimNumberAfter(lastInTree));
+         }
+         return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                 .filter(p -> p.contains(date))
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index aa88df3c..970ba00d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -500,6 +500,17 @@ public class Sheet {
+         return ++lastClaimNumber;
+     }
+ 
++    /** The last claim number the sheet gave out; 0 before any claim is opened. */
++    public int getLastClaimNumber() {
++        return lastClaimNumber;
++    }
++
++    /** Give out the next claim number after the last given anywhere in the sheet's tree. */
++    public int nextClaimNumberAfter(int lastInTree) {
++        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
++        return lastClaimNumber;
++    }
++
+     /** The roles set for an action, comma separated; null when it keeps its standing rule. */
+     public String getPermission(String action) {
+         return permissions.get(action);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 2a646673..c9b587b7 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -5,6 +5,8 @@ import java.math.RoundingMode;
+ import java.time.Instant;
+ import net.officefloor.hq.app.Audit;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.http.HttpStatus;
+@@ -53,6 +55,22 @@ public class SheetService {
+         return sheets.findLockedById(id).orElseThrow();
+     }
+ 
++    /**
++     * The sheets of the sheet's tree: its root (its topmost ancestor, or itself when it has no parent)
++     * first, then all the root's descendants.
++     */
++    @Transactional(readOnly = true)
++    public List<String> tree(String id) {
++        List<String> ancestors = sheets.ancestors(id);
++        String root = ancestors.isEmpty() ? id : ancestors.get(ancestors.size() - 1);
++        List<String> tree = new ArrayList<>(List.of(root));
++        tree.addAll(sheets.descendants(root));
++        if (!tree.contains(id)) {
++            tree.add(id);
++        }
++        return tree;
++    }
++
+     /**
+      * Change the sheet's today, auditing the figures that moves. When it moves, each person's due-total
+      * as it stood on the day being left is audited first, in list order, and the sheet as it stood at
