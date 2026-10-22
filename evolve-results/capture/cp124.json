@@ -1,0 +1,83 @@
+{
+  "checkpoint": 124,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp124_retired-share-reallocates",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    105,
+    106,
+    113,
+    116,
+    119,
+    120,
+    121,
+    122
+  ],
+  "replaced_tests": [
+    "cp105_pools.spec.ts::pools",
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+    "cp113_import-people.spec.ts::import people scenario 2",
+    "cp116_import-upserts.spec.ts::import upserts scenario 1",
+    "cp119_cut-totals.spec.ts::cut totals scenario 2",
+    "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 3",
+    "cp121_history-follows.spec.ts::history follows scenario 2",
+    "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 1"
+  ],
+  "request": {
+    "spec": "A retired member of a pool is now left out of the cuts and their share is spread over the other\nmembers in proportion to those members' shares (as a held member's is), instead of counting as 0.00:\nthe pool's total share and balance count the retired member's share as given. A pool whose every\nmember is retired shows no cuts.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA retired member of a pool is now left out of the cuts and their share is spread over the other\nmembers in proportion to those members' shares (as a held member's is), instead of counting as 0.00:\nthe pool's total share and balance count the retired member's share as given. A pool whose every\nmember is retired shows no cuts.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8f597e4c0327578feb46aa84b955073736fc1ea4",
+  "reset_sha": "",
+  "preagent_sha": "64bc1088f90b58a7ea520c4cec08545407e57ee1",
+  "prev_sha": "64bc1088f90b58a7ea520c4cec08545407e57ee1",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5640876,
+    "input_tokens": 12,
+    "output_tokens": 2030,
+    "cache_read_tokens": 239567,
+    "cache_creation_tokens": 5300,
+    "num_turns": 5,
+    "duration_ms": 106219,
+    "duration_api_ms": 59701,
+    "model": "claude-opus-5-5",
+    "session_id": "42623d7d-7dd0-4fce-aaa7-dac12d69fff9",
+    "stop_reason": "success",
+    "result_text": "I made the change, but `bin/e2e` still reports 3 of 4 tests passing. The one failure is caused by the test spec itself, not the app, and I'm not allowed to edit the spec.\n\n**The change** is all in `src/main/frontend/src/app/features/pools/pools.ts`. Pool cuts are worked out only in the front end, so nothing changed on the server or in stored data.\n- **Total share:** a retired member's share now counts as given, so the pool's total share and the balanced check include it.\n- **Cuts:** a retired member gets a cut of 0.00, and their share is spread over the members who do get a cut, in proportion to those members' shares. This uses the same logic that already handled held members.\n- **All retired:** a pool whose every member is retired shows no cuts (the cut cells are empty).\n- I updated the comments that said a retired member's share counts as 0.00.\n\n**Test results:** the first test and scenarios 1 and 2 pass. Scenario 3 fails at `acceptance.spec.ts:1004`, where it expects `sheet-parent` to show the literal text `__SHEET__-p`. Earlier in the same test it sets the parent to `${sheet}-p` (line 920) and expects that real value in the audit file (line 1054). So `__SHEET__` looks like a placeholder that was never replaced when the spec was generated. Line 1090 has the same problem. The app correctly shows the real value, `<sheet-id>-p`.\n\nTo check the rest of scenario 3, I ran a temporary copy of the spec with the placeholder replaced by the real sheet id. Scenario 3 passed in full, and I then deleted the copy; the real spec is unchanged.\n\nTo get `bin/e2e` fully green, someone who can edit the spec needs to change lines 1004 and 1090 to expect `sheet + \"-p\"`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5640876,
+        "num_turns": 5,
+        "duration_ms": 106219,
+        "duration_api_ms": 59701,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp124.agent.jsonl",
+  "agent_diff_file": "cp124.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

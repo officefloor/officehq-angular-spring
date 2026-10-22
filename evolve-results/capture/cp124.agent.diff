@@ -1,0 +1,58 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 68f07073..926526ca 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -73,11 +73,11 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
+ }
+ 
+ // The sheet's pools, each with its members and their shares, and a form to add one. A member is added
+-// from the pool's row, a person or another pool (pool:<name>); a retired member's share counts as 0.00
+-// toward the pool's total. A member with a hold in force on the sheet's today keeps their share in the
+-// total but gets no cut, their share spread over the members with a cut. A membership may carry a
+-// from-date and a to-date: on a sheet's today outside them the member is left out entirely, from the
+-// total share and the cuts. Each member of a balanced pool shows their cut of the pool's pot: the sheet's
++// from the pool's row, a person or another pool (pool:<name>). A retired member, or one with a hold in
++// force on the sheet's today, keeps their share in the total but gets no cut, their share spread over the
++// members with a cut in proportion to their shares; a pool whose every member is retired shows no cuts.
++// A membership may carry a from-date and a to-date: on a sheet's today outside them the member is left
++// out entirely, from the total share and the cuts. Each member of a balanced pool shows their cut of the pool's pot: the sheet's
+ // pot for a pool that is a member of none, its cut in the pool above for one that is.
+ @Component({
+   selector: 'app-pools',
+@@ -183,8 +183,8 @@ export class Pools {
+   /** The error shown on each pool's row, by pool id. */
+   protected readonly errors = signal(new Map<number, string>());
+   /**
+-   * Each pool as shown: its total share, a retired member's share counting as 0.00, and, when it is
+-   * balanced and it has a pot, each member's cut of the pot.
++   * Each pool as shown: its total share, a retired member's share counting as given, and, when it is
++   * balanced, it has a pot and not every member is retired, each member's cut of the pot.
+    */
+   protected readonly lines = computed<PoolLine[]>(() =>
+     this.cutLines().map(({ pool, total, cuts }) => ({
+@@ -220,10 +220,10 @@ export class Pools {
+     const parents = this.parents();
+     const sheetPot = this.session.pot();
+     const totals = new Map(
+-      pools.map((pool) => [pool.id, pool.members.reduce((sum, m) => sum + (isPersonIn(m, retired) ? 0 : cents(m.share)), 0)]),
++      pools.map((pool) => [pool.id, pool.members.reduce((sum, m) => sum + cents(m.share), 0)]),
+     );
+     // Each pool's cuts in cents, a pool's pot being the sheet's or its cut in the pool above; none when
+-    // the pool is unbalanced or has no pot.
++    // the pool is unbalanced, has no pot, or has every member retired.
+     const memo = new Map<number, Map<string, bigint>>();
+     const cutsOf = (pool: PoolView): Map<string, bigint> => {
+       const known = memo.get(pool.id);
+@@ -234,7 +234,11 @@ export class Pools {
+       const parent = parentId === undefined ? undefined : pools.find((p) => p.id === parentId);
+       if (parent) pot = cutsOf(parent).get(`pool:${pool.id}`);
+       else if (parentId === undefined && sheetPot !== '') pot = BigInt(cents(sheetPot));
+-      const found = totals.get(pool.id) === 10000 && pot !== undefined ? cuts(pool, pot, retired, held) : new Map<string, bigint>();
++      const allRetired = pool.members.length > 0 && pool.members.every((m) => isPersonIn(m, retired));
++      const found =
++        totals.get(pool.id) === 10000 && pot !== undefined && !allRetired
++          ? cuts(pool, pot, retired, held)
++          : new Map<string, bigint>();
+       memo.set(pool.id, found);
+       return found;
+     };
