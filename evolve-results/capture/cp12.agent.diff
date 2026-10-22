@@ -1,0 +1,152 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 25901905..535ee3a3 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -1,7 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+-import { money } from './claims';
++import { ClaimView, cents, money } from './claims';
+ import { Grade } from './people';
+ 
+ export interface RateView {
+@@ -47,12 +47,16 @@ export const NO_RATE = 'n/a';
+ 
+ /**
+  * What is due on an amount in whole cents at a rate (a two-decimal percent): the amount times the
+- * rate divided by 100, rounded half up to whole cents. Worked in integers so it is exact.
++ * rate divided by 100, rounded half to even to whole cents. Worked in integers so it is exact.
+  */
+ export function dueCents(amountCents: number, pct: string): number {
+   const [whole, frac = ''] = pct.split('.');
+   const basisPoints = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
+-  return Number((BigInt(amountCents) * basisPoints + 5000n) / 10000n);
++  const exact = BigInt(amountCents) * basisPoints;
++  const quotient = exact / 10000n;
++  const remainder = exact % 10000n;
++  const up = remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n);
++  return Number(up ? quotient + 1n : quotient);
+ }
+ 
+ /** What is due on an amount in whole cents at a rate, shown with two decimals; n/a with no rate in force. */
+@@ -60,6 +64,16 @@ export function due(amountCents: number, pct: string | null): string {
+   return pct === null ? NO_RATE : money(dueCents(amountCents, pct));
+ }
+ 
++/**
++ * A claim's due figure in whole cents: the due fixed when it was settled, or else its amount at the
++ * rate the grade has in force on the claim's date; null when there is neither.
++ */
++export function claimDueCents(claim: ClaimView, rates: RateView[], grade: Grade): number | null {
++  if (claim.settledDue !== null) return cents(claim.settledDue);
++  const pct = rateOn(rates, grade, claim.date);
++  return pct === null ? null : dueCents(cents(claim.amount), pct);
++}
++
+ // The rates for the grades on a sheet, read from and written to the store.
+ @Injectable({ providedIn: 'root' })
+ export class RatesApi {
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 8917ca62..0f53ced6 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,7 +1,7 @@
+ import { Component, inject, input, output, signal } from '@angular/core';
+-import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents } from '../../core/claims';
++import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, money } from '../../core/claims';
+ import { Grade } from '../../core/people';
+-import { RateView, due, rateOn } from '../../core/rates';
++import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
+ import { Session } from '../../core/session';
+ 
+ // A person's claims: listed newest first, added and edited through one form on the person's row,
+@@ -114,7 +114,8 @@ export class Claims {
+    * person's grade has in force on the claim's date (n/a when it is dated before every rate).
+    */
+   protected dueOf(claim: ClaimView): string {
+-    return claim.settledDue ?? due(cents(claim.amount), rateOn(this.rates(), this.grade(), claim.date));
++    const figure = claimDueCents(claim, this.rates(), this.grade());
++    return figure === null ? NO_RATE : money(figure);
+   }
+ 
+   protected value(event: Event): string {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1f0b458f..37d883ec 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,15 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { ClaimView, ClaimsApi, cents, counts, money } from '../../core/claims';
+ import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
+-import { RateView, RatesApi, dueCents, due, rateOn, sameSlot } from '../../core/rates';
++import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { Claims } from '../claims/claims';
+ import { Rates } from '../rates/rates';
+ 
+ // The active sheet's people: listed in the order they were added, added and edited through one form,
+-// each with their claims, what they have claimed and what is due at their grade's rate in force on
+-// the sheet's today, and the
+-// sheet's claimed-total and due-total. The sheet's rates are set here too.
++// each with their claims, what they have claimed and what is due (the sum of their claims' due
++// figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
+ @Component({
+   selector: 'app-people',
+   imports: [Claims, Rates],
+@@ -114,13 +113,10 @@ export class People {
+   /** The sheet's today, on which each grade's rate in force is read. */
+   protected readonly today = computed(() => this.session.today() ?? '');
+   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+-  /** Everyone's due-total added up, skipping those whose grade has no rate. */
++  /** Everyone's due-total added up, skipping those shown as n/a. */
+   protected readonly dueTotal = computed(() =>
+     money(
+-      this.people().reduce((sum, p) => {
+-        const pct = this.pctOf(p.grade);
+-        return pct === null ? sum : sum + dueCents(this.claimedCents(p.id), pct);
+-      }, 0),
++      this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0),
+     ),
+   );
+   protected readonly name = signal('');
+@@ -162,9 +158,21 @@ export class People {
+     return rateOn(this.rates(), grade, this.today());
+   }
+ 
+-  /** A person's due-total: what they have claimed at their grade's rate in force on the sheet's today. */
++  /** A person's due-total: the sum of their counting claims' due figures, or n/a (see dueTotalCents). */
+   protected dueTotalOf(person: PersonView): string {
+-    return due(this.claimedCents(person.id), this.pctOf(person.grade));
++    const total = this.dueTotalCents(person);
++    return total === null ? NO_RATE : money(total);
++  }
++
++  /**
++   * A person's due-total in whole cents: the sum of the due figures of their OPEN and SETTLED claims
++   * (0 with none). Null (n/a) when their grade has no rate on the sheet's today, unless a settled
++   * claim keeps a fixed figure: then it is the sum of the figures there are.
++   */
++  private dueTotalCents(person: PersonView): number | null {
++    const counting = this.claimsOf(person.id).filter(counts);
++    if (this.pctOf(person.grade) === null && !counting.some((c) => c.settledDue !== null)) return null;
++    return counting.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), person.grade) ?? 0), 0);
+   }
+ 
+   /** A rate set for a grade, in place of any it had from the same date. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e383c562..e9b14ecd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -125,9 +125,9 @@ public class ClaimService {
+                 + (number != null ? " number=" + number : "") + suffix);
+     }
+ 
+-    /** What is due on an amount at a rate: the amount times the percent over 100, rounded half up. */
++    /** What is due on an amount at a rate: the amount times the percent over 100, rounded half to even. */
+     private static BigDecimal due(BigDecimal amount, Rate rate) {
+-        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
++        return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+     }
+ 
+     private static BigDecimal money(BigDecimal amount) {

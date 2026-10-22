@@ -1,0 +1,81 @@
+{
+  "checkpoint": 12,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp12_half-even",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+    "cp08_workflow.spec.ts::workflow scenario 1",
+    "cp08_workflow.spec.ts::workflow scenario 2",
+    "cp08_workflow.spec.ts::workflow scenario 3",
+    "cp09_numbering.spec.ts::numbering scenario 1",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due",
+    "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3"
+  ],
+  "request": {
+    "spec": "Live due now rounds half to even (1.025 becomes 1.02, 1.035 becomes 1.04). A settled claim keeps\nits frozen figure. Every due-total is now the sum of the already-rounded claim figures, not the\nrounded total amount times the rate; a person with nothing that counts shows 0.00. A person whose\ngrade has no rate today still shows n/a even with nothing that counts (n/a wins over 0.00), unless\na settled claim keeps a figure: then the total is the sum of the figures there are. The sheet's\ndue-total is still everyone's due-total added up.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nLive due now rounds half to even (1.025 becomes 1.02, 1.035 becomes 1.04). A settled claim keeps\nits frozen figure. Every due-total is now the sum of the already-rounded claim figures, not the\nrounded total amount times the rate; a person with nothing that counts shows 0.00. A person whose\ngrade has no rate today still shows n/a even with nothing that counts (n/a wins over 0.00), unless\na settled claim keeps a figure: then the total is the sum of the figures there are. The sheet's\ndue-total is still everyone's due-total added up.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e7a93f90d39e0fcde5aba4d2e4d8280ced88751a",
+  "reset_sha": "",
+  "preagent_sha": "a79b8c0503976af8473ab08ac20b7fa7eb7db25f",
+  "prev_sha": "a79b8c0503976af8473ab08ac20b7fa7eb7db25f",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3682706,
+    "input_tokens": 18,
+    "output_tokens": 4913,
+    "cache_read_tokens": 242053,
+    "cache_creation_tokens": 27691,
+    "num_turns": 10,
+    "duration_ms": 109052,
+    "duration_api_ms": 62142,
+    "model": "claude-opus-5-5",
+    "session_id": "dd973098-07ec-43b2-8c7d-6f9f228b6092",
+    "stop_reason": "success",
+    "result_text": "The change is in, and `bin/e2e` passes all 4 acceptance tests.\n\n**What changed:**\n- **Live claim due rounds half to even.** `dueCents` in `src/main/frontend/src/app/core/rates.ts` now rounds half to even, still using whole numbers so the result is exact. So 10.25 at 10% gives 1.02 and 10.35 gives 1.04.\n- **Settled claims are unchanged.** A settled claim shows the figure fixed when it was settled. A new helper, `claimDueCents`, gives a claim's figure: the settled figure if it has one, otherwise the live due at the rate in force on the claim's date. It returns nothing if there is no rate on that date. Both the claim row and the totals use it.\n- **Person due-total** (`people.ts`) is now the sum of that person's OPEN and SETTLED claim figures, and shows 0.00 if nothing counts. It shows n/a when their grade has no rate today, unless a settled claim keeps a figure; then it is the sum of the figures there are.\n- **Sheet due-total** is still everyone's due-total added up, leaving out anyone shown as n/a.\n- **Server:** `ClaimService.due` now also rounds half to even, so a claim settled from now on fixes the same figure that was shown live. Figures already stored for settled claims are not touched, so no data migration was needed.\n\nOne call of mine to check: if a claim is dated before every rate for its grade, it has no figure. It adds nothing to the person's total, and it doesn't make the total n/a by itself \u2014 only having no rate today does that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3682706,
+        "num_turns": 10,
+        "duration_ms": 109052,
+        "duration_api_ms": 62142,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp12.agent.jsonl",
+  "agent_diff_file": "cp12.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
