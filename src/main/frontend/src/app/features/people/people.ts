@@ -162,6 +162,13 @@ function csvField(value: string): string {
           }
         </ul>
       }
+      @if (monthTotals().length > 0) {
+        <ul aria-label="Due by month">
+          @for (m of monthTotals(); track m.month) {
+            <li>{{ m.month }} <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</strong></li>
+          }
+        </ul>
+      }
       <p>
         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
         @if (bulkOpened(); as result) {
@@ -597,6 +604,21 @@ export class People {
       }
     }
     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
+  });
+  /**
+   * For every calendar month (yyyy-mm) any claim on the sheet is dated in, sorted: the due of the claims
+   * dated in it that count in the live totals (see countsLive; a claim with no figure adds nothing).
+   */
+  protected readonly monthTotals = computed(() => {
+    const totals = new Map<string, number>();
+    for (const c of this.claims()) totals.set(c.date.slice(0, 7), 0);
+    for (const p of this.people()) {
+      for (const c of this.countingOf(p.id)) {
+        const month = c.date.slice(0, 7);
+        totals.set(month, (totals.get(month) ?? 0) + (this.dueCents(c, p) ?? 0));
+      }
+    }
+    return [...totals.keys()].sort().map((month) => ({ month, dueTotal: money(totals.get(month)!) }));
   });
   /** How many overdue claims count in the live totals, across everyone. */
   protected readonly overdueCount = computed(() =>
