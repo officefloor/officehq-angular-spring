@@ -63,7 +63,7 @@ public class RateService {
         List<Rate> candidate = new ArrayList<>(current.rates().stream()
                 .filter(rate -> !rate.getGrade().equals(grade)).toList());
         candidate.add(new Rate(sheetId, grade, null, pct.setScale(2, RoundingMode.UNNECESSARY)));
-        Dues.Basis previewed = new Dues.Basis(current.sheet(), candidate, current.corrected());
+        Dues.Basis previewed = new Dues.Basis(current.sheet(), candidate, current.inherited(), current.corrected());
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         int count = 0;

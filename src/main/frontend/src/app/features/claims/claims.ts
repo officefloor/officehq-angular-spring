@@ -314,6 +314,8 @@ export class Claims {
   readonly grades = input.required<GradeView[]>();
   /** The sheet's rates; each claim uses the one its person's grade has in force on its date. */
   readonly rates = input.required<RateView[]>();
+  /** The rates of the sheet's ancestors, nearest first: a grade with no rate in force falls back to them. */
+  readonly inherited = input<RateView[][]>([]);
   /** The sheet's periods; each claim belongs to the one whose dates contain its due-by, or to none. */
   readonly periods = input.required<PeriodView[]>();
   /** The people on the sheet, any of whom (but this one) a claim may be reassigned to. */
@@ -415,7 +417,7 @@ export class Claims {
     const late = { history: this.session.latePctHistory(), today: this.session.today() ?? '', grace: this.graceOf(claim) };
     const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
     const halfUp = roundsHalfUp(claim, this.claims(), this.session.policyDate(), late.today);
-    const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), floor, late, halfUp);
+    const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), floor, late, halfUp, this.inherited());
     return figure === null ? NO_RATE : money(figure);
   }
 

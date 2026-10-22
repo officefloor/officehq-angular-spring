@@ -67,6 +67,19 @@ public class RateController {
     }
 
     /**
+     * The rates of the sheet's ancestors, nearest first (its parent's, then its parent's parent's, up to
+     * three levels up), each sheet's by grade and from-date: what a grade with no rate in force on the
+     * sheet falls back to. With an as-of date, each as it stood at the end of it.
+     */
+    @GetMapping("/inherited")
+    public List<List<RateView>> inherited(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        return history.inherited(sheetId, AsOfGuard.date(asOf)).stream()
+                .map(rates -> rates.stream().map(RateView::of).toList()).toList();
+    }
+
+    /**
      * Set the rate for a grade from a date (through a to-date, if given), replacing any it had from
      * that date; a to-date before the from-date is refused.
      */

@@ -47,6 +47,8 @@ export interface SheetView {
   lastSettleBatch?: number | null;
   /** The sheet's pot with two decimals: split among each balanced pool's members as their cuts; null when there is none. */
   pot?: string | null;
+  /** The parent sheet's id: its rates apply where this sheet has none in force; null when there is none. */
+  parent?: string | null;
 }
 
 /**
@@ -92,6 +94,8 @@ export class Session {
   readonly cap = signal('');
   /** The active sheet's pot with two decimals: split among each balanced pool's members as their cuts; empty when there is none. */
   readonly pot = signal('');
+  /** The active sheet's parent sheet id; empty when there is none. */
+  readonly parent = signal('');
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
   /** The number of the active sheet's last settle batch; null when there has been none. */
@@ -165,6 +169,7 @@ export class Session {
     this.policyDate.set(view.policyDate ?? '');
     this.cap.set(view.cap ?? '');
     this.pot.set(view.pot ?? '');
+    this.parent.set(view.parent ?? '');
     this.archived.set(view.archived);
     this.graceHistory.set(view.graceHistory ?? {});
     this.lastSettleBatch.set(view.lastSettleBatch ?? null);

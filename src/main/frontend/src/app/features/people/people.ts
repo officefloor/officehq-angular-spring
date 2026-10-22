@@ -91,7 +91,7 @@ function csvField(value: string): string {
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
     />
-    <app-rates [rates]="rates()" [today]="today()" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" />
     <app-periods
       [periods]="periods()"
       [dueTotals]="periodDueTotals()"
@@ -418,6 +418,7 @@ function csvField(value: string): string {
                   [claims]="claimsOf(p.id)"
                   [grades]="p.grades"
                   [rates]="rates()"
+                  [inherited]="inherited()"
                   [periods]="periods()"
                   [people]="people()"
                   [selected]="selectedClaims()"
@@ -557,6 +558,8 @@ export class People {
   });
   /** The sheet's rates, each grade's by from-date; a grade with no rate is not listed. */
   protected readonly rates = signal<RateView[]>([]);
+  /** The rates of the sheet's ancestors, nearest first: a grade with no rate in force falls back to them. */
+  protected readonly inherited = signal<RateView[][]>([]);
   /** The sheet's periods by from-date. */
   protected readonly periods = signal<PeriodView[]>([]);
   /**
@@ -753,6 +756,14 @@ export class People {
   protected readonly bulkGradeError = signal<string | null>(null);
 
   constructor() {
+    // A new parent changes the rates a grade with none in force on the sheet falls back to.
+    effect(() => {
+      this.session.parent();
+      untracked(() => {
+        const sheet = this.session.sheet();
+        if (sheet) void this.reloadInherited(sheet);
+      });
+    });
     // Every sheet load re-reads the sheet's people from the store.
     effect(() => {
       const sheet = this.session.sheet();
@@ -762,6 +773,7 @@ export class People {
         this.watched.set(new Set());
         this.claims.set([]);
         this.rates.set([]);
+        this.inherited.set([]);
         this.periods.set([]);
         this.reset();
         this.personError.set(null);
@@ -874,7 +886,7 @@ export class People {
 
   /** The rate a grade has in force on the sheet's today (a two-decimal percent), or null when it has none. */
   protected pctOf(grade: Grade): string | null {
-    return rateOn(this.rates(), grade, this.today());
+    return rateOn(this.rates(), grade, this.today(), this.inherited());
   }
 
   /** A person's due-total: the sum of their counting claims' due figures, or n/a (see dueTotalCents). */
@@ -944,7 +956,7 @@ export class People {
     const halfUp = roundsHalfUp(claim, this.claimsOf(person.id), this.session.policyDate(), this.today());
     const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
     const late = { history: this.session.latePctHistory(), today: this.today(), grace: this.graceOf(claim, person) };
-    return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), floor, late, halfUp);
+    return claimDueCents(claim, this.rates(), gradeOn(person.grades, claim.date), floor, late, halfUp, this.inherited());
   }
 
   /** A person's patrons, each as their name and share, sorted by name, comma and space separated. */
@@ -1531,20 +1543,29 @@ export class People {
     }
   }
 
+  /** Re-read the rates of the sheet's ancestors from the store. */
+  private async reloadInherited(sheet: string): Promise<void> {
+    const loads = this.session.loads();
+    const inherited = await this.ratesApi.inherited(sheet);
+    if (this.session.sheet() === sheet && this.session.loads() === loads) this.inherited.set(inherited);
+  }
+
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
     try {
-      const [people, watched, claims, rates, periods] = await Promise.all([
+      const [people, watched, claims, rates, inherited, periods] = await Promise.all([
         this.api.list(sheet),
         this.api.watched(sheet),
         this.claimsApi.list(sheet),
         this.ratesApi.list(sheet),
+        this.ratesApi.inherited(sheet),
         this.periodsApi.list(sheet),
       ]);
       // A later load may have started while this one was in flight: only the latest is shown.
       if (this.session.sheet() === sheet && this.session.loads() === loads) {
         this.claims.set(claims);
         this.rates.set(rates);
+        this.inherited.set(inherited);
         this.periods.set(periods);
         this.watched.set(new Set(watched));
         this.people.set(people);

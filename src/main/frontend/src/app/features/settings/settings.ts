@@ -1,6 +1,6 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
@@ -222,6 +222,15 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'pot')"
           (keydown.backspace)="cleared($event, 'pot')"
         />
+        <label for="setting-parent">Parent sheet, whose rates apply where this sheet has none (empty: none)</label>
+        <input
+          id="setting-parent"
+          data-testid="setting-parent"
+          [value]="parentInput()"
+          (input)="parentInput.set(value($event)); parentEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'parent')"
+          (keydown.backspace)="cleared($event, 'parent')"
+        />
         @for (a of permissionActions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; empty: {{ standing[a] }})</label>
           <input
@@ -260,6 +269,7 @@ import { Session } from '../../core/session';
       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() }}</span></p>
+      <p>Parent sheet in force: <span data-testid="setting-parent-current">{{ session.parent() }}</span></p>
       @for (a of permissionActions; track a) {
         <p>Roles that may {{ a }} in force:
           <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] }}</span></p>
@@ -341,6 +351,7 @@ export class Settings {
   protected readonly graceDays = signal('');
   protected readonly graceDaysInput = signal('');
   protected readonly potInput = signal('');
+  protected readonly parentInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
   protected capEdited = false;
@@ -357,6 +368,7 @@ export class Settings {
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
   protected potEdited = false;
+  protected parentEdited = false;
   protected readonly permissionActions = PERMISSION_ACTIONS;
   /** Who may take each action under its standing rule, kept when its entry is blank. */
   protected readonly standing: Record<PermissionAction, string> = {
@@ -452,7 +464,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -475,6 +487,9 @@ export class Settings {
     } else if (setting === 'pot') {
       this.potInput.set('');
       this.potEdited = true;
+    } else if (setting === 'parent') {
+      this.parentInput.set('');
+      this.parentEdited = true;
     } else {
       this.graceDaysInput.set('');
       this.graceDaysEdited = true;
@@ -528,10 +543,11 @@ export class Settings {
     const entryDate = this.entryDateInput().trim();
     const graceDays = this.graceDaysInput().trim();
     const pot = this.potInput().trim();
+    const parent = this.parentInput().trim();
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.parentEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -549,6 +565,7 @@ export class Settings {
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
     const savePot = this.potEdited;
+    const saveParent = this.parentEdited;
     const savePermissions = PERMISSION_ACTIONS.filter((a) => this.permissionsEdited.has(a))
       .map((a) => ({ action: a, value: this.permissionInput()[a].trim() }));
     const froms = this.fromInput();
@@ -629,6 +646,10 @@ export class Settings {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it empty for none.');
       return;
     }
+    if (saveParent && !PARENT.test(parent)) {
+      this.settingsError.set('Type a parent sheet id of letters, digits, dots, dashes or underscores, or leave it empty for none.');
+      return;
+    }
     if (savePermissions.some((p) => !PERMISSION.test(p.value))) {
       this.settingsError.set('Type the roles that may take an action as clerk or steward, comma separated, or leave them empty for the standing rule.');
       return;
@@ -649,6 +670,7 @@ export class Settings {
     if (saveEntryDate) this.entryDateEdited = false;
     if (saveGraceDays) this.graceDaysEdited = false;
     if (savePot) this.potEdited = false;
+    if (saveParent) this.parentEdited = false;
     for (const p of savePermissions) this.permissionsEdited.delete(p.action);
     this.fromInput.update((all) => {
       const next = { ...all };
@@ -717,6 +739,11 @@ export class Settings {
           const view = await this.api.setPot(sheet, pot);
           this.session.pot.set(view.pot ?? '');
           if (!this.potEdited) this.potInput.set(view.pot ?? '');
+        }
+        if (saveParent) {
+          const view = await this.api.setParent(sheet, parent);
+          this.session.parent.set(view.parent ?? '');
+          if (!this.parentEdited) this.parentInput.set(view.parent ?? '');
         }
         for (const p of savePermissions) {
           const view = await this.api.setPermission(sheet, p.action, p.value);
@@ -821,6 +848,10 @@ export class Settings {
       this.session.pot.set(settings.pot ?? '');
       this.potInput.set(settings.pot ?? '');
       this.potEdited = false;
+      // The parent starts at the one set, so clearing it is a change.
+      this.session.parent.set(settings.parent ?? '');
+      this.parentInput.set(settings.parent ?? '');
+      this.parentEdited = false;
       // Each action's roles start at those in force, so clearing them is a change.
       this.permissions.set(settings.permissions);
       this.permissionInput.set({ ...settings.permissions });

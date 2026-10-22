@@ -37,7 +37,7 @@ public class SheetController {
     /** What the screen is told about a loaded sheet. */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
-            Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot) {
+            Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
@@ -45,7 +45,7 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived(),
                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
-                    sheet.getPot() == null ? null : sheet.getPot().toPlainString());
+                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId());
         }
 
         /** Each grade's grace values by from-date, its starting value (none) first. */
@@ -73,13 +73,14 @@ public class SheetController {
      * for none, and the proof threshold with two decimals, null for none, and the note threshold with two
      * decimals, null for none, and the entry date, null for none (off), and each grade's grace in days,
      * null for none, with each grade's grace values by from-date, and each grade's proof threshold with two
-     * decimals, null for none (the sheet's applies), and the pot with two decimals, null for none. */
+     * decimals, null for none (the sheet's applies), and the pot with two decimals, null for none, and the
+     * parent sheet's id, null for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
-            String pot) {
+            String pot, String parent) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -93,7 +94,7 @@ public class SheetController {
                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
                     sheet.getEntryDate(), sheet.getGradeGrace("A"), sheet.getGradeGrace("B"), sheet.getGradeGrace("C"),
                     SheetView.graceHistory(sheet), gradeProofThresholds(sheet),
-                    sheet.getPot() == null ? null : sheet.getPot().toPlainString());
+                    sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId());
         }
 
         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
@@ -129,6 +130,16 @@ public class SheetController {
         BigDecimal pot() {
             String text = value == null ? "" : value.trim();
             return text.isEmpty() ? null : new BigDecimal(text);
+        }
+    }
+
+    /** A parent sheet's id as entered, or blank (or null) for none. */
+    public record ParentChange(@Size(max = 64) @Pattern(regexp = "\\s*([A-Za-z0-9._-]+)?\\s*") String value) {
+
+        /** The parent sheet's id entered; null when blank. */
+        String parent() {
+            String text = value == null ? "" : value.trim();
+            return text.isEmpty() ? null : text;
         }
     }
 
@@ -416,6 +427,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PotChange change) {
         return SettingsView.of(service.setPot(id, SignedIn.name(user), change.pot()));
+    }
+
+    /** Change the sheet's parent; a blank value means none. */
+    @PutMapping("/{id}/settings/parent")
+    public SettingsView setParent(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ParentChange change) {
+        return SettingsView.of(service.setParent(id, SignedIn.name(user), change.parent()));
     }
 
     /** Set the roles that may take an action of the permission matrix; a blank value keeps its standing rule. */

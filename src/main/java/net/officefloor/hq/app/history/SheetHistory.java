@@ -175,18 +175,36 @@ public class SheetHistory {
             return Optional.empty();
         }
         return snapshots.findFirstBySheetIdAndAsOfLessThanEqualOrderByIdDesc(sheetId, day)
-                .map(snapshot -> restored(now, day, json.readValue(snapshot.getState(), State.class)));
+                .map(snapshot -> restored(now, day, json.readValue(snapshot.getState(), State.class),
+                        inherited(sheetId, day)));
     }
 
-    private static AsOf restored(Sheet now, LocalDate day, State state) {
+    /**
+     * The rates of the sheet's ancestors, nearest first, up to {@link Dues#PARENT_LEVELS}, each as it
+     * stood at the end of a date (null: as it stands): an ancestor's rates as kept for the last snapshot
+     * on or before that date when it is before the ancestor's today (none when nothing was kept by
+     * then), else as they stand. The parent itself is not dated: the chain is the one set now.
+     */
+    @Transactional(readOnly = true)
+    public List<List<Rate>> inherited(String sheetId, LocalDate day) {
+        return sheets.ancestors(sheetId).stream().limit(Dues.PARENT_LEVELS)
+                .map(ancestor -> past(ancestor, day) ? keptRates(ancestor, day)
+                        : rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(ancestor))
+                .toList();
+    }
+
+    /** A sheet's rates as kept for the last snapshot on or before a date; none when nothing was kept by then. */
+    private List<Rate> keptRates(String sheetId, LocalDate day) {
+        return snapshots.findFirstBySheetIdAndAsOfLessThanEqualOrderByIdDesc(sheetId, day)
+                .map(snapshot -> rates(sheetId, json.readValue(snapshot.getState(), State.class)))
+                .orElse(List.of());
+    }
+
+    private static AsOf restored(Sheet now, LocalDate day, State state, List<List<Rate>> inherited) {
         Sheet sheet = now.asOf(day,
                 state.settings().stream().map(s -> new DatedSetting(s.key(), s.from(), s.value())).toList(),
                 state.policyDate());
-        List<Rate> rates = state.rates().stream().map(r -> {
-            Rate rate = new Rate(now.getId(), r.grade(), r.from(), r.pct());
-            rate.setToDate(r.to());
-            return rate;
-        }).toList();
+        List<Rate> rates = rates(now.getId(), state);
         Map<Long, Person> people = new LinkedHashMap<>();
         for (PersonState p : state.people()) {
             Person person = new Person(now.getId(), p.name(), p.grade(), p.terms(), p.contact());
@@ -212,11 +230,20 @@ public class SheetHistory {
             claim.defer(c.deferredUntil());
             claims.put(c.id(), claim);
         }
-        Dues.Basis basis = new Dues.Basis(sheet, rates, correction -> claims.values().stream()
+        Dues.Basis basis = new Dues.Basis(sheet, rates, inherited, correction -> claims.values().stream()
                 .filter(c -> Objects.equals(c.getPersonId(), correction.getPersonId())
                         && Objects.equals(c.getNumber(), correction.getCorrects()))
                 .findFirst());
         return new AsOf(sheet, people, claims, basis);
+    }
+
+    /** The rates kept in a sheet's state, held in no store. */
+    private static List<Rate> rates(String sheetId, State state) {
+        return state.rates().stream().map(r -> {
+            Rate rate = new Rate(sheetId, r.grade(), r.from(), r.pct());
+            rate.setToDate(r.to());
+            return rate;
+        }).toList();
     }
 
     private static PersonState kept(Person p) {

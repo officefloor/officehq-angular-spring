@@ -130,6 +130,8 @@ export class Rates {
 
   /** The sheet's rates; a grade with no rate is not listed. */
   readonly rates = input.required<RateView[]>();
+  /** The rates of the sheet's ancestors, nearest first: a grade with no rate in force falls back to them. */
+  readonly inherited = input<RateView[][]>([]);
   /** The sheet's today, on which each grade's rate in force is shown. */
   readonly today = input.required<string>();
   /** A rate set through the form. */
@@ -160,7 +162,7 @@ export class Rates {
   );
 
   protected currentOf(grade: Grade): string | null {
-    return rateOn(this.rates(), grade, this.today());
+    return rateOn(this.rates(), grade, this.today(), this.inherited());
   }
 
   protected value(event: Event): string {

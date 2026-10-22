@@ -111,6 +111,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The parent sheet's id: its rates apply where this sheet has none in force; null for none. Not dated. */
+    @Column(name = "parent_id")
+    private String parentId;
+
     /** Archived: everything on the sheet stays visible but nothing on it may change. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -367,6 +371,7 @@ public class Sheet {
         then.graceDays = graceDays;
         then.entryDate = entryDate;
         then.pot = pot;
+        then.parentId = parentId;
         then.archived = archived;
         then.dated = new ArrayList<>(datedThen);
         then.permissions = new HashMap<>(permissions);
@@ -454,6 +459,15 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    /** The parent sheet's id; null when none. */
+    public String getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
     }
 
     /** The date a new claim with no date of its own is given: the entry date while set, else the sheet's today. */

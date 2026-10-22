@@ -27,15 +27,27 @@ public class Dues {
         this.claims = claims;
     }
 
+    /** How many levels of parent sheets a grade with no rate in force falls back to. */
+    public static final int PARENT_LEVELS = 3;
+
     /**
      * What a claim's figures are read against: the sheet (its today and its dated settings; null when
-     * not found), the sheet's rates, and how the claim a correction names is found.
+     * not found), the sheet's rates, its ancestors' rates (nearest first, up to {@link #PARENT_LEVELS}),
+     * and how the claim a correction names is found.
      */
-    public record Basis(Sheet sheet, List<Rate> rates, Function<Claim, Optional<Claim>> corrected) {
+    public record Basis(Sheet sheet, List<Rate> rates, List<List<Rate>> inherited,
+            Function<Claim, Optional<Claim>> corrected) {
 
-        /** The rate in force for a grade on a date (see {@link RateRepository#findInForce}). */
+        /**
+         * The rate in force for a grade on a date (see {@link RateRepository#findInForce}); when the sheet
+         * has none, its parent's, then its parent's parent's, and so on.
+         */
         public Optional<Rate> rateInForce(String grade, LocalDate date) {
-            return RateRepository.inForce(rates, grade, date);
+            Optional<Rate> rate = RateRepository.inForce(rates, grade, date);
+            for (int level = 0; rate.isEmpty() && level < inherited.size(); level++) {
+                rate = RateRepository.inForce(inherited.get(level), grade, date);
+            }
+            return rate;
         }
 
         LocalDate today() {
@@ -46,7 +58,13 @@ public class Dues {
     /** The sheet as the store holds it now: what every live figure is read against. */
     public Basis live(String sheetId) {
         return new Basis(sheets.findById(sheetId).orElse(null), rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId),
-                claim -> claims.findBySheetIdAndPersonIdAndNumber(claim.getSheetId(), claim.getPersonId(), claim.getCorrects()));
+                inherited(sheetId), claim -> claims.findBySheetIdAndPersonIdAndNumber(claim.getSheetId(), claim.getPersonId(), claim.getCorrects()));
+    }
+
+    /** The rates of the sheet's ancestors as the store holds them now, nearest first, up to {@link #PARENT_LEVELS}. */
+    public List<List<Rate>> inherited(String sheetId) {
+        return sheets.ancestors(sheetId).stream().limit(PARENT_LEVELS)
+                .map(rates::findBySheetIdOrderByGradeAscFromDateAscIdAsc).toList();
     }
 
     /**

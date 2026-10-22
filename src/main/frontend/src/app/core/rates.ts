@@ -40,9 +40,19 @@ export const FROM_DATE = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * The rate a grade has in force on a date (yyyy-mm-dd): of its rates with no from-date or one on or
  * before the date, the one with the latest; null when the date is before every rate of the grade, or
- * after that one's to-date.
+ * after that one's to-date. When the sheet has none, its parent's rate for the grade and date, then
+ * its parent's parent's, and so on (`inherited`, nearest first).
  */
-export function rateOn(rates: RateView[], grade: Grade, date: string): string | null {
+export function rateOn(rates: RateView[], grade: Grade, date: string, inherited: RateView[][] = []): string | null {
+  for (const level of [rates, ...inherited]) {
+    const pct = ownRateOn(level, grade, date);
+    if (pct !== null) return pct;
+  }
+  return null;
+}
+
+/** The rate a grade has in force on a date among one sheet's rates alone (see rateOn). */
+function ownRateOn(rates: RateView[], grade: Grade, date: string): string | null {
   let best: RateView | null = null;
   for (const r of rates) {
     if (r.grade !== grade || (r.from !== null && r.from > date)) continue;
@@ -103,13 +113,14 @@ export function claimDueCents(
   floorCents: number,
   late: LateTerms,
   halfUp = false,
+  inherited: RateView[][] = [],
 ): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   let figure: number | null;
   if (claim.stated && claim.status !== 'PENDING') {
     figure = claim.statedDue === null ? null : cents(claim.statedDue);
   } else {
-    const pct = rateOn(rates, grade, claim.date);
+    const pct = rateOn(rates, grade, claim.date, inherited);
     figure = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
   }
   if (figure === null || isCorrection(claim)) return figure;
@@ -126,6 +137,14 @@ export class RatesApi {
   /** The sheet's rates, each grade's by from-date; a grade with no rate is not listed. */
   list(sheet: string): Promise<RateView[]> {
     return firstValueFrom(this.http.get<RateView[]>(this.url(sheet)));
+  }
+
+  /**
+   * The rates of the sheet's ancestors, nearest first (its parent's, up to three levels up): what a
+   * grade with no rate in force on the sheet falls back to.
+   */
+  inherited(sheet: string): Promise<RateView[][]> {
+    return firstValueFrom(this.http.get<RateView[][]>(`${this.url(sheet)}/inherited`));
   }
 
   /** Set a grade's rate from a date, replacing any it had from that date. */

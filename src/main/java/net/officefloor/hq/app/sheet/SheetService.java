@@ -246,6 +246,34 @@ public class SheetService {
         return saved;
     }
 
+    /**
+     * Change the sheet's parent (null: none), auditing the change and the figures it moves. The parent
+     * must be a sheet that has been loaded, not this sheet, and not one that has this sheet as an ancestor.
+     */
+    @Transactional
+    public synchronized Sheet setParent(String id, String user, String parentId) {
+        Sheet sheet = lock(id);
+        if (parentId != null) {
+            if (parentId.equals(id)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "A sheet cannot be its own parent.");
+            }
+            if (!sheets.existsById(parentId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No sheet " + parentId + " has been loaded.");
+            }
+            if (sheets.ancestors(parentId).contains(id)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Sheet " + parentId + " has this sheet as an ancestor.");
+            }
+        }
+        Rollups.Rollup before = rollups.take(id);
+        sheet.setParentId(parentId);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=parent value="
+                + (parentId == null ? "" : parentId));
+        rollups.audit(id, user, before);
+        return saved;
+    }
+
     /** Set the roles that may take an action (null: the standing rule), auditing the change. */
     @Transactional
     public Sheet setPermission(String id, String user, String action, String roles) {

@@ -12,7 +12,6 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -47,16 +46,14 @@ public class Rollups {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final RateRepository rates;
     private final SheetRepository sheets;
     private final Dues dues;
     private final Audit audit;
 
-    public Rollups(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
+    public Rollups(PersonRepository people, ClaimRepository claims, SheetRepository sheets,
             Dues dues, Audit audit) {
         this.people = people;
         this.claims = claims;
-        this.rates = rates;
         this.sheets = sheets;
         this.dues = dues;
         this.audit = audit;
@@ -66,6 +63,7 @@ public class Rollups {
     public Rollup take(String sheetId) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
+        Dues.Basis basis = dues.live(sheetId);
         Map<Long, List<Claim>> byPerson = new LinkedHashMap<>();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (claim.getStatus().counts()) {
@@ -87,7 +85,7 @@ public class Rollups {
             for (Claim claim : counting) {
                 claimed = claimed.add(claim.getAmount());
                 String grade = person.gradeOn(claim.getDate());
-                BigDecimal figure = dues.due(claim, grade);
+                BigDecimal figure = dues.due(claim, grade, basis);
                 if (figure != null) {
                     due = due.add(figure);
                     figured = true;
@@ -98,7 +96,7 @@ public class Rollups {
             }
             // As on the screen: n/a when the grade in force today has no rate, unless a claim has a
             // figure (a fixed one, or one at the grade in force on its own date).
-            boolean rated = today != null && rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
+            boolean rated = today != null && basis.rateInForce(person.gradeOn(today), today).isPresent();
             if (!rated && !figured) {
                 due = null;
             }
