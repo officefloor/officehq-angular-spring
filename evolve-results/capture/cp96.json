@@ -1,0 +1,71 @@
+{
+  "checkpoint": 96,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp96_holidays-redate",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    83,
+    94
+  ],
+  "replaced_tests": [
+    "cp83_holidays.spec.ts::holidays",
+    "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 1",
+    "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 3"
+  ],
+  "request": {
+    "spec": "Adding a holiday now re-fixes the due-by of every claim on the sheet that is not SETTLED or VOID\nand whose due-by is on or after the new holiday: each is worked out again from the claim's date,\nwith the terms it was fixed with, over the holidays now on the sheet. A claim whose overdue state\nor late charge moves as a result moves figures like any other change, so HOLIDAY_ADDED is\nfollowed by the rollup lines when any figure moved.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdding a holiday now re-fixes the due-by of every claim on the sheet that is not SETTLED or VOID\nand whose due-by is on or after the new holiday: each is worked out again from the claim's date,\nwith the terms it was fixed with, over the holidays now on the sheet. A claim whose overdue state\nor late charge moves as a result moves figures like any other change, so HOLIDAY_ADDED is\nfollowed by the rollup lines when any figure moved.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8b80ab2c0b38451d8078408e77e32192e8b28559",
+  "reset_sha": "",
+  "preagent_sha": "57d10bb8d0457371c5f30fc47ece22a1d4f3c839",
+  "prev_sha": "57d10bb8d0457371c5f30fc47ece22a1d4f3c839",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.37605879999999997,
+    "input_tokens": 18,
+    "output_tokens": 3407,
+    "cache_read_tokens": 253474,
+    "cache_creation_tokens": 32144,
+    "num_turns": 9,
+    "duration_ms": 154751,
+    "duration_api_ms": 41979,
+    "model": "claude-opus-5-5",
+    "session_id": "e1666835-4c7c-42ea-9516-65647c7c14cb",
+    "stop_reason": "success",
+    "result_text": "All four tests in `bin/e2e` pass with this change.\n\n**What changed:** adding a holiday now re-fixes the due-by of every claim on the sheet that is not SETTLED or VOID and whose current due-by falls on or after the new holiday. Before, it re-fixed every claim except DRAFTs, settled ones included. That is why a SETTLED claim's due-by used to move when a holiday was added.\n\nThe change is in the loop in `HolidayService.add` (`src/main/java/net/officefloor/hq/app/holiday/HolidayService.java`). The rest of the request needed no new code:\n- **Recalculating the due-by:** the existing `Claim.workOutDueBy` already does this, using the claim's stored terms and the holidays now on the sheet.\n- **Audit:** `HOLIDAY_ADDED` is written first, and the existing rollup step adds ROLLUP/TOTALS lines only when a figure actually moved. So a claim whose overdue state or late charge changes is reported like any other change.\n\nI also updated the doc comments on `HolidayService.add` and on `Claim.dueBy` to match.\n\n**Two things you might want to check:**\n- **DRAFT claims are now re-fixed too.** The request only excludes SETTLED and VOID, so drafts are included. The old code skipped them on purpose (a draft \"keeps the one it was added with\"), so this is a change in behaviour.\n- **\"From the claim's date\"** is taken as the date the terms count from (`dueFrom`), which is what the existing recalculation uses. That is the claim's date when it was added. If someone later edits a claim's date, its due-by still counts from the original date, which matches how the app already handles changed dates. If you meant the current date instead, it's a one-line change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.37605879999999997,
+        "num_turns": 9,
+        "duration_ms": 154751,
+        "duration_api_ms": 41979,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp96.agent.jsonl",
+  "agent_diff_file": "cp96.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

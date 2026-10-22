@@ -1,0 +1,39 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 3c2916b0..0e27ce5b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -46,7 +46,7 @@ public class Claim {
+ 
+     /**
+      * The date the claim is due by: the terms-th business day after its due-from date (see
+-     * {@link BusinessDays#dueBy}), worked out again whenever the sheet's holidays change unless it is a DRAFT.
++     * {@link BusinessDays#dueBy}), worked out again when a holiday on or before it is added unless it is SETTLED or VOID.
+      */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index 2fda4ae6..40bc5754 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -42,8 +42,9 @@ public class HolidayService {
+     }
+ 
+     /**
+-     * Add a holiday to the sheet; refused when the date is already on its list. Every claim's due-by on
+-     * the sheet but a DRAFT's (which keeps the one it was added with) is worked out again against the holidays now, and the figures that moves are audited.
++     * Add a holiday to the sheet; refused when the date is already on its list. Every claim on the sheet
++     * that is not SETTLED or VOID and is due by the holiday or later has its due-by worked out again from
++     * its date, with the terms it was fixed with, against the holidays now; the figures that moves are audited.
+      */
+     @Transactional
+     public Holiday add(String sheetId, String user, LocalDate date) {
+@@ -56,7 +57,8 @@ public class HolidayService {
+         Holiday saved = holidays.saveAndFlush(new Holiday(sheetId, date));
+         Set<LocalDate> days = days(sheetId);
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+-            if (claim.getStatus() != ClaimStatus.DRAFT) {
++            ClaimStatus status = claim.getStatus();
++            if (status != ClaimStatus.SETTLED && status != ClaimStatus.VOID && !claim.getDueBy().isBefore(date)) {
+                 claim.workOutDueBy(days);
+             }
+         }
