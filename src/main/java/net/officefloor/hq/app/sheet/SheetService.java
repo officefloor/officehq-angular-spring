@@ -198,6 +198,17 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's entry date (null: off), auditing the change. */
+    @Transactional
+    public Sheet setEntryDate(String id, String user, LocalDate entryDate) {
+        Sheet sheet = lock(id);
+        sheet.setEntryDate(entryDate);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=entry-date value="
+                + (saved.getEntryDate() == null ? "" : saved.getEntryDate().toString()));
+        return saved;
+    }
+
     /** Change the sheet's grace days (null: off), auditing the change. */
     @Transactional
     public Sheet setGraceDays(String id, String user, Integer graceDays) {

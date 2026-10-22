@@ -32,6 +32,8 @@ export interface SettingsView {
   policyDate: string | null;
   /** Period numbering from (yyyy-mm-dd): claims opened on or after it are numbered within their period; null when off. */
   periodNumberingFrom: string | null;
+  /** Entry date (yyyy-mm-dd): while set, a new claim with no date is dated it rather than the sheet's today; null when off. */
+  entryDate: string | null;
   /** Grace days: an open period closes itself once the sheet's today is past its to-date plus them; null when off. */
   graceDays: number | null;
   /** Each grade's own terms in days; null when the grade uses the sheet's terms. */
@@ -89,6 +91,9 @@ export const POLICY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 
 /** A period-numbering-from date as the form takes it: yyyy-mm-dd, or blank for off. */
 export const PERIOD_NUMBERING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
+
+/** An entry date as the form takes it: yyyy-mm-dd, or blank for off. */
+export const ENTRY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 
 /** Grace days as the form takes them: a whole number of days, or blank for off. */
 export const GRACE_DAYS = /^(\d{1,4})?$/;
@@ -148,6 +153,11 @@ export class SettingsApi {
   /** Set the policy date; a blank value means the sheet's today. */
   setPolicyDate(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/policy-date`, { value }));
+  }
+
+  /** Set the entry date; a blank value turns it off. */
+  setEntryDate(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/entry-date`, { value }));
   }
 
   /** Set the period-numbering-from date; a blank value turns period numbering off. */

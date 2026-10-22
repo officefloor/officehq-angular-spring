@@ -1,6 +1,6 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CAP, DatedKey, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+  CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, NOTE_THRESHOLD, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
@@ -160,6 +160,15 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'periodNumberingFrom')"
           (keydown.backspace)="cleared($event, 'periodNumberingFrom')"
         />
+        <label for="setting-entry-date">Entry date, the default date of a new claim (yyyy-mm-dd; empty: off)</label>
+        <input
+          id="setting-entry-date"
+          data-testid="setting-entry-date"
+          [value]="entryDateInput()"
+          (input)="entryDateInput.set(value($event)); entryDateEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'entryDate')"
+          (keydown.backspace)="cleared($event, 'entryDate')"
+        />
         <label for="setting-grace-days">Grace days before a period closes itself (a whole number; empty: off)</label>
         <input
           id="setting-grace-days"
@@ -196,6 +205,7 @@ import { Session } from '../../core/session';
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
+      <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       @for (a of permissionActions; track a) {
         <p>Roles that may {{ a }} in force:
@@ -267,6 +277,8 @@ export class Settings {
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFrom = signal('');
   protected readonly periodNumberingFromInput = signal('');
+  protected readonly entryDate = signal('');
+  protected readonly entryDateInput = signal('');
   protected readonly graceDays = signal('');
   protected readonly graceDaysInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
@@ -280,6 +292,7 @@ export class Settings {
   protected gradeTermsEdited = new Set<Grade>();
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
+  protected entryDateEdited = false;
   protected graceDaysEdited = false;
   protected readonly permissionActions = PERMISSION_ACTIONS;
   /** Who may take each action under its standing rule, kept when its entry is blank. */
@@ -319,6 +332,7 @@ export class Settings {
         this.noteThreshold.set(null);
         this.gradeTerms.set({ A: null, B: null, C: null });
         this.periodNumberingFrom.set('');
+        this.entryDate.set('');
         this.graceDays.set('');
         this.permissions.set(Settings.noPermissions());
         this.roles.set([]);
@@ -363,7 +377,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'graceDays'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -380,6 +394,9 @@ export class Settings {
     } else if (setting === 'periodNumberingFrom') {
       this.periodNumberingFromInput.set('');
       this.periodNumberingFromEdited = true;
+    } else if (setting === 'entryDate') {
+      this.entryDateInput.set('');
+      this.entryDateEdited = true;
     } else {
       this.graceDaysInput.set('');
       this.graceDaysEdited = true;
@@ -418,11 +435,12 @@ export class Settings {
     const latePct = this.latePctInput().trim();
     const policyDate = this.policyDateInput().trim();
     const periodNumberingFrom = this.periodNumberingFromInput().trim();
+    const entryDate = this.entryDateInput().trim();
     const graceDays = this.graceDaysInput().trim();
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.graceDaysEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -433,6 +451,7 @@ export class Settings {
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
+    const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
     const savePermissions = PERMISSION_ACTIONS.filter((a) => this.permissionsEdited.has(a))
       .map((a) => ({ action: a, value: this.permissionInput()[a].trim() }));
@@ -492,6 +511,10 @@ export class Settings {
       this.settingsError.set('Type the date period numbering is from as yyyy-mm-dd, or leave it empty for off.');
       return;
     }
+    if (saveEntryDate && !ENTRY_DATE.test(entryDate)) {
+      this.settingsError.set('Type an entry date as yyyy-mm-dd, or leave it empty for off.');
+      return;
+    }
     if (saveGraceDays && !GRACE_DAYS.test(graceDays)) {
       this.settingsError.set('Type grace days as a whole number of days, or leave them empty for off.');
       return;
@@ -511,6 +534,7 @@ export class Settings {
     if (saveLatePct) this.latePctEdited = false;
     if (savePolicyDate) this.policyDateEdited = false;
     if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
+    if (saveEntryDate) this.entryDateEdited = false;
     if (saveGraceDays) this.graceDaysEdited = false;
     for (const p of savePermissions) this.permissionsEdited.delete(p.action);
     this.fromInput.update((all) => {
@@ -559,6 +583,11 @@ export class Settings {
           const view = await this.api.setPeriodNumberingFrom(sheet, periodNumberingFrom);
           this.periodNumberingFrom.set(view.periodNumberingFrom ?? '');
           if (!this.periodNumberingFromEdited) this.periodNumberingFromInput.set(view.periodNumberingFrom ?? '');
+        }
+        if (saveEntryDate) {
+          const view = await this.api.setEntryDate(sheet, entryDate);
+          this.entryDate.set(view.entryDate ?? '');
+          if (!this.entryDateEdited) this.entryDateInput.set(view.entryDate ?? '');
         }
         if (saveGraceDays) {
           const view = await this.api.setGraceDays(sheet, graceDays);
@@ -653,6 +682,10 @@ export class Settings {
       this.periodNumberingFrom.set(settings.periodNumberingFrom ?? '');
       this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
       this.periodNumberingFromEdited = false;
+      // The entry date starts at the date in force too, so clearing it is a change.
+      this.entryDate.set(settings.entryDate ?? '');
+      this.entryDateInput.set(settings.entryDate ?? '');
+      this.entryDateEdited = false;
       // Grace days start at those in force, so clearing them is a change.
       this.graceDays.set(settings.graceDays?.toString() ?? '');
       this.graceDaysInput.set(settings.graceDays?.toString() ?? '');

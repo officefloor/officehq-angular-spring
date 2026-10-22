@@ -102,6 +102,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Entry date: while set, a new claim with no date is dated it rather than the sheet's today; null for off. */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** Archived: everything on the sheet stays visible but nothing on it may change. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -297,6 +301,7 @@ public class Sheet {
         then.policyDate = policyDateThen;
         then.periodNumberingFrom = periodNumberingFrom;
         then.graceDays = graceDays;
+        then.entryDate = entryDate;
         then.archived = archived;
         then.dated = new ArrayList<>(datedThen);
         then.permissions = new HashMap<>(permissions);
@@ -366,6 +371,20 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    /** The entry date as set; null when blank (off). */
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
+    }
+
+    /** The date a new claim with no date of its own is given: the entry date while set, else the sheet's today. */
+    public LocalDate defaultClaimDate() {
+        return entryDate != null ? entryDate : today;
     }
 
     /** Whether a claim opened now is numbered within its period: the setting is a date on or before today. */

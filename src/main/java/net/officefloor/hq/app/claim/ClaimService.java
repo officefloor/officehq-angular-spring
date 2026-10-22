@@ -59,7 +59,8 @@ public class ClaimService {
     }
 
     /**
-     * Add a claim for a person on the sheet; with no date it is dated the sheet's today. One dated in a
+     * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
+     * while one is set, else the sheet's today. One dated in a
      * soft-closed period is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
      * it is dated inside a closed period, or when it is a correction that does not name a SETTLED claim
      * of the same person (see {@link #refuseUnlessCorrects}).
@@ -69,7 +70,7 @@ public class ClaimService {
             String corrects) {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
-        LocalDate dated = date != null ? date : sheets.today(sheetId);
+        LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
         LocalDate dueBy = dueBy(sheets.lock(sheetId), person, dated);
         periods.refuseIfClosed(sheetId, dated);
         refuseIfRetired(person, dated);

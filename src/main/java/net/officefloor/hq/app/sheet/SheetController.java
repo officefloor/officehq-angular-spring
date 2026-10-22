@@ -56,11 +56,11 @@ public class SheetController {
      * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off), and the grace days, null for none (off), and
      * each grade's own terms in days, null for none (the sheet's terms), and the cap with two decimals, null
      * for none, and the proof threshold with two decimals, null for none, and the note threshold with two
-     * decimals, null for none. */
+     * decimals, null for none, and the entry date, null for none (off). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
-            Map<String, String> permissions, String noteThreshold) {
+            Map<String, String> permissions, String noteThreshold, LocalDate entryDate) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -71,7 +71,8 @@ public class SheetController {
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()),
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
                     permissions(sheet),
-                    sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString());
+                    sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
+                    sheet.getEntryDate());
         }
 
         /** The roles set for each action of the permission matrix; blank when it keeps its standing rule. */
@@ -318,6 +319,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid DateChange change) {
         return SettingsView.of(service.setPeriodNumberingFrom(id, SignedIn.name(user), change.date()));
+    }
+
+    /** Change the sheet's entry date; a blank value turns it off (new claims are dated the sheet's today). */
+    @PutMapping("/{id}/settings/entry-date")
+    public SettingsView setEntryDate(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid DateChange change) {
+        return SettingsView.of(service.setEntryDate(id, SignedIn.name(user), change.date()));
     }
 
     /** Change the sheet's grace days; a blank value turns closing periods by themselves off. */

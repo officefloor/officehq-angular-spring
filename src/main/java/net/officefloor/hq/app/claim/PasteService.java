@@ -15,7 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The paste box: lines of name,amount,date,note each add a DRAFT claim, in order, for the named
- * person on the sheet. The date may be blank (the sheet's today) and the note, which may hold commas,
+ * person on the sheet. The date may be blank (the sheet's entry date while set, else its today) and the note, which may hold commas,
  * may be absent. Every line is held to the claim form's rules; it is one change, so when any line is
  * refused nothing is added and nothing is recorded.
  */
