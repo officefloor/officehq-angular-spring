@@ -1,0 +1,408 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 8593be08..fd6abb28 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -160,6 +160,11 @@ export class PeopleApi {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/aliases`, { alias }));
+   }
+ 
++  /** Merge a person into another on the sheet (a steward only): the person merged into, after it. */
++  merge(sheet: string, id: number, intoId: number): Promise<PersonView> {
++    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/merge`, { intoId }));
++  }
++
+   /** The ids of the people on the sheet the signed-in user watches. */
+   watched(sheet: string): Promise<number[]> {
+     return firstValueFrom(this.http.get<number[]>(`${this.url(sheet)}/watched`));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c8fab40c..76593fdd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -485,6 +485,25 @@ function csvField(value: string): string {
+                 >
+                   Hold
+                 </button>
++                <label [for]="'person-merge-into-' + p.id">Merge into</label>
++                <select
++                  [id]="'person-merge-into-' + p.id"
++                  data-testid="person-merge-into"
++                  (change)="mergeChoices.set(p.id, value($event)); personError.set(null)"
++                >
++                  <option value="">Choose a person</option>
++                  @for (other of people(); track other.id) {
++                    <option [value]="other.id">{{ other.name }}</option>
++                  }
++                </select>
++                <button
++                  type="button"
++                  data-testid="person-merge"
++                  [attr.aria-label]="'Merge ' + p.name + ' into the person chosen'"
++                  (click)="merge(p)"
++                >
++                  Merge
++                </button>
+                 @if (personError()?.id === p.id) {
+                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                 }
+@@ -687,6 +706,8 @@ export class People {
+   protected readonly personError = signal<{ id: number; message: string } | null>(null);
+   /** The person chosen in each row's patron list, by person id. */
+   protected readonly patronChoices = new Map<number, string>();
++  /** The person chosen in each row's merge-into list, by person id. */
++  protected readonly mergeChoices = new Map<number, string>();
+   /** The ids of the people the signed-in user watches. */
+   protected readonly watched = signal<ReadonlySet<number>>(new Set());
+   /** The alias typed on each row, by person id. */
+@@ -736,6 +757,7 @@ export class People {
+         this.holdDrafts.set(new Map());
+         this.patronError.set(null);
+         this.patronChoices.clear();
++        this.mergeChoices.clear();
+         this.aliasDrafts.clear();
+         this.selectedClaims.set(new Set());
+         this.bulkOpened.set(null);
+@@ -1000,6 +1022,40 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Merge a person into the one chosen on their row (a steward only): they leave the list, and the
++   * people and claims show what the store holds after it.
++   */
++  protected async merge(person: PersonView): Promise<void> {
++    this.personError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const intoId = Number(this.mergeChoices.get(person.id) ?? '');
++    const refuse = (message: string) => this.personError.set({ id: person.id, message });
++    if (!intoId) {
++      refuse('Choose a person to merge into.');
++      return;
++    }
++    if (intoId === person.id) {
++      refuse('A person cannot be merged into themselves.');
++      return;
++    }
++    try {
++      await this.api.merge(sheet, person.id, intoId);
++      const [people, claims] = await Promise.all([this.api.list(sheet), this.claimsApi.list(sheet)]);
++      if (this.session.sheet() !== sheet) return;
++      this.mergeChoices.delete(person.id);
++      this.claims.set(claims);
++      this.people.set(people);
++    } catch (e) {
++      refuse(
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'Only a steward may merge people.'
++          : 'The person could not be merged: neither may be retired.',
++      );
++    }
++  }
++
+   /** The last statement's due-total: n/a when it was, empty when none was taken. */
+   protected statedTotalOf(person: PersonView): string {
+     if (person.statementCount === 0) return '';
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 0fc68014..3e2f9c6c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -38,6 +38,10 @@ public class Claim {
+     @Column(name = "person_id", nullable = false)
+     private Long personId;
+ 
++    /** The place the claim is listed at, newest first: given by the store when added, and again when moved by a merge. */
++    @Column(name = "listed", insertable = false, updatable = false)
++    private Long listed;
++
+     @Column(name = "amount", nullable = false, precision = 14, scale = 2)
+     private BigDecimal amount;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index a1cee92a..221088de 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -12,6 +12,14 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     /** The sheet's claims, newest first. */
+     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
+ 
++    /** The sheet's claims as they are listed, newest first. */
++    List<Claim> findBySheetIdOrderByListedDescIdDesc(String sheetId);
++
++    /** Give the claim the next place it is listed at: it is listed as the newest. */
++    @Modifying(flushAutomatically = true, clearAutomatically = true)
++    @Query(value = "update claim set listed = next value for claim_listed_seq where id = :id", nativeQuery = true)
++    int relist(@Param("id") Long id);
++
+     /** A person's claims on the sheet, newest first. */
+     List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dfd6b62e..0c664f09 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -89,7 +89,7 @@ public class ClaimService {
+     /** The sheet's claims, newest first. */
+     @Transactional(readOnly = true)
+     public List<Claim> list(String sheetId) {
+-        return claims.findBySheetIdOrderByIdDesc(sheetId);
++        return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index eefcb064..196584f7 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -110,7 +110,7 @@ public class SheetHistory {
+         Sheet sheet = sheets.findById(sheetId).orElseThrow();
+         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
+         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+-        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+         State state = new State(sheet.getPolicyDate(),
+                 sheet.getDated().stream().map(d -> new SettingState(d.getKey(), d.getFromDate(), d.getValue())).toList(),
+                 sheetRates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())).toList(),
+diff --git a/src/main/java/net/officefloor/hq/app/person/MergeService.java b/src/main/java/net/officefloor/hq/app/person/MergeService.java
+new file mode 100644
+index 00000000..251c4cab
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/MergeService.java
+@@ -0,0 +1,135 @@
++package net.officefloor.hq.app.person;
++
++import java.util.Comparator;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.pool.PoolMember;
++import net.officefloor.hq.app.pool.PoolMemberRepository;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.rollup.Rollups;
++import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.statement.StatementRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Merging a person into another on the sheet: a steward only. The merged person's claims move to the
++ * other, numbers and dates kept, listed after the other's own in the order they were added, each
++ * losing any figure a statement bound. Their name and aliases become aliases of the other; their
++ * patrons are added to the other's (not the other themselves, no repeats); anyone naming them as a
++ * patron names the other instead (no repeats); their pool memberships move to the other, shares added
++ * where the other is already a member. Their statements, holds, watchers and contact are dropped, and
++ * they leave the sheet.
++ */
++@Service
++public class MergeService {
++
++    private final PersonRepository people;
++    private final ClaimRepository claims;
++    private final StatementRepository statements;
++    private final WatchRepository watches;
++    private final PoolMemberRepository poolMembers;
++    private final RoleService roles;
++    private final SheetService sheets;
++    private final Rollups rollups;
++    private final Audit audit;
++
++    public MergeService(PersonRepository people, ClaimRepository claims, StatementRepository statements,
++            WatchRepository watches, PoolMemberRepository poolMembers, RoleService roles, SheetService sheets,
++            Rollups rollups, Audit audit) {
++        this.people = people;
++        this.claims = claims;
++        this.statements = statements;
++        this.watches = watches;
++        this.poolMembers = poolMembers;
++        this.roles = roles;
++        this.sheets = sheets;
++        this.rollups = rollups;
++        this.audit = audit;
++    }
++
++    /**
++     * Merge a person into another on the sheet: the person merged into, as the store holds them after.
++     * Refused unless the user is a steward, for the person themselves, and when either is retired.
++     */
++    @Transactional
++    public Person merge(String sheetId, String user, long personId, long intoId) {
++        sheets.lock(sheetId);
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward merges people.");
++        }
++        Person from = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        Person into = people.findByIdAndSheetId(intoId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        if (from.getId().equals(into.getId())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A person cannot be merged into themselves.");
++        }
++        if (from.getRetiredFrom() != null || into.getRetiredFrom() != null) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
++        }
++        Rollups.Rollup before = rollups.take(sheetId);
++
++        // Their claims, in the order they were added, move to the other unbound.
++        List<Claim> moved = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, from.getId()).stream()
++                .sorted(Comparator.comparing(Claim::getId)).toList();
++        for (Claim claim : moved) {
++            claim.reassign(into.getId());
++            claim.unbind();
++        }
++        claims.saveAll(moved);
++
++        // Their name and aliases become the other's aliases; their patrons the other's.
++        into.addAlias(from.getName());
++        from.getAliases().forEach(into::addAlias);
++        for (Long patronId : from.getPatronIds()) {
++            if (!patronId.equals(into.getId())) {
++                into.addPatron(patronId);
++            }
++        }
++        // Anyone naming them as a patron names the other instead.
++        for (Person other : people.findBySheetIdOrderByIdAsc(sheetId)) {
++            if (other.getId().equals(from.getId()) || !other.removePatron(from.getId())) {
++                continue;
++            }
++            if (!other.getId().equals(into.getId())) {
++                other.addPatron(into.getId());
++            }
++            people.save(other);
++        }
++
++        // Their pool memberships move to the other, shares added where the other is already a member.
++        for (PoolMember member : poolMembers.findByPersonIdOrderByIdAsc(from.getId())) {
++            PoolMember theirs = poolMembers.findByPoolIdAndPersonId(member.getPoolId(), into.getId()).orElse(null);
++            if (theirs != null) {
++                theirs.addShare(member.getShare());
++                poolMembers.save(theirs);
++                poolMembers.delete(member);
++            } else {
++                member.moveTo(into.getId());
++                poolMembers.save(member);
++            }
++        }
++
++        // Their statements and watchers are dropped, and they leave the sheet with their holds and contact.
++        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderBySeqDesc(sheetId, from.getId()));
++        watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
++        String fromName = from.getName();
++        people.delete(from);
++        people.flush();
++        Person saved = people.saveAndFlush(into);
++
++        // The moved claims are listed after the other's own, in the order they were added.
++        moved.forEach(claim -> claims.relist(claim.getId()));
++
++        audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user
++                + " from=" + fromName + " into=" + saved.getName());
++        rollups.audit(sheetId, user, before);
++        return people.findByIdAndSheetId(intoId, sheetId).orElseThrow();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index cd4d3da6..fcdd5fab 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -313,6 +313,11 @@ public class Person {
+         aliases.add(new Alias(alias));
+     }
+ 
++    /** No longer name this person as a patron; false when they were not one. */
++    public boolean removePatron(Long patronId) {
++        return patronIds.remove(patronId);
++    }
++
+     /** Name another person as a patron; false when they already are one. */
+     public boolean addPatron(Long patronId) {
+         return patronIds.add(patronId);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index ddbf0c1a..a5768102 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -95,13 +95,15 @@ public class PersonController {
+     private final PersonService service;
+     private final BulkGradeService bulkGrade;
+     private final WatchService watches;
++    private final MergeService merges;
+     private final SheetHistory history;
+ 
+     public PersonController(PersonService service, BulkGradeService bulkGrade, WatchService watches,
+-            SheetHistory history) {
++            MergeService merges, SheetHistory history) {
+         this.service = service;
+         this.bulkGrade = bulkGrade;
+         this.watches = watches;
++        this.merges = merges;
+         this.history = history;
+     }
+ 
+@@ -206,6 +208,20 @@ public class PersonController {
+         return PersonView.of(service.addAlias(sheetId, SignedIn.name(user), personId, form.alias()));
+     }
+ 
++    /** The person another is merged into. */
++    public record MergeForm(@NotNull Long intoId) {
++    }
++
++    /** Merge a person into another on the sheet; a steward only. The person merged into, after it. */
++    @PostMapping("/{personId}/merge")
++    public PersonView merge(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long personId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid MergeForm form) {
++        return PersonView.of(merges.merge(sheetId, SignedIn.name(user), personId, form.intoId()));
++    }
++
+     /** The ids of the people on the sheet the signed-in user watches. */
+     @GetMapping("/watched")
+     public List<Long> watched(
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+index 88f9e644..150ad152 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+@@ -50,4 +50,14 @@ public class PoolMember {
+     public BigDecimal getShare() {
+         return share;
+     }
++
++    /** Move the membership to another person on the sheet, its share kept. */
++    public void moveTo(Long personId) {
++        this.personId = personId;
++    }
++
++    /** Add a share to the member's own. */
++    public void addShare(BigDecimal more) {
++        this.share = share.add(more);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java b/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java
+index 19a43c04..9202279f 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java
+@@ -9,5 +9,10 @@ public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
+     /** The members of the pools, each pool's in the order they were added. */
+     List<PoolMember> findByPoolIdInOrderByIdAsc(Collection<Long> poolIds);
+ 
++    /** The person's memberships, in the order they were added. */
++    List<PoolMember> findByPersonIdOrderByIdAsc(Long personId);
++
++    java.util.Optional<PoolMember> findByPoolIdAndPersonId(Long poolId, Long personId);
++
+     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
+ }
+diff --git a/src/main/resources/db/migration/V65__claim_listed.sql b/src/main/resources/db/migration/V65__claim_listed.sql
+new file mode 100644
+index 00000000..5c176d6e
+--- /dev/null
++++ b/src/main/resources/db/migration/V65__claim_listed.sql
+@@ -0,0 +1,5 @@
++-- The place a claim is listed at: claims are listed newest first by it. A claim takes the next value
++-- when it is added, and again when it moves to another person by a merge, so the moved claims are
++-- listed after (newer than) that person's own, in the order they were added.
++CREATE SEQUENCE claim_listed_seq START WITH 1;
++ALTER TABLE claim ADD COLUMN listed BIGINT DEFAULT NEXT VALUE FOR claim_listed_seq NOT NULL;
