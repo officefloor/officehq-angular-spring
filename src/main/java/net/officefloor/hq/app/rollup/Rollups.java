@@ -78,7 +78,7 @@ public class Rollups {
         List<BigDecimal> overdueFigures = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of()).stream()
-                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today)))
+                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today))
                     .toList();
             BigDecimal claimed = zero();
             BigDecimal due = zero();

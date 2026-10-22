@@ -70,15 +70,20 @@ public class PersonService {
         return saved;
     }
 
-    /** Retire a person from a date; with no date, from the sheet's today. */
+    /**
+     * Retire a person from a date; with no date, from the sheet's today. Once the sheet's today reaches
+     * it, their OPEN and PENDING claims not bound by a statement leave the live totals.
+     */
     @Transactional
     public Person retire(String sheetId, String user, long personId, LocalDate from) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        Rollups.Rollup before = rollups.take(sheetId);
         person.retire(from != null ? from : sheets.today(sheetId));
         Person saved = people.saveAndFlush(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
                 + " name=" + saved.getName() + " from=" + saved.getRetiredFrom());
+        rollups.audit(sheetId, user, before);
         return saved;
     }
 

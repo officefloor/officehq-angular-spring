@@ -115,7 +115,7 @@ public class PeriodService {
      * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures,
      * as computed now, of the claims dated in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
      * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those still OPEN or PENDING and dated
-     * within their person's hold, unless bound by a statement, and those deferred on today. A soft-closed period closes with its figures
+     * within their person's hold or of a person whose retirement date is reached, unless bound by a statement, and those deferred on today. A soft-closed period closes with its figures
      * fixed afresh. Refused when the period is already closed, or for a role the sheet's permission matrix does not allow.
      */
     @Transactional
@@ -200,7 +200,7 @@ public class PeriodService {
             }
             ClaimStatus then = claim.statusAt(period.getToDate());
             if (then == null || !then.counts() || claim.isDeferredOn(today)
-                    || (claim.getStatus().isOpen() && !claim.isStated() && person.heldOn(claim.getDate()))) {
+                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today))) {
                 continue;
             }
             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));

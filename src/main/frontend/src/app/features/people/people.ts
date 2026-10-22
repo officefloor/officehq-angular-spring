@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
-import { GRADES, Grade, PeopleApi, PersonView, gradeOn, heldOn } from '../../core/people';
+import { GRADES, Grade, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -19,24 +19,25 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 /**
  * Whether a person's claim counts in the live totals: OPEN, PENDING and SETTLED claims do, but not an
- * OPEN or PENDING one dated within one of the person's holds, unless a statement has bound it, nor
+ * OPEN or PENDING one dated within one of the person's holds or once their retirement date is reached,
+ * unless a statement has bound it, nor
  * one deferred on the sheet's today.
  */
 function countsLive(claim: ClaimView, person: PersonView, today: string): boolean {
-  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && heldOn(person, claim.date));
+  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today));
 }
 
 /**
  * Whether a person's claim counts in a period's live figures: it counts by the status it had at the
  * end of the period's last day (see statusAt), one added after then not counting, and is left out,
  * as in the live totals, when deferred on today or when it is still OPEN or PENDING, unbound by a
- * statement and dated within one of the person's holds.
+ * statement and dated within one of the person's holds or of a person whose retirement date is reached.
  */
 function countsInPeriod(claim: ClaimView, person: PersonView, today: string, period: PeriodView): boolean {
   const then = statusAt(claim, period.to);
   if (then === null) return false;
   const countedThen = then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
-  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && heldOn(person, claim.date));
+  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today));
 }
 
 /** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */

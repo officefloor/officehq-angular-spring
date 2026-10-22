@@ -218,13 +218,28 @@ public class Person {
         return holds.stream().anyMatch(hold -> hold.covers(date));
     }
 
+    /** Whether the person's retirement date is reached on this date (the sheet's today). */
+    public boolean retiredOn(LocalDate today) {
+        return retiredFrom != null && today != null && !today.isBefore(retiredFrom);
+    }
+
+    /**
+     * Whether an OPEN or PENDING claim of the person dated on this date, not bound by a statement, is
+     * left out of the live totals on the sheet's today: when dated within a hold, or once the
+     * person's retirement date is reached.
+     */
+    public boolean leavesLive(LocalDate date, LocalDate today) {
+        return heldOn(date) || retiredOn(today);
+    }
+
     /**
      * Whether a claim of the person in this status, dated on this date and bound by a statement or
-     * not, counts in a live total: OPEN, PENDING and SETTLED claims do, but not an OPEN or PENDING one
-     * dated within a hold, unless a statement has bound it, nor one deferred on the sheet's today.
+     * not, counts in a live total on the sheet's today: OPEN, PENDING and SETTLED claims do, but not an
+     * OPEN or PENDING one dated within a hold or once the person's retirement date is reached, unless a
+     * statement has bound it, nor one deferred on the sheet's today.
      */
-    public boolean countsLive(ClaimStatus status, LocalDate date, boolean stated, boolean deferred) {
-        return status.counts() && !deferred && !(status.isOpen() && !stated && heldOn(date));
+    public boolean countsLive(ClaimStatus status, LocalDate date, boolean stated, boolean deferred, LocalDate today) {
+        return status.counts() && !deferred && !(status.isOpen() && !stated && leavesLive(date, today));
     }
 
     /** Whether a claim may be dated on this date: not after the person's retirement. */

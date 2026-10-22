@@ -61,6 +61,19 @@ export function heldOn(person: PersonView, date: string): boolean {
   return person.holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
 }
 
+/** Whether a person's retirement date is reached on the sheet's today (yyyy-mm-dd). */
+export function retiredOn(person: PersonView, today: string): boolean {
+  return person.retiredFrom !== null && today !== '' && person.retiredFrom <= today;
+}
+
+/**
+ * Whether a person's OPEN or PENDING claim dated on a date, unbound by a statement, is left out of the
+ * live totals on the sheet's today: dated within one of their holds, or once their retirement date is reached.
+ */
+export function leavesLive(person: PersonView, date: string, today: string): boolean {
+  return heldOn(person, date) || retiredOn(person, today);
+}
+
 /** A statement taken: the person as stated and their claims, newest first. */
 export interface StatementView {
   person: PersonView;
