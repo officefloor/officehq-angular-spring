@@ -48,6 +48,8 @@ import { Session } from '../../core/session';
           data-testid="setting-policy-date"
           [value]="policyDateInput()"
           (input)="policyDateInput.set(value($event)); policyDateEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'policyDate')"
+          (keydown.backspace)="cleared($event, 'policyDate')"
         />
         <label for="setting-period-numbering-from">Period numbering from (yyyy-mm-dd; empty: off)</label>
         <input
@@ -55,6 +57,8 @@ import { Session } from '../../core/session';
           data-testid="setting-period-numbering-from"
           [value]="periodNumberingFromInput()"
           (input)="periodNumberingFromInput.set(value($event)); periodNumberingFromEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'periodNumberingFrom')"
+          (keydown.backspace)="cleared($event, 'periodNumberingFrom')"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
@@ -152,6 +156,22 @@ export class Settings {
         if (sheet) void this.reload(sheet, loads);
       });
     });
+  }
+
+  /**
+   * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
+   * change, so a save sets it empty.
+   */
+  protected cleared(event: Event, setting: 'policyDate' | 'periodNumberingFrom'): void {
+    if (this.value(event) !== '') return;
+    if (setting === 'policyDate') {
+      this.policyDateInput.set('');
+      this.policyDateEdited = true;
+    } else {
+      this.periodNumberingFromInput.set('');
+      this.periodNumberingFromEdited = true;
+    }
+    this.settingsError.set(null);
   }
 
   protected value(event: Event): string {

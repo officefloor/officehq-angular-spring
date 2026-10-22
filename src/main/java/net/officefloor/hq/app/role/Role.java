@@ -15,7 +15,7 @@ public class Role {
     /** The role of any name that has none set. */
     public static final String CLERK = "clerk";
 
-    /** The role that may settle any claim, whatever the clerk limit. */
+    /** The role that may settle any claim, whatever the clerk limit, and approves or rejects a PENDING one. */
     public static final String STEWARD = "steward";
 
     @Id

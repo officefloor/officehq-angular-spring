@@ -68,7 +68,7 @@ export function due(amountCents: number, pct: string | null): string {
 
 /**
  * A claim's due in whole cents: the due fixed when it was settled (its late charge frozen in), or
- * else its figure — the one its person's last statement bound it to, or else its amount at the rate
+ * else its figure — the one its person's last statement bound it to (unless it is PENDING), or else its amount at the rate
  * the grade has in force on the claim's date raised to the sheet's floor (in whole cents) when below
  * it — with the late charge on top: the late percent of the figure for every full 30 days the claim
  * is overdue. Live figures round half up when `halfUp` (see roundsHalfUp), else half to even. The
@@ -85,7 +85,7 @@ export function claimDueCents(
 ): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   let figure: number | null;
-  if (claim.stated) {
+  if (claim.stated && claim.status !== 'PENDING') {
     figure = claim.statedDue === null ? null : cents(claim.statedDue);
   } else {
     const pct = rateOn(rates, grade, claim.date);

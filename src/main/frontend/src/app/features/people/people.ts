@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { ClaimView, ClaimsApi, cents, counts, money, overdue, roundsHalfUp } from '../../core/claims';
+import { ClaimView, ClaimsApi, cents, counts, isOpen, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
@@ -16,11 +16,11 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
 /**
- * Whether a person's claim counts in the live totals: OPEN and SETTLED claims do, but not an OPEN one
- * while the person is on hold.
+ * Whether a person's claim counts in the live totals: OPEN, PENDING and SETTLED claims do, but not an
+ * OPEN or PENDING one while the person is on hold.
  */
 function countsLive(claim: ClaimView, person: PersonView): boolean {
-  return counts(claim) && !(person.held && claim.status === 'OPEN');
+  return counts(claim) && !(person.held && isOpen(claim));
 }
 
 /** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */

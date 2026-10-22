@@ -62,7 +62,7 @@ public class StatementService {
         boolean figured = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            // As in the live totals: an OPEN claim of a person on hold is left out.
+            // As in the live totals: an OPEN or PENDING claim of a person on hold is left out.
             if (!person.countsLive(claim.getStatus())) {
                 claim.unbind();
                 continue;

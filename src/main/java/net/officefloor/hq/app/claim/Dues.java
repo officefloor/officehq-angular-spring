@@ -38,15 +38,15 @@ public class Dues {
     }
 
     /**
-     * The due figure a claim shows: the one fixed when it was settled, else the one its person's last
-     * statement bound it to, else its amount at the rate the grade has in force on the claim's date;
+     * The due figure a claim shows: the one fixed when it was settled, else (unless it is PENDING,
+     * which is not bound) the one its person's last statement bound it to, else its amount at the rate the grade has in force on the claim's date;
      * null (n/a) when there is none.
      */
     public BigDecimal figure(Claim claim, String grade) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return claim.isStated() ? claim.getStatedDue() : live(claim, grade);
+        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue() : live(claim, grade);
     }
 
     /**
@@ -67,13 +67,21 @@ public class Dues {
     }
 
     /**
+     * The due a PENDING claim is approved at: its live figure (a statement does not bind it while
+     * PENDING) with the late charge it has on the sheet's today on top; null when it has no figure.
+     */
+    public BigDecimal approving(Claim claim, String grade) {
+        return withLate(claim, live(claim, grade));
+    }
+
+    /**
      * A figure with the claim's late charge on top: the sheet's late percent of the figure for every
-     * full 30 days an OPEN claim is past its due-by (its date plus the sheet's terms) on the sheet's
+     * full 30 days an OPEN or PENDING claim is past its due-by (its date plus the sheet's terms) on the sheet's
      * today, rounded by the claim's date against the policy date. The charge is never bound: it always follows the sheet's today.
      * A correction has no late charge.
      */
     private BigDecimal withLate(Claim claim, BigDecimal figure) {
-        if (figure == null || claim.isCorrection() || claim.getStatus() != ClaimStatus.OPEN || claim.getSettledDue() != null) {
+        if (figure == null || claim.isCorrection() || !claim.getStatus().isOpen() || claim.getSettledDue() != null) {
             return figure;
         }
         Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);

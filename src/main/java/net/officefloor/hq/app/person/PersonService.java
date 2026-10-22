@@ -83,7 +83,7 @@ public class PersonService {
 
     /**
      * Put a person on hold ({@code held}) or take them off it; refused when they already are. Their
-     * figures and the sheet's totals move as their OPEN claims leave or rejoin the live totals.
+     * figures and the sheet's totals move as their OPEN and PENDING claims leave or rejoin the live totals.
      */
     @Transactional
     public Person hold(String sheetId, String user, long personId, boolean held) {

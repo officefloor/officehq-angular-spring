@@ -76,7 +76,7 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: their OPEN claims count in no live total. */
+    /** Whether the person is on hold: their OPEN and PENDING claims count in no live total. */
     @Column(name = "held", nullable = false)
     private boolean held;
 
@@ -188,11 +188,11 @@ public class Person {
     }
 
     /**
-     * Whether a claim of the person in this status counts in a live total: OPEN and SETTLED claims do,
-     * but not an OPEN one while the person is on hold.
+     * Whether a claim of the person in this status counts in a live total: OPEN, PENDING and SETTLED
+     * claims do, but not an OPEN or PENDING one while the person is on hold.
      */
     public boolean countsLive(ClaimStatus status) {
-        return status.counts() && !(held && status == ClaimStatus.OPEN);
+        return status.counts() && !(held && status.isOpen());
     }
 
     /** Whether a claim may be dated on this date: not after the person's retirement. */

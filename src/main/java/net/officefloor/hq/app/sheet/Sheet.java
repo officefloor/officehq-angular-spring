@@ -28,7 +28,7 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
-    /** The clerk limit: a clerk settles only claims whose due is at or below it; null for no limit. */
+    /** The clerk limit: a claim a clerk settles whose due is above it goes PENDING for a steward; null for no limit. */
     @Column(name = "clerk_limit")
     private BigDecimal clerkLimit;
 

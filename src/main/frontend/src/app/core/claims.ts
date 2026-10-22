@@ -2,11 +2,19 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-/** DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT or OPEN → VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/**
+ * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID. A clerk settling a claim
+ * above the clerk limit sends it PENDING; a steward approves it (SETTLED) or rejects it (OPEN again).
+ */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
-/** A move of a claim's status: open, settle or void. */
-export type ClaimAction = 'open' | 'settle' | 'void';
+/** A move of a claim's status: open, settle, approve, reject or void. */
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
+
+/** Whether a claim is open: OPEN, or PENDING a steward's approval. */
+export function isOpen(claim: ClaimView): boolean {
+  return claim.status === 'OPEN' || claim.status === 'PENDING';
+}
 
 export interface ClaimView {
   id: number;
@@ -42,9 +50,9 @@ export function isCorrection(claim: ClaimView): boolean {
   return claim.amount.startsWith('-') && cents(claim.amount) !== 0;
 }
 
-/** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED claims do. */
+/** Whether a claim counts toward what is claimed and due: only OPEN, PENDING and SETTLED claims do. */
 export function counts(claim: ClaimView): boolean {
-  return claim.status === 'OPEN' || claim.status === 'SETTLED';
+  return isOpen(claim) || claim.status === 'SETTLED';
 }
 
 /** A claim's due-by (yyyy-mm-dd): its date plus the sheet's terms in days. */
@@ -53,9 +61,9 @@ export function dueBy(claim: ClaimView, terms: number): string {
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
-/** Whether a claim is overdue: it is OPEN and its due-by is before the sheet's today. */
+/** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
 export function overdue(claim: ClaimView, terms: number, today: string): boolean {
-  return claim.status === 'OPEN' && today !== '' && dueBy(claim, terms) < today;
+  return isOpen(claim) && today !== '' && dueBy(claim, terms) < today;
 }
 
 /** What a late charge is worked from: the sheet's late percent, terms and today. */
@@ -142,11 +150,13 @@ export class ClaimsApi {
   }
 
   /**
-   * Move a claim's status; refused (409) when its status does not allow the move,
-   * or when the user settling it is the one who opened it.
+   * Move a claim's status; refused (409) when its status does not allow the move, or when the user
+   * settling or approving it is the one who opened it, and (403) when approving or rejecting it is
+   * not a steward. A reject carries its reason.
    */
-  act(sheet: string, id: number, action: ClaimAction): Promise<ClaimView> {
-    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, null));
+  act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
+    const body = action === 'reject' ? { reason: reason ?? '' } : null;
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, body));
   }
 
   /**

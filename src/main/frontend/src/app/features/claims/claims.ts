@@ -7,8 +7,15 @@ import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row,
-// and moved through their statuses (open, settle, void) from each claim's row.
-const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
+// and moved through their statuses (open, settle, approve, reject with a reason, void) from each
+// claim's row.
+const PAST: Record<ClaimAction, string> = {
+  open: 'opened',
+  settle: 'settled',
+  approve: 'approved',
+  reject: 'rejected',
+  void: 'voided',
+};
 
 @Component({
   selector: 'app-claims',
@@ -85,6 +92,13 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           >
             Edit
           </button>
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input
+            [id]="'claim-reject-reason-' + c.id"
+            data-testid="claim-reject-reason"
+            [value]="rejectReasons()[c.id] ?? ''"
+            (input)="setRejectReason(c.id, value($event))"
+          />
           @for (a of actions; track a.action) {
             <button
               type="button"
@@ -139,8 +153,12 @@ export class Claims {
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
+    { action: 'approve', label: 'Approve' },
+    { action: 'reject', label: 'Reject' },
     { action: 'void', label: 'Void' },
   ];
+  /** The reason typed on each claim's row for rejecting it, by claim id. */
+  protected readonly rejectReasons = signal<Record<number, string>>({});
 
   /**
    * What is due on a claim: the due fixed when it was settled, or else the figure its person's last
@@ -207,22 +225,40 @@ export class Claims {
     this.error.set(null);
   }
 
-  /** Move a claim's status; a move its status does not allow is refused with an error on its row. */
+  /** Type the reason for rejecting a claim; it clears any error left on the claim's row. */
+  protected setRejectReason(id: number, reason: string): void {
+    this.rejectReasons.update((reasons) => ({ ...reasons, [id]: reason }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Move a claim's status; a move its status does not allow is refused with an error on its row, as
+   * is a reject without a reason. A clerk settling a claim above the clerk limit sends it PENDING.
+   */
   protected async act(claim: ClaimView, action: ClaimAction): Promise<void> {
     this.claimError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
+    const reason = (this.rejectReasons()[claim.id] ?? '').trim();
+    if (action === 'reject' && reason === '') {
+      this.claimError.set({ id: claim.id, message: 'Type a reason to reject the claim.' });
+      return;
+    }
     try {
-      this.saved.emit(await this.api.act(sheet, claim.id, action));
+      this.saved.emit(await this.api.act(sheet, claim.id, action, reason));
+      if (action === 'reject') this.rejectReasons.update((reasons) => ({ ...reasons, [claim.id]: '' }));
     } catch (e) {
-      const own = action === 'settle' && claim.status === 'OPEN' && claim.openedBy === this.session.user()?.trim();
-      const overLimit = action === 'settle' && e instanceof HttpErrorResponse && e.status === 403;
+      const mine = claim.openedBy === this.session.user()?.trim();
+      const own = (action === 'settle' && claim.status === 'OPEN' && mine)
+        || (action === 'approve' && claim.status === 'PENDING' && mine);
+      const steward = (action === 'approve' || action === 'reject') && claim.status === 'PENDING'
+        && e instanceof HttpErrorResponse && e.status === 403;
       this.claimError.set({
         id: claim.id,
         message: own
-          ? 'You opened this claim, so someone else must settle it.'
-          : overLimit
-            ? 'Its due is above the clerk limit, so a steward must settle it.'
+          ? `You opened this claim, so someone else must ${action} it.`
+          : steward
+            ? `Only a steward can ${action} a PENDING claim.`
             : `A ${claim.status} claim cannot be ${PAST[action]}.`,
       });
     }

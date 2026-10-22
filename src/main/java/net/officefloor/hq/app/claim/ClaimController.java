@@ -56,6 +56,10 @@ public class ClaimController {
             @Pattern(regexp = "[1-9]\\d{0,8}|\\S.{0,200}-[1-9]\\d{0,8}") String corrects) {
     }
 
+    /** Why a steward rejects a PENDING claim. */
+    public record RejectForm(@NotBlank @Size(max = 200) String reason) {
+    }
+
     /** The claims selected to be opened together. */
     public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
     }
@@ -118,7 +122,7 @@ public class ClaimController {
         return new BulkOpenView(result.opened().stream().map(ClaimView::of).toList(), result.refused());
     }
 
-    /** Settle an OPEN claim; refused for the user who opened it. */
+    /** Settle an OPEN claim (PENDING when a clerk settles it above the clerk limit); refused for the user who opened it. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
@@ -127,7 +131,26 @@ public class ClaimController {
         return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.SETTLED));
     }
 
-    /** Void a DRAFT or OPEN claim. */
+    /** Approve a PENDING claim, settling it; only a steward, and not the user who opened it. */
+    @PostMapping("/claims/{claimId}/approve")
+    public ClaimView approve(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.approve(sheetId, SignedIn.name(user), claimId));
+    }
+
+    /** Reject a PENDING claim with a reason, back to OPEN; only a steward. */
+    @PostMapping("/claims/{claimId}/reject")
+    public ClaimView reject(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid RejectForm form) {
+        return ClaimView.of(service.reject(sheetId, SignedIn.name(user), claimId, form.reason()));
+    }
+
+    /** Void a DRAFT, OPEN or PENDING claim. */
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
