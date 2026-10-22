@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import net.officefloor.hq.app.Audit;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import net.officefloor.hq.app.rollup.Rollups;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -51,6 +53,22 @@ public class SheetService {
     public Sheet lock(String id) {
         load(id);
         return sheets.findLockedById(id).orElseThrow();
+    }
+
+    /**
+     * The sheets of the sheet's tree: its root (its topmost ancestor, or itself when it has no parent)
+     * first, then all the root's descendants.
+     */
+    @Transactional(readOnly = true)
+    public List<String> tree(String id) {
+        List<String> ancestors = sheets.ancestors(id);
+        String root = ancestors.isEmpty() ? id : ancestors.get(ancestors.size() - 1);
+        List<String> tree = new ArrayList<>(List.of(root));
+        tree.addAll(sheets.descendants(root));
+        if (!tree.contains(id)) {
+            tree.add(id);
+        }
+        return tree;
     }
 
     /**

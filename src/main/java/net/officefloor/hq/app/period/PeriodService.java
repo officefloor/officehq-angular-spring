@@ -237,13 +237,19 @@ public class PeriodService {
      * Give out the number for a claim due by a date (its due-by) as it is opened, holding the sheet's lock until
      * the caller's transaction ends. While the sheet numbers by period (see {@link Sheet#numbersByPeriod})
      * it is the next within the period the date falls in, {@code <period name>-<n>}, or {@code X-<n>}
-     * when it falls in none; otherwise it is the sheet's next sheet-wide number.
+     * when it falls in none; otherwise it is the next sheet-wide number of the sheet's tree, after the
+     * last given on any sheet of it. The tree's root is locked too, so the sheets of a tree take their
+     * numbers one at a time.
      */
     @Transactional
     public String nextClaimNumber(String sheetId, LocalDate date) {
         Sheet sheet = sheets.lock(sheetId);
         if (!sheet.numbersByPeriod()) {
-            return String.valueOf(sheet.nextClaimNumber());
+            List<String> tree = sheets.tree(sheetId);
+            sheets.lock(tree.get(0));
+            int lastInTree = tree.stream().filter(id -> !id.equals(sheetId))
+                    .mapToInt(id -> sheets.load(id).getLastClaimNumber()).max().orElse(0);
+            return String.valueOf(sheet.nextClaimNumberAfter(lastInTree));
         }
         return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
                 .filter(p -> p.contains(date))

@@ -1782,6 +1782,8 @@ export class People {
       }
       this.reset();
     } catch (e) {
+      // A refused add leaves nothing typed behind for the next person added.
+      if (id === null) this.reset();
       if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
         await this.showCurrent(sheet, id);
         this.error.set('Someone else has saved this person since you opened it. The form shows their values now.');

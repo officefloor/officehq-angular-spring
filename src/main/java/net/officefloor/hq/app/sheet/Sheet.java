@@ -500,6 +500,17 @@ public class Sheet {
         return ++lastClaimNumber;
     }
 
+    /** The last claim number the sheet gave out; 0 before any claim is opened. */
+    public int getLastClaimNumber() {
+        return lastClaimNumber;
+    }
+
+    /** Give out the next claim number after the last given anywhere in the sheet's tree. */
+    public int nextClaimNumberAfter(int lastInTree) {
+        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
+        return lastClaimNumber;
+    }
+
     /** The roles set for an action, comma separated; null when it keeps its standing rule. */
     public String getPermission(String action) {
         return permissions.get(action);
