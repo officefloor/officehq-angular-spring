@@ -5,12 +5,13 @@ import { Settings } from '../settings/settings';
 import { Delegation } from '../delegation/delegation';
 import { Holidays } from '../holidays/holidays';
 import { VoidReasonsList } from '../void-reasons/void-reasons';
+import { TemplatesList } from '../templates/templates';
 import { AuditViewer } from '../audit/audit';
 
 // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [People, Settings, Delegation, Holidays, VoidReasonsList, AuditViewer],
+  imports: [People, Settings, Delegation, Holidays, VoidReasonsList, TemplatesList, AuditViewer],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session">
@@ -65,6 +66,7 @@ import { AuditViewer } from '../audit/audit';
           <app-delegation />
           <app-holidays />
           <app-void-reasons />
+          <app-templates />
           <app-people />
           <app-audit-viewer />
         }

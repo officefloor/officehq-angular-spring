@@ -5,6 +5,7 @@ import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session, graceOn, valueOn } from '../../core/session';
+import { Templates, TemplatesApi } from '../../core/templates';
 import { VoidReasons } from '../../core/void-reasons';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row (an
@@ -76,6 +77,18 @@ const PAST: Record<ClaimAction, string> = {
       @if (editing() !== null) {
         <button type="button" data-testid="claim-form-cancel" (click)="cancelEditor()">Cancel</button>
       }
+      <label [for]="'claim-template-select-' + personId()">Template</label>
+      <select
+        [id]="'claim-template-select-' + personId()"
+        data-testid="claim-template-select"
+        (change)="template.set(value($event)); error.set(null)"
+      >
+        <option value="" [selected]="template() === ''">Choose a template</option>
+        @for (t of templates.list(); track t.id) {
+          <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">Add claim from template</button>
       @if (error(); as message) {
         <p role="alert" data-testid="claim-form-error">{{ message }}</p>
       }
@@ -330,6 +343,10 @@ export class Claims {
   /** The editor left open has been put back in the form once this person's claims arrived. */
   private restored = false;
   protected readonly error = signal<string | null>(null);
+  protected readonly templates = inject(Templates);
+  private readonly templatesApi = inject(TemplatesApi);
+  /** The name of the template chosen to add a claim from; empty when none is chosen. */
+  protected readonly template = signal('');
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
   /** The refusal of the last action taken on a claim's row, shown on that row. */
@@ -936,6 +953,32 @@ export class Claims {
         this.ref.set('');
         this.tags.set('');
       }
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Add a DRAFT claim from the chosen template, with its amount and note as they are now and no date,
+   * by every rule of the claim form; refused with an error on the form.
+   */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.busy) return;
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const name = this.template();
+    if (!this.templates.list().some((t) => t.name === name)) {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    this.busy = true;
+    try {
+      this.saved.emit(await this.templatesApi.claimFrom(sheet, this.personId(), name));
+    } catch (e) {
+      this.error.set(e instanceof HttpErrorResponse && e.status === 403
+        ? 'Your role is not allowed to add a claim.'
+        : `The claim could not be added from the template ${name}.`);
     } finally {
       this.busy = false;
     }
