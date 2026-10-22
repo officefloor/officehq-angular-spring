@@ -313,6 +313,24 @@ public class ClaimController {
                 form == null ? null : form.reason()));
     }
 
+    /** Delete a DRAFT claim. */
+    @PostMapping("/claims/{claimId}/delete")
+    public ClaimView delete(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.delete(sheetId, SignedIn.name(user), claimId));
+    }
+
+    /** Restore a DELETED claim to a DRAFT, on the sheet's today it was deleted. */
+    @PostMapping("/claims/{claimId}/restore")
+    public ClaimView restore(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.restore(sheetId, SignedIn.name(user), claimId));
+    }
+
     /** Raise a claim's proofs count by one; refused for a SETTLED or VOID claim. */
     @PostMapping("/claims/{claimId}/proof")
     public ClaimView addProof(

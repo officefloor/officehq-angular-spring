@@ -7,11 +7,15 @@ import type { DatedValue } from './session';
  * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID (SETTLED → VOID by a
  * steward within 7 days of its settlement). A clerk settling a claim
  * above the clerk limit sends it PENDING; a steward approves it (SETTLED) or rejects it (OPEN again).
+ * A DRAFT may be DELETED, and restored to a DRAFT on the sheet's today it was deleted.
  */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
 
-/** A move of a claim's status: open, settle, approve, reject, void, or re-settle a SETTLED one. */
-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle';
+/**
+ * A move of a claim's status: open, settle, approve, reject, void, re-settle a SETTLED one, delete a
+ * DRAFT, or restore a DELETED one.
+ */
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle' | 'delete' | 'restore';
 
 /** Whether a claim is open: OPEN, or PENDING a steward's approval. */
 export function isOpen(claim: ClaimView): boolean {

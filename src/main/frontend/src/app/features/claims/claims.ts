@@ -20,6 +20,8 @@ const PAST: Record<ClaimAction, string> = {
   reject: 'rejected',
   void: 'voided',
   resettle: 're-settled',
+  delete: 'deleted',
+  restore: 'restored',
 };
 
 @Component({
@@ -360,6 +362,8 @@ export class Claims {
     { action: 'reject', label: 'Reject' },
     { action: 'void', label: 'Void' },
     { action: 'resettle', label: 'Re-settle' },
+    { action: 'delete', label: 'Delete' },
+    { action: 'restore', label: 'Restore' },
   ];
   /** The people a claim of this person can be reassigned to. */
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
@@ -469,7 +473,9 @@ export class Claims {
       this.reset();
       this.claimError.set({
         id: claim.id,
-        message: `A ${claim.status} claim cannot be edited; void it and add a new one.`,
+        message: claim.status === 'DELETED'
+          ? 'A DELETED claim cannot be edited; restore it first.'
+          : `A ${claim.status} claim cannot be edited; void it and add a new one.`,
       });
       return;
     }
@@ -691,7 +697,9 @@ export class Claims {
         message: status === 403
           ? 'Your role is not allowed to edit a claim.'
           : claim.status !== 'DRAFT'
-            ? `A ${claim.status} claim cannot be edited; void it and add a new one.`
+            ? claim.status === 'DELETED'
+              ? 'A DELETED claim cannot be edited; restore it first.'
+              : `A ${claim.status} claim cannot be edited; void it and add a new one.`
             : period?.closed
               ? `Period ${period.name} is closed, so its claims cannot be edited.`
               : status === 423 || (claim.lockedBy !== null && claim.lockedBy !== me)
@@ -893,6 +901,10 @@ export class Claims {
               ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
             : lateVoid
               ? 'A SETTLED claim can only be voided within 7 days of its settlement, outside a closed period.'
+            : action === 'delete' && claim.status === 'DRAFT'
+              ? 'The claim is due by inside a closed period, so it cannot be deleted.'
+            : action === 'restore' && claim.status === 'DELETED'
+              ? 'A deleted claim can only be restored on the day it was deleted, outside a closed period.'
               : `A ${claim.status} claim cannot be ${PAST[action]}.`,
       });
     }

@@ -278,7 +278,7 @@ public class ClaimService {
             case OPEN -> "open";
             case SETTLED -> "settle";
             case VOID -> "void";
-            case PENDING, DRAFT -> throw new IllegalArgumentException("No move to " + next + ".");
+            case PENDING, DRAFT, DELETED -> throw new IllegalArgumentException("No move to " + next + ".");
         };
         if (!roles.permits(sheetId, user, action)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim.");
@@ -331,7 +331,7 @@ public class ClaimService {
             case SETTLED -> "CLAIM_SETTLED";
             case PENDING -> "CLAIM_PENDING";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT -> throw new IllegalStateException();
+            case DRAFT, DELETED -> throw new IllegalStateException();
         };
         String suffix = next == ClaimStatus.SETTLED
                 ? " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
@@ -346,6 +346,51 @@ public class ClaimService {
             watches.notifyWatchers(sheetId, user, person, saved.getNumber());
         }
         rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Delete a DRAFT claim: it is DELETED, counts nowhere and cannot be edited, opened or voided, until
+     * it is restored. Refused when the claim is not a DRAFT or is due by inside a closed period.
+     */
+    @Transactional
+    public Claim delete(String sheetId, String user, long claimId) {
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        periods.refuseIfClosed(sheetId, claim.getDueBy());
+        if (!claim.getStatus().canBecome(ClaimStatus.DELETED)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deleted; only a DRAFT can.");
+        }
+        claim.become(ClaimStatus.DELETED);
+        claim.lockFor(null);
+        Person person = person(sheetId, claim.getPersonId());
+        Claim saved = logged(claims.saveAndFlush(claim), user, person);
+        audited("CLAIM_DELETED", sheetId, user, person, saved);
+        return saved;
+    }
+
+    /**
+     * Restore a DELETED claim to a DRAFT; refused when the claim is not DELETED, when the sheet's today
+     * is not the day it was deleted, or when it is due by inside a closed period.
+     */
+    @Transactional
+    public Claim restore(String sheetId, String user, long claimId) {
+        LocalDate today = sheets.lock(sheetId).getToday();
+        Claim claim = claim(sheetId, claimId);
+        periods.refuseIfClosed(sheetId, claim.getDueBy());
+        if (!claim.getStatus().canBecome(ClaimStatus.DRAFT)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be restored; only a DELETED one can.");
+        }
+        if (today == null || !today.equals(claim.deletedOn())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim can only be restored on the day it was deleted, " + claim.deletedOn() + ".");
+        }
+        claim.become(ClaimStatus.DRAFT);
+        Person person = person(sheetId, claim.getPersonId());
+        Claim saved = logged(claims.saveAndFlush(claim), user, person);
+        audited("CLAIM_RESTORED", sheetId, user, person, saved);
         return saved;
     }
 

@@ -4,11 +4,11 @@ package net.officefloor.hq.app.claim;
  * A claim's status: DRAFT when added; a DRAFT claim may be opened, an OPEN one settled, and a DRAFT,
  * OPEN or PENDING one voided. An OPEN claim a clerk settles above the clerk limit goes PENDING, which
  * a steward approves (SETTLED) or rejects (back to OPEN). A steward may void a SETTLED claim within
- * {@link #VOID_SETTLED_DAYS} days of its settlement; VOID is final. Only OPEN, PENDING and SETTLED
- * claims count.
+ * {@link #VOID_SETTLED_DAYS} days of its settlement; VOID is final. A DRAFT claim may be DELETED, and
+ * restored to a DRAFT on the sheet's today it was deleted. Only OPEN, PENDING and SETTLED claims count.
  */
 public enum ClaimStatus {
-    DRAFT, OPEN, PENDING, SETTLED, VOID;
+    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
 
     /** The days after its settlement (by the sheet's today) a SETTLED claim may still be voided. */
     public static final int VOID_SETTLED_DAYS = 7;
@@ -19,7 +19,8 @@ public enum ClaimStatus {
             case OPEN -> this == DRAFT;
             case SETTLED, PENDING -> this == OPEN;
             case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == SETTLED;
-            case DRAFT -> false;
+            case DELETED -> this == DRAFT;
+            case DRAFT -> this == DELETED;
         };
     }
 
