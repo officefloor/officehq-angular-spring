@@ -90,12 +90,18 @@ public class ClaimController {
     public record BulkSettleView(List<ClaimView> settled, int refused) {
     }
 
+    /** The paste box's text: lines of name,amount,date,note. */
+    public record PasteForm(@NotNull @Size(max = 200_000) String text) {
+    }
+
     private final ClaimService service;
     private final BulkMoveService bulk;
+    private final PasteService paste;
 
-    public ClaimController(ClaimService service, BulkMoveService bulk) {
+    public ClaimController(ClaimService service, BulkMoveService bulk, PasteService paste) {
         this.service = service;
         this.bulk = bulk;
+        this.paste = paste;
     }
 
     /** The sheet's claims, newest first. */
@@ -113,6 +119,15 @@ public class ClaimController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects()));
+    }
+
+    /** Add a DRAFT claim per pasted line, in order; nothing is added when any line is refused. */
+    @PostMapping("/claims/paste")
+    public List<ClaimView> paste(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid PasteForm form) {
+        return paste.paste(sheetId, SignedIn.name(user), form.text()).stream().map(ClaimView::of).toList();
     }
 
     /** Change a claim's amount, date and note. */

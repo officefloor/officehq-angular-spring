@@ -163,6 +163,11 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/people/${personId}/claims`, form));
   }
 
+  /** Add a DRAFT claim per pasted line of name,amount,date,note, in order; refused (400) as a whole. */
+  paste(sheet: string, text: string): Promise<ClaimView[]> {
+    return firstValueFrom(this.http.post<ClaimView[]>(`${this.url(sheet)}/claims/paste`, { text }));
+  }
+
   edit(sheet: string, id: number, form: ClaimForm): Promise<ClaimView> {
     return firstValueFrom(this.http.put<ClaimView>(`${this.url(sheet)}/claims/${id}`, form));
   }

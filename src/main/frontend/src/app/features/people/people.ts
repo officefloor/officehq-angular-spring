@@ -9,6 +9,7 @@ import { Session, valueOn } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
 import { Periods } from '../periods/periods';
+import { PasteClaims } from '../paste-claims/paste-claims';
 import { QuickAdd } from '../quick-add/quick-add';
 import { Rates } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
@@ -34,7 +35,7 @@ function csvField(value: string): string {
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Header, Periods, QuickAdd, Rates, Summary],
+  imports: [Claims, Header, PasteClaims, Periods, QuickAdd, Rates, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -91,6 +92,7 @@ function csvField(value: string): string {
         }
       </form>
       <app-quick-add (added)="quickAdded($event)" />
+      <app-paste-claims (added)="pasted($event)" />
       <p>
         <input
           id="show-retired"
@@ -790,6 +792,11 @@ export class People {
   protected quickAdded(added: QuickAddView): void {
     if (added.personAdded) this.people.update((list) => [...list, added.person]);
     this.claimSaved(added.claim);
+  }
+
+  /** Claims pasted, in the order added: each listed first in turn, so the last is the newest. */
+  protected pasted(claims: ClaimView[]): void {
+    for (const claim of claims) this.claimSaved(claim);
   }
 
   protected value(event: Event): string {
