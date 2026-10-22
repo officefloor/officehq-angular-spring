@@ -1,0 +1,118 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e654c81d..603186ec 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,5 +1,5 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+-import { Component, computed, effect, inject, linkedSignal, signal, untracked } from '@angular/core';
++import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
+ import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
+ import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive } from '../../core/people';
+ import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
+@@ -181,6 +181,7 @@ function csvField(value: string): string {
+         due <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+       <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>,
+         open in total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
++      <p>Cut in total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <ul aria-label="Due by tag">
+           @for (t of tagTotals(); track t.tag) {
+@@ -294,6 +295,7 @@ function csvField(value: string): string {
+             <th scope="col">Watched</th>
+             <th scope="col">Patrons</th>
+             <th scope="col">Backing</th>
++            <th scope="col">Cut</th>
+             <th scope="col">Claims</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+@@ -417,6 +419,7 @@ function csvField(value: string): string {
+                 }
+               </td>
+               <td data-testid="person-backing">{{ backingOf(p) }}</td>
++              <td data-testid="person-cut-total">{{ cutTotalOf(p) }}</td>
+               <td>
+                 <app-claims
+                   [personId]="p.id"
+@@ -693,6 +696,14 @@ export class People {
+   protected readonly settledTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + this.settledCents(p), 0)),
+   );
++  /** The sheet's pools, which work out each person's cuts. */
++  private readonly pools = viewChild.required(Pools);
++  /** Each person's cut total in cents, by person id. */
++  private readonly cutCents = computed(() => this.pools().personCuts());
++  /** Everyone's cut total added up. */
++  protected readonly cutTotal = computed(() =>
++    money(this.people().reduce((sum, p) => sum + (this.cutCents().get(p.id) ?? 0), 0)),
++  );
+   /** Everyone's open-total added up (not trimmed). */
+   protected readonly openTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + this.openCents(p), 0)),
+@@ -957,6 +968,11 @@ export class People {
+     return money(this.openCents(person));
+   }
+ 
++  /** A person's cut total: their cuts across every pool they are a member of, added up. */
++  protected cutTotalOf(person: PersonView): string {
++    return money(this.cutCents().get(person.id) ?? 0);
++  }
++
+   private settledCents(person: PersonView): number {
+     return this.countingOf(person.id)
+       .filter((c) => c.status === 'SETTLED')
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 5c180c68..545e7382 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -144,10 +144,35 @@ export class Pools {
+   /** The error shown on each pool's row, by pool id. */
+   protected readonly errors = signal(new Map<number, string>());
+   /**
+-   * Each pool with its total share, a retired member's share counting as 0.00, and, when it is balanced
+-   * and it has a pot, each member's cut of the pot.
++   * Each pool as shown: its total share, a retired member's share counting as 0.00, and, when it is
++   * balanced and it has a pot, each member's cut of the pot.
+    */
+-  protected readonly lines = computed<PoolLine[]>(() => {
++  protected readonly lines = computed<PoolLine[]>(() =>
++    this.cutLines().map(({ pool, total, cuts }) => ({
++      pool,
++      total: money(total),
++      balanced: total === 10000,
++      cuts: new Map([...cuts].map(([id, c]) => [id, money(Number(c))])),
++    })),
++  );
++  /**
++   * Each person's cut total in cents, by person id: their cuts across every pool they are a member of, as
++   * shown, added up; a pool that shows no cuts adds nothing, and a person in none has none.
++   */
++  readonly personCuts = computed(() => {
++    const totals = new Map<number, number>();
++    for (const { pool, cuts } of this.cutLines()) {
++      for (const m of pool.members) {
++        const c = cuts.get(key(m));
++        if (m.personId !== null && c !== undefined) {
++          totals.set(m.personId, (totals.get(m.personId) ?? 0) + Number(c));
++        }
++      }
++    }
++    return totals;
++  });
++  /** Each pool with its total share in hundredths of a percent and its members' cuts in cents by member key. */
++  private readonly cutLines = computed(() => {
+     const retired = new Set(this.people().filter((p) => retiredOn(p, this.today())).map((p) => p.id));
+     const pools = this.pools();
+     const parents = this.parents();
+@@ -171,11 +196,7 @@ export class Pools {
+       memo.set(pool.id, found);
+       return found;
+     };
+-    return pools.map((pool) => {
+-      const total = totals.get(pool.id) ?? 0;
+-      const shown = new Map([...cutsOf(pool)].map(([id, c]) => [id, money(Number(c))]));
+-      return { pool, total: money(total), balanced: total === 10000, cuts: shown };
+-    });
++    return pools.map((pool) => ({ pool, total: totals.get(pool.id) ?? 0, cuts: cutsOf(pool) }));
+   });
+   /** The pool each member pool is in, by member pool id. */
+   private readonly parents = computed(
