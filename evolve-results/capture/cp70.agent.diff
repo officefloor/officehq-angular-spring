@@ -1,0 +1,479 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index d803de4b..e1c8e369 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -57,6 +57,8 @@ export interface ClaimView {
+   splitFrom: string | null;
+   /** The user whose open editor locks the claim for everyone else; null when none does. */
+   lockedBy: string | null;
++  /** Whether the claim was added while the period it is dated in was soft-closed. */
++  lateEntry: boolean;
+ }
+ 
+ /** What a split did: the original claim, as it is now, and the new claim split off it. */
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index 266bc071..4339546c 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -19,6 +19,16 @@ export interface PeriodView {
+    * empty while open. A person added since has none: 0.00.
+    */
+   personTotals: Record<string, string>;
++  /**
++   * Soft-closed: the due-total and each person's figure are fixed as on a close, but claims dated in
++   * the period can still be added and changed. A soft-closed period is not closed.
++   */
++  softClosed: boolean;
++}
++
++/** Whether a period's figures are fixed: it is closed or soft-closed. */
++export function fixed(period: PeriodView): boolean {
++  return period.closed || period.softClosed;
+ }
+ 
+ export interface PeriodForm {
+@@ -64,7 +74,12 @@ export class PeriodsApi {
+     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/close`, {}));
+   }
+ 
+-  /** Reopen a closed period, making its due-total live again; refused for anyone but a steward. */
++  /** Soft-close a period, fixing its due-total; refused when it is already closed or soft-closed. */
++  softClose(sheet: string, id: number): Promise<PeriodView> {
++    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/soft-close`, {}));
++  }
++
++  /** Reopen a closed or soft-closed period, making its due-total live again; refused for anyone but a steward. */
+   reopen(sheet: string, id: number): Promise<PeriodView> {
+     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/reopen`, {}));
+   }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2790dc3e..7d2e2345 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -91,6 +91,7 @@ const PAST: Record<ClaimAction, string> = {
+           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
++          <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+             @for (line of c.log; track $index) {
+               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0d9e1b93..e75793cd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
+ import { GRADES, Grade, PeopleApi, PersonView, gradeOn, heldOn } from '../../core/people';
+-import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
++import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
+ import { QuickAddView } from '../../core/quick-add';
+ import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
+ import { Session, valueOn } from '../../core/session';
+@@ -391,7 +391,7 @@ export class People {
+    * Each person's due-total for each period, in whole cents, by period id then person id. While the
+    * period is open it is live: the sum of the due figures, as shown now, of the person's claims dated in
+    * it that were OPEN, PENDING or SETTLED at the end of its last day, each at the grade in force on its
+-   * date (a claim with no figure adds nothing), leaving out those held or deferred (see countsInPeriod). Once closed it is the figure fixed at closing,
++   * date (a claim with no figure adds nothing), leaving out those held or deferred (see countsInPeriod). Once closed or soft-closed it is the figure fixed then,
+    * 0 for a person added since.
+    */
+   private readonly personPeriodCents = computed(() => {
+@@ -399,7 +399,7 @@ export class People {
+       this.periods().map((period) => [
+         period.id,
+         new Map(
+-          this.people().map((p) => [p.id, period.closed ? cents(period.personTotals[p.id] ?? '0.00') : 0]),
++          this.people().map((p) => [p.id, fixed(period) ? cents(period.personTotals[p.id] ?? '0.00') : 0]),
+         ),
+       ]),
+     );
+@@ -407,7 +407,7 @@ export class People {
+     for (const c of this.claims()) {
+       const period = periodOn(this.periods(), c.date);
+       const person = byId.get(c.personId);
+-      if (!period || period.closed || !person || !countsInPeriod(c, person, this.today(), period)) continue;
++      if (!period || fixed(period) || !person || !countsInPeriod(c, person, this.today(), period)) continue;
+       const row = figures.get(period.id)!;
+       row.set(person.id, row.get(person.id)! + (this.dueCents(c, person) ?? 0));
+     }
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 338603e4..4cbb0c4d 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -6,7 +6,8 @@ import { Session } from '../../core/session';
+ // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
+ // and one form to add a period (a unique name and inclusive from and to dates, overlapping no other).
+ // Its due-total is the sum of the people's figures for it. A period can be closed: each person's figure
+-// is then the one fixed at closing. A permitted role (a steward by default) can reopen a
++// is then the one fixed at closing. It can instead be soft-closed: the figures are fixed the same way
++// but its claims can still change; a soft-closed period can then be closed or reopened. A permitted role (a steward by default) can reopen a
+ // closed period, making its due-total live again. A second form generates a period per calendar month
+ // over a range of dates, named yyyy-mm, leaving out months whose name is taken or that overlap a period.
+ @Component({
+@@ -86,7 +87,7 @@ import { Session } from '../../core/session';
+               <td data-testid="period-from">{{ p.from }}</td>
+               <td data-testid="period-to">{{ p.to }}</td>
+               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
++              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+               <td>
+                 @if (!p.closed) {
+                   <button
+@@ -97,6 +98,14 @@ import { Session } from '../../core/session';
+                   >
+                     Close
+                   </button>
++                  <button
++                    type="button"
++                    data-testid="period-soft-close"
++                    [attr.aria-label]="'Soft-close ' + p.name"
++                    (click)="softClose(p)"
++                  >
++                    Soft-close
++                  </button>
+                 }
+                 <button
+                   type="button"
+@@ -168,6 +177,24 @@ export class Periods {
+     }
+   }
+ 
++  /** Soft-close a period; a refusal is shown on its row. */
++  protected async softClose(period: PeriodView): Promise<void> {
++    this.periodError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    try {
++      this.closed.emit(await this.api.softClose(sheet, period.id));
++    } catch (e) {
++      this.periodError.set({
++        id: period.id,
++        message:
++          e instanceof HttpErrorResponse && e.status === 403
++            ? 'Your role is not allowed to close a period.'
++            : 'The period could not be soft-closed.',
++      });
++    }
++  }
++
+   /** Reopen a period; a refusal (a role not allowed to, or not closed) is shown on its row. */
+   protected async reopen(period: PeriodView): Promise<void> {
+     this.periodError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index b3500d4a..e2c30b49 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -94,6 +94,10 @@ public class Claim {
+     @Column(name = "locked_by")
+     private String lockedBy;
+ 
++    /** Whether the claim was added while the period it is dated in was soft-closed. */
++    @Column(name = "late_entry", nullable = false)
++    private boolean lateEntry;
++
+     /** The claim's status log, oldest first. */
+     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+     @JoinColumn(name = "claim_id", nullable = false)
+@@ -273,6 +277,16 @@ public class Claim {
+         return lockedBy;
+     }
+ 
++    /** Whether the claim was added while the period it is dated in was soft-closed. */
++    public boolean isLateEntry() {
++        return lateEntry;
++    }
++
++    /** Mark the claim as added while its period was soft-closed. */
++    public void markLateEntry() {
++        this.lateEntry = true;
++    }
++
+     /** Whether an editor of a user other than this one holds the claim. */
+     public boolean isLockedAgainst(String user) {
+         return lockedBy != null && !lockedBy.equals(user);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 33c8e1ec..66aff00c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -36,7 +36,7 @@ public class ClaimController {
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
+-            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy) {
++            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -45,7 +45,7 @@ public class ClaimController {
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
+-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
++                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0757be0c..f1ac89e7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -59,7 +59,8 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Add a claim for a person on the sheet; with no date it is dated the sheet's today. Refused when
++     * Add a claim for a person on the sheet; with no date it is dated the sheet's today. One dated in a
++     * soft-closed period is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
+      * it is dated inside a closed period, or when it is a correction that does not name a SETTLED claim
+      * of the same person (see {@link #refuseUnlessCorrects}).
+      */
+@@ -73,9 +74,16 @@ public class ClaimService {
+         periods.refuseIfClosed(sheetId, dated);
+         refuseIfRetired(person, dated);
+         refuseUnlessCorrects(sheetId, personId, amount, corrects);
+-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, dueBy, clean(note), corrects));
++        Claim added = new Claim(sheetId, personId, money(amount), dated, dueBy, clean(note), corrects);
++        if (periods.softClosedOn(sheetId, dated)) {
++            added.markLateEntry();
++        }
++        Claim claim = claims.saveAndFlush(added);
+         claim = logged(claim, user, person);
+         audited("CLAIM_ADDED", sheetId, user, person, claim);
++        if (claim.isLateEntry()) {
++            audited("LATE_ENTRY", sheetId, user, person, claim);
++        }
+         rollups.audit(sheetId, user, before);
+         return claim;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 46d0c57a..307786ac 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -21,6 +21,8 @@ import java.util.Map;
+  * A period on a sheet: a name, unique on the sheet ignoring case by its {@link #keyOf key}, and a
+  * from and to date, both inclusive. No two periods on a sheet overlap. A closed period keeps the
+  * due-total it had when it was closed, and each person's due-total for it then, until it is reopened.
++ * A soft-closed period fixes them the same way, but claims dated in it can still change; it can be
++ * closed (fixing them afresh) or reopened.
+  */
+ @Entity
+ @Table(name = "period")
+@@ -48,6 +50,10 @@ public class Period {
+     @Column(name = "closed", nullable = false)
+     private boolean closed;
+ 
++    /** Whether the period is soft-closed: its figures fixed, its claims still open to change. */
++    @Column(name = "soft_closed", nullable = false)
++    private boolean softClosed;
++
+     @Column(name = "closed_total")
+     private BigDecimal closedTotal;
+ 
+@@ -107,6 +113,15 @@ public class Period {
+         return closed;
+     }
+ 
++    public boolean isSoftClosed() {
++        return softClosed;
++    }
++
++    /** Whether the period's figures are fixed: it is closed or soft-closed. */
++    public boolean isFixed() {
++        return closed || softClosed;
++    }
++
+     /** The due-total fixed when the period was closed; null while it is open. */
+     public BigDecimal getClosedTotal() {
+         return closedTotal;
+@@ -119,7 +134,18 @@ public class Period {
+ 
+     /** Close the period, fixing each person's due-total for it and its own, their sum. */
+     public void close(Map<Long, BigDecimal> totals) {
++        fixTotals(totals);
+         this.closed = true;
++        this.softClosed = false;
++    }
++
++    /** Soft-close the period, fixing its figures as a close does while its claims stay open to change. */
++    public void softClose(Map<Long, BigDecimal> totals) {
++        fixTotals(totals);
++        this.softClosed = true;
++    }
++
++    private void fixTotals(Map<Long, BigDecimal> totals) {
+         this.personTotals.clear();
+         this.personTotals.putAll(totals);
+         this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+@@ -128,6 +154,7 @@ public class Period {
+     /** Reopen the period: its due-total is live again. */
+     public void reopen() {
+         this.closed = false;
++        this.softClosed = false;
+         this.closedTotal = null;
+         this.personTotals.clear();
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index eb9f21bd..7b9ff99c 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -31,17 +31,19 @@ public class PeriodController {
+     /**
+      * What the screen is told about a period: its name, its inclusive from and to dates, whether it
+      * is closed, the due-total fixed when it was closed (null while open), and each person's due-total
+-     * for it fixed then, by person id (empty while open).
++     * for it fixed then, by person id (empty while open), and whether it is soft-closed (its figures
++     * fixed as on a close, while not closed).
+      */
+     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+-            String closedTotal, Map<Long, String> personTotals) {
++            String closedTotal, Map<Long, String> personTotals, boolean softClosed) {
+ 
+         static PeriodView of(Period period) {
+             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                     period.isClosed(),
+                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
+                     period.getPersonTotals().entrySet().stream()
+-                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())));
++                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
++                    period.isSoftClosed());
+         }
+     }
+ 
+@@ -97,6 +99,15 @@ public class PeriodController {
+         return PeriodView.of(service.close(sheetId, SignedIn.name(user), periodId));
+     }
+ 
++    /** Soft-close a period, fixing its figures while its claims stay open to change. */
++    @PostMapping("/{periodId}/soft-close")
++    public PeriodView softClose(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long periodId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        return PeriodView.of(service.softClose(sheetId, SignedIn.name(user), periodId));
++    }
++
+     /** Reopen a closed period, making its due-total live again; a steward only. */
+     @PostMapping("/{periodId}/reopen")
+     public PeriodView reopen(
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 7399921b..3d7d01d2 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -115,8 +115,8 @@ public class PeriodService {
+      * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures,
+      * as computed now, of the claims dated in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
+      * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those still OPEN or PENDING and dated
+-     * within their person's hold, unless bound by a statement, and those deferred on today. Refused when the period is already closed, or
+-     * for a role the sheet's permission matrix does not allow.
++     * within their person's hold, unless bound by a statement, and those deferred on today. A soft-closed period closes with its figures
++     * fixed afresh. Refused when the period is already closed, or for a role the sheet's permission matrix does not allow.
+      */
+     @Transactional
+     public Period close(String sheetId, String user, long periodId) {
+@@ -133,6 +133,30 @@ public class PeriodService {
+         return fix(sheetId, user, period, today, "");
+     }
+ 
++    /**
++     * Soft-close an open period: its due-total and each person's figure for it are fixed as on a close
++     * (see {@link #close}), while claims dated in it can still be added and changed. Refused when the
++     * period is already closed or soft-closed, or for a role the sheet's permission matrix does not
++     * allow to close.
++     */
++    @Transactional
++    public Period softClose(String sheetId, String user, long periodId) {
++        LocalDate today = sheets.lock(sheetId).getToday();
++        Period period = periods.findByIdAndSheetId(periodId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
++        if (!roles.permits(sheetId, user, "close")) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not close a period.");
++        }
++        if (period.isFixed()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed or soft-closed.");
++        }
++        period.softClose(totals(sheetId, period, today));
++        Period saved = periods.saveAndFlush(period);
++        audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
++                + " total=" + saved.getClosedTotal().toPlainString());
++        return saved;
++    }
++
+     /**
+      * The sheet's today was changed: close, in order of their to-dates, each open period whose to-date
+      * plus the sheet's grace days is before the new today, exactly as a close by hand would, its
+@@ -153,8 +177,17 @@ public class PeriodService {
+         }
+     }
+ 
+-    /** Close an open period, fixing its totals as of today, and audit it with the given trailing fields. */
++    /** Close an open or soft-closed period, fixing its totals as of today, and audit it with the given trailing fields. */
+     private Period fix(String sheetId, String user, Period period, LocalDate today, String trailing) {
++        period.close(totals(sheetId, period, today));
++        Period saved = periods.saveAndFlush(period);
++        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
++                + " total=" + saved.getClosedTotal().toPlainString() + trailing);
++        return saved;
++    }
++
++    /** Each person's due-total for the period as of today, by person id (see {@link #close}). */
++    private Map<Long, BigDecimal> totals(String sheetId, Period period, LocalDate today) {
+         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, person -> person));
+         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+@@ -174,17 +207,13 @@ public class PeriodService {
+                 totals.merge(person.getId(), figure, BigDecimal::add);
+             }
+         }
+-        period.close(totals);
+-        Period saved = periods.saveAndFlush(period);
+-        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+-                + " total=" + saved.getClosedTotal().toPlainString() + trailing);
+-        return saved;
++        return totals;
+     }
+ 
+     /**
+-     * Reopen a closed period: its due-total is live again, the claims dated in it counting at their
++     * Reopen a closed or soft-closed period: its due-total is live again, the claims dated in it counting at their
+      * current figures. Refused for a role the sheet's permission matrix
+-     * does not allow (anyone but a steward by default), and when the period is not closed.
++     * does not allow (anyone but a steward by default), and when the period is neither closed nor soft-closed.
+      */
+     @Transactional
+     public Period reopen(String sheetId, String user, long periodId) {
+@@ -194,7 +223,7 @@ public class PeriodService {
+         if (!roles.permits(sheetId, user, "reopen")) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not reopen a period.");
+         }
+-        if (!period.isClosed()) {
++        if (!period.isFixed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is not closed.");
+         }
+         period.reopen();
+@@ -232,6 +261,13 @@ public class PeriodService {
+                 .orElse(null);
+     }
+ 
++    /** Whether the date falls inside one of the sheet's soft-closed periods. */
++    @Transactional(readOnly = true)
++    public boolean softClosedOn(String sheetId, LocalDate date) {
++        return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
++                .anyMatch(p -> p.isSoftClosed() && p.contains(date));
++    }
++
+     /** Refuse a change to a claim dated inside one of the sheet's closed periods. */
+     public void refuseIfClosed(String sheetId, LocalDate date) {
+         if (periods.findBySheetIdAndClosedTrue(sheetId).stream().anyMatch(p -> p.contains(date))) {
+diff --git a/src/main/resources/db/migration/V46__period_soft_closed.sql b/src/main/resources/db/migration/V46__period_soft_closed.sql
+new file mode 100644
+index 00000000..a3a69a1b
+--- /dev/null
++++ b/src/main/resources/db/migration/V46__period_soft_closed.sql
+@@ -0,0 +1,5 @@
++-- A period may be soft-closed: its due-total and each person's figure for it are fixed (closed_total
++-- and period_person_total, as on a close), while claims dated in it can still change. A claim added
++-- while its period is soft-closed is a late entry.
++ALTER TABLE period ADD COLUMN soft_closed BOOLEAN NOT NULL DEFAULT FALSE;
++ALTER TABLE claim ADD COLUMN late_entry BOOLEAN NOT NULL DEFAULT FALSE;

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 70,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp70_soft-close",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A period can be soft-closed (a button beside close): its due-total and every person's figure for\nit are fixed at that moment, but claims dated inside it can still be added, edited, opened, settled\nand voided; a claim added while its period is soft-closed shows late-entry yes and writes\nLATE_ENTRY, naming the claim, after its CLAIM_ADDED line. Show closed as soft for a soft-closed\nperiod. A soft-closed period can be closed (fixing the figures afresh) or reopened by a steward;\nclosing writes PERIOD_SOFT_CLOSED period=<name> total=<due-total> for a soft close.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA period can be soft-closed (a button beside close): its due-total and every person's figure for\nit are fixed at that moment, but claims dated inside it can still be added, edited, opened, settled\nand voided; a claim added while its period is soft-closed shows late-entry yes and writes\nLATE_ENTRY, naming the claim, after its CLAIM_ADDED line. Show closed as soft for a soft-closed\nperiod. A soft-closed period can be closed (fixing the figures afresh) or reopened by a steward;\nclosing writes PERIOD_SOFT_CLOSED period=<name> total=<due-total> for a soft close.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7fbe30c3d59c6c2c474c60f7591c2aad343609a7",
+  "reset_sha": "",
+  "preagent_sha": "c5c644c3b8ed1b84d5a5826230ce0c7477adaa5c",
+  "prev_sha": "c5c644c3b8ed1b84d5a5826230ce0c7477adaa5c",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.037643,
+    "input_tokens": 42,
+    "output_tokens": 11298,
+    "cache_read_tokens": 1160055,
+    "cache_creation_tokens": 72438,
+    "num_turns": 22,
+    "duration_ms": 206531,
+    "duration_api_ms": 106940,
+    "model": "claude-opus-5-5",
+    "session_id": "87ecea59-f055-4900-8ff4-229edd5930b9",
+    "stop_reason": "success",
+    "result_text": "Soft close is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works**\n- **Stored data** (`V46__period_soft_closed.sql`): a period now records whether it is soft-closed, and a claim records whether it was a late entry.\n- **Soft-closing** a period freezes its due-total and every person's figure for it, the same way closing does. It writes `PERIOD_SOFT_CLOSED period=<name> total=<due-total>`. It needs the same permission as close, and is refused if the period is already closed or soft-closed.\n- **Claims dated inside a soft-closed period** can still be added, edited, opened, settled and voided, because only a fully closed period blocks claim changes.\n- **Late entries:** a claim added while its period is soft-closed shows late-entry `yes` and writes `LATE_ENTRY` right after its `CLAIM_ADDED` line. It keeps the `yes` after the period is reopened.\n- **Closing a soft-closed period** fixes the figures again at that moment and writes the usual `PERIOD_CLOSED`. **Reopening** works for closed and soft-closed periods and needs the existing reopen permission, which is steward-only by default.\n- **On screen:** each period row that isn't closed has a Soft-close button next to Close. The closed column shows `yes`, `soft` or `no`, and soft-closed figures show their frozen values.\n\n**Choices I made where the request didn't say**\n- A soft-closed period still closes itself automatically once the sheet's today passes its end date plus the grace days, just as an open period does.\n- Splitting a claim doesn't mark the new claim as a late entry. Only adding a claim does, which includes quick-add and paste since they create claims the same way.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.037643,
+        "num_turns": 22,
+        "duration_ms": 206531,
+        "duration_api_ms": 106940,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp70.agent.jsonl",
+  "agent_diff_file": "cp70.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
