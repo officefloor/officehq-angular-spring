@@ -1,11 +1,15 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ClaimView, ClaimsApi, cents, money } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
 import { Session } from '../../core/session';
+import { Claims } from '../claims/claims';
 
-// The active sheet's people: listed in the order they were added, added and edited through one form.
+// The active sheet's people: listed in the order they were added, added and edited through one form,
+// each with their claims and what they have claimed, and the sheet's claimed-total.
 @Component({
   selector: 'app-people',
+  imports: [Claims],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -38,11 +42,14 @@ import { Session } from '../../core/session';
           <p role="alert" data-testid="person-form-error">{{ message }}</p>
         }
       </form>
+      <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <table>
         <thead>
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
+            <th scope="col">Claimed</th>
+            <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -51,6 +58,15 @@ import { Session } from '../../core/session';
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+              <td>
+                <app-claims
+                  [personId]="p.id"
+                  [personName]="p.name"
+                  [claims]="claimsOf(p.id)"
+                  (saved)="claimSaved($event)"
+                />
+              </td>
               <td>
                 <button
                   type="button"
@@ -71,9 +87,18 @@ import { Session } from '../../core/session';
 export class People {
   private readonly session = inject(Session);
   private readonly api = inject(PeopleApi);
+  private readonly claimsApi = inject(ClaimsApi);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<PersonView[]>([]);
+  /** The sheet's claims, newest first. */
+  protected readonly claims = signal<ClaimView[]>([]);
+  private readonly byPerson = computed(() => {
+    const map = new Map<number, ClaimView[]>();
+    for (const c of this.claims()) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
+    return map;
+  });
+  protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
   protected readonly name = signal('');
   protected readonly grade = signal<Grade>('A');
   /** The id of the person open in the form, or null when the form adds a new person. */
@@ -87,10 +112,27 @@ export class People {
       this.session.loads();
       untracked(() => {
         this.people.set([]);
+        this.claims.set([]);
         this.reset();
         if (sheet) void this.reload(sheet);
       });
     });
+  }
+
+  protected claimsOf(personId: number): ClaimView[] {
+    return this.byPerson().get(personId) ?? [];
+  }
+
+  /** What a person has claimed: the sum of their claims' amounts. */
+  protected claimed(personId: number): string {
+    return money(this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+  }
+
+  /** A claim added (listed first, as the newest) or saved (in its place). */
+  protected claimSaved(claim: ClaimView): void {
+    this.claims.update((list) =>
+      list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
+    );
   }
 
   protected value(event: Event): string {
@@ -147,8 +189,11 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const people = await this.api.list(sheet);
+    const [people, claims] = await Promise.all([this.api.list(sheet), this.claimsApi.list(sheet)]);
     // A later load may have started while this one was in flight: only the latest is shown.
-    if (this.session.sheet() === sheet && this.session.loads() === loads) this.people.set(people);
+    if (this.session.sheet() === sheet && this.session.loads() === loads) {
+      this.claims.set(claims);
+      this.people.set(people);
+    }
   }
 }

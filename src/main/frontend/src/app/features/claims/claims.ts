@@ -1,0 +1,123 @@
+import { Component, inject, input, output, signal } from '@angular/core';
+import { AMOUNT, ClaimView, ClaimsApi } from '../../core/claims';
+import { Session } from '../../core/session';
+
+// A person's claims: listed newest first, added and edited through one form on the person's row.
+@Component({
+  selector: 'app-claims',
+  template: `
+    <form (submit)="save($event)" [attr.aria-label]="(editing() === null ? 'Add a claim for ' : 'Edit a claim of ') + personName()">
+      <label [for]="'claim-form-amount-' + personId()">Amount</label>
+      <input
+        [id]="'claim-form-amount-' + personId()"
+        data-testid="claim-form-amount"
+        inputmode="decimal"
+        [value]="amount()"
+        (input)="amount.set(value($event)); error.set(null)"
+      />
+      <label [for]="'claim-form-date-' + personId()">Date</label>
+      <input
+        [id]="'claim-form-date-' + personId()"
+        type="date"
+        data-testid="claim-form-date"
+        [value]="date()"
+        (input)="date.set(value($event)); error.set(null)"
+      />
+      <label [for]="'claim-form-note-' + personId()">Note</label>
+      <input
+        [id]="'claim-form-note-' + personId()"
+        data-testid="claim-form-note"
+        [value]="note()"
+        (input)="note.set(value($event)); error.set(null)"
+      />
+      <button type="submit" data-testid="claim-form-submit">
+        {{ editing() === null ? 'Add claim' : 'Save claim' }}
+      </button>
+      @if (editing() !== null) {
+        <button type="button" data-testid="claim-form-cancel" (click)="reset()">Cancel</button>
+      }
+      @if (error(); as message) {
+        <p role="alert" data-testid="claim-form-error">{{ message }}</p>
+      }
+    </form>
+    <ul [attr.aria-label]="'Claims of ' + personName()">
+      @for (c of claims(); track c.id) {
+        <li [attr.data-testid]="'claim-row-' + c.id">
+          <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-date">{{ c.date }}</span>
+          <span data-testid="claim-note">{{ c.note }}</span>
+          <button
+            type="button"
+            data-testid="claim-edit"
+            [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date"
+            (click)="open(c)"
+          >
+            Edit
+          </button>
+        </li>
+      }
+    </ul>
+  `,
+})
+export class Claims {
+  private readonly session = inject(Session);
+  private readonly api = inject(ClaimsApi);
+
+  readonly personId = input.required<number>();
+  readonly personName = input.required<string>();
+  /** The person's claims, newest first. */
+  readonly claims = input.required<ClaimView[]>();
+  /** A claim added or saved through the form. */
+  readonly saved = output<ClaimView>();
+
+  protected readonly amount = signal('');
+  protected readonly date = signal('');
+  protected readonly note = signal('');
+  /** The id of the claim open in the form, or null when the form adds a new claim. */
+  protected readonly editing = signal<number | null>(null);
+  protected readonly error = signal<string | null>(null);
+
+  protected value(event: Event): string {
+    return (event.target as HTMLInputElement).value;
+  }
+
+  /** Open a claim's editor: the form takes its values. */
+  protected open(claim: ClaimView): void {
+    this.editing.set(claim.id);
+    this.amount.set(claim.amount);
+    this.date.set(claim.date);
+    this.note.set(claim.note);
+    this.error.set(null);
+  }
+
+  protected reset(): void {
+    this.editing.set(null);
+    this.amount.set('');
+    this.date.set('');
+    this.note.set('');
+    this.error.set(null);
+  }
+
+  protected async save(event: Event): Promise<void> {
+    event.preventDefault();
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = this.amount().trim();
+    if (!AMOUNT.test(amount)) {
+      this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    const form = { amount, date: this.date().trim() || null, note: this.note() };
+    const id = this.editing();
+    try {
+      const claim = id === null
+        ? await this.api.add(sheet, this.personId(), form)
+        : await this.api.edit(sheet, id, form);
+      this.saved.emit(claim);
+      this.reset();
+    } catch {
+      this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    }
+  }
+}
