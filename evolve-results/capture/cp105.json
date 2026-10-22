@@ -1,0 +1,64 @@
+{
+  "checkpoint": 105,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp105_pools",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has pools. A pool has a name (unique, surrounding spaces removed, not blank; a form;\nPOOL_ADDED name=<name>) and members: a person chosen from a select, with a share percent (two\ndecimals, more than 0.00 and at most 100.00), added from the pool's row (POOL_MEMBER_ADDED\npool=<pool> name=<person> share=<share>); a person already in the pool, or a bad share, is refused\nwith an error on the pool. Show for each pool its total share and balanced yes/no: balanced when the\nshares total exactly 100.00. A retired member's share counts as 0.00 toward the total. A person can\nbe in several pools. Show each member's share on the member's line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has pools. A pool has a name (unique, surrounding spaces removed, not blank; a form;\nPOOL_ADDED name=<name>) and members: a person chosen from a select, with a share percent (two\ndecimals, more than 0.00 and at most 100.00), added from the pool's row (POOL_MEMBER_ADDED\npool=<pool> name=<person> share=<share>); a person already in the pool, or a bad share, is refused\nwith an error on the pool. Show for each pool its total share and balanced yes/no: balanced when the\nshares total exactly 100.00. A retired member's share counts as 0.00 toward the total. A person can\nbe in several pools. Show each member's share on the member's line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ef45ec231babdfd341a9ab56fc432a2d9790b4a6",
+  "reset_sha": "",
+  "preagent_sha": "9507d26137231e6add51d5c2b121d2b51268b0e0",
+  "prev_sha": "9507d26137231e6add51d5c2b121d2b51268b0e0",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.2582765999999994,
+    "input_tokens": 110,
+    "output_tokens": 29057,
+    "cache_read_tokens": 4150483,
+    "cache_creation_tokens": 105825,
+    "num_turns": 56,
+    "duration_ms": 697579,
+    "duration_api_ms": 361915,
+    "model": "claude-opus-5-5",
+    "session_id": "0d09a884-c6a1-413b-9a4c-90c3474a60de",
+    "stop_reason": "success",
+    "result_text": "Pools work, but `bin/e2e` doesn't fully pass: 2 of the 4 tests pass (\"pools\" and \"pools scenario 2\"). The other two fail on paste and quick-add behaviour that already existed and has nothing to do with pools. I haven't changed that code, because doing so would reverse rules the app states on purpose.\n\n**What I built**\n- **Stored data:** a new migration, `V63__pool.sql`, adds a `pool` table and a `pool_member` table. A pool name can appear only once per sheet, and a person can be in a given pool only once.\n- **Server:** a new `pool/` package with the tables' entities and repositories, plus `PoolService` and `PoolController` (`/api/sheets/{id}/pools`).\n  - Pool names are trimmed, and a blank or duplicate name is refused.\n  - A share must be more than 0.00 and at most 100.00, with up to two decimals.\n  - A person already in the pool is refused.\n  - Successful adds write `POOL_ADDED name=\u2026` and `POOL_MEMBER_ADDED pool=\u2026 name=\u2026 share=\u2026` to the audit file; refused ones write nothing.\n- **Front end:** a new `features/pools/pools.ts`, placed inside the People component so the person list stays current.\n  - Each pool's row has a person select, a share box and its own `pool-error`. The add-pool form has `pool-form-error`.\n  - Each pool shows its total share and whether it's balanced (exactly 100.00). A member who has been retired as of the sheet's today counts as 0.00 in the total, but their own line still shows their share.\n  - A person can be in several pools.\n\n**Why the two tests still fail**\n- **Scenario 1, line 151:** the spec expects a pasted claim due on 2026-03-02 to be accepted, even though that date falls in period P1, which has been auto-closed. The app refuses it (\"The claim is due by inside a closed period\"), as its documented rule says every pasted line must pass the same checks as the claim form.\n- **Scenario 3, line 963:** the spec expects a quick-add claim dated 2026-03-20 not to be marked as a late entry, even though period 2026-03 has been soft-closed. The app marks it late and writes an extra `LATE_ENTRY` audit line.\n\nTo make these pass, quick-add would need to skip the late-entry check and paste would need to skip the closed-period check. Those code paths were already in the app before this change, so I'd like your go-ahead before relaxing them. Should I?\n\n**Port problem:** your shell has `PORT=3001` set, and ports 3000\u20133004 are taken by apps from other test runs. My first `bin/e2e` run therefore tested someone else's app. I ran with `PORT=3047` instead, left the other processes alone, and the debug server I started on 3047 has been stopped.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.2582765999999994,
+        "num_turns": 56,
+        "duration_ms": 697579,
+        "duration_api_ms": 361915,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp105.agent.jsonl",
+  "agent_diff_file": "cp105.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
