@@ -100,6 +100,8 @@ export class Rates {
   /** The from-date typed (yyyy-mm-dd); empty means from the beginning of time. */
   protected readonly from = signal('');
   protected readonly error = signal<string | null>(null);
+  /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private busy = false;
 
   /** Every rate by grade, each grade's from the start, then by from-date. */
   protected readonly listed = computed(() =>
@@ -122,6 +124,7 @@ export class Rates {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.busy) return;
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -135,12 +138,15 @@ export class Rates {
       this.error.set('Type a from-date as yyyy-mm-dd, or leave it empty for from the start.');
       return;
     }
+    this.busy = true;
     try {
       this.saved.emit(await this.api.set(sheet, this.grade(), { pct, from: from || null }));
       this.pct.set('');
       this.from.set('');
     } catch {
       this.error.set(`The rate for grade ${this.grade()} could not be set.`);
+    } finally {
+      this.busy = false;
     }
   }
 }

@@ -102,6 +102,8 @@ export class Claims {
   /** The id of the claim open in the form, or null when the form adds a new claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private busy = false;
   /** The refusal of the last action taken on a claim's row, shown on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly actions: { action: ClaimAction; label: string }[] = [
@@ -159,6 +161,7 @@ export class Claims {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.busy) return;
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -169,6 +172,7 @@ export class Claims {
     }
     const form = { amount, date: this.date().trim() || null, note: this.note() };
     const id = this.editing();
+    this.busy = true;
     try {
       const claim = id === null
         ? await this.api.add(sheet, this.personId(), form)
@@ -177,6 +181,8 @@ export class Claims {
       this.reset();
     } catch {
       this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } finally {
+      this.busy = false;
     }
   }
 }

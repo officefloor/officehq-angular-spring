@@ -65,6 +65,8 @@ export class Home {
   protected readonly todayInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
+  /** A today change is waiting for its answer: a second submit meanwhile is ignored. */
+  private savingToday = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -98,16 +100,20 @@ export class Home {
 
   protected async saveToday(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.savingToday) return;
     this.sheetError.set(null);
     const date = this.todayInput().trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       this.sheetError.set('Pick a date for today.');
       return;
     }
+    this.savingToday = true;
     try {
       await this.session.setToday(date);
     } catch {
       this.sheetError.set(`Today could not be changed to ${date}.`);
+    } finally {
+      this.savingToday = false;
     }
   }
 }

@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,10 +18,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/people")
@@ -28,17 +29,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** What the screen is told about a person. */
-    public record PersonView(long id, String name, String grade) {
+    public record PersonView(long id, String name, String grade, long version) {
 
         static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }
 
-    /** A person's values as entered on the form: a name is required, the grade is A, B or C. */
+    /**
+     * A person's values as entered on the form: a name is required, the grade is A, B or C. An edit
+     * carries the version of the person the form loaded.
+     */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            Long version) {
     }
 
     private final PersonService service;
@@ -63,14 +68,24 @@ public class PersonController {
         return PersonView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.grade()));
     }
 
-    /** Change a person's name and grade. */
+    /** Change a person's name and grade, from the version of the person the form loaded. */
     @PutMapping("/{personId}")
     public PersonView edit(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long personId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonForm form) {
-        return PersonView.of(service.edit(sheetId, SignedIn.name(user), personId, form.name(), form.grade()));
+        if (form.version() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required.");
+        }
+        return PersonView.of(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
+                form.grade()));
+    }
+
+    /** Someone else saved the person between the version check and the write. */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
+    public void savedMeanwhile() {
     }
 
     /** Another user took the name between the check and the write: the unique index refuses it. */

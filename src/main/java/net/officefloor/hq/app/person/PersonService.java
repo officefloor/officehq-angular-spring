@@ -38,11 +38,18 @@ public class PersonService {
         return person;
     }
 
-    /** Change a person's name and grade; refused when the name is in use by another person. */
+    /**
+     * Change a person's name and grade, from the version of the person the editor loaded; refused when
+     * someone has saved the person since, or when the name is in use by another person.
+     */
     @Transactional
-    public Person edit(String sheetId, String user, long personId, String name, String grade) {
+    public Person edit(String sheetId, String user, long personId, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (person.getVersion() != version) {
+            throw new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
+                    "Someone else has saved this person since it was opened.");
+        }
         requireNameFree(sheetId, name, person.getId());
         person.setName(name);
         person.setGrade(grade);

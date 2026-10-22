@@ -9,11 +9,15 @@ export interface PersonView {
   id: number;
   name: string;
   grade: Grade;
+  /** Raised on every save of the person. */
+  version: number;
 }
 
 export interface PersonForm {
   name: string;
   grade: Grade;
+  /** On an edit, the version of the person the form loaded. */
+  version?: number;
 }
 
 // The people kept on a sheet, read from and written to the store.

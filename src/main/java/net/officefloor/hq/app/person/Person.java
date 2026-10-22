@@ -6,11 +6,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.util.Locale;
 
 /**
  * A person on a sheet, with a name and a grade (A, B or C). The name is kept with surrounding spaces
- * removed and is unique on the sheet ignoring case, by its {@link #keyOf key}.
+ * removed and is unique on the sheet ignoring case, by its {@link #keyOf key}. Its version is raised on
+ * every save, so an edit made from an older version is refused.
  */
 @Entity
 @Table(name = "person")
@@ -31,6 +33,10 @@ public class Person {
 
     @Column(name = "grade", nullable = false)
     private String grade;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     protected Person() {
     }
@@ -74,5 +80,9 @@ public class Person {
 
     public void setGrade(String grade) {
         this.grade = grade;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }

@@ -123,7 +123,11 @@ export class People {
   protected readonly grade = signal<Grade>('A');
   /** The id of the person open in the form, or null when the form adds a new person. */
   protected readonly editing = signal<number | null>(null);
+  /** The version of the person open in the form, as it was loaded. */
+  private readonly version = signal(0);
   protected readonly error = signal<string | null>(null);
+  /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private busy = false;
 
   constructor() {
     // Every sheet load re-reads the sheet's people from the store.
@@ -198,6 +202,7 @@ export class People {
   /** Open a person's editor: the form takes their values. */
   protected open(person: PersonView): void {
     this.editing.set(person.id);
+    this.version.set(person.version);
     this.name.set(person.name);
     this.grade.set(person.grade);
     this.error.set(null);
@@ -212,6 +217,7 @@ export class People {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.busy) return;
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -221,21 +227,41 @@ export class People {
       return;
     }
     const id = this.editing();
+    this.busy = true;
     try {
       if (id === null) {
         const added = await this.api.add(sheet, form);
         this.people.update((list) => [...list, added]);
       } else {
-        const saved = await this.api.edit(sheet, id, form);
+        const saved = await this.api.edit(sheet, id, { ...form, version: this.version() });
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
     } catch (e) {
-      if (e instanceof HttpErrorResponse && e.status === 409) {
+      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
+        await this.showCurrent(sheet, id);
+        this.error.set('Someone else has saved this person since you opened it. The form shows their values now.');
+      } else if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set('That name is already in use on this sheet.');
       } else {
         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Someone else saved the person open in the form: show what the store holds for them now. */
+  private async showCurrent(sheet: string, id: number): Promise<void> {
+    try {
+      const current = (await this.api.list(sheet)).find((p) => p.id === id);
+      if (!current || this.session.sheet() !== sheet || this.editing() !== id) return;
+      this.people.update((list) => list.map((p) => (p.id === id ? current : p)));
+      this.version.set(current.version);
+      this.name.set(current.name);
+      this.grade.set(current.grade);
+    } catch {
+      // the form keeps what was typed; the refusal is still shown
     }
   }
 
