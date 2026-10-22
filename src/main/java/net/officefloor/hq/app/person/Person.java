@@ -14,7 +14,9 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
@@ -76,9 +78,13 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: their OPEN and PENDING claims count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /**
+     * The person's holds, in the order they were added: their OPEN and PENDING claims dated within
+     * one, unless bound by a statement, count in no live total.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private List<Hold> holds = new ArrayList<>();
 
     /** The ids of the other people on the sheet the person has named as their patrons. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -178,21 +184,32 @@ public class Person {
         this.retiredFrom = from;
     }
 
+    /** Whether the person has any hold, whatever its dates. */
     public boolean isHeld() {
-        return held;
+        return !holds.isEmpty();
     }
 
-    /** Put the person on hold, or take them off it. */
-    public void setHeld(boolean held) {
-        this.held = held;
+    public List<Hold> getHolds() {
+        return Collections.unmodifiableList(holds);
+    }
+
+    /** Add a hold from a date, to a date (inclusive) or with no end. */
+    public void hold(LocalDate from, LocalDate to) {
+        holds.add(new Hold(from, to));
+    }
+
+    /** Whether a date falls within any of the person's holds. */
+    public boolean heldOn(LocalDate date) {
+        return holds.stream().anyMatch(hold -> hold.covers(date));
     }
 
     /**
-     * Whether a claim of the person in this status counts in a live total: OPEN, PENDING and SETTLED
-     * claims do, but not an OPEN or PENDING one while the person is on hold.
+     * Whether a claim of the person in this status, dated on this date and bound by a statement or
+     * not, counts in a live total: OPEN, PENDING and SETTLED claims do, but not an OPEN or PENDING one
+     * dated within a hold, unless a statement has bound it.
      */
-    public boolean countsLive(ClaimStatus status) {
-        return status.counts() && !(held && status.isOpen());
+    public boolean countsLive(ClaimStatus status, LocalDate date, boolean stated) {
+        return status.counts() && !(status.isOpen() && !stated && heldOn(date));
     }
 
     /** Whether a claim may be dated on this date: not after the person's retirement. */

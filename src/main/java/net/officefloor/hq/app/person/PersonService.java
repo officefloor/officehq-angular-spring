@@ -82,22 +82,23 @@ public class PersonService {
     }
 
     /**
-     * Put a person on hold ({@code held}) or take them off it; refused when they already are. Their
-     * figures and the sheet's totals move as their OPEN and PENDING claims leave or rejoin the live totals.
+     * Put a person on hold from a date (null: the sheet's today) to a date (null: no end); refused
+     * when the to-date is before the from-date. Their figures and the sheet's totals move as their
+     * OPEN and PENDING claims dated within it, not bound by a statement, leave the live totals.
      */
     @Transactional
-    public Person hold(String sheetId, String user, long personId, boolean held) {
+    public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
-        if (person.isHeld() == held) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    held ? "The person is already on hold." : "The person is not on hold.");
+        LocalDate start = from != null ? from : sheets.today(sheetId);
+        if (to != null && to.isBefore(start)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts.");
         }
         Rollups.Rollup before = rollups.take(sheetId);
-        person.setHeld(held);
+        person.hold(start, to);
         Person saved = people.saveAndFlush(person);
-        audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
-                + " name=" + saved.getName());
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " from=" + start);
         rollups.audit(sheetId, user, before);
         return saved;
     }

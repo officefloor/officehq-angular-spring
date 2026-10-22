@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, isOpen, money, overdue, roundsHalfUp } from '../../core/claims';
-import { GRADES, Grade, PeopleApi, PersonView, gradeOn } from '../../core/people';
+import { GRADES, Grade, PeopleApi, PersonView, gradeOn, heldOn } from '../../core/people';
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -17,10 +17,10 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 /**
  * Whether a person's claim counts in the live totals: OPEN, PENDING and SETTLED claims do, but not an
- * OPEN or PENDING one while the person is on hold.
+ * OPEN or PENDING one dated within one of the person's holds, unless a statement has bound it.
  */
 function countsLive(claim: ClaimView, person: PersonView): boolean {
-  return counts(claim) && !(person.held && isOpen(claim));
+  return counts(claim) && !(isOpen(claim) && !claim.stated && heldOn(person, claim.date));
 }
 
 /** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
@@ -150,7 +150,14 @@ function csvField(value: string): string {
                 <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td>
+                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                <ul>
+                  @for (h of p.holds; track $index) {
+                    <li data-testid="person-hold-line">from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
+                  }
+                </ul>
+              </td>
               <td>
                 <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
                 <label [for]="'person-patron-select-' + p.id">Add patron</label>
@@ -223,13 +230,29 @@ function csvField(value: string): string {
                 >
                   Retire
                 </button>
+                <label [for]="'person-hold-from-' + p.id">Hold from</label>
+                <input
+                  type="date"
+                  [id]="'person-hold-from-' + p.id"
+                  data-testid="person-hold-from"
+                  [value]="holdDraft(p.id).from"
+                  (input)="setHoldDraft(p.id, { from: value($event) })"
+                />
+                <label [for]="'person-hold-to-' + p.id">Hold to</label>
+                <input
+                  type="date"
+                  [id]="'person-hold-to-' + p.id"
+                  data-testid="person-hold-to"
+                  [value]="holdDraft(p.id).to"
+                  (input)="setHoldDraft(p.id, { to: value($event) })"
+                />
                 <button
                   type="button"
                   data-testid="person-hold-toggle"
-                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
-                  (click)="toggleHold(p)"
+                  [attr.aria-label]="'Hold ' + p.name"
+                  (click)="hold(p)"
                 >
-                  {{ p.held ? 'Release' : 'Hold' }}
+                  Hold
                 </button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
@@ -259,6 +282,8 @@ export class People {
   );
   /** The retire-from date typed on each person's row, by person id; none means the sheet's today. */
   protected readonly retireDates = new Map<number, string>();
+  /** The hold dates typed on each person's row, by person id; an empty from means the sheet's today. */
+  protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   private readonly byPerson = computed(() => {
@@ -273,7 +298,7 @@ export class People {
   /**
    * Each period's due-total by period id: the sum of the due figures of the OPEN and SETTLED claims
    * dated in it, each at its own person's grade (a claim with no figure adds nothing), leaving out the
-   * OPEN claims of anyone on hold.
+   * OPEN claims dated within their person's hold (see countsLive).
    */
   protected readonly periodDueTotals = computed(() => {
     const totals = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
@@ -372,6 +397,7 @@ export class People {
         this.reset();
         this.personError.set(null);
         this.retireDates.clear();
+        this.holdDrafts.set(new Map());
         this.patronError.set(null);
         this.patronChoices.clear();
         this.selectedClaims.set(new Set());
@@ -538,20 +564,40 @@ export class People {
     }
   }
 
-  /** Put a person on hold, or take them off it. */
-  protected async toggleHold(person: PersonView): Promise<void> {
+  /** The hold dates typed on a person's row. */
+  protected holdDraft(personId: number): { from: string; to: string } {
+    return this.holdDrafts().get(personId) ?? { from: '', to: '' };
+  }
+
+  /** Change the hold dates typed on a person's row. */
+  protected setHoldDraft(personId: number, change: { from?: string; to?: string }): void {
+    this.holdDrafts.update((map) => new Map(map).set(personId, { ...this.holdDraft(personId), ...change }));
+    this.personError.set(null);
+  }
+
+  /** Put a person on hold from the date typed (none: the sheet's today) to the date typed (none: no end). */
+  protected async hold(person: PersonView): Promise<void> {
     this.personError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
+    const draft = this.holdDraft(person.id);
+    const from = draft.from.trim() || null;
+    const to = draft.to.trim() || null;
+    if (from !== null && to !== null && to < from) {
+      this.personError.set({ id: person.id, message: 'A hold cannot end before it starts.' });
+      return;
+    }
     try {
-      const saved = await this.api.hold(sheet, person.id, !person.held);
+      const saved = await this.api.hold(sheet, person.id, from, to);
       if (this.session.sheet() !== sheet) return;
       this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
-    } catch {
-      this.personError.set({
-        id: person.id,
-        message: person.held ? 'The person could not be released.' : 'The person could not be put on hold.',
+      this.holdDrafts.update((map) => {
+        const next = new Map(map);
+        next.delete(person.id);
+        return next;
       });
+    } catch {
+      this.personError.set({ id: person.id, message: 'The person could not be put on hold.' });
     }
   }
 

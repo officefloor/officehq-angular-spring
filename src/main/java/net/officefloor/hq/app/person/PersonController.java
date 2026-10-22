@@ -33,13 +33,13 @@ public class PersonController {
     /**
      * What the screen is told about a person, with their statement count, and the last statement's
      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
-     * retired from (null when not retired), whether they are on hold, and the ids of their patrons.
+     * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons.
      * Their grades are listed by the date each is in force from, the first with none (from the
      * beginning of time).
      */
     public record PersonView(long id, String name, List<GradeView> grades, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
-            List<Long> patronIds) {
+            List<HoldView> holds, List<Long> patronIds) {
 
         public static PersonView of(Person person) {
             List<GradeView> grades = new ArrayList<>();
@@ -49,8 +49,13 @@ public class PersonController {
                     person.getStatementCount(),
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
                     person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
                     person.getPatronIds().stream().sorted().toList());
         }
+    }
+
+    /** A hold on a person, from a date to a date (null: no end). */
+    public record HoldView(LocalDate from, LocalDate to) {
     }
 
     /** A grade a person has, from a date (null: from the beginning of time). */
@@ -120,22 +125,19 @@ public class PersonController {
                 form == null ? null : form.from()));
     }
 
-    /** Put a person on hold. */
-    @PostMapping("/{personId}/hold")
+    /** A hold's dates: from (none: the sheet's today) and to (none: no end). */
+    public record HoldForm(LocalDate from, LocalDate to) {
+    }
+
+    /** Put a person on hold over a span of dates. */
+    @PostMapping("/{personId}/holds")
     public PersonView hold(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long personId,
-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
-        return PersonView.of(service.hold(sheetId, SignedIn.name(user), personId, true));
-    }
-
-    /** Take a person off hold. */
-    @PostMapping("/{personId}/release")
-    public PersonView release(
-            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable long personId,
-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
-        return PersonView.of(service.hold(sheetId, SignedIn.name(user), personId, false));
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) HoldForm form) {
+        return PersonView.of(service.hold(sheetId, SignedIn.name(user), personId,
+                form == null ? null : form.from(), form == null ? null : form.to()));
     }
 
     /** The person named as a patron. */

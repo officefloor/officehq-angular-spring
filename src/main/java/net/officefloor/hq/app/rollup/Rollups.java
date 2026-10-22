@@ -71,7 +71,7 @@ public class Rollups {
         BigDecimal dueTotal = zero();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of()).stream()
-                    .filter(claim -> person.countsLive(claim.getStatus()))
+                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated()))
                     .toList();
             BigDecimal claimed = zero();
             BigDecimal due = zero();

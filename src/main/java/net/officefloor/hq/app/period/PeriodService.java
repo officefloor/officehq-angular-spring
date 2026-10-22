@@ -75,7 +75,7 @@ public class PeriodService {
     /**
      * Close a period, fixing its due-total at this moment: the sum of the due figures of the OPEN and
      * SETTLED claims dated in it, each at the grade its person has in force on its date (a claim with no figure adds nothing),
-     * leaving out the OPEN and PENDING claims of anyone on hold. Refused when the period is already closed.
+     * leaving out the OPEN and PENDING claims dated within their person's hold, unless bound by a statement. Refused when the period is already closed.
      */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
@@ -91,7 +91,7 @@ public class PeriodService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !person.countsLive(claim.getStatus()) || !period.contains(claim.getDate())) {
+            if (person == null || !person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated()) || !period.contains(claim.getDate())) {
                 continue;
             }
             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));

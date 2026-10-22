@@ -40,10 +40,23 @@ export interface PersonView {
   statementDate: string | null;
   /** The date (yyyy-mm-dd) the person is retired from; null when they are not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: their OPEN claims count in no live total. */
+  /** Whether the person has any hold, whatever its dates. */
   held: boolean;
+  /** The person's holds in the order they were added: their unbound OPEN claims dated within one count in no live total. */
+  holds: HoldView[];
   /** The ids of the other people on the sheet the person has named as their patrons. */
   patronIds: number[];
+}
+
+/** A hold on a person, from a date to a date (yyyy-mm-dd, both included); to is null with no end. */
+export interface HoldView {
+  from: string;
+  to: string | null;
+}
+
+/** Whether a date (yyyy-mm-dd) falls within any of a person's holds. */
+export function heldOn(person: PersonView, date: string): boolean {
+  return person.holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
 }
 
 /** A statement taken: the person as stated and their claims, newest first. */
@@ -89,9 +102,9 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/retire`, { from }));
   }
 
-  /** Put a person on hold, or take them off it. */
-  hold(sheet: string, id: number, held: boolean): Promise<PersonView> {
-    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/${held ? 'hold' : 'release'}`, null));
+  /** Put a person on hold from a date (none: the sheet's today) to a date (none: no end). */
+  hold(sheet: string, id: number, from: string | null, to: string | null): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/holds`, { from, to }));
   }
 
   /** Name another person on the sheet as a patron of this one. */
