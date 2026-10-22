@@ -1,0 +1,321 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index d0f9366e..bed5cb9d 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -14,6 +14,11 @@ export interface PeriodView {
+   closed: boolean;
+   /** The due-total fixed when the period was closed, with two decimals; null while open. */
+   closedTotal: string | null;
++  /**
++   * Each person's due-total for the period fixed when it was closed, by person id, with two decimals;
++   * empty while open. A person added since has none: 0.00.
++   */
++  personTotals: Record<string, string>;
+ }
+ 
+ export interface PeriodForm {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4bdeef8c..69becceb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -139,6 +139,7 @@ function csvField(value: string): string {
+             <th scope="col">Grade</th>
+             <th scope="col">Claimed</th>
+             <th scope="col">Due</th>
++            <th scope="col">Due by period</th>
+             <th scope="col">Excess</th>
+             <th scope="col">Overdue</th>
+             <th scope="col">Statements</th>
+@@ -157,6 +158,16 @@ function csvField(value: string): string {
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
++              <td>
++                <ul>
++                  @for (period of periods(); track period.id) {
++                    <li>
++                      {{ period.name }}
++                      <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ periodTotalOf(period, p) }}</span>
++                    </li>
++                  }
++                </ul>
++              </td>
+               <td data-testid="person-excess">{{ excessOf(p) }}</td>
+               <td>
+                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
+@@ -317,21 +328,38 @@ export class People {
+   /** The sheet's periods by from-date. */
+   protected readonly periods = signal<PeriodView[]>([]);
+   /**
+-   * Each period's due-total by period id: the sum of the due figures of the OPEN and SETTLED claims
+-   * dated in it, each at its own person's grade (a claim with no figure adds nothing), leaving out the
+-   * OPEN claims dated within their person's hold (see countsLive).
++   * Each person's due-total for each period, in whole cents, by period id then person id. While the
++   * period is open it is live: the sum of the due figures of the person's OPEN and SETTLED claims dated
++   * in it, each at the grade in force on its date (a claim with no figure adds nothing), leaving out the
++   * OPEN claims dated within their hold (see countsLive). Once closed it is the figure fixed at closing,
++   * 0 for a person added since.
+    */
+-  protected readonly periodDueTotals = computed(() => {
+-    const totals = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
++  private readonly personPeriodCents = computed(() => {
++    const figures = new Map<number, Map<number, number>>(
++      this.periods().map((period) => [
++        period.id,
++        new Map(
++          this.people().map((p) => [p.id, period.closed ? cents(period.personTotals[p.id] ?? '0.00') : 0]),
++        ),
++      ]),
++    );
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     for (const c of this.claims()) {
+       const period = periodOn(this.periods(), c.date);
+       const person = byId.get(c.personId);
+-      if (!period || !person || !countsLive(c, person)) continue;
+-      totals.set(period.id, totals.get(period.id)! + (this.dueCents(c, person) ?? 0));
++      if (!period || period.closed || !person || !countsLive(c, person)) continue;
++      const row = figures.get(period.id)!;
++      row.set(person.id, row.get(person.id)! + (this.dueCents(c, person) ?? 0));
+     }
+-    return new Map([...totals].map(([id, total]) => [id, money(total)]));
++    return figures;
+   });
++  /** Each period's due-total by period id: the sum of the people's figures for it. */
++  protected readonly periodDueTotals = computed(
++    () =>
++      new Map(
++        [...this.personPeriodCents()].map(([id, row]) => [id, money([...row.values()].reduce((a, b) => a + b, 0))]),
++      ),
++  );
+   /**
+    * Per grade: the people not retired who have it in force on the sheet's today, and their due-totals
+    * added up, skipping those shown as n/a.
+@@ -347,10 +375,10 @@ export class People {
+       };
+     });
+   });
+-  /** Per period: its due-total as its row shows it (the one fixed at closing, once closed). */
++  /** Per period: its due-total as its row shows it. */
+   protected readonly periodSummary = computed<PeriodSummary[]>(() => {
+     const totals = this.periodDueTotals();
+-    return this.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? totals.get(p.id) ?? '0.00' }));
++    return this.periods().map((p) => ({ name: p.name, dueTotal: totals.get(p.id) ?? '0.00' }));
+   });
+   /** Per status: how many of the sheet's claims have it. */
+   protected readonly statusSummary = computed<StatusSummary[]>(() =>
+@@ -500,6 +528,11 @@ export class People {
+     return sum !== null && cap !== null && sum > cap ? cap : sum;
+   }
+ 
++  /** A person's due-total for a period (see personPeriodCents). */
++  protected periodTotalOf(period: PeriodView, person: PersonView): string {
++    return money(this.personPeriodCents().get(period.id)?.get(person.id) ?? 0);
++  }
++
+   /** A person's excess: by how much the sum of their figures is above the cap, else 0.00 (n/a is not capped). */
+   protected excessOf(person: PersonView): string {
+     const sum = this.dueSumCents(person);
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 03794581..ac60a705 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -5,7 +5,8 @@ import { Session } from '../../core/session';
+ 
+ // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
+ // and one form to add a period (a unique name and inclusive from and to dates, overlapping no other).
+-// A period can be closed: its due-total is then the one fixed at closing. A steward can reopen a
++// Its due-total is the sum of the people's figures for it. A period can be closed: each person's figure
++// is then the one fixed at closing. A steward can reopen a
+ // closed period, making its due-total live again.
+ @Component({
+   selector: 'app-periods',
+@@ -58,7 +59,7 @@ import { Session } from '../../core/session';
+               <th scope="row" data-testid="period-name">{{ p.name }}</th>
+               <td data-testid="period-from">{{ p.from }}</td>
+               <td data-testid="period-to">{{ p.to }}</td>
+-              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
++              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+               <td>
+                 @if (!p.closed) {
+@@ -96,7 +97,7 @@ export class Periods {
+ 
+   /** The sheet's periods by from-date. */
+   readonly periods = input.required<PeriodView[]>();
+-  /** Each period's due-total, by period id, with two decimals. */
++  /** Each period's due-total (the sum of the people's figures for it), by period id, with two decimals. */
+   readonly dueTotals = input.required<Map<number, string>>();
+   /** A period added through the form. */
+   readonly saved = output<PeriodView>();
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index b89f4c53..46d0c57a 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -1,19 +1,26 @@
+ package net.officefloor.hq.app.period;
+ 
++import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
++import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.HashMap;
+ import java.util.Locale;
++import java.util.Map;
+ 
+ /**
+  * A period on a sheet: a name, unique on the sheet ignoring case by its {@link #keyOf key}, and a
+  * from and to date, both inclusive. No two periods on a sheet overlap. A closed period keeps the
+- * due-total it had when it was closed, until it is reopened.
++ * due-total it had when it was closed, and each person's due-total for it then, until it is reopened.
+  */
+ @Entity
+ @Table(name = "period")
+@@ -44,6 +51,13 @@ public class Period {
+     @Column(name = "closed_total")
+     private BigDecimal closedTotal;
+ 
++    /** Each person's due-total for the period fixed when it was closed, by person id; empty while open. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "period_person_total", joinColumns = @JoinColumn(name = "period_id"))
++    @MapKeyColumn(name = "person_id")
++    @Column(name = "total", nullable = false)
++    private Map<Long, BigDecimal> personTotals = new HashMap<>();
++
+     /** The last number the period gave a claim opened in it under period numbering; 0 before any. */
+     @Column(name = "last_claim_number", nullable = false)
+     private int lastClaimNumber;
+@@ -98,16 +112,24 @@ public class Period {
+         return closedTotal;
+     }
+ 
+-    /** Close the period, fixing its due-total. */
+-    public void close(BigDecimal total) {
++    /** Each person's due-total fixed when the period was closed, by person id; empty while it is open. */
++    public Map<Long, BigDecimal> getPersonTotals() {
++        return Map.copyOf(personTotals);
++    }
++
++    /** Close the period, fixing each person's due-total for it and its own, their sum. */
++    public void close(Map<Long, BigDecimal> totals) {
+         this.closed = true;
+-        this.closedTotal = total;
++        this.personTotals.clear();
++        this.personTotals.putAll(totals);
++        this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+     /** Reopen the period: its due-total is live again. */
+     public void reopen() {
+         this.closed = false;
+         this.closedTotal = null;
++        this.personTotals.clear();
+     }
+ 
+     /** Whether the date falls inside this period (inclusive). */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 2adaf8aa..e86f3c4d 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.SignedIn;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -28,15 +30,18 @@ public class PeriodController {
+ 
+     /**
+      * What the screen is told about a period: its name, its inclusive from and to dates, whether it
+-     * is closed, and the due-total fixed when it was closed (null while open).
++     * is closed, the due-total fixed when it was closed (null while open), and each person's due-total
++     * for it fixed then, by person id (empty while open).
+      */
+     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+-            String closedTotal) {
++            String closedTotal, Map<Long, String> personTotals) {
+ 
+         static PeriodView of(Period period) {
+             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                     period.isClosed(),
+-                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString());
++                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
++                    period.getPersonTotals().entrySet().stream()
++                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())));
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index a037a85a..e31bdec0 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+@@ -73,7 +74,7 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * Close a period, fixing its due-total at this moment: the sum of the due figures of the OPEN and
++     * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures of the OPEN and
+      * SETTLED claims dated in it, each at the grade its person has in force on its date (a claim with no figure adds nothing),
+      * leaving out the OPEN and PENDING claims dated within their person's hold, unless bound by a statement. Refused when the period is already closed.
+      */
+@@ -88,7 +89,8 @@ public class PeriodService {
+         }
+         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, person -> person));
+-        BigDecimal total = BigDecimal.ZERO.setScale(2);
++        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
++        byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             Person person = byId.get(claim.getPersonId());
+             if (person == null || !person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated()) || !period.contains(claim.getDate())) {
+@@ -96,13 +98,13 @@ public class PeriodService {
+             }
+             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
+             if (figure != null) {
+-                total = total.add(figure);
++                totals.merge(person.getId(), figure, BigDecimal::add);
+             }
+         }
+-        period.close(total);
++        period.close(totals);
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+-                + " total=" + total.toPlainString());
++                + " total=" + saved.getClosedTotal().toPlainString());
+         return saved;
+     }
+ 
+diff --git a/src/main/resources/db/migration/V33__period_person_total.sql b/src/main/resources/db/migration/V33__period_person_total.sql
+new file mode 100644
+index 00000000..f1e70a3a
+--- /dev/null
++++ b/src/main/resources/db/migration/V33__period_person_total.sql
+@@ -0,0 +1,9 @@
++-- Closing a period also fixes each person's due-total for it at that moment, one row per person then
++-- on the sheet; a person added later has no row and shows 0.00 for it. Reopening removes the rows.
++-- The period's closed_total is the sum of these.
++CREATE TABLE period_person_total (
++    period_id BIGINT         NOT NULL REFERENCES period (id),
++    person_id BIGINT         NOT NULL,
++    total     DECIMAL(14, 2) NOT NULL,
++    PRIMARY KEY (period_id, person_id)
++);

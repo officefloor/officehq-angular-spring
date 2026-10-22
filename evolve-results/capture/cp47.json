@@ -1,0 +1,64 @@
+{
+  "checkpoint": 47,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp47_person-period-figures",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row shows, for every period on the sheet, the person's due-total for that period:\nthe due of their claims that count whose date falls in the period. Closing a period fixes these\nfigures too, at that moment, for every person on the sheet; a person added later shows 0.00 for\na closed period. Reopening makes them live again. The period's own due-total is always the sum of\nthe people's figures for it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row shows, for every period on the sheet, the person's due-total for that period:\nthe due of their claims that count whose date falls in the period. Closing a period fixes these\nfigures too, at that moment, for every person on the sheet; a person added later shows 0.00 for\na closed period. Reopening makes them live again. The period's own due-total is always the sum of\nthe people's figures for it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2979fdbb5551873a46c1a6eab57692e397107ce2",
+  "reset_sha": "",
+  "preagent_sha": "a4cc61dc9c9af49eb3af3d2c4cf38c2e91b8815e",
+  "prev_sha": "a4cc61dc9c9af49eb3af3d2c4cf38c2e91b8815e",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7364072,
+    "input_tokens": 32,
+    "output_tokens": 8101,
+    "cache_read_tokens": 616416,
+    "cache_creation_tokens": 56372,
+    "num_turns": 17,
+    "duration_ms": 169266,
+    "duration_api_ms": 75714,
+    "model": "claude-opus-5-5",
+    "session_id": "7afae2a6-0746-44ed-a2ac-9102a7b7357a",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows their due-total for every period on the sheet, and `bin/e2e` passes all 4 acceptance tests.\n\n- **Stored data:** a new migration, `V33__period_person_total.sql`, adds a `period_person_total` table that holds one fixed figure per person for each closed period.\n- **Server:** closing a period now saves the figure for every person on the sheet at that moment. A person with no counting claims in the period is saved as 0.00. The period's own fixed total is the sum of those figures, and the `PERIOD_CLOSED` audit line is unchanged. Reopening deletes the saved figures. The period data the screen receives now includes each person's fixed figure (`personTotals`). The changes are in `Period.java`, `PeriodService.java` and `PeriodController.java`.\n- **Front end:** `people.ts` adds a \"Due by period\" column with a `person-period-<name>-due-total` value for each period.\n  - For an open period, the figure is calculated live from the person's counting claims dated in it.\n  - For a closed period, it shows the saved figure, or 0.00 for anyone added after closing.\n  - The due-total in the periods list and in the summary is now always the sum of the people's figures.\n\n**One choice to check:** the per-period figures are not limited by the sheet's cap. The cap applies only to a person's overall due-total, which matches how period totals were already calculated.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7364072,
+        "num_turns": 17,
+        "duration_ms": 169266,
+        "duration_api_ms": 75714,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp47.agent.jsonl",
+  "agent_diff_file": "cp47.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
