@@ -26,11 +26,17 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PeriodController {
 
-    /** What the screen is told about a period: its name and its inclusive from and to dates. */
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to) {
+    /**
+     * What the screen is told about a period: its name, its inclusive from and to dates, whether it
+     * is closed, and the due-total fixed when it was closed (null while open).
+     */
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+            String closedTotal) {
 
         static PeriodView of(Period period) {
-            return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate());
+            return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                    period.isClosed(),
+                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString());
         }
     }
 
@@ -61,6 +67,15 @@ public class PeriodController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PeriodForm form) {
         return PeriodView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.from(), form.to()));
+    }
+
+    /** Close a period, fixing its due-total. */
+    @PostMapping("/{periodId}/close")
+    public PeriodView close(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PeriodView.of(service.close(sheetId, SignedIn.name(user), periodId));
     }
 
     /** Another user took the name between the check and the write: the unique index refuses it. */

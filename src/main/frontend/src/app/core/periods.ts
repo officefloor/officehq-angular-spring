@@ -10,6 +10,10 @@ export interface PeriodView {
   from: string;
   /** yyyy-mm-dd, inclusive. */
   to: string;
+  /** Closed periods keep the due-total they had when closed; no claim dated in one can change. */
+  closed: boolean;
+  /** The due-total fixed when the period was closed, with two decimals; null while open. */
+  closedTotal: string | null;
 }
 
 export interface PeriodForm {
@@ -39,6 +43,11 @@ export class PeriodsApi {
   /** Add a period; refused when its dates are reversed, its name is taken, or it overlaps another. */
   add(sheet: string, form: PeriodForm): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(this.url(sheet), form));
+  }
+
+  /** Close a period, fixing its due-total; refused when it is already closed. */
+  close(sheet: string, id: number): Promise<PeriodView> {
+    return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/close`, {}));
   }
 
   private url(sheet: string): string {

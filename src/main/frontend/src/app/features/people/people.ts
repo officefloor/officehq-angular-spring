@@ -17,7 +17,12 @@ import { Rates } from '../rates/rates';
   imports: [Claims, Periods, Rates],
   template: `
     <app-rates [rates]="rates()" [today]="today()" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+    <app-periods
+      [periods]="periods()"
+      [dueTotals]="periodDueTotals()"
+      (saved)="periodSaved($event)"
+      (closed)="periodClosed($event)"
+    />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add a person' : 'Edit a person'">
@@ -253,6 +258,11 @@ export class People {
   /** A period added, kept in from-date order. */
   protected periodSaved(period: PeriodView): void {
     this.periods.update((list) => [...list, period].sort((a, b) => a.from.localeCompare(b.from)));
+  }
+
+  /** A period closed, in its place. */
+  protected periodClosed(period: PeriodView): void {
+    this.periods.update((list) => list.map((p) => (p.id === period.id ? period : p)));
   }
 
   /** A claim added (listed first, as the newest) or saved or moved (in its place). */

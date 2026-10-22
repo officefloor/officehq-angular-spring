@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -26,10 +27,12 @@ public class ClaimService {
     private final Dues dues;
     private final SheetService sheets;
     private final Rollups rollups;
+    private final PeriodService periods;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
-            Rollups rollups, Audit audit) {
+            Rollups rollups, PeriodService periods, Audit audit) {
+        this.periods = periods;
         this.claims = claims;
         this.people = people;
         this.dues = dues;
@@ -44,23 +47,36 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
-    /** Add a claim for a person on the sheet; with no date it is dated the sheet's today. */
+    /**
+     * Add a claim for a person on the sheet; with no date it is dated the sheet's today. Refused when
+     * it is dated inside a closed period.
+     */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
+        sheets.lock(sheetId);
+        periods.refuseIfClosed(sheetId, dated);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, money(amount), dated, clean(note)));
         audited("CLAIM_ADDED", sheetId, user, person, claim);
         rollups.audit(sheetId, user, before);
         return claim;
     }
 
-    /** Change a claim's amount, date and note; with no date it keeps its own. */
+    /**
+     * Change a claim's amount, date and note; with no date it keeps its own. Refused when the claim,
+     * or the date it moves to, is inside a closed period.
+     */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Rollups.Rollup before = rollups.take(sheetId);
+        sheets.lock(sheetId);
         Claim claim = claim(sheetId, claimId);
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        if (date != null) {
+            periods.refuseIfClosed(sheetId, date);
+        }
         claim.change(money(amount), date != null ? date : claim.getDate(), clean(note));
         Claim saved = claims.saveAndFlush(claim);
         audited("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
@@ -73,7 +89,7 @@ public class ClaimService {
      * claim's current status does not allow the move. Settling fixes the claim's due at the rate
      * the person's grade has in force on the claim's date, or at the figure a statement bound it to.
      * Opening records who opened the claim, and
-     * that user is refused when settling it.
+     * that user is refused when settling it. A claim dated inside a closed period cannot be moved.
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -81,7 +97,9 @@ public class ClaimService {
         // sheet are serialised: each sees the other's committed claim and number.
         Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
         Rollups.Rollup before = rollups.take(sheetId);
+        sheets.lock(sheetId);
         Claim claim = claim(sheetId, claimId);
+        periods.refuseIfClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");

@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 
 // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
 // and one form to add a period (a unique name and inclusive from and to dates, overlapping no other).
+// A period can be closed: its due-total is then the one fixed at closing.
 @Component({
   selector: 'app-periods',
   template: `
@@ -46,6 +47,8 @@ import { Session } from '../../core/session';
             <th scope="col">From</th>
             <th scope="col">To</th>
             <th scope="col">Due</th>
+            <th scope="col">Closed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -54,7 +57,23 @@ import { Session } from '../../core/session';
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                @if (!p.closed) {
+                  <button
+                    type="button"
+                    data-testid="period-close"
+                    [attr.aria-label]="'Close ' + p.name"
+                    (click)="close(p)"
+                  >
+                    Close
+                  </button>
+                }
+                @if (periodError()?.id === p.id) {
+                  <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -72,16 +91,32 @@ export class Periods {
   readonly dueTotals = input.required<Map<number, string>>();
   /** A period added through the form. */
   readonly saved = output<PeriodView>();
+  /** A period closed through its row. */
+  readonly closed = output<PeriodView>();
 
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The refusal of the last action taken on a period's row, shown on that row. */
+  protected readonly periodError = signal<{ id: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Close a period; a refusal is shown on its row. */
+  protected async close(period: PeriodView): Promise<void> {
+    this.periodError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      this.closed.emit(await this.api.close(sheet, period.id));
+    } catch {
+      this.periodError.set({ id: period.id, message: 'The period could not be closed.' });
+    }
   }
 
   protected async save(event: Event): Promise<void> {

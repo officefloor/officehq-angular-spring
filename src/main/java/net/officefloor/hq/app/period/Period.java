@@ -6,12 +6,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Locale;
 
 /**
  * A period on a sheet: a name, unique on the sheet ignoring case by its {@link #keyOf key}, and a
- * from and to date, both inclusive. No two periods on a sheet overlap.
+ * from and to date, both inclusive. No two periods on a sheet overlap. A closed period keeps the
+ * due-total it had when it was closed.
  */
 @Entity
 @Table(name = "period")
@@ -35,6 +37,12 @@ public class Period {
 
     @Column(name = "to_date", nullable = false)
     private LocalDate toDate;
+
+    @Column(name = "closed", nullable = false)
+    private boolean closed;
+
+    @Column(name = "closed_total")
+    private BigDecimal closedTotal;
 
     protected Period() {
     }
@@ -75,6 +83,26 @@ public class Period {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    public boolean isClosed() {
+        return closed;
+    }
+
+    /** The due-total fixed when the period was closed; null while it is open. */
+    public BigDecimal getClosedTotal() {
+        return closedTotal;
+    }
+
+    /** Close the period, fixing its due-total. */
+    public void close(BigDecimal total) {
+        this.closed = true;
+        this.closedTotal = total;
+    }
+
+    /** Whether the date falls inside this period (inclusive). */
+    public boolean contains(LocalDate date) {
+        return !fromDate.isAfter(date) && !toDate.isBefore(date);
     }
 
     /** Whether this period shares any day with the inclusive range {@code from} to {@code to}. */
