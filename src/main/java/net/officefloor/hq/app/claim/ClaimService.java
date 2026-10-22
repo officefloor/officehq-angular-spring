@@ -65,8 +65,8 @@ public class ClaimService {
 
     /**
      * Move a claim to a new status, recording the event; refused (and nothing written) when the
-     * claim's current status does not allow the move. Settling fixes the claim's due at the
-     * person's grade's current rate.
+     * claim's current status does not allow the move. Settling fixes the claim's due at the rate
+     * the person's grade has in force on the claim's date.
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
@@ -85,7 +85,7 @@ public class ClaimService {
             claim.number(number);
         }
         if (next == ClaimStatus.SETTLED) {
-            claim.settleDue(rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+            claim.settleDue(rates.findInForce(sheetId, person.getGrade(), claim.getDate())
                     .map(rate -> due(claim.getAmount(), rate))
                     .orElse(null));
         }

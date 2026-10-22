@@ -2,19 +2,20 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
-import { RateView, RatesApi, dueCents, due } from '../../core/rates';
+import { RateView, RatesApi, dueCents, due, rateOn, sameSlot } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Rates } from '../rates/rates';
 
 // The active sheet's people: listed in the order they were added, added and edited through one form,
-// each with their claims, what they have claimed and what is due at their grade's rate, and the
+// each with their claims, what they have claimed and what is due at their grade's rate in force on
+// the sheet's today, and the
 // sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
   imports: [Claims, Rates],
   template: `
-    <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [today]="today()" (saved)="rateSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add a person' : 'Edit a person'">
@@ -71,7 +72,8 @@ import { Rates } from '../rates/rates';
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsOf(p.id)"
-                  [pct]="pctOf(p.grade)"
+                  [grade]="p.grade"
+                  [rates]="rates()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -107,8 +109,10 @@ export class People {
     for (const c of this.claims()) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
     return map;
   });
-  /** The sheet's rates; a grade with no rate is not listed. */
+  /** The sheet's rates, each grade's by from-date; a grade with no rate is not listed. */
   protected readonly rates = signal<RateView[]>([]);
+  /** The sheet's today, on which each grade's rate in force is read. */
+  protected readonly today = computed(() => this.session.today() ?? '');
   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = computed(() =>
@@ -153,19 +157,19 @@ export class People {
     return this.claimsOf(personId).filter(counts).reduce((sum, c) => sum + cents(c.amount), 0);
   }
 
-  /** The rate for a grade (a two-decimal percent), or null when the grade has none. */
+  /** The rate a grade has in force on the sheet's today (a two-decimal percent), or null when it has none. */
   protected pctOf(grade: Grade): string | null {
-    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
+    return rateOn(this.rates(), grade, this.today());
   }
 
-  /** A person's due-total: what they have claimed at their grade's rate. */
+  /** A person's due-total: what they have claimed at their grade's rate in force on the sheet's today. */
   protected dueTotalOf(person: PersonView): string {
     return due(this.claimedCents(person.id), this.pctOf(person.grade));
   }
 
-  /** A rate set for a grade, in place of any it had. */
+  /** A rate set for a grade, in place of any it had from the same date. */
   protected rateSaved(rate: RateView): void {
-    this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade), rate]);
+    this.rates.update((list) => [...list.filter((r) => !sameSlot(r, rate)), rate]);
   }
 
   /** A claim added (listed first, as the newest) or saved or moved (in its place). */

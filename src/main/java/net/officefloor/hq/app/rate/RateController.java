@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.validation.annotation.Validated;
@@ -22,16 +23,22 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class RateController {
 
-    /** What the screen is told about a grade's rate; the percent with two decimals. */
-    public record RateView(String grade, String pct) {
+    /**
+     * What the screen is told about a grade's rate; the percent with two decimals, and the date it
+     * applies from (null: from the beginning of time).
+     */
+    public record RateView(String grade, String pct, LocalDate from) {
 
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().toPlainString());
+            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFromDate());
         }
     }
 
-    /** A rate as entered on the form: a percent of 0.00 or more with up to two decimals. */
-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct) {
+    /**
+     * A rate as entered on the form: a percent of 0.00 or more with up to two decimals, and the date
+     * it applies from (none: from the beginning of time).
+     */
+    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from) {
     }
 
     private final RateService service;
@@ -40,20 +47,21 @@ public class RateController {
         this.service = service;
     }
 
-    /** The sheet's rates by grade; a grade with no rate is not listed. */
+    /** The sheet's rates by grade, each grade's by from-date; a grade with no rate is not listed. */
     @GetMapping
     public List<RateView> list(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
         return service.list(sheetId).stream().map(RateView::of).toList();
     }
 
-    /** Set the rate for a grade. */
+    /** Set the rate for a grade from a date, replacing any it had from that date. */
     @PutMapping("/{grade}")
     public RateView set(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid RateForm form) {
-        return RateView.of(service.set(sheetId, SignedIn.name(user), grade, new BigDecimal(form.pct())));
+        return RateView.of(service.set(sheetId, SignedIn.name(user), grade, form.from(),
+                new BigDecimal(form.pct())));
     }
 }

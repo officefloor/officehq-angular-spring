@@ -1,13 +1,29 @@
 package net.officefloor.hq.app.rate;
 
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RateRepository extends JpaRepository<Rate, Long> {
 
-    /** The sheet's rates by grade. */
-    List<Rate> findBySheetIdOrderByGradeAsc(String sheetId);
+    /** The sheet's rates by grade, each grade's from the earliest from-date (none first). */
+    List<Rate> findBySheetIdOrderByGradeAscFromDateAscIdAsc(String sheetId);
 
-    Optional<Rate> findBySheetIdAndGrade(String sheetId, String grade);
+    /** A grade's rates on the sheet. */
+    List<Rate> findBySheetIdAndGrade(String sheetId, String grade);
+
+    /** The grade's rate with this from-date; a null from-date finds the one with none. */
+    Optional<Rate> findBySheetIdAndGradeAndFromDate(String sheetId, String grade, LocalDate fromDate);
+
+    /**
+     * The rate a claim on a date uses for a grade: of the grade's rates with no from-date or one on
+     * or before the date, the one with the latest; empty when the date is before every rate.
+     */
+    default Optional<Rate> findInForce(String sheetId, String grade, LocalDate date) {
+        return findBySheetIdAndGrade(sheetId, grade).stream()
+                .filter(rate -> rate.appliesOn(date))
+                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())));
+    }
 }

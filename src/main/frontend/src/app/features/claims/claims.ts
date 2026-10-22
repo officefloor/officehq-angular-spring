@@ -1,6 +1,7 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents } from '../../core/claims';
-import { due } from '../../core/rates';
+import { Grade } from '../../core/people';
+import { RateView, due, rateOn } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row,
@@ -87,8 +88,10 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<ClaimView[]>();
-  /** The rate for the person's grade (a two-decimal percent), or null when the grade has none. */
-  readonly pct = input.required<string | null>();
+  /** The person's grade. */
+  readonly grade = input.required<Grade>();
+  /** The sheet's rates; each claim uses the one its person's grade has in force on its date. */
+  readonly rates = input.required<RateView[]>();
   /** A claim added or saved through the form. */
   readonly saved = output<ClaimView>();
 
@@ -106,9 +109,12 @@ export class Claims {
     { action: 'void', label: 'Void' },
   ];
 
-  /** What is due on a claim: the due fixed when it was settled, or else its amount at the person's grade's rate. */
+  /**
+   * What is due on a claim: the due fixed when it was settled, or else its amount at the rate the
+   * person's grade has in force on the claim's date (n/a when it is dated before every rate).
+   */
   protected dueOf(claim: ClaimView): string {
-    return claim.settledDue ?? due(cents(claim.amount), this.pct());
+    return claim.settledDue ?? due(cents(claim.amount), rateOn(this.rates(), this.grade(), claim.date));
   }
 
   protected value(event: Event): string {
