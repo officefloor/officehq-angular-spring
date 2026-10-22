@@ -1,0 +1,179 @@
+diff --git a/.e2e.out b/.e2e.out
+new file mode 100644
+index 00000000..343630b0
+--- /dev/null
++++ b/.e2e.out
+@@ -0,0 +1,36 @@
++Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/202610221-as/tmp
++
++Running 4 tests using 1 worker
++
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan preview › plan preview (6.7s)
++  ✓  2 [chromium] › acceptance.spec.ts:81:7 › plan preview › plan preview scenario 1 (24.1s)
++  ✘  3 [chromium] › acceptance.spec.ts:398:7 › plan preview › plan preview scenario 2 (19.8s)
++  ✓  4 [chromium] › acceptance.spec.ts:830:7 › plan preview › plan preview scenario 3 (14.5s)
++
++
++  1) [chromium] › acceptance.spec.ts:398:7 › plan preview › plan preview scenario 2 ────────────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
++
++    Expected: [32m4[39m
++    Received: [31m5[39m
++
++    Call Log:
++    - Timeout 8000ms exceeded while waiting on the predicate
++
++       at ../support/ui.ts:1265
++
++      1263 |   await page.getByTestId('audit-show').click();
++      1264 |   const lines = page.getByTestId('audit-line');
++    > 1265 |   await expect.poll(() => lines.count(), { timeout: WAIT }).toBe(expected.length);
++           |   ^
++      1266 |   const texts = (await lines.allTextContents()).map((t) => t.trim());
++      1267 |   texts.forEach((line, i) => {
++      1268 |     const e = expected[i];
++
++        at Object.expectAuditView (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1265:3)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:460:5
++
++  1 failed
++    [chromium] › acceptance.spec.ts:398:7 › plan preview › plan preview scenario 2 ─────────────────
++  3 passed (1.1m)
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 29bc4ab0..00208ca7 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -21,6 +21,8 @@ export interface PlanView {
+   end: string;
+   /** How many claims the plan has made so far. */
+   generated: number;
++  /** The first five plan dates after the sheet's today and on or before the end, oldest first. */
++  nextDates: string[];
+ }
+ 
+ /** A plan as typed on the form. */
+@@ -67,7 +69,7 @@ export class PlansApi {
+ }
+ 
+ // The active sheet's plans, shared by each person's plans and the generate button; re-read from the
+-// store on every sheet load.
++// store on every sheet load and every change of the sheet's today, which their next dates count from.
+ @Injectable({ providedIn: 'root' })
+ export class Plans {
+   private readonly session = inject(Session);
+@@ -84,6 +86,13 @@ export class Plans {
+         if (sheet) void this.reload(sheet, loads);
+       });
+     });
++    effect(() => {
++      const today = this.session.today();
++      untracked(() => {
++        const sheet = this.session.sheet();
++        if (sheet && today) void this.reload(sheet, this.session.loads());
++      });
++    });
+   }
+ 
+   /** Add a plan on a person on the active sheet: listed last. */
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 3d11278a..aa104844 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -24,7 +24,8 @@ function reasonOf(e: unknown): string | null {
+             every {{ plan.every }} days
+           }
+           to {{ plan.end }};
+-          made <span data-testid="plan-generated">{{ plan.generated }}</span>
++          made <span data-testid="plan-generated">{{ plan.generated }}</span>;
++          next <span data-testid="plan-next-dates">{{ plan.nextDates.join(', ') }}</span>
+         </li>
+       }
+     </ul>
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 7d1efe8c..747da9c8 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -98,6 +98,11 @@ public class Plan {
+         return dates;
+     }
+ 
++    /** The first count plan dates after the given day, oldest first, on or before the plan's end. */
++    public List<LocalDate> nextDates(LocalDate today, int count) {
++        return datesUpTo(null).stream().filter(d -> d.isAfter(today)).limit(count).toList();
++    }
++
+     /** Whether the plan has made a claim for the date. */
+     public boolean hasMade(LocalDate date) {
+         return made.containsKey(date);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index c944b779..199ed20a 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -26,14 +26,14 @@ public class PlanController {
+ 
+     /**
+      * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
+-     * the month, the other null), and how many claims it has made.
++     * the month, the other null), how many claims it has made, and its next five dates after the sheet's today.
+      */
+     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated) {
++            LocalDate end, int generated, List<LocalDate> nextDates) {
+ 
+-        static PlanView of(Plan plan) {
++        static PlanView of(Plan plan, LocalDate today) {
+             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
+-                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated());
++                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5));
+         }
+     }
+ 
+@@ -63,7 +63,8 @@ public class PlanController {
+     @GetMapping("/plans")
+     public List<PlanView> list(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+-        return service.list(sheetId).stream().map(PlanView::of).toList();
++        LocalDate today = service.today(sheetId);
++        return service.list(sheetId).stream().map(plan -> PlanView.of(plan, today)).toList();
+     }
+ 
+     /** Add a plan on a person. */
+@@ -73,8 +74,9 @@ public class PlanController {
+             @PathVariable long personId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PlanForm form) {
+-        return PlanView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
+-                form.start(), number(form.every()), number(form.day()), form.end()));
++        Plan added = service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
++                form.start(), number(form.every()), number(form.day()), form.end());
++        return PlanView.of(added, service.today(sheetId));
+     }
+ 
+     /** A whole number typed on the form, or null when left out. */
+@@ -88,7 +90,8 @@ public class PlanController {
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+         PlanService.Generated generated = service.generate(sheetId, SignedIn.name(user));
++        LocalDate today = service.today(sheetId);
+         return new GeneratedView(generated.claims().size(), generated.claims().stream().map(ClaimView::of).toList(),
+-                generated.plans().stream().map(PlanView::of).toList());
++                generated.plans().stream().map(plan -> PlanView.of(plan, today)).toList());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 439c7a1b..f412710e 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -52,6 +52,11 @@ public class PlanService {
+         return plans.findBySheetIdOrderByIdAsc(sheetId);
+     }
+ 
++    /** The sheet's today, from which a plan's next dates are counted. */
++    public LocalDate today(String sheetId) {
++        return sheets.today(sheetId);
++    }
++
+     /**
+      * Add a plan on a person: an amount (not below 0.00), claimed every N days (at least 1) or monthly on a
+      * day of the month (1 to 31), exactly one of the two, from a start date to an end date; refused when the
