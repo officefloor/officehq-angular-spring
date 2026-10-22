@@ -85,4 +85,17 @@ public class SheetService {
                 + (saved.getClerkLimit() == null ? "" : saved.getClerkLimit().toPlainString()));
         return saved;
     }
+
+    /** Change the sheet's floor, auditing the change and the figures it moves. */
+    @Transactional
+    public Sheet setFloor(String id, String user, BigDecimal floor) {
+        Sheet sheet = lock(id);
+        Rollups.Rollup before = rollups.take(id);
+        sheet.setFloor(floor.setScale(2, RoundingMode.UNNECESSARY));
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=floor value="
+                + saved.getFloor().toPlainString());
+        rollups.audit(id, user, before);
+        return saved;
+    }
 }

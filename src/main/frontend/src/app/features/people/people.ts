@@ -210,10 +210,12 @@ export class People {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
       if (!period || !person || !countsLive(c, person)) continue;
-      totals.set(period.id, totals.get(period.id)! + (claimDueCents(c, this.rates(), person.grade) ?? 0));
+      totals.set(period.id, totals.get(period.id)! + (claimDueCents(c, this.rates(), person.grade, this.floorCents()) ?? 0));
     }
     return new Map([...totals].map(([id, total]) => [id, money(total)]));
   });
+  /** The sheet's floor in whole cents: a claim's live due is at least it. */
+  private readonly floorCents = computed(() => cents(this.session.floor()));
   /** The sheet's today, on which each grade's rate in force is read. */
   protected readonly today = computed(() => this.session.today() ?? '');
   protected readonly claimedTotal = computed(() =>
@@ -294,7 +296,7 @@ export class People {
     const counting = this.countingOf(person.id);
     const fixed = (c: ClaimView) => c.settledDue !== null || (c.stated && c.statedDue !== null);
     if (this.pctOf(person.grade) === null && !counting.some(fixed)) return null;
-    return counting.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), person.grade) ?? 0), 0);
+    return counting.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), person.grade, this.floorCents()) ?? 0), 0);
   }
 
   /** The last statement's due-total: n/a when it was, empty when none was taken. */

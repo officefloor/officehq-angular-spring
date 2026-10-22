@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, money } from '../../core/claims';
+import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, cents, money } from '../../core/claims';
 import { Grade } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -124,7 +124,7 @@ export class Claims {
    * person's grade has in force on the claim's date (n/a when it is dated before every rate).
    */
   protected dueOf(claim: ClaimView): string {
-    const figure = claimDueCents(claim, this.rates(), this.grade());
+    const figure = claimDueCents(claim, this.rates(), this.grade(), cents(this.session.floor()));
     return figure === null ? NO_RATE : money(figure);
   }
 

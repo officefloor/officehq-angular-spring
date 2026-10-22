@@ -14,10 +14,15 @@ export interface RoleView {
 export interface SettingsView {
   /** The clerk limit with two decimals, e.g. "1.50"; null when there is no limit. */
   clerkLimit: string | null;
+  /** The floor with two decimals, e.g. "1.00": a claim's live due is at least it. */
+  floor: string;
 }
 
 /** A clerk limit as the form takes it: up to two decimals, or blank for no limit. */
 export const LIMIT = /^(\d{1,12}(\.\d{1,2})?)?$/;
+
+/** A floor as the form takes it: 0.00 or more, with up to two decimals. */
+export const FLOOR = /^\d{1,12}(\.\d{1,2})?$/;
 
 // The sheet's settings and the roles its user names have, read from and written to the store.
 @Injectable({ providedIn: 'root' })
@@ -31,6 +36,11 @@ export class SettingsApi {
   /** Set the clerk limit; a blank value means no limit. */
   setClerkLimit(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/clerk-limit`, { value }));
+  }
+
+  /** Set the floor. */
+  setFloor(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/floor`, { value }));
   }
 
   /** The roles set on the sheet, by user name. */

@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Component;
 
 /** What is due on a claim, read from the rates its person's grade has. */
@@ -11,9 +13,11 @@ import org.springframework.stereotype.Component;
 public class Dues {
 
     private final RateRepository rates;
+    private final SheetRepository sheets;
 
-    public Dues(RateRepository rates) {
+    public Dues(RateRepository rates, SheetRepository sheets) {
         this.rates = rates;
+        this.sheets = sheets;
     }
 
     /**
@@ -28,10 +32,15 @@ public class Dues {
         return claim.isStated() ? claim.getStatedDue() : live(claim, grade);
     }
 
-    /** A claim's amount at the rate the grade has in force on the claim's date; null when it has none. */
+    /**
+     * A claim's amount at the rate the grade has in force on the claim's date, raised to the sheet's
+     * floor when below it; null when it has no rate.
+     */
     public BigDecimal live(Claim claim, String grade) {
+        BigDecimal floor = sheets.findById(claim.getSheetId()).map(Sheet::getFloor).orElse(null);
         return rates.findInForce(claim.getSheetId(), grade, claim.getDate())
                 .map(rate -> due(claim.getAmount(), rate))
+                .map(due -> floor != null && due.compareTo(floor) < 0 ? floor : due)
                 .orElse(null);
     }
 

@@ -6,6 +6,8 @@ export interface SheetView {
   id: string;
   /** The sheet's today (yyyy-mm-dd): every date-dependent decision and default date uses it. */
   today: string;
+  /** The sheet's floor with two decimals: a claim's live due is at least it. */
+  floor: string;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -18,6 +20,8 @@ export class Session {
   readonly sheet = signal<string | null>(null);
   /** The active sheet's today; features use it, never the real clock. */
   readonly today = signal<string | null>(null);
+  /** The active sheet's floor with two decimals: a claim's live due is at least it. */
+  readonly floor = signal('1.00');
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -47,5 +51,6 @@ export class Session {
   private show(view: SheetView): void {
     this.sheet.set(view.id);
     this.today.set(view.today);
+    this.floor.set(view.floor);
   }
 }
