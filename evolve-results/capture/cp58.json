@@ -1,0 +1,64 @@
+{
+  "checkpoint": 58,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp58_watch-and-notify",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A user can watch a person (a toggle on the row, per user; PERSON_WATCHED name=<name>,\nPERSON_UNWATCHED name=<name>); show watched yes/no for the signed-in user. When a watched\nperson's claim is settled, approved or re-settled, one line NOTIFY user=<watcher> person=<name>\nnumber=<number> is written per watching user, in the order they started watching, after the\nclaim's own line and before the rollup lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA user can watch a person (a toggle on the row, per user; PERSON_WATCHED name=<name>,\nPERSON_UNWATCHED name=<name>); show watched yes/no for the signed-in user. When a watched\nperson's claim is settled, approved or re-settled, one line NOTIFY user=<watcher> person=<name>\nnumber=<number> is written per watching user, in the order they started watching, after the\nclaim's own line and before the rollup lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cb6c955d2801b92e42dffec78c667bf56eda58e0",
+  "reset_sha": "",
+  "preagent_sha": "96ca12edaf7b9352996884f24160de7437875a16",
+  "prev_sha": "96ca12edaf7b9352996884f24160de7437875a16",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0414286000000001,
+    "input_tokens": 32,
+    "output_tokens": 9843,
+    "cache_read_tokens": 881363,
+    "cache_creation_tokens": 83521,
+    "num_turns": 17,
+    "duration_ms": 151974,
+    "duration_api_ms": 88091,
+    "model": "claude-opus-5-5",
+    "session_id": "370c0739-f754-4d43-9252-36f7930baf1b",
+    "stop_reason": "success",
+    "result_text": "Watching people now works, and all 4 acceptance tests pass with `bin/e2e`.\n\n**How it works**\n- **Storage:** a new migration (`V41__person_watch.sql`) adds a `person_watch` table: one row per sheet, person and user. Each user can watch a person only once. A row's id records the order users started watching. Unwatching deletes the row, so if someone watches again they go to the end of the order.\n- **Server:**\n  - `person/WatchService.java` handles watching and unwatching and writes `PERSON_WATCHED` / `PERSON_UNWATCHED name=<name>`. Watching someone you already watch, or unwatching someone you don't, is refused with an error and nothing is written.\n  - There are three new endpoints on `PersonController`: `GET \u2026/people/watched` (the ids of the people the signed-in user watches), `PUT \u2026/people/{id}/watch` and `DELETE \u2026/people/{id}/watch`.\n- **Notifications:** `ClaimService` writes one `NOTIFY user=<watcher> person=<name> number=<number>` line per watcher, in watch order, when a claim is settled, approved or re-settled. The lines go after the claim's own line and before the rollup lines. They are written only if the change commits, like the existing audit lines. Bulk settle goes through the same code, so it notifies too.\n  - A clerk's settle that is sent to PENDING instead does not notify.\n- **Screen:** each person row has a \"Watched\" column showing `person-watched` (yes/no for the signed-in user) and a `person-watch` toggle button. A refused toggle shows the row's existing `person-error`, which is cleared when the next action on that row is taken. The watched set is re-read every time the sheet is loaded.\n\nBecause the change guard blocks every write from a viewer, viewers can't watch anyone. The request didn't cover viewers, so I left that as it is.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0414286000000001,
+        "num_turns": 17,
+        "duration_ms": 151974,
+        "duration_api_ms": 88091,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp58.agent.jsonl",
+  "agent_diff_file": "cp58.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
