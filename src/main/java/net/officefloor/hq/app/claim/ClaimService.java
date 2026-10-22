@@ -152,6 +152,7 @@ public class ClaimService {
         }
         claim.change(money(amount), date != null ? date : claim.getDate(), clean(note), corrects);
         claim.lockFor(null);
+        claim.editedBy(user);
         Claim saved = claims.saveAndFlush(claim);
         audited("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
         rollups.audit(sheetId, user, before);
@@ -212,8 +213,8 @@ public class ClaimService {
      * the person's grade has in force on the claim's date, or at the figure a statement bound it to,
      * with the late charge it has then frozen in.
      * Opening numbers the claim and records who opened it; a voided claim keeps its number, which
-     * is never reused. The user who opened a claim
-     * is refused when settling it. A clerk settling a claim whose due is above the sheet's clerk limit
+     * is never reused. The user who opened a claim,
+     * or last edited it, is refused when settling it. A clerk settling a claim whose due is above the sheet's clerk limit
      * (a due of n/a is within any limit) sends it PENDING instead, for a steward to approve or reject;
      * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
      * refused. A claim due by inside a closed period cannot be moved, nor can a claim
@@ -261,9 +262,9 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim is deferred until " + claim.getDeferredUntil() + ": it cannot be settled before then.");
         }
-        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "The user who opened a claim cannot settle it.");
+                    "The user who opened or last edited a claim cannot settle it.");
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal settledDue = next == ClaimStatus.SETTLED
@@ -400,16 +401,16 @@ public class ClaimService {
 
     /**
      * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at its live figure with
-     * the late charge it has then. Only a steward approves, and not the user who opened the claim.
+     * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
      */
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {
         sheets.lock(sheetId);
         Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = pending(sheetId, user, claimId);
-        if (user.equals(claim.getOpenedBy())) {
+        if (claim.isOpenedOrEditedBy(user)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "The user who opened a claim cannot approve it.");
+                    "The user who opened or last edited a claim cannot approve it.");
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal approvedDue = dues.approving(claim, person.gradeOn(claim.getDate()));

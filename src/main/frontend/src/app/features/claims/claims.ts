@@ -841,9 +841,11 @@ export class Claims {
       this.saved.emit(await this.api.act(sheet, claim.id, action, reason));
       if (action === 'reject') this.rejectReasons.update((reasons) => ({ ...reasons, [claim.id]: '' }));
     } catch (e) {
-      const mine = claim.openedBy === this.session.user()?.trim();
-      const own = (action === 'settle' && claim.status === 'OPEN' && mine)
-        || (action === 'approve' && claim.status === 'PENDING' && mine);
+      const me = this.session.user()?.trim();
+      const mine = claim.openedBy === me;
+      const edited = !mine && (claim.editedBy ?? null) === me;
+      const own = ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'))
+        && (mine || edited);
       const unproved = e instanceof HttpErrorResponse && e.status === 409 && claim.proofs === 0
         && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'));
       const unnoted = e instanceof HttpErrorResponse && e.status === 409 && action === 'open'
@@ -862,7 +864,7 @@ export class Claims {
           : action === 'settle' && deferred(claim, this.session.today() ?? '')
           ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be settled before then.`
           : own
-            ? `You opened this claim, so someone else must ${action} it.`
+            ? `You ${edited ? 'last edited' : 'opened'} this claim, so someone else must ${action} it.`
             : unproved
               ? `The claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
             : unnoted

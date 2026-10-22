@@ -41,6 +41,8 @@ export interface ClaimView {
   settledDue: string | null;
   /** The user who opened the claim; null until it is opened. The opener cannot settle it. */
   openedBy: string | null;
+  /** The user who last edited the claim; null (or absent, as kept by an old snapshot) when never. Like the opener, they cannot settle or approve it. */
+  editedBy?: string | null;
   /** Whether the claim is bound by its person's last statement to the figure it had then. */
   stated: boolean;
   /** The figure the statement bound the claim to, with two decimals; null when unbound, or when it was n/a. */
@@ -303,7 +305,7 @@ export class ClaimsApi {
 
   /**
    * Move a claim's status; refused (409) when its status does not allow the move, or when the user
-   * settling or approving it is the one who opened it, and (403) when approving or rejecting it is
+   * settling or approving it is the one who opened it or last edited it, and (403) when approving or rejecting it is
    * not a steward. A reject carries its reason. Re-settling is a steward's (403 otherwise), of a
    * SETTLED claim (409 otherwise). A void carries the reason chosen from the sheet's list (409 when
    * the list is not empty and none, or one not on it, is given).
