@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { cents, money } from '../../core/claims';
-import { PersonView, retiredOn } from '../../core/people';
+import { PersonView, heldOn, retiredOn } from '../../core/people';
 import { PoolMemberView, PoolView, PoolsApi } from '../../core/pools';
 import { Session } from '../../core/session';
 
@@ -23,38 +23,45 @@ interface PoolLine {
   cuts: Map<string, string>;
 }
 
-/** Cents times a share in hundredths of a percent, over 100: whole cents rounded half to even. */
-function cut(pot: bigint, share: bigint): bigint {
+/** Cents times a share over the shares with a cut: whole cents rounded half to even. */
+function cut(pot: bigint, share: bigint, shares: bigint): bigint {
   const product = pot * share;
-  const whole = product / 10000n;
-  const twice = (product % 10000n) * 2n;
-  return twice > 10000n || (twice === 10000n && whole % 2n === 1n) ? whole + 1n : whole;
+  const whole = product / shares;
+  const twice = (product % shares) * 2n;
+  return twice > shares || (twice === shares && whole % 2n === 1n) ? whole + 1n : whole;
 }
 
 /**
- * Each member's cut of the pot, in cents by member key: their share of it rounded half to even, a retired
- * person's 0; the remainder goes to the member with the largest share, the earliest added on a tie, so
- * the cuts total exactly the pot.
+ * Each member's cut of the pot, in cents by member key. A retired person, or one with a hold in force on
+ * the sheet's today, gets 0; every other member gets the pot times their share over the shares of the
+ * members with a cut, rounded half to even; the remainder goes to the member with a cut with the largest
+ * share, the earliest added on a tie, so the cuts total exactly the pot.
  */
-function cuts(pool: PoolView, pot: bigint, retired: Set<number>): Map<string, bigint> {
-  const total = pot;
-  const shares = pool.members.map((m) => ({ id: key(m), share: isRetired(m, retired) ? 0 : cents(m.share) }));
-  const all = new Map(shares.map((m) => [m.id, cut(total, BigInt(m.share))]));
-  const largest = shares.reduce((best, m) => (m.share > best.share ? m : best), shares[0]);
+function cuts(pool: PoolView, pot: bigint, retired: Set<number>, held: Set<number>): Map<string, bigint> {
+  const shares = pool.members.map((m) => ({
+    id: key(m),
+    share: isPersonIn(m, retired) || isPersonIn(m, held) ? 0 : cents(m.share),
+  }));
+  const withCut = shares.filter((m) => m.share > 0);
+  const total = BigInt(withCut.reduce((sum, m) => sum + m.share, 0));
+  const all = new Map(shares.map((m) => [m.id, total > 0n ? cut(pot, BigInt(m.share), total) : 0n]));
+  const largest = withCut.reduce((best, m) => (m.share > best.share ? m : best), withCut[0]);
   if (largest) {
-    const remainder = total - [...all.values()].reduce((sum, c) => sum + c, 0n);
+    const remainder = pot - [...all.values()].reduce((sum, c) => sum + c, 0n);
     all.set(largest.id, all.get(largest.id)! + remainder);
   }
   return all;
 }
 
-function isRetired(m: PoolMemberView, retired: Set<number>): boolean {
-  return m.personId !== null && retired.has(m.personId);
+/** Whether a member is a person in a set of person ids. */
+function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
+  return m.personId !== null && ids.has(m.personId);
 }
 
 // The sheet's pools, each with its members and their shares, and a form to add one. A member is added
 // from the pool's row, a person or another pool (pool:<name>); a retired member's share counts as 0.00
-// toward the pool's total. Each member of a balanced pool shows their cut of the pool's pot: the sheet's
+// toward the pool's total. A member with a hold in force on the sheet's today keeps their share in the
+// total but gets no cut, their share spread over the members with a cut. Each member of a balanced pool shows their cut of the pool's pot: the sheet's
 // pot for a pool that is a member of none, its cut in the pool above for one that is.
 @Component({
   selector: 'app-pools',
@@ -174,11 +181,12 @@ export class Pools {
   /** Each pool with its total share in hundredths of a percent and its members' cuts in cents by member key. */
   private readonly cutLines = computed(() => {
     const retired = new Set(this.people().filter((p) => retiredOn(p, this.today())).map((p) => p.id));
+    const held = new Set(this.people().filter((p) => heldOn(p, this.today())).map((p) => p.id));
     const pools = this.pools();
     const parents = this.parents();
     const sheetPot = this.session.pot();
     const totals = new Map(
-      pools.map((pool) => [pool.id, pool.members.reduce((sum, m) => sum + (isRetired(m, retired) ? 0 : cents(m.share)), 0)]),
+      pools.map((pool) => [pool.id, pool.members.reduce((sum, m) => sum + (isPersonIn(m, retired) ? 0 : cents(m.share)), 0)]),
     );
     // Each pool's cuts in cents, a pool's pot being the sheet's or its cut in the pool above; none when
     // the pool is unbalanced or has no pot.
@@ -192,7 +200,7 @@ export class Pools {
       const parent = parentId === undefined ? undefined : pools.find((p) => p.id === parentId);
       if (parent) pot = cutsOf(parent).get(`pool:${pool.id}`);
       else if (parentId === undefined && sheetPot !== '') pot = BigInt(cents(sheetPot));
-      const found = totals.get(pool.id) === 10000 && pot !== undefined ? cuts(pool, pot, retired) : new Map<string, bigint>();
+      const found = totals.get(pool.id) === 10000 && pot !== undefined ? cuts(pool, pot, retired, held) : new Map<string, bigint>();
       memo.set(pool.id, found);
       return found;
     };
