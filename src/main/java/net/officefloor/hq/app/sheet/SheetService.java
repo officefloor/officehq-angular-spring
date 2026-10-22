@@ -6,6 +6,7 @@ import java.time.Instant;
 import net.officefloor.hq.app.Audit;
 import java.time.LocalDate;
 import net.officefloor.hq.app.rollup.Rollups;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,11 +17,13 @@ public class SheetService {
     private final SheetRepository sheets;
     private final Rollups rollups;
     private final Audit audit;
+    private final ApplicationEventPublisher events;
 
-    public SheetService(SheetRepository sheets, Rollups rollups, Audit audit) {
+    public SheetService(SheetRepository sheets, Rollups rollups, Audit audit, ApplicationEventPublisher events) {
         this.sheets = sheets;
         this.rollups = rollups;
         this.audit = audit;
+        this.events = events;
     }
 
     /** Load a sheet; a new sheet's today starts as the real date. */
@@ -48,13 +51,17 @@ public class SheetService {
         return sheets.findLockedById(id).orElseThrow();
     }
 
-    /** Change the sheet's today, auditing the figures that moves. */
+    /**
+     * Change the sheet's today, auditing the figures that moves. The periods it puts past their grace
+     * days are closed (see {@link TodayChanged}) before those figures are audited.
+     */
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id);
         Rollups.Rollup before = rollups.take(id);
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
+        events.publishEvent(new TodayChanged(id, user, today, saved.getGraceDays()));
         rollups.audit(id, user, before);
         return saved;
     }
@@ -154,6 +161,17 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=period-numbering-from value="
                 + (saved.getPeriodNumberingFrom() == null ? "" : saved.getPeriodNumberingFrom().toString()));
+        return saved;
+    }
+
+    /** Change the sheet's grace days (null: off), auditing the change. */
+    @Transactional
+    public Sheet setGraceDays(String id, String user, Integer graceDays) {
+        Sheet sheet = lock(id);
+        sheet.setGraceDays(graceDays);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=grace-days value="
+                + (saved.getGraceDays() == null ? "" : saved.getGraceDays().toString()));
         return saved;
     }
 

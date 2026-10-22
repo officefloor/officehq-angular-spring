@@ -32,6 +32,8 @@ export interface SettingsView {
   policyDate: string | null;
   /** Period numbering from (yyyy-mm-dd): claims opened on or after it are numbered within their period; null when off. */
   periodNumberingFrom: string | null;
+  /** Grace days: an open period closes itself once the sheet's today is past its to-date plus them; null when off. */
+  graceDays: number | null;
   /** Each grade's own terms in days; null when the grade uses the sheet's terms. */
   termsA: number | null;
   termsB: number | null;
@@ -82,6 +84,9 @@ export const POLICY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 
 /** A period-numbering-from date as the form takes it: yyyy-mm-dd, or blank for off. */
 export const PERIOD_NUMBERING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
+
+/** Grace days as the form takes them: a whole number of days, or blank for off. */
+export const GRACE_DAYS = /^(\d{1,4})?$/;
 
 /** Terms as the form takes them: a whole number of days. */
 export const TERMS = /^\d{1,4}$/;
@@ -138,6 +143,11 @@ export class SettingsApi {
   /** Set the period-numbering-from date; a blank value turns period numbering off. */
   setPeriodNumberingFrom(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/period-numbering-from`, { value }));
+  }
+
+  /** Set the grace days; a blank value turns closing periods by themselves off. */
+  setGraceDays(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/grace-days`, { value }));
   }
 
   /** Set the roles that may take an action, comma separated; a blank value keeps its standing rule. */

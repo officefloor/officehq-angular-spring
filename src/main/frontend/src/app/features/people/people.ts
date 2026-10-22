@@ -474,6 +474,24 @@ export class People {
         if (sheet) void this.reload(sheet);
       });
     });
+    // A change to the sheet's today may close periods past their grace days: re-read them.
+    let shownToday: string | null = null;
+    effect(() => {
+      const today = this.session.today();
+      untracked(() => {
+        const sheet = this.session.sheet();
+        const changed = shownToday !== null && today !== shownToday;
+        shownToday = today;
+        if (sheet && changed) void this.todayChanged(sheet);
+      });
+    });
+  }
+
+  /** The sheet's today changed: re-read its periods, some of which may have closed. */
+  private async todayChanged(sheet: string): Promise<void> {
+    const loads = this.session.loads();
+    const periods = await this.periodsApi.list(sheet);
+    if (this.session.sheet() === sheet && this.session.loads() === loads) this.periods.set(periods);
   }
 
   protected claimsOf(personId: number): ClaimView[] {

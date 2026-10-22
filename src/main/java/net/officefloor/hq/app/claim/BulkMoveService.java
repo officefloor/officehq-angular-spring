@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,10 +27,12 @@ public class BulkMoveService {
 
     private final ClaimService claims;
     private final PersonRepository people;
+    private final RoleService roles;
 
-    public BulkMoveService(ClaimService claims, PersonRepository people) {
+    public BulkMoveService(ClaimService claims, PersonRepository people, RoleService roles) {
         this.claims = claims;
         this.people = people;
+        this.roles = roles;
     }
 
     /** Open the selected claims, each as its Open button would. */
@@ -46,6 +50,9 @@ public class BulkMoveService {
 
     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
         Set<Long> selected = new HashSet<>(claimIds);
+        if (Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return new Result(List.of(), selected.size());
+        }
         List<Long> ordered = new ArrayList<>();
         List<Claim> sheetClaims = claims.list(sheetId);
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {

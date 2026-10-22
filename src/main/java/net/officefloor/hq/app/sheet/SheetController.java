@@ -49,18 +49,18 @@ public class SheetController {
     /** What the screen is told about the sheet's settings, each dated one as in force on the sheet's today
      * (with the floor's and the late percent's values by from-date): the clerk limit with two decimals, null for none,
      * the floor with two decimals, the terms in days, the late percent with two decimals, and the policy
-     * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off), and
+     * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off), and the grace days, null for none (off), and
      * each grade's own terms in days, null for none (the sheet's terms), and the cap with two decimals, null
      * for none, and the proof threshold with two decimals, null for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, Integer termsA, Integer termsB, Integer termsC, String cap,
+            LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
             Map<String, String> permissions) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(), sheet.getLatePct().toPlainString(),
-                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), sheet.getGradeTerms("A"),
+                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(), sheet.getGradeTerms("A"),
                     sheet.getGradeTerms("B"), sheet.getGradeTerms("C"),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()),
@@ -82,6 +82,16 @@ public class SheetController {
     /** A setting's value as entered: up to two decimals, or blank (or null) for none. */
     public record SettingChange(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
+    }
+
+    /** Grace days as entered: a whole number of days, or blank (or null) for off. */
+    public record GraceDaysChange(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+
+        /** The days entered; null when blank. */
+        Integer days() {
+            String text = value == null ? "" : value.trim();
+            return text.isEmpty() ? null : Integer.valueOf(text);
+        }
     }
 
     /** The roles that may take an action as entered: clerk or steward, comma separated, or blank for the standing rule. */
@@ -270,6 +280,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid DateChange change) {
         return SettingsView.of(service.setPeriodNumberingFrom(id, SignedIn.name(user), change.date()));
+    }
+
+    /** Change the sheet's grace days; a blank value turns closing periods by themselves off. */
+    @PutMapping("/{id}/settings/grace-days")
+    public SettingsView setGraceDays(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GraceDaysChange change) {
+        return SettingsView.of(service.setGraceDays(id, SignedIn.name(user), change.days()));
     }
 
     /** Set the roles that may take an action of the permission matrix; a blank value keeps its standing rule. */

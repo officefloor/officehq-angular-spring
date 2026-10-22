@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,8 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,6 +95,31 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed.");
         }
+        return fix(sheetId, user, period, today, "");
+    }
+
+    /**
+     * The sheet's today was changed: close, in order of their to-dates, each open period whose to-date
+     * plus the sheet's grace days is before the new today, exactly as a close by hand would, its
+     * PERIOD_CLOSED marked auto=yes. Nothing closes while the grace days are off.
+     */
+    @EventListener
+    public void todayChanged(TodayChanged change) {
+        if (change.graceDays() == null) {
+            return;
+        }
+        LocalDate today = sheets.lock(change.sheetId()).getToday();
+        List<Period> due = periods.findBySheetIdOrderByFromDateAsc(change.sheetId()).stream()
+                .filter(p -> !p.isClosed() && p.getToDate().plusDays(change.graceDays()).isBefore(today))
+                .sorted(Comparator.comparing(Period::getToDate))
+                .toList();
+        for (Period period : due) {
+            fix(change.sheetId(), change.user(), period, today, " auto=yes");
+        }
+    }
+
+    /** Close an open period, fixing its totals as of today, and audit it with the given trailing fields. */
+    private Period fix(String sheetId, String user, Period period, LocalDate today, String trailing) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, person -> person));
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
@@ -114,7 +142,7 @@ public class PeriodService {
         period.close(totals);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " total=" + saved.getClosedTotal().toPlainString());
+                + " total=" + saved.getClosedTotal().toPlainString() + trailing);
         return saved;
     }
 

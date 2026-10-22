@@ -97,6 +97,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** Grace days: when today is changed, an open period whose to-date plus them is before it closes; null for off. */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     /** The last X-number given to a claim in no period while period numbering is on; 0 before any. */
     @Column(name = "last_unperiod_claim_number", nullable = false)
     private int lastUnperiodClaimNumber;
@@ -297,6 +301,15 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    /** The grace days as set; null when blank (off). */
+    public Integer getGraceDays() {
+        return graceDays;
+    }
+
+    public void setGraceDays(Integer graceDays) {
+        this.graceDays = graceDays;
     }
 
     /** Whether a claim opened now is numbered within its period: the setting is a date on or before today. */

@@ -1,11 +1,11 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import {
-  CAP, DatedKey, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
+  CAP, DatedKey, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_TERMS, Grade, LATE_PCT, LIMIT, GRACE_DAYS, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
 } from '../../core/settings';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from and the permission matrix) and the roles user names have on it (clerk by default,
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
 // sheet's today unless one is typed) and shown as in force on the sheet's today.
 @Component({
@@ -143,6 +143,15 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'periodNumberingFrom')"
           (keydown.backspace)="cleared($event, 'periodNumberingFrom')"
         />
+        <label for="setting-grace-days">Grace days before a period closes itself (a whole number; empty: off)</label>
+        <input
+          id="setting-grace-days"
+          data-testid="setting-grace-days"
+          [value]="graceDaysInput()"
+          (input)="graceDaysInput.set(value($event)); graceDaysEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'graceDays')"
+          (keydown.backspace)="cleared($event, 'graceDays')"
+        />
         @for (a of permissionActions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; empty: {{ standing[a] }})</label>
           <input
@@ -169,6 +178,7 @@ import { Session } from '../../core/session';
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
+      <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       @for (a of permissionActions; track a) {
         <p>Roles that may {{ a }} in force:
           <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] }}</span></p>
@@ -237,6 +247,8 @@ export class Settings {
   protected readonly policyDateInput = signal('');
   protected readonly periodNumberingFrom = signal('');
   protected readonly periodNumberingFromInput = signal('');
+  protected readonly graceDays = signal('');
+  protected readonly graceDaysInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
   protected capEdited = false;
@@ -247,6 +259,7 @@ export class Settings {
   protected gradeTermsEdited = new Set<Grade>();
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
+  protected graceDaysEdited = false;
   protected readonly permissionActions = PERMISSION_ACTIONS;
   /** Who may take each action under its standing rule, kept when its entry is blank. */
   protected readonly standing: Record<PermissionAction, string> = {
@@ -284,6 +297,7 @@ export class Settings {
         this.proofThreshold.set(null);
         this.gradeTerms.set({ A: null, B: null, C: null });
         this.periodNumberingFrom.set('');
+        this.graceDays.set('');
         this.permissions.set(Settings.noPermissions());
         this.roles.set([]);
         this.fromInput.set(Settings.noFroms());
@@ -326,7 +340,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'policyDate' | 'periodNumberingFrom'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'policyDate' | 'periodNumberingFrom' | 'graceDays'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -337,9 +351,12 @@ export class Settings {
     } else if (setting === 'policyDate') {
       this.policyDateInput.set('');
       this.policyDateEdited = true;
-    } else {
+    } else if (setting === 'periodNumberingFrom') {
       this.periodNumberingFromInput.set('');
       this.periodNumberingFromEdited = true;
+    } else {
+      this.graceDaysInput.set('');
+      this.graceDaysEdited = true;
     }
     this.settingsError.set(null);
   }
@@ -374,10 +391,11 @@ export class Settings {
     const latePct = this.latePctInput().trim();
     const policyDate = this.policyDateInput().trim();
     const periodNumberingFrom = this.periodNumberingFromInput().trim();
+    const graceDays = this.graceDaysInput().trim();
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.graceDaysEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveFloor = this.floorEdited;
@@ -387,6 +405,7 @@ export class Settings {
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
+    const saveGraceDays = this.graceDaysEdited;
     const savePermissions = PERMISSION_ACTIONS.filter((a) => this.permissionsEdited.has(a))
       .map((a) => ({ action: a, value: this.permissionInput()[a].trim() }));
     const froms = this.fromInput();
@@ -440,6 +459,10 @@ export class Settings {
       this.settingsError.set('Type the date period numbering is from as yyyy-mm-dd, or leave it empty for off.');
       return;
     }
+    if (saveGraceDays && !GRACE_DAYS.test(graceDays)) {
+      this.settingsError.set('Type grace days as a whole number of days, or leave them empty for off.');
+      return;
+    }
     if (savePermissions.some((p) => !PERMISSION.test(p.value))) {
       this.settingsError.set('Type the roles that may take an action as clerk or steward, comma separated, or leave them empty for the standing rule.');
       return;
@@ -454,6 +477,7 @@ export class Settings {
     if (saveLatePct) this.latePctEdited = false;
     if (savePolicyDate) this.policyDateEdited = false;
     if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
+    if (saveGraceDays) this.graceDaysEdited = false;
     for (const p of savePermissions) this.permissionsEdited.delete(p.action);
     this.fromInput.update((all) => {
       const next = { ...all };
@@ -496,6 +520,11 @@ export class Settings {
           const view = await this.api.setPeriodNumberingFrom(sheet, periodNumberingFrom);
           this.periodNumberingFrom.set(view.periodNumberingFrom ?? '');
           if (!this.periodNumberingFromEdited) this.periodNumberingFromInput.set(view.periodNumberingFrom ?? '');
+        }
+        if (saveGraceDays) {
+          const view = await this.api.setGraceDays(sheet, graceDays);
+          this.graceDays.set(view.graceDays?.toString() ?? '');
+          if (!this.graceDaysEdited) this.graceDaysInput.set(view.graceDays?.toString() ?? '');
         }
         for (const p of savePermissions) {
           const view = await this.api.setPermission(sheet, p.action, p.value);
@@ -581,6 +610,10 @@ export class Settings {
       this.periodNumberingFrom.set(settings.periodNumberingFrom ?? '');
       this.periodNumberingFromInput.set(settings.periodNumberingFrom ?? '');
       this.periodNumberingFromEdited = false;
+      // Grace days start at those in force, so clearing them is a change.
+      this.graceDays.set(settings.graceDays?.toString() ?? '');
+      this.graceDaysInput.set(settings.graceDays?.toString() ?? '');
+      this.graceDaysEdited = false;
       // Each action's roles start at those in force, so clearing them is a change.
       this.permissions.set(settings.permissions);
       this.permissionInput.set({ ...settings.permissions });
