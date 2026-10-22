@@ -1,0 +1,64 @@
+{
+  "checkpoint": 130,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp130_period-comparison",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The summary shows, for each period, the change of its due-total from the period before it by\nstart date (this period's due-total minus the previous one's, two decimals, a minus sign when lower);\nthe earliest period shows nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe summary shows, for each period, the change of its due-total from the period before it by\nstart date (this period's due-total minus the previous one's, two decimals, a minus sign when lower);\nthe earliest period shows nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f7b77093ee0fa155b6b9ccde025b4ac782f837da",
+  "reset_sha": "",
+  "preagent_sha": "331797d114a81523207fc9c6e0c52e2cdb83b77a",
+  "prev_sha": "331797d114a81523207fc9c6e0c52e2cdb83b77a",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1685488,
+    "input_tokens": 76,
+    "output_tokens": 14686,
+    "cache_read_tokens": 1769464,
+    "cache_creation_tokens": 65079,
+    "num_turns": 38,
+    "duration_ms": 512176,
+    "duration_api_ms": 159056,
+    "model": "claude-opus-5-5",
+    "session_id": "ea19a626-6bae-4752-8a28-c589b232f689",
+    "stop_reason": "success",
+    "result_text": "The period-change figure is in and two of the four tests pass, including the main \"period comparison\" test and scenario 1. Scenarios 2 and 3 still fail. Both stop on steps that have nothing to do with periods, before reaching any period-change check, and fixing them would mean changing rules the app already has.\n\n**The change:** the summary's \"By period\" table has a new Change column (`summary-period-<name>-change`). Each period shows its due-total minus that of the period before it by start date, to two decimals with a minus sign when lower. The earliest period shows nothing. It's worked out on the screen from the due-totals already shown, so nothing in the stored data or the server changed. The code is in `features/people/people.ts` (`periodSummary`) and `features/summary/summary.ts`.\n\n**One existing bug fixed**, because scenario 1 hit it: when a viewer pressed Edit on a claim, the \"not allowed\" error stayed on the claim row after they then submitted the claim form. That left two errors on screen at once, which the test can't read. Submitting the form now clears the row's error, as AGENTS.md requires (`features/claims/claims.ts`, in `save()`). Scenario 1 now passes.\n\n**Still failing:**\n- **Scenario 2, line 478:** after saving a floor of 3.00 from 2026-03-20 (after the sheet's today), the test expects the floor in force to show as empty. The app shows `1.00`, because every sheet starts with a floor of 1.00. The main test depends on that 1.00: P3's due-total of 1.00 comes from a 0.50 due raised to the floor. Showing an empty floor would contradict that.\n- **Scenario 3, line 1002:** the test expects the app to refuse a pasted batch of three claims. The app adds all three. None of them falls due in the closed period P2: the 2026-03-28 claim falls due on 2026-04-01 under the app's business-day terms. The refusal would only follow if that claim were taken to fall due on 2026-03-31, inside P2, i.e. counting calendar days. The test seems to assume a different due-date rule.\n\nI left both alone rather than change the floor or due-date rules to suit them, since that would change how dues are worked out across the app. If you want either one changed to match the test, tell me which rule should win.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1685488,
+        "num_turns": 38,
+        "duration_ms": 512176,
+        "duration_api_ms": 159056,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp130.agent.jsonl",
+  "agent_diff_file": "cp130.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

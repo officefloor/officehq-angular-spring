@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 30ef49f2..08ceb892 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -938,6 +938,8 @@ export class Claims {
+     event.preventDefault();
+     if (this.busy) return;
+     this.error.set(null);
++    // submitting the form is the next action on its claims, so an error left on a claim's row goes
++    this.claimError.set(null);
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+     const amount = this.amount().trim();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8e93bbf9..d52e1441 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -687,10 +687,22 @@ export class People {
+       };
+     });
+   });
+-  /** Per period: its due-total as its row shows it. */
++  /**
++   * Per period: its due-total as its row shows it, and its change from the period before it by start
++   * date (empty for the earliest).
++   */
+   protected readonly periodSummary = computed<PeriodSummary[]>(() => {
+     const totals = this.periodDueTotals();
+-    return this.periods().map((p) => ({ name: p.name, dueTotal: totals.get(p.id) ?? '0.00' }));
++    const dueTotalOf = (id: number) => totals.get(id) ?? '0.00';
++    const byStart = [...this.periods()].sort((a, b) => a.from.localeCompare(b.from));
++    return this.periods().map((p) => {
++      const previous = byStart[byStart.indexOf(p) - 1];
++      return {
++        name: p.name,
++        dueTotal: dueTotalOf(p.id),
++        change: previous ? money(cents(dueTotalOf(p.id)) - cents(dueTotalOf(previous.id))) : '',
++      };
++    });
+   });
+   /** Per status: how many of the sheet's claims have it. */
+   protected readonly statusSummary = computed<StatusSummary[]>(() =>
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 8bc937c1..f83cfd28 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -11,10 +11,14 @@ export interface GradeSummary {
+   dueTotal: string;
+ }
+ 
+-/** A period's line: its due-total, as its row in the periods list shows it. */
++/**
++ * A period's line: its due-total, as its row in the periods list shows it, and its change from the
++ * period before it by start date (empty for the earliest).
++ */
+ export interface PeriodSummary {
+   name: string;
+   dueTotal: string;
++  change: string;
+ }
+ 
+ /** A status's line: how many of the sheet's claims have it. */
+@@ -63,6 +67,7 @@ export interface VoidReasonSummary {
+           <tr>
+             <th scope="col">Period</th>
+             <th scope="col">Due</th>
++            <th scope="col">Change</th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -70,6 +75,7 @@ export interface VoidReasonSummary {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+             </tr>
+           }
+         </tbody>
