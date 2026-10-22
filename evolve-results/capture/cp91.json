@@ -1,0 +1,64 @@
+{
+  "checkpoint": 91,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp91_claim-comments",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be commented (a text entry and a button on the claim; an empty comment is refused\nwith an error on the claim). Each comment is kept with the user who wrote it and the sheet's today\nwhen it was written, shown on the claim in order as <user> on <date>: <text>, and written as\nCOMMENT_ADDED, naming the claim like every claim line and ending text=<text>. A viewer, an archived\nsheet and the as-of view refuse it like any change.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be commented (a text entry and a button on the claim; an empty comment is refused\nwith an error on the claim). Each comment is kept with the user who wrote it and the sheet's today\nwhen it was written, shown on the claim in order as <user> on <date>: <text>, and written as\nCOMMENT_ADDED, naming the claim like every claim line and ending text=<text>. A viewer, an archived\nsheet and the as-of view refuse it like any change.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "af8d738536ad9ba5c13010c2b0e443553b948bd2",
+  "reset_sha": "",
+  "preagent_sha": "28b67c741810a1165150e264c3f5a193d940f7fd",
+  "prev_sha": "28b67c741810a1165150e264c3f5a193d940f7fd",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4788088000000001,
+    "input_tokens": 66,
+    "output_tokens": 18768,
+    "cache_read_tokens": 2127324,
+    "cache_creation_tokens": 84715,
+    "num_turns": 34,
+    "duration_ms": 772255,
+    "duration_api_ms": 216904,
+    "model": "claude-opus-5-5",
+    "session_id": "7bbb6e35-6178-46e0-b73b-a14f4edd1256",
+    "stop_reason": "success",
+    "result_text": "Comments on claims are in place. Running `bin/e2e`, 3 of the 4 tests pass, including the main \"claim comments\" test. \"Scenario 1\" fails at a step about adding a claim, before any comments are used. I didn't change anything there.\n\n**What the feature does**\n- **On each claim:** a comment box and an \"Add comment\" button. Comments are listed oldest first as `<user> on <date>: <text>`, where the date is the sheet's today when the comment was written.\n- **Refusals:** an empty or blank comment is refused with an error on the claim, both on screen and by the server. The existing viewer, archived-sheet and as-of guards already block any new write, so they refuse comments with no extra code.\n- **Audit:** each comment writes `COMMENT_ADDED` in the same form as other claim lines (person, amount, date, number once the claim is opened), ending `text=<text>`.\n- **Storage:** a new `claim_comment` table (`V57__claim_comment.sql`), with the comments sent as part of each claim. Saved snapshots from before this change have no comments; the screen shows those as none.\n\n**A fix outside the request.** The main test failed on one run: the viewer's comment was counted as accepted. The cause was a timing gap in the app. It showed the loaded sheet's id before the sheet's people and claims had arrived, so a test could act on a screen that was still empty. The sheet id now appears only once those have arrived (changes in `core/session.ts`, `features/people/people.ts` and `features/home/home.ts`). After the fix the main test passed on every run.\n\n**Still failing: \"claim comments scenario 1\", line 73.** The test expects Ada's claim dated 2026-03-09 to be refused because its due-by date falls in a closed period. The app accepts it. Ada was added with her own terms of 20 business days, which puts the due-by on 2026-04-06, in the open April period. The test only makes sense if the earlier bulk grade change dropped Ada's own terms, and the app keeps them. That rule is about people, grades and terms, not comments, so I didn't change it. Tell me if bulk grade changes should drop a person's own terms and I'll make that change.\n\nScenario 2 passes but sometimes takes about 43s instead of about 10s. When I ran it on its own several times it took about 9s each time, so I don't think it comes from these changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4788088000000001,
+        "num_turns": 34,
+        "duration_ms": 772255,
+        "duration_api_ms": 216904,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp91.agent.jsonl",
+  "agent_diff_file": "cp91.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
