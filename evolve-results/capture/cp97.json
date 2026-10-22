@@ -1,0 +1,75 @@
+{
+  "checkpoint": 97,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp97_monthly-totals",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a0de2e5eb9b7e4c9e102fd47c67df0d0d1a37a9f",
+  "reset_sha": "",
+  "preagent_sha": "792ed05ef8ad0c50518a3e4677014d2525eaa96d",
+  "prev_sha": "792ed05ef8ad0c50518a3e4677014d2525eaa96d",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.938675,
+    "input_tokens": 56,
+    "output_tokens": 10829,
+    "cache_read_tokens": 1265275,
+    "cache_creation_tokens": 58602,
+    "num_turns": 28,
+    "duration_ms": 402432,
+    "duration_api_ms": 128337,
+    "model": "claude-opus-5-5",
+    "session_id": "2488f65f-9d14-458f-b2a6-04509f71da8a",
+    "stop_reason": "success",
+    "result_text": "The monthly totals are in, but `bin/e2e` does not fully pass: 3 of 4 tests pass and **\"monthly totals scenario 1\" fails**. It fails on server behaviour that existed before my change, not on the monthly totals.\n\n**What I changed** (front end only, in `src/main/frontend/src/app/features/people/people.ts`):\n- A new `monthTotals` list. It covers every month (yyyy-mm) that any claim on the sheet is dated in, so a month whose claims are all drafts still shows `0.00`.\n- Each month's figure adds up the due of the claims dated in that month that count, using the same rule as the main due total and the per-tag totals. Held or void claims are left out, and settled claims count at their fixed figure.\n- It is shown under the existing totals as a \"Due by month\" list, each figure carrying `data-testid=\"month-<yyyy-mm>-due-total\"`.\n- No new audit records, because the spec expects none.\n\nThe main \"monthly totals\" test passes, including all eight month checks before and after the settle, rate change, hold and void, as do scenarios 2 and 3.\n\n**Why scenario 1 fails.** The spec expects two things the server currently does differently:\n1. **Late entry.** A claim dated 2026-02-10 is due 2026-03-02, inside the soft-closed period P1. The spec expects no `LATE_ENTRY` audit line and \"Late entry: no\". The server's rule, written in its own comments in `ClaimService.add`, says a claim due in a soft-closed period is a late entry. So it writes the line and the audit check fails.\n2. **Editing a claim's date.** When a draft claim's date is changed from 2026-03-05 to 2026-04-02, the spec expects the due date to be worked out again (2026-04-22). The server's comments in `ClaimService.edit` say a claim \"keeps the due-by fixed when it was added\", so it shows 2026-03-30. I found this by turning off late-entry marking for one run. That edit is fully undone, and a final run confirmed the failure is back to the original one.\n\nI didn't change either rule. Each is deliberate behaviour of an existing feature, and changing it would affect more than the monthly totals. The rest of scenario 1, including its month checks, couldn't be reached past these points, so I can't confirm those yet.\n\nDecision for you: should I make the server match the spec on these two rules? The catch is that both are documented existing features, not part of this request, and other screens or records may depend on how they work now. The other option is to treat this as a mismatch between the spec and the app.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": false,
+        "limit_reached": false,
+        "retryable": true,
+        "timed_out": false,
+        "cost_usd": 0.0,
+        "num_turns": 0,
+        "duration_ms": 0,
+        "duration_api_ms": 0,
+        "error": "no result from agent (exit -11): ============================================================\nBun v1.4.4 (de4bc695b) Linux x64\nLinux Kernel v7.0.0 | glibc v2.43\nCPU: sse42 popcnt avx avx2 avx512\nArgs: \"claude\" \"-p\" \"You are implementing ONE change to this application.\\n\\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\\nDESIGN.md for the app's stack and con\"...\nFeatures: Bun.stderr(2) Bun.stdin(2) Bun.stdout(2) fetch(26) jsc spawn(34) standalone_exec"
+      },
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.938675,
+        "num_turns": 28,
+        "duration_ms": 402432,
+        "duration_api_ms": 128337,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp97.agent.jsonl",
+  "agent_diff_file": "cp97.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
