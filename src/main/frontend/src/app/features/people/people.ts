@@ -2,9 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { ClaimView, ClaimsApi, cents, counts, money } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView } from '../../core/people';
+import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
 import { Session } from '../../core/session';
 import { Claims } from '../claims/claims';
+import { Periods } from '../periods/periods';
 import { Rates } from '../rates/rates';
 
 // The active sheet's people: listed in the order they were added, added and edited through one form,
@@ -12,9 +14,10 @@ import { Rates } from '../rates/rates';
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Rates],
+  imports: [Claims, Periods, Rates],
   template: `
     <app-rates [rates]="rates()" [today]="today()" (saved)="rateSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add a person' : 'Edit a person'">
@@ -79,6 +82,7 @@ import { Rates } from '../rates/rates';
                   [claims]="claimsOf(p.id)"
                   [grade]="p.grade"
                   [rates]="rates()"
+                  [periods]="periods()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -115,6 +119,7 @@ export class People {
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
+  private readonly periodsApi = inject(PeriodsApi);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<PersonView[]>([]);
@@ -127,6 +132,23 @@ export class People {
   });
   /** The sheet's rates, each grade's by from-date; a grade with no rate is not listed. */
   protected readonly rates = signal<RateView[]>([]);
+  /** The sheet's periods by from-date. */
+  protected readonly periods = signal<PeriodView[]>([]);
+  /**
+   * Each period's due-total by period id: the sum of the due figures of the OPEN and SETTLED claims
+   * dated in it, each at its own person's grade (a claim with no figure adds nothing).
+   */
+  protected readonly periodDueTotals = computed(() => {
+    const totals = new Map<number, number>(this.periods().map((p) => [p.id, 0]));
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    for (const c of this.claims().filter(counts)) {
+      const period = periodOn(this.periods(), c.date);
+      const grade = grades.get(c.personId);
+      if (!period || !grade) continue;
+      totals.set(period.id, totals.get(period.id)! + (claimDueCents(c, this.rates(), grade) ?? 0));
+    }
+    return new Map([...totals].map(([id, total]) => [id, money(total)]));
+  });
   /** The sheet's today, on which each grade's rate in force is read. */
   protected readonly today = computed(() => this.session.today() ?? '');
   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
@@ -157,6 +179,7 @@ export class People {
         this.people.set([]);
         this.claims.set([]);
         this.rates.set([]);
+        this.periods.set([]);
         this.reset();
         this.personError.set(null);
         if (sheet) void this.reload(sheet);
@@ -225,6 +248,11 @@ export class People {
   /** A rate set for a grade, in place of any it had from the same date. */
   protected rateSaved(rate: RateView): void {
     this.rates.update((list) => [...list.filter((r) => !sameSlot(r, rate)), rate]);
+  }
+
+  /** A period added, kept in from-date order. */
+  protected periodSaved(period: PeriodView): void {
+    this.periods.update((list) => [...list, period].sort((a, b) => a.from.localeCompare(b.from)));
   }
 
   /** A claim added (listed first, as the newest) or saved or moved (in its place). */
@@ -311,15 +339,17 @@ export class People {
 
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
-    const [people, claims, rates] = await Promise.all([
+    const [people, claims, rates, periods] = await Promise.all([
       this.api.list(sheet),
       this.claimsApi.list(sheet),
       this.ratesApi.list(sheet),
+      this.periodsApi.list(sheet),
     ]);
     // A later load may have started while this one was in flight: only the latest is shown.
     if (this.session.sheet() === sheet && this.session.loads() === loads) {
       this.claims.set(claims);
       this.rates.set(rates);
+      this.periods.set(periods);
       this.people.set(people);
     }
   }

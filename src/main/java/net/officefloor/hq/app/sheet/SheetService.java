@@ -43,6 +43,16 @@ public class SheetService {
         return sheets.findLockedById(id).orElseThrow().nextClaimNumber();
     }
 
+    /**
+     * Take the sheet's lock, holding it until the caller's transaction ends, so changes that check
+     * the sheet's other rows before writing are made one at a time.
+     */
+    @Transactional
+    public Sheet lock(String id) {
+        load(id);
+        return sheets.findLockedById(id).orElseThrow();
+    }
+
     /** Change the sheet's today, auditing the figures that moves. */
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {

@@ -1,6 +1,7 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { AMOUNT, ClaimAction, ClaimView, ClaimsApi, money } from '../../core/claims';
 import { Grade } from '../../core/people';
+import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 
@@ -53,6 +54,7 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
@@ -94,6 +96,8 @@ export class Claims {
   readonly grade = input.required<Grade>();
   /** The sheet's rates; each claim uses the one its person's grade has in force on its date. */
   readonly rates = input.required<RateView[]>();
+  /** The sheet's periods; each claim belongs to the one whose dates contain its date, or to none. */
+  readonly periods = input.required<PeriodView[]>();
   /** A claim added or saved through the form. */
   readonly saved = output<ClaimView>();
 
@@ -121,6 +125,11 @@ export class Claims {
   protected dueOf(claim: ClaimView): string {
     const figure = claimDueCents(claim, this.rates(), this.grade());
     return figure === null ? NO_RATE : money(figure);
+  }
+
+  /** The name of the period a claim's date falls in; empty when it falls in none. */
+  protected periodOf(claim: ClaimView): string {
+    return periodOn(this.periods(), claim.date)?.name ?? '';
   }
 
   protected value(event: Event): string {
