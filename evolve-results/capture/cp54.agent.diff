@@ -1,0 +1,120 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index d83ee069..209a5659 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { DatedValue } from './session';
+ 
+-/** The roles a user name can have on a sheet; a name with none set is a clerk. */
+-export const ROLES = ['clerk', 'steward'] as const;
++/** The roles a user name can have on a sheet; a name with none set is a clerk, and a viewer can change nothing. */
++export const ROLES = ['clerk', 'steward', 'viewer'] as const;
+ export type RoleName = (typeof ROLES)[number];
+ 
+ export interface RoleView {
+diff --git a/src/main/java/net/officefloor/hq/app/role/Role.java b/src/main/java/net/officefloor/hq/app/role/Role.java
+index 8e600e07..b4624f00 100644
+--- a/src/main/java/net/officefloor/hq/app/role/Role.java
++++ b/src/main/java/net/officefloor/hq/app/role/Role.java
+@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** The role a user name has on a sheet: clerk or steward. A name with no role set is a clerk. */
++/** The role a user name has on a sheet: clerk, steward or viewer. A name with no role set is a clerk. */
+ @Entity
+ @Table(name = "sheet_role")
+ public class Role {
+@@ -18,6 +18,9 @@ public class Role {
+     /** The role that may settle any claim, whatever the clerk limit, and approves or rejects a PENDING one. */
+     public static final String STEWARD = "steward";
+ 
++    /** The role that sees every screen and figure of the sheet but may change nothing on it. */
++    public static final String VIEWER = "viewer";
++
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index 522e782d..d7c012bf 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -32,7 +32,7 @@ public class RoleController {
+     /** A role as entered on the form: a user name and one of the roles. */
+     public record RoleForm(
+             @NotBlank @Size(max = 200) String user,
+-            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD) String role) {
++            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
+     }
+ 
+     private final RoleService service;
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+new file mode 100644
+index 00000000..d1e79875
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+@@ -0,0 +1,50 @@
++package net.officefloor.hq.app.role;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.util.Map;
++import net.officefloor.hq.app.SignedIn;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.http.HttpMethod;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.server.ResponseStatusException;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.HandlerMapping;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/**
++ * Refuse every change a viewer asks for on a sheet: any request other than a read, or the loading
++ * of the sheet, is turned away before it reaches its handler, so it writes nothing and audits nothing.
++ */
++@Configuration
++public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
++
++    private final RoleService roles;
++
++    public ViewerGuard(RoleService roles) {
++        this.roles = roles;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(this).addPathPatterns("/api/sheets/*/**").excludePathPatterns("/api/sheets/*/load");
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        if (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod())) {
++            return true;
++        }
++        String header = request.getHeader(SignedIn.HEADER);
++        Object variables = request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
++        if (header == null || !(variables instanceof Map<?, ?> vars)) {
++            return true;
++        }
++        Object sheetId = vars.containsKey("sheetId") ? vars.get("sheetId") : vars.get("id");
++        if (sheetId instanceof String id && Role.VIEWER.equals(roles.roleOf(id, SignedIn.name(header)))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer may not change anything on the sheet.");
++        }
++        return true;
++    }
++}
+diff --git a/src/main/resources/db/migration/V38__role_viewer.sql b/src/main/resources/db/migration/V38__role_viewer.sql
+new file mode 100644
+index 00000000..06e6c8b7
+--- /dev/null
++++ b/src/main/resources/db/migration/V38__role_viewer.sql
+@@ -0,0 +1,7 @@
++-- A user name may now be a viewer: it sees the whole sheet but can change nothing on it.
++ALTER TABLE sheet_role ADD COLUMN next_role VARCHAR(16) DEFAULT 'clerk' NOT NULL
++    CHECK (next_role IN ('clerk', 'steward', 'viewer'));
++UPDATE sheet_role SET next_role = role;
++ALTER TABLE sheet_role DROP COLUMN role;
++ALTER TABLE sheet_role ALTER COLUMN next_role RENAME TO role;
++ALTER TABLE sheet_role ALTER COLUMN role DROP DEFAULT;
