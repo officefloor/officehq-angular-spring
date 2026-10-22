@@ -18,6 +18,8 @@ export class Session {
   readonly sheet = signal<string | null>(null);
   /** The active sheet's today; features use it, never the real clock. */
   readonly today = signal<string | null>(null);
+  /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
+  readonly loads = signal(0);
 
   signIn(name: string): void {
     this.user.set(name);
@@ -29,6 +31,7 @@ export class Session {
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
     );
     this.show(view);
+    this.loads.update((n) => n + 1);
   }
 
   /** Change the active sheet's today in the store. */
