@@ -186,6 +186,25 @@ public class Sheet {
         return decimal(valueOn(PROOF_THRESHOLD, date, plain(proofThreshold)));
     }
 
+    /** A grade's proof threshold in force on the sheet's today, with two decimals; null when it has none. */
+    public BigDecimal getGradeProofThreshold(String grade) {
+        return gradeProofThresholdOn(grade, today);
+    }
+
+    /** A grade's proof threshold in force on a date, with two decimals; null when it has none (as before every from-date). */
+    public BigDecimal gradeProofThresholdOn(String grade, LocalDate date) {
+        return decimal(valueOn(gradeProofThresholdKey(grade), date, null));
+    }
+
+    /**
+     * The proof threshold for a grade's claims dated on a date: the grade's own in force then when it
+     * has one, else the sheet's; null when there is none.
+     */
+    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
+        BigDecimal own = grade == null ? null : gradeProofThresholdOn(grade, date);
+        return own != null ? own : proofThresholdOn(date);
+    }
+
     /** The note threshold in force on the sheet's today, with two decimals; null when there is none. */
     public BigDecimal getNoteThreshold() {
         return noteThresholdOn(today);
@@ -281,6 +300,11 @@ public class Sheet {
     /** The key a grade's grace is recorded under. */
     public static String gradeGraceKey(String grade) {
         return GRACE + "-" + grade;
+    }
+
+    /** The key a grade's proof threshold is recorded under. */
+    public static String gradeProofThresholdKey(String grade) {
+        return PROOF_THRESHOLD + "-" + grade;
     }
 
     /** A grade's grace values (see {@link #history}), none before every from-date. */

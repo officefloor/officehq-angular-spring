@@ -5,7 +5,7 @@ import {
 } from '../../core/settings';
 import { Session } from '../../core/session';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles user names have on it (clerk by default,
+// The sheet's settings (the clerk limit, the cap, the proof threshold and each grade's own, the note threshold, the floor, the terms and each grade's own terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles user names have on it (clerk by default,
 // or steward), each changed through its own form. The settings that carry a figure are saved from a from-date (the
 // sheet's today unless one is typed) and shown as in force on the sheet's today.
 @Component({
@@ -63,6 +63,23 @@ import { Session } from '../../core/session';
           [value]="fromInput()['proof-threshold']"
           (input)="fromTyped('proof-threshold', value($event))"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (empty: the sheet's)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g"
+            [attr.data-testid]="'setting-proof-threshold-' + g"
+            inputmode="decimal"
+            [value]="gradeProofThresholdInput()[g]"
+            (input)="gradeProofThresholdTyped(g, value($event))"
+          />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from (yyyy-mm-dd; empty: the sheet's today)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g + '-from'"
+            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
+            [value]="fromInput()[proofKey(g)]"
+            (input)="fromTyped(proofKey(g), value($event))"
+          />
+        }
         <label for="setting-note-threshold">Note threshold (empty: none)</label>
         <input
           id="setting-note-threshold"
@@ -212,6 +229,10 @@ import { Session } from '../../core/session';
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Cap in force: <span data-testid="setting-cap-current">{{ session.cap() }}</span></p>
       <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
+      @for (g of grades; track g) {
+        <p>Proof threshold for grade {{ g }} in force:
+          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThreshold()[g] ?? '' }}</span></p>
+      }
       <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
@@ -284,6 +305,9 @@ export class Settings {
   protected readonly capInput = signal('');
   protected readonly proofThreshold = signal<string | null>(null);
   protected readonly proofThresholdInput = signal('');
+  /** Each grade's proof threshold in force; null when it has none (the sheet's applies). */
+  protected readonly gradeProofThreshold = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
+  protected readonly gradeProofThresholdInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly noteThreshold = signal<string | null>(null);
   protected readonly noteThresholdInput = signal('');
   protected readonly floorInput = signal('');
@@ -315,6 +339,7 @@ export class Settings {
   protected latePctEdited = false;
   protected gradeTermsEdited = new Set<Grade>();
   protected gradeGraceEdited = new Set<Grade>();
+  protected gradeProofThresholdEdited = new Set<Grade>();
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
   protected entryDateEdited = false;
@@ -339,7 +364,7 @@ export class Settings {
   private saving: Promise<void> = Promise.resolve();
 
   private static noFroms(): Record<DatedKey, string> {
-    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'note-threshold': '' };
+    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '' };
   }
 
   private static noPermissions(): Record<PermissionAction, string> {
@@ -357,6 +382,7 @@ export class Settings {
         this.noteThreshold.set(null);
         this.gradeTerms.set({ A: null, B: null, C: null });
         this.gradeGrace.set({ A: null, B: null, C: null });
+        this.gradeProofThreshold.set({ A: null, B: null, C: null });
         this.periodNumberingFrom.set('');
         this.entryDate.set('');
         this.graceDays.set('');
@@ -391,6 +417,7 @@ export class Settings {
     else if (key === 'floor') this.floorEdited = true;
     else if (key === 'terms') this.termsEdited = true;
     else if (key === 'late-pct') this.latePctEdited = true;
+    else if (key.startsWith('proof-threshold-')) this.gradeProofThresholdEdited.add(key.slice('proof-threshold-'.length) as Grade);
     else if (key.startsWith('grace-')) this.gradeGraceEdited.add(key.slice('grace-'.length) as Grade);
     else this.gradeTermsEdited.add(key.slice('terms-'.length) as Grade);
     this.settingsError.set(null);
@@ -402,6 +429,10 @@ export class Settings {
 
   protected graceKey(grade: Grade): DatedKey {
     return `grace-${grade}`;
+  }
+
+  protected proofKey(grade: Grade): DatedKey {
+    return `proof-threshold-${grade}`;
   }
 
   /**
@@ -447,6 +478,12 @@ export class Settings {
     this.settingsError.set(null);
   }
 
+  protected gradeProofThresholdTyped(grade: Grade, value: string): void {
+    this.gradeProofThresholdInput.update((all) => ({ ...all, [grade]: value }));
+    this.gradeProofThresholdEdited.add(grade);
+    this.settingsError.set(null);
+  }
+
   protected permissionTyped(action: PermissionAction, value: string): void {
     this.permissionInput.update((all) => ({ ...all, [action]: value }));
     this.permissionsEdited.add(action);
@@ -476,7 +513,7 @@ export class Settings {
     const graceDays = this.graceDaysInput().trim();
     const saveLimit =
       this.limitEdited ||
-      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
         !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
@@ -487,6 +524,8 @@ export class Settings {
       .map((g) => ({ grade: g, value: this.gradeTermsInput()[g].trim() }));
     const saveGradeGrace = GRADES.filter((g) => this.gradeGraceEdited.has(g))
       .map((g) => ({ grade: g, value: this.gradeGraceInput()[g].trim() }));
+    const saveGradeProofThresholds = GRADES.filter((g) => this.gradeProofThresholdEdited.has(g))
+      .map((g) => ({ grade: g, value: this.gradeProofThresholdInput()[g].trim() }));
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
@@ -500,6 +539,7 @@ export class Settings {
       ...(saveLimit ? (['clerk-limit'] as const) : []),
       ...(saveCap ? (['cap'] as const) : []),
       ...(saveProofThreshold ? (['proof-threshold'] as const) : []),
+      ...saveGradeProofThresholds.map((t) => this.proofKey(t.grade)),
       ...(saveNoteThreshold ? (['note-threshold'] as const) : []),
       ...(saveFloor ? (['floor'] as const) : []),
       ...(saveTerms ? (['terms'] as const) : []),
@@ -521,6 +561,10 @@ export class Settings {
     }
     if (saveProofThreshold && !PROOF_THRESHOLD.test(proofThreshold)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it empty for none.');
+      return;
+    }
+    if (saveGradeProofThresholds.some((t) => !PROOF_THRESHOLD.test(t.value))) {
+      this.settingsError.set('Type a grade\'s proof threshold of 0.00 or more, with up to two decimals, or leave it empty for the sheet\'s.');
       return;
     }
     if (saveNoteThreshold && !NOTE_THRESHOLD.test(noteThreshold)) {
@@ -571,6 +615,7 @@ export class Settings {
     if (saveLimit) this.limitEdited = false;
     if (saveCap) this.capEdited = false;
     if (saveProofThreshold) this.proofThresholdEdited = false;
+    for (const t of saveGradeProofThresholds) this.gradeProofThresholdEdited.delete(t.grade);
     if (saveNoteThreshold) this.noteThresholdEdited = false;
     if (saveFloor) this.floorEdited = false;
     if (saveTerms) this.termsEdited = false;
@@ -601,6 +646,9 @@ export class Settings {
           const view = await this.api.setProofThreshold(sheet, proofThreshold, from('proof-threshold'));
           this.inForce(view);
           if (!this.proofThresholdEdited) this.proofThresholdInput.set(view.proofThreshold ?? '');
+        }
+        for (const t of saveGradeProofThresholds) {
+          this.inForce(await this.api.setGradeProofThreshold(sheet, t.grade, t.value, from(this.proofKey(t.grade))));
         }
         if (saveNoteThreshold) {
           const view = await this.api.setNoteThreshold(sheet, noteThreshold, from('note-threshold'));
@@ -693,6 +741,7 @@ export class Settings {
     this.clerkLimit.set(view.clerkLimit);
     this.session.cap.set(view.cap ?? '');
     this.proofThreshold.set(view.proofThreshold);
+    this.gradeProofThreshold.set({ A: view.gradeProofThresholds['A'], B: view.gradeProofThresholds['B'], C: view.gradeProofThresholds['C'] });
     this.noteThreshold.set(view.noteThreshold);
     this.session.floor.set(view.floor);
     this.session.floorHistory.set(view.floorHistory);

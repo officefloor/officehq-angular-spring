@@ -71,12 +71,13 @@ public class SheetController {
      * each grade's own terms in days, null for none (the sheet's terms), and the cap with two decimals, null
      * for none, and the proof threshold with two decimals, null for none, and the note threshold with two
      * decimals, null for none, and the entry date, null for none (off), and each grade's grace in days,
-     * null for none, with each grade's grace values by from-date. */
+     * null for none, with each grade's grace values by from-date, and each grade's proof threshold with two
+     * decimals, null for none (the sheet's applies). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
-            Integer graceC, Map<String, List<DatedValue>> graceHistory) {
+            Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -89,7 +90,17 @@ public class SheetController {
                     permissions(sheet),
                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
                     sheet.getEntryDate(), sheet.getGradeGrace("A"), sheet.getGradeGrace("B"), sheet.getGradeGrace("C"),
-                    SheetView.graceHistory(sheet));
+                    SheetView.graceHistory(sheet), gradeProofThresholds(sheet));
+        }
+
+        /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
+        private static Map<String, String> gradeProofThresholds(Sheet sheet) {
+            Map<String, String> all = new TreeMap<>();
+            for (String grade : GRADES) {
+                BigDecimal threshold = sheet.getGradeProofThreshold(grade);
+                all.put(grade, threshold == null ? null : threshold.toPlainString());
+            }
+            return all;
         }
 
         /** The roles set for each action of the permission matrix; blank when it keeps its standing rule. */
@@ -272,6 +283,18 @@ public class SheetController {
             @RequestBody @Valid SettingChange change) {
         String value = change.value() == null ? "" : change.value().trim();
         return SettingsView.of(service.setProofThreshold(id, SignedIn.name(user),
+                value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
+    }
+
+    /** Record a grade's proof threshold from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */
+    @PutMapping("/{id}/settings/proof-threshold-{grade}")
+    public SettingsView setGradeProofThreshold(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid SettingChange change) {
+        String value = change.value() == null ? "" : change.value().trim();
+        return SettingsView.of(service.setGradeProofThreshold(id, SignedIn.name(user), grade,
                 value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
     }
 

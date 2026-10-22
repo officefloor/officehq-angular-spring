@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.BusinessDays;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -42,7 +43,7 @@ public class HolidayService {
 
     /**
      * Add a holiday to the sheet; refused when the date is already on its list. Every claim's due-by on
-     * the sheet is worked out again against the holidays now, and the figures that moves are audited.
+     * the sheet but a DRAFT's (which keeps the one it was added with) is worked out again against the holidays now, and the figures that moves are audited.
      */
     @Transactional
     public Holiday add(String sheetId, String user, LocalDate date) {
@@ -55,7 +56,9 @@ public class HolidayService {
         Holiday saved = holidays.saveAndFlush(new Holiday(sheetId, date));
         Set<LocalDate> days = days(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            claim.workOutDueBy(days);
+            if (claim.getStatus() != ClaimStatus.DRAFT) {
+                claim.workOutDueBy(days);
+            }
         }
         claims.flush();
         audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user + " date=" + date);

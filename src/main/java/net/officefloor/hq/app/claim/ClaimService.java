@@ -66,8 +66,8 @@ public class ClaimService {
 
     /**
      * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
-     * while one is set, else the sheet's today. One due by in a
-     * soft-closed period is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
+     * while one is set, else the sheet's today. One due by in a soft-closed period, or that would be
+     * with the terms in force on the sheet's today, is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
      * the due-by it would get (the terms-th business day after its date) is inside a closed period, or when it is a correction that does not name a SETTLED claim
      * of the same person (see {@link #refuseUnlessCorrects}).
      */
@@ -99,7 +99,8 @@ public class ClaimService {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
-        int terms = terms(sheets.lock(sheetId), person, dated);
+        Sheet sheet = sheets.lock(sheetId);
+        int terms = terms(sheet, person, dated);
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
@@ -110,7 +111,8 @@ public class ClaimService {
         added.refer(referred);
         List<String> tagged = Claim.tagsOf(tags);
         added.tag(tagged);
-        if (periods.softClosedOn(sheetId, dueBy)) {
+        if (periods.softClosedOn(sheetId, dueBy) || periods.softClosedOn(sheetId, holidays.dueBy(sheetId, dated,
+                terms(sheet, person, sheet.getToday())))) {
             added.markLateEntry();
         }
         Claim claim = claims.saveAndFlush(added);
@@ -128,7 +130,8 @@ public class ClaimService {
     /**
      * Change a claim's amount, date, note and the number it corrects; with no date it keeps its own. Only a DRAFT claim can be
      * edited: an OPEN one is changed by voiding it and adding a new one. It keeps the due-by fixed when it
-     * was added, and so its period. Refused when the claim's due-by is inside a closed period, or when it
+     * was added, and so its period. Refused when the claim's due-by, or the due-by a new date would give it
+     * (the terms-th business day after it), is inside a closed period, or when it
      * would be a correction that does not name a SETTLED claim of the same person, or when its external
      * reference (null: kept as it is; blank: none) is already used by another claim on the sheet. Its tags
      * (null: kept as they are) are set from the comma separated text (see {@link Claim#tagsOf}).
@@ -142,6 +145,9 @@ public class ClaimService {
         refuseUnlessEditable(sheetId, user, claim);
         if (date != null) {
             refuseIfRetired(person(sheetId, claim.getPersonId()), date);
+            if (!date.equals(claim.getDate())) {
+                periods.refuseIfClosed(sheetId, holidays.dueBy(sheetId, date, claim.getTerms()));
+            }
         }
         refuseUnlessCorrects(sheetId, claim.getPersonId(), amount, corrects);
         String referred = ref == null ? claim.getRef() : reference(ref);
@@ -274,7 +280,7 @@ public class ClaimService {
             refuseUnnoted(sheetId, claim, dues.due(claim, person.gradeOn(claim.getDate())));
         }
         if (next == ClaimStatus.SETTLED) {
-            refuseUnproved(sheetId, claim, settledDue);
+            refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), settledDue);
         }
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settledDue)) {
             next = ClaimStatus.PENDING;
@@ -414,7 +420,7 @@ public class ClaimService {
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal approvedDue = dues.approving(claim, person.gradeOn(claim.getDate()));
-        refuseUnproved(sheetId, claim, approvedDue);
+        refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), approvedDue);
         claim.settleDue(approvedDue);
         claim.become(ClaimStatus.SETTLED);
         Claim saved = logged(claims.saveAndFlush(claim), user, person);
@@ -617,11 +623,12 @@ public class ClaimService {
     }
 
     /**
-     * Refuse settling or approving a claim with no proofs whose due is above the sheet's proof threshold
-     * in force on the claim's date (a due of n/a is within any threshold).
+     * Refuse settling or approving a claim with no proofs whose due is above the proof threshold in force
+     * on the claim's date: its person's grade's (the grade in force then) when one is set, else the
+     * sheet's (a due of n/a is within any threshold).
      */
-    private void refuseUnproved(String sheetId, Claim claim, BigDecimal due) {
-        BigDecimal threshold = sheets.load(sheetId).proofThresholdOn(claim.getDate());
+    private void refuseUnproved(String sheetId, Claim claim, String grade, BigDecimal due) {
+        BigDecimal threshold = sheets.load(sheetId).proofThresholdFor(grade, claim.getDate());
         if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim's due is above the proof threshold of " + threshold.toPlainString()

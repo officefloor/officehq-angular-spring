@@ -13,7 +13,7 @@ export interface RoleView {
 }
 
 /** The settings that carry a figure: each is saved from a from-date and shown as in force on the sheet's today. */
-export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'note-threshold';
+export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'proof-threshold-A' | 'proof-threshold-B' | 'proof-threshold-C' | 'note-threshold';
 
 /** A from-date as a dated setting takes it: yyyy-mm-dd, or blank for the sheet's today. */
 export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
@@ -56,6 +56,8 @@ export interface SettingsView {
   graceC: number | null;
   /** Each grade's grace values by from-date (a value null when none), its starting value (none) first. */
   graceHistory: Record<string, DatedValue[]>;
+  /** Each grade's proof threshold with two decimals: its claims use it in place of the sheet's; null when none. */
+  gradeProofThresholds: Record<Grade, string | null>;
   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
   permissions: Record<PermissionAction, string>;
 }
@@ -127,6 +129,11 @@ export class SettingsApi {
   /** Set the cap from a date (blank: the sheet's today); a blank value means no cap. */
   setCap(sheet: string, value: string, from: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/cap`, { value, from }));
+  }
+
+  /** Set a grade's proof threshold from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */
+  setGradeProofThreshold(sheet: string, grade: Grade, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/proof-threshold-${grade}`, { value, from }));
   }
 
   /** Set the proof threshold from a date (blank: the sheet's today); a blank value means none. */

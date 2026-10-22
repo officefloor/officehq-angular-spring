@@ -118,6 +118,12 @@ public class SheetService {
         return setDated(id, user, Sheet.PROOF_THRESHOLD, money(threshold), from, false);
     }
 
+    /** Record a grade's proof threshold (null: none, the sheet's applies) from a date, auditing the change. */
+    @Transactional
+    public Sheet setGradeProofThreshold(String id, String user, String grade, BigDecimal threshold, LocalDate from) {
+        return setDated(id, user, Sheet.gradeProofThresholdKey(grade), money(threshold), from, false);
+    }
+
     /** Record the sheet's note threshold (null: none) from a date, auditing the change. */
     @Transactional
     public Sheet setNoteThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
