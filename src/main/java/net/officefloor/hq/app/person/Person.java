@@ -71,6 +71,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The sheet the person was last transferred from; null when they were never transferred. */
+    @Column(name = "origin_sheet_id")
+    private String originSheetId;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -234,6 +238,10 @@ public class Person {
         return statementDate;
     }
 
+    public String getOriginSheetId() {
+        return originSheetId;
+    }
+
     public LocalDate getRetiredFrom() {
         return retiredFrom;
     }
@@ -337,9 +345,11 @@ public class Person {
 
     /**
      * Move the person to another sheet: they keep their grades, terms, contact and aliases, but name
-     * no patrons, have no holds, and no statement is counted for them there.
+     * no patrons, have no holds, and no statement is counted for them there. They show the sheet they
+     * came from.
      */
     public void transferTo(String sheetId) {
+        this.originSheetId = this.sheetId;
         this.sheetId = sheetId;
         this.patronIds.clear();
         this.holds.clear();

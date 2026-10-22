@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import net.officefloor.hq.app.person.Person;
 import org.springframework.beans.factory.annotation.Value;
@@ -101,7 +102,15 @@ public class Audit {
      * The sheet's lines exactly as the file holds them, newest first. With a name (not blank), only
      * the lines carrying name=&lt;it&gt; or person=&lt;it&gt;, compared as names are compared.
      */
-    public synchronized List<String> linesOf(String sheetId, String name) {
+    public List<String> linesOf(String sheetId, String name) {
+        return name == null || name.isBlank() ? linesAbout(sheetId, null) : linesAbout(sheetId, Set.of(Person.keyOf(name)));
+    }
+
+    /**
+     * The sheet's lines exactly as the file holds them, newest first. With keys (not null), only the
+     * lines carrying name=&lt;one&gt; or person=&lt;one&gt;, compared as names are compared.
+     */
+    public synchronized List<String> linesAbout(String sheetId, Set<String> keys) {
         List<String> lines;
         try {
             lines = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
@@ -109,10 +118,9 @@ public class Audit {
             throw new UncheckedIOException(e);
         }
         String sheetField = " sheet=" + sheetId + " ";
-        String key = name == null || name.isBlank() ? null : Person.keyOf(name);
         List<String> shown = new ArrayList<>();
         for (String line : lines) {
-            if (line.contains(sheetField) && (key == null || isAbout(line, key))) {
+            if (line.contains(sheetField) && (keys == null || isAbout(line, keys))) {
                 shown.add(line);
             }
         }
@@ -120,10 +128,10 @@ public class Audit {
         return shown;
     }
 
-    private static boolean isAbout(String line, String key) {
+    private static boolean isAbout(String line, Set<String> keys) {
         Matcher field = PERSON_FIELD.matcher(line);
         while (field.find()) {
-            if (Person.keyOf(field.group(1)).equals(key)) {
+            if (keys.contains(Person.keyOf(field.group(1)))) {
                 return true;
             }
         }

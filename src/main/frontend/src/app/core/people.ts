@@ -54,6 +54,8 @@ export interface PersonView {
   aliases?: string[];
   /** Whether the person's name or an alias is in use on another sheet of the sheet's tree; absent from a view kept before this was. */
   clashing?: boolean;
+  /** The sheet the person was last transferred from; null when never, absent from a view kept before this was. */
+  originSheetId?: string | null;
 }
 
 /** A hold on a person, from a date to a date (yyyy-mm-dd, both included); to is null with no end. */

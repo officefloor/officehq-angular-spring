@@ -41,13 +41,14 @@ public class PersonController {
      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
      * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons
      * in the order they were named, and whether their name or an alias is in use on another sheet of the
-     * sheet's tree (clashing).
+     * sheet's tree (clashing), and the sheet they were last transferred from (null when never).
      * Their grades are listed by the date each is in force from, the first with none (from the
      * beginning of time).
      */
     public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
-            List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing) {
+            List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
+            String originSheetId) {
 
         public static PersonView of(Person person) {
             return of(person, false);
@@ -62,7 +63,7 @@ public class PersonController {
                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
                     person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
-                    person.getPatronIds(), person.getAliases(), clashing);
+                    person.getPatronIds(), person.getAliases(), clashing, person.getOriginSheetId());
         }
     }
 

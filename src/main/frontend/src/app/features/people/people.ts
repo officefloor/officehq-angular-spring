@@ -277,6 +277,7 @@ function csvField(value: string): string {
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th>
+            <th scope="col">Came from</th>
             <th scope="col">Aliases</th>
             <th scope="col">Clashing</th>
             <th scope="col">Grade</th>
@@ -313,6 +314,7 @@ function csvField(value: string): string {
                 />
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-origin">{{ p.originSheetId ?? '' }}</td>
               <td>
                 <span data-testid="person-aliases">{{ aliasesOf(p) }}</span>
                 <label [for]="'person-alias-input-' + p.id">Add alias</label>
