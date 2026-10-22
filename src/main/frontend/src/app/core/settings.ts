@@ -13,7 +13,7 @@ export interface RoleView {
 }
 
 /** The settings that carry a figure: each is saved from a from-date and shown as in force on the sheet's today. */
-export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'late-pct' | 'proof-threshold';
+export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'late-pct' | 'proof-threshold' | 'note-threshold';
 
 /** A from-date as a dated setting takes it: yyyy-mm-dd, or blank for the sheet's today. */
 export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
@@ -46,6 +46,8 @@ export interface SettingsView {
   latePctHistory: DatedValue[];
   /** The proof threshold with two decimals: a claim whose due is above it needs a proof to be settled; null when there is none. */
   proofThreshold: string | null;
+  /** The note threshold with two decimals: a claim whose due is above it needs a note to be opened; null when there is none. */
+  noteThreshold: string | null;
   /** For each action of the permission matrix, the comma separated roles that may take it; blank for its standing rule. */
   permissions: Record<PermissionAction, string>;
 }
@@ -72,6 +74,9 @@ export const CAP = /^(\d{1,12}(\.\d{1,2})?)?$/;
 
 /** A proof threshold as the form takes it: up to two decimals, or blank for none. */
 export const PROOF_THRESHOLD = /^(\d{1,12}(\.\d{1,2})?)?$/;
+
+/** A note threshold as the form takes it: up to two decimals, or blank for none. */
+export const NOTE_THRESHOLD = /^(\d{1,12}(\.\d{1,2})?)?$/;
 
 /** A floor as the form takes it: 0.00 or more, with up to two decimals. */
 export const FLOOR = /^\d{1,12}(\.\d{1,2})?$/;
@@ -113,6 +118,11 @@ export class SettingsApi {
   /** Set the proof threshold from a date (blank: the sheet's today); a blank value means none. */
   setProofThreshold(sheet: string, value: string, from: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/proof-threshold`, { value, from }));
+  }
+
+  /** Set the note threshold from a date (blank: the sheet's today); a blank value means none. */
+  setNoteThreshold(sheet: string, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/note-threshold`, { value, from }));
   }
 
   /** Set the floor from a date (blank: the sheet's today). */

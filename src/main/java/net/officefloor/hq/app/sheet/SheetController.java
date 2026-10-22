@@ -55,11 +55,12 @@ public class SheetController {
      * the floor with two decimals, the terms in days, the late percent with two decimals, and the policy
      * date, null for none (the sheet's today), and the period-numbering-from date, null for none (off), and the grace days, null for none (off), and
      * each grade's own terms in days, null for none (the sheet's terms), and the cap with two decimals, null
-     * for none, and the proof threshold with two decimals, null for none. */
+     * for none, and the proof threshold with two decimals, null for none, and the note threshold with two
+     * decimals, null for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
-            Map<String, String> permissions) {
+            Map<String, String> permissions, String noteThreshold) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -69,7 +70,8 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()),
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
-                    permissions(sheet));
+                    permissions(sheet),
+                    sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString());
         }
 
         /** The roles set for each action of the permission matrix; blank when it keeps its standing rule. */
@@ -247,6 +249,17 @@ public class SheetController {
             @RequestBody @Valid SettingChange change) {
         String value = change.value() == null ? "" : change.value().trim();
         return SettingsView.of(service.setProofThreshold(id, SignedIn.name(user),
+                value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
+    }
+
+    /** Record the sheet's note threshold from a date (blank: the sheet's today); a blank value means none. */
+    @PutMapping("/{id}/settings/note-threshold")
+    public SettingsView setNoteThreshold(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid SettingChange change) {
+        String value = change.value() == null ? "" : change.value().trim();
+        return SettingsView.of(service.setNoteThreshold(id, SignedIn.name(user),
                 value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
     }
 

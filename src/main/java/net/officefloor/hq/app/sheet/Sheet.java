@@ -33,6 +33,7 @@ public class Sheet {
     public static final String TERMS = "terms";
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    public static final String NOTE_THRESHOLD = "note-threshold";
 
     /** The actions the permission matrix covers, each with the roles that may take it under the standing rule. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
@@ -178,6 +179,19 @@ public class Sheet {
     /** The proof threshold in force on a date, with two decimals; null when there is none. */
     public BigDecimal proofThresholdOn(LocalDate date) {
         return decimal(valueOn(PROOF_THRESHOLD, date, plain(proofThreshold)));
+    }
+
+    /** The note threshold in force on the sheet's today, with two decimals; null when there is none. */
+    public BigDecimal getNoteThreshold() {
+        return noteThresholdOn(today);
+    }
+
+    /**
+     * The note threshold in force on a date, with two decimals: a claim dated then whose due is above it
+     * cannot be opened with an empty note; null when there is none (as before every from-date).
+     */
+    public BigDecimal noteThresholdOn(LocalDate date) {
+        return decimal(valueOn(NOTE_THRESHOLD, date, null));
     }
 
     /** The floor in force on the sheet's today, with two decimals. */

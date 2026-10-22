@@ -214,6 +214,9 @@ public class ClaimService {
         BigDecimal settledDue = next == ClaimStatus.SETTLED
                 ? dues.settling(claim, person.gradeOn(claim.getDate()))
                 : null;
+        if (next == ClaimStatus.OPEN) {
+            refuseUnnoted(sheetId, claim, dues.due(claim, person.gradeOn(claim.getDate())));
+        }
         if (next == ClaimStatus.SETTLED) {
             refuseUnproved(sheetId, claim, settledDue);
         }
@@ -512,6 +515,20 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The claim's due is above the proof threshold of " + threshold.toPlainString()
                             + ": it needs a proof before it is settled.");
+        }
+    }
+
+    /**
+     * Refuse opening a claim with an empty note whose due is above the sheet's note threshold in force
+     * on the claim's date (a due of n/a is within any threshold).
+     */
+    private void refuseUnnoted(String sheetId, Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheets.load(sheetId).noteThresholdOn(claim.getDate());
+        if ((claim.getNote() == null || claim.getNote().isBlank()) && threshold != null && due != null
+                && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim's due is above the note threshold of " + threshold.toPlainString()
+                            + ": it needs a note before it is opened.");
         }
     }
 

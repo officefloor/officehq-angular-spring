@@ -371,6 +371,8 @@ export class Claims {
     // the form is the claim's from the press on, so a save typed before the lock answers edits it
     this.setEditing(claim.id);
     this.typedSinceOpen = false;
+    // the form shows the claim as listed at once, so a field typed before the lock answers keeps the rest
+    this.fill(claim);
     try {
       const locked = await this.api.lock(sheet, claim.id);
       this.saved.emit(locked);
@@ -634,6 +636,8 @@ export class Claims {
         || (action === 'approve' && claim.status === 'PENDING' && mine);
       const unproved = e instanceof HttpErrorResponse && e.status === 409 && claim.proofs === 0
         && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'));
+      const unnoted = e instanceof HttpErrorResponse && e.status === 409 && action === 'open'
+        && claim.status === 'DRAFT' && (claim.note ?? '').trim() === '';
       const steward = e instanceof HttpErrorResponse && e.status === 403
         && (((action === 'approve' || action === 'reject') && claim.status === 'PENDING')
           || ((action === 'resettle' || action === 'void') && claim.status === 'SETTLED'));
@@ -651,6 +655,8 @@ export class Claims {
             ? `You opened this claim, so someone else must ${action} it.`
             : unproved
               ? `The claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
+            : unnoted
+              ? "The claim's due is above the note threshold, so it needs a note before it can be opened."
             : steward
               ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
             : lateVoid

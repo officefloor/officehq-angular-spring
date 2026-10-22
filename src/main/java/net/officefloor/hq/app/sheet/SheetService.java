@@ -118,6 +118,12 @@ public class SheetService {
         return setDated(id, user, Sheet.PROOF_THRESHOLD, money(threshold), from, false);
     }
 
+    /** Record the sheet's note threshold (null: none) from a date, auditing the change. */
+    @Transactional
+    public Sheet setNoteThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
+        return setDated(id, user, Sheet.NOTE_THRESHOLD, money(threshold), from, false);
+    }
+
     /** Record the sheet's floor from a date, auditing the change and the figures it moves. */
     @Transactional
     public Sheet setFloor(String id, String user, BigDecimal floor, LocalDate from) {
