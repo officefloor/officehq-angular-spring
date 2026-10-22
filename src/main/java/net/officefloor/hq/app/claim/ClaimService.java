@@ -82,6 +82,17 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref) {
+        return add(sheetId, user, personId, amount, date, note, corrects, ref, null);
+    }
+
+    /**
+     * Add a claim (see {@link #add(String, String, long, BigDecimal, LocalDate, String, String, String)}) with
+     * its tags, comma separated (see {@link Claim#tagsOf}). CLAIM_ADDED ends with tags=&lt;tags, sorted and
+     * comma separated&gt; when any were given.
+     */
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref, String tags) {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
@@ -94,13 +105,16 @@ public class ClaimService {
         refuseIfReferred(sheetId, referred, null);
         Claim added = new Claim(sheetId, personId, money(amount), dated, terms, dueBy, clean(note), corrects);
         added.refer(referred);
+        List<String> tagged = Claim.tagsOf(tags);
+        added.tag(tagged);
         if (periods.softClosedOn(sheetId, dueBy)) {
             added.markLateEntry();
         }
         Claim claim = claims.saveAndFlush(added);
         claim = logged(claim, user, person);
         audited("CLAIM_ADDED", sheetId, user, person, claim, claim.getNumber(),
-                referred != null ? " ref=" + referred : "");
+                (referred != null ? " ref=" + referred : "")
+                        + (tagged.isEmpty() ? "" : " tags=" + String.join(",", tagged)));
         if (claim.isLateEntry()) {
             audited("LATE_ENTRY", sheetId, user, person, claim);
         }
@@ -113,11 +127,12 @@ public class ClaimService {
      * edited: an OPEN one is changed by voiding it and adding a new one. It keeps the due-by fixed when it
      * was added, and so its period. Refused when the claim's due-by is inside a closed period, or when it
      * would be a correction that does not name a SETTLED claim of the same person, or when its external
-     * reference (null: kept as it is; blank: none) is already used by another claim on the sheet.
+     * reference (null: kept as it is; blank: none) is already used by another claim on the sheet. Its tags
+     * (null: kept as they are) are set from the comma separated text (see {@link Claim#tagsOf}).
      */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tags) {
         Rollups.Rollup before = rollups.take(sheetId);
         sheets.lock(sheetId);
         Claim claim = claim(sheetId, claimId);
@@ -129,6 +144,9 @@ public class ClaimService {
         String referred = ref == null ? claim.getRef() : reference(ref);
         refuseIfReferred(sheetId, referred, claim.getId());
         claim.refer(referred);
+        if (tags != null) {
+            claim.tag(Claim.tagsOf(tags));
+        }
         claim.change(money(amount), date != null ? date : claim.getDate(), clean(note), corrects);
         claim.lockFor(null);
         Claim saved = claims.saveAndFlush(claim);

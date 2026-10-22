@@ -49,6 +49,10 @@ export interface ClaimView {
   corrects: string | null;
   /** The claim's external reference; null when it has none. */
   ref: string | null;
+  /** The claim's tags, sorted (trimmed, lower case, no repeats); empty (or absent, as kept by an old snapshot) for none. */
+  tags?: string[] | null;
+  /** Every tag the claim has ever carried, sorted; empty (or absent, as kept by an old snapshot) for none. */
+  tagsUsed?: string[] | null;
   /** The claim's status log, oldest first: one line per status it has had. */
   log: ClaimLogLine[];
   /** yyyy-mm-dd: the date the claim is deferred until; null when it was never deferred. */
@@ -98,6 +102,11 @@ export function statusAt(claim: ClaimView, day: string): ClaimStatus | null {
     if (line.on <= day) then = line.status;
   }
   return then;
+}
+
+/** A claim's tags as it shows them: sorted, comma and space separated. */
+export function tagsText(claim: ClaimView): string {
+  return (claim.tags ?? []).join(', ');
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN, PENDING and SETTLED claims do. */
@@ -200,6 +209,8 @@ export interface ClaimForm {
   corrects: string | null;
   /** The claim's external reference, used at most once on the sheet; blank for none. */
   ref: string;
+  /** The claim's tags, comma separated; blank for none (and on an edit, left out to keep the claim's own). */
+  tags?: string;
 }
 
 /** An amount as a claim takes it: up to two decimals, below 0.00 only on a correction. */

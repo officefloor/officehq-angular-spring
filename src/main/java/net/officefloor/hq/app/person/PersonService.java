@@ -47,7 +47,8 @@ public class PersonService {
     /**
      * Change a person's name and own terms (null: none) and record their grade from a date (null: the
      * sheet's today), keeping the grades already recorded, from the version of the person the editor loaded; refused when someone
-     * has saved the person since, or when the name is in use by another person.
+     * has saved the person since, or when the name is in use by another person. PERSON_EDITED carries
+     * terms=&lt;terms&gt; only when the edit changes them.
      */
     @Transactional
     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
@@ -61,11 +62,12 @@ public class PersonService {
         requireNameFree(sheetId, name, person.getId());
         Rollups.Rollup before = rollups.take(sheetId);
         LocalDate today = sheets.today(sheetId);
+        boolean termsChanged = !java.util.Objects.equals(person.getTerms(), terms);
         person.setName(name);
         person.setTerms(terms);
         person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
         Person saved = people.saveAndFlush(person);
-        audited("PERSON_EDITED", sheetId, user, saved, today, true);
+        audited("PERSON_EDITED", sheetId, user, saved, today, termsChanged);
         rollups.audit(sheetId, user, before);
         return saved;
     }

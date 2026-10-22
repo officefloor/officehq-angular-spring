@@ -154,6 +154,13 @@ function csvField(value: string): string {
         due <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>,
         open in total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+      @if (tagTotals().length > 0) {
+        <ul aria-label="Due by tag">
+          @for (t of tagTotals(); track t.tag) {
+            <li>{{ t.tag }} <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</strong></li>
+          }
+        </ul>
+      }
       <p>
         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
         @if (bulkOpened(); as result) {
@@ -544,6 +551,21 @@ export class People {
   protected readonly openTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.openCents(p), 0)),
   );
+  /**
+   * For every tag ever used on the sheet, sorted: the due of the claims that count in the live totals
+   * (see countsLive) which carry it; a claim with two tags counts in both (a claim with no figure adds nothing).
+   */
+  protected readonly tagTotals = computed(() => {
+    const totals = new Map<string, number>();
+    for (const c of this.claims()) for (const tag of c.tagsUsed ?? []) totals.set(tag, 0);
+    for (const p of this.people()) {
+      for (const c of this.countingOf(p.id)) {
+        const due = this.dueCents(c, p) ?? 0;
+        for (const tag of c.tags ?? []) totals.set(tag, (totals.get(tag) ?? 0) + due);
+      }
+    }
+    return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
+  });
   /** How many overdue claims count in the live totals, across everyone. */
   protected readonly overdueCount = computed(() =>
     this.people().reduce((sum, p) => sum + this.overdueOf(p.id).length, 0),

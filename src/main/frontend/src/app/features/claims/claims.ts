@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, cents, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
+import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, cents, tagsText, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -62,6 +62,13 @@ const PAST: Record<ClaimAction, string> = {
         [value]="ref()"
         (input)="ref.set(value($event)); typed()"
       />
+      <label [for]="'claim-form-tags-' + personId()">Tags (comma separated)</label>
+      <input
+        [id]="'claim-form-tags-' + personId()"
+        data-testid="claim-form-tags"
+        [value]="tags()"
+        (input)="tags.set(value($event)); typed()"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -87,6 +94,7 @@ const PAST: Record<ClaimAction, string> = {
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+          <span>Tags <span data-testid="claim-tags">{{ tagsOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
@@ -277,6 +285,8 @@ export class Claims {
   protected readonly corrects = signal('');
   /** The claim's external reference; empty for none. */
   protected readonly ref = signal('');
+  /** The claim's tags, comma separated; empty for none. */
+  protected readonly tags = signal('');
   /** Whose form this is: the signed-in user's, on the sheet, for the person. */
   private readonly editorKey = computed(() => `${this.session.user()}/${this.session.sheet()}/${this.personId()}`);
   /** The id of the claim open in the form, or null when the form adds a new claim. */
@@ -486,7 +496,13 @@ export class Claims {
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
     this.ref.set(claim.ref ?? '');
+    this.tags.set(tagsText(claim));
     this.error.set(null);
+  }
+
+  /** A claim's tags as it shows them (see tagsText). */
+  protected tagsOf(claim: ClaimView): string {
+    return tagsText(claim);
   }
 
   /** A field of the form was typed in: it clears the form's error. */
@@ -791,6 +807,7 @@ export class Claims {
     this.note.set('');
     this.corrects.set('');
     this.ref.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -810,7 +827,7 @@ export class Claims {
       this.error.set('Type the number of the claim it corrects.');
       return;
     }
-    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects, ref: this.ref().trim() };
+    const form = { amount, date: this.date().trim() || null, note: this.note(), corrects: corrects === '' ? null : corrects, ref: this.ref().trim(), tags: this.tags() };
     // a claim no longer this person's is not edited from their form: the form adds a claim
     const editing = this.editing();
     const id = this.claims().some((c) => c.id === editing) ? editing : null;
@@ -837,6 +854,7 @@ export class Claims {
         this.note.set('');
         this.corrects.set('');
         this.ref.set('');
+        this.tags.set('');
       }
     } finally {
       this.busy = false;

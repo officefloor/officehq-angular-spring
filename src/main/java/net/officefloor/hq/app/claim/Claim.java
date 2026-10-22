@@ -98,6 +98,14 @@ public class Claim {
     @Column(name = "ref_key")
     private String refKey;
 
+    /** The claim's tags, sorted and comma separated; null when it has none. */
+    @Column(name = "tags")
+    private String tags;
+
+    /** Every tag the claim has ever carried, sorted and comma separated; null when none. */
+    @Column(name = "tags_used")
+    private String tagsUsed;
+
     /** The date the claim is deferred until; null when it was never deferred. */
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
@@ -233,6 +241,40 @@ public class Claim {
     public void refer(String ref) {
         this.ref = ref;
         this.refKey = keyOf(ref);
+    }
+
+    /** The claim's tags, sorted; empty when it has none. */
+    public java.util.List<String> getTags() {
+        return tags == null ? java.util.List.of() : java.util.List.of(tags.split(","));
+    }
+
+    /** Give the claim its tags (see {@link #tagsOf}); empty for none. */
+    public void tag(java.util.List<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", tags);
+        java.util.List<String> used = java.util.stream.Stream.concat(getTagsUsed().stream(), tags.stream())
+                .distinct().sorted().toList();
+        this.tagsUsed = used.isEmpty() ? null : String.join(",", used);
+    }
+
+    /** Every tag the claim has ever carried, sorted; empty when none. */
+    public java.util.List<String> getTagsUsed() {
+        return tagsUsed == null ? java.util.List.of() : java.util.List.of(tagsUsed.split(","));
+    }
+
+    /**
+     * Tags as a comma separated text gives them: each trimmed and lower case, blanks and repeats
+     * dropped, sorted.
+     */
+    public static java.util.List<String> tagsOf(String text) {
+        if (text == null) {
+            return java.util.List.of();
+        }
+        return java.util.Arrays.stream(text.split(","))
+                .map((t) -> t.trim().toLowerCase(java.util.Locale.ROOT))
+                .filter((t) -> !t.isEmpty())
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     /** A reference as compared on a sheet, without regard to case; null for none. */
