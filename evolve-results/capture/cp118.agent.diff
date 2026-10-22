@@ -1,0 +1,310 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 057237c1..6f09858c 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -34,6 +34,12 @@ export interface RatePreview {
+   diff: string;
+ }
+ 
++/** What a rate import did: how many rates were set, and the sheet's rates after. */
++export interface RateImportView {
++  set: number;
++  rates: RateView[];
++}
++
+ /** A from-date as a rate takes it: yyyy-mm-dd. */
+ export const FROM_DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+@@ -152,6 +158,11 @@ export class RatesApi {
+     return firstValueFrom(this.http.put<RateView>(`${this.url(sheet)}/${grade}`, form));
+   }
+ 
++  /** Set a rate per line of grade,rate,from,to, in order; all or none. */
++  importRates(sheet: string, text: string): Promise<RateImportView> {
++    return firstValueFrom(this.http.post<RateImportView>(`${this.url(sheet)}/import`, { text }));
++  }
++
+   /** Preview a candidate rate applied to a grade on every date; nothing is saved. */
+   preview(sheet: string, grade: Grade, pct: string): Promise<RatePreview> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index dfd927e4..e654c81d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -94,7 +94,7 @@ function csvField(value: string): string {
+       [overdueTotal]="overdueTotal()"
+     />
+     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+-    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" />
++    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
+     <app-periods
+       [periods]="periods()"
+       [dueTotals]="periodDueTotals()"
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 0880dcf7..c386d4b7 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -1,4 +1,5 @@
+-import { Component, computed, inject, input, output, signal } from '@angular/core';
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+ import { GRADES, Grade } from '../../core/people';
+ import { FROM_DATE, NO_RATE, PERCENT, RatePreview, RateView, RatesApi, rateOn } from '../../core/rates';
+ import { Session } from '../../core/session';
+@@ -52,6 +53,23 @@ import { Session } from '../../core/session';
+           <p role="alert" data-testid="rate-form-error">{{ message }}</p>
+         }
+       </form>
++      <form (submit)="importRates($event)" aria-label="Import rates">
++        <label for="import-rates">Import rates, one per line: grade,rate,from,to</label>
++        <textarea
++          id="import-rates"
++          data-testid="import-rates"
++          rows="4"
++          [value]="importText()"
++          (input)="importText.set(value($event)); importError.set(null)"
++        ></textarea>
++        <button type="submit" data-testid="import-rates-submit">Import rates</button>
++        @if (importSet() !== null) {
++          <p role="status">Set <strong data-testid="import-rates-set">{{ importSet() }}</strong> rates.</p>
++        }
++        @if (importError(); as message) {
++          <p role="alert" data-testid="import-rates-error">{{ message }}</p>
++        }
++      </form>
+       <form (submit)="runPreview($event)" aria-label="Preview a rate">
+         <label for="rate-preview-grade">Preview grade</label>
+         <select
+@@ -136,6 +154,8 @@ export class Rates {
+   readonly today = input.required<string>();
+   /** A rate set through the form. */
+   readonly saved = output<RateView>();
++  /** The sheet's rates after an import. */
++  readonly imported = output<RateView[]>();
+ 
+   protected readonly grades = GRADES;
+   protected readonly noRate = NO_RATE;
+@@ -151,9 +171,27 @@ export class Rates {
+   /** The last preview's result; cleared when the preview form changes. */
+   protected readonly preview = signal<RatePreview | null>(null);
+   protected readonly previewError = signal<string | null>(null);
++  /** The rate import box's text: lines of grade,rate,from,to. */
++  protected readonly importText = signal('');
++  /** How many rates the last import set; null before any. */
++  protected readonly importSet = signal<number | null>(null);
++  protected readonly importError = signal<string | null>(null);
+   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+   private busy = false;
+ 
++  constructor() {
++    // A sheet load starts the import box afresh.
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      untracked(() => {
++        this.importText.set('');
++        this.importSet.set(null);
++        this.importError.set(null);
++      });
++    });
++  }
++
+   /** Every rate by grade, each grade's from the start, then by from-date. */
+   protected readonly listed = computed(() =>
+     [...this.rates()].sort((a, b) =>
+@@ -197,6 +235,34 @@ export class Rates {
+     }
+   }
+ 
++  /** Set a rate per pasted line, in order, as the form would; all or none. */
++  protected async importRates(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy) return;
++    this.importError.set(null);
++    this.importSet.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const text = this.importText();
++    if (!text.trim()) {
++      this.importError.set('Paste at least one line of grade,rate,from,to.');
++      return;
++    }
++    this.busy = true;
++    try {
++      const result = await this.api.importRates(sheet, text);
++      if (this.session.sheet() !== sheet) return;
++      this.imported.emit(result.rates);
++      this.importSet.set(result.set);
++      this.importText.set('');
++    } catch (e) {
++      const reason = e instanceof HttpErrorResponse && e.status === 400 && typeof e.error?.detail === 'string' ? e.error.detail : null;
++      this.importError.set(reason ?? 'The rates could not be imported; nothing was changed.');
++    } finally {
++      this.busy = false;
++    }
++  }
++
+   protected async save(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.busy) return;
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index cc3a65f8..80415f78 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.SignedIn;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+@@ -46,11 +47,21 @@ public class RateController {
+             LocalDate to) {
+     }
+ 
++    /** The rate import box's text: lines of grade,rate,from,to. */
++    public record ImportForm(@NotNull @Size(max = 200_000) String text) {
++    }
++
++    /** What the screen is told of a rate import: how many rates were set, and the sheet's rates after. */
++    public record ImportView(int set, List<RateView> rates) {
++    }
++
+     private final RateService service;
++    private final RateImportService imports;
+     private final SheetHistory history;
+ 
+-    public RateController(RateService service, SheetHistory history) {
++    public RateController(RateService service, RateImportService imports, SheetHistory history) {
+         this.service = service;
++        this.imports = imports;
+         this.history = history;
+     }
+ 
+@@ -93,6 +104,19 @@ public class RateController {
+                 form.to(), new BigDecimal(form.pct())));
+     }
+ 
++    /**
++     * Set a rate per imported line, in order, each as the rate form would; nothing is set when any line
++     * is refused.
++     */
++    @PostMapping("/import")
++    public ImportView importRates(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid ImportForm form) {
++        int set = imports.importRates(sheetId, SignedIn.name(user), form.text()).size();
++        return new ImportView(set, service.list(sheetId).stream().map(RateView::of).toList());
++    }
++
+     /** What the screen is told of a rate preview: the claims whose due would change, and the sum of the differences. */
+     public record PreviewView(int count, String diff) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+new file mode 100644
+index 00000000..9f2cc20b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+@@ -0,0 +1,100 @@
++package net.officefloor.hq.app.rate;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.ArrayList;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * The rate import box: lines of grade,rate,from,to each set a grade's rate, in order, as the rate form
++ * would (replacing any the grade had from the same date); the from- and to-date may be absent or blank.
++ * Every line is first held to the rate form's rules; it is one change, so when any line is refused
++ * nothing is set and nothing is recorded.
++ */
++@Service
++public class RateImportService {
++
++    /** The most lines one import takes. */
++    static final int LINES_MAX = 1000;
++
++    /** A percent as the rate form takes it: 0.00 or more, with up to two decimals. */
++    private static final java.util.regex.Pattern PERCENT = java.util.regex.Pattern.compile("\\d{1,3}(\\.\\d{1,2})?");
++
++    /** A line read from the paste, checked against the form's rules. */
++    private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
++    }
++
++    private final RateService rates;
++
++    public RateImportService(RateService rates) {
++        this.rates = rates;
++    }
++
++    /** Set a rate per line of the text, in order; refused as a whole when any line is refused. */
++    @Transactional
++    public List<Rate> importRates(String sheetId, String user, String text) {
++        List<Line> lines = new ArrayList<>();
++        String[] raw = text == null ? new String[0] : text.split("\\r?\\n");
++        for (int i = 0; i < raw.length; i++) {
++            if (!raw[i].isBlank()) {
++                lines.add(line(i + 1, raw[i]));
++            }
++        }
++        if (lines.isEmpty()) {
++            throw refused("Paste at least one line of grade,rate,from,to.");
++        }
++        if (lines.size() > LINES_MAX) {
++            throw refused("Paste at most " + LINES_MAX + " lines at once.");
++        }
++        List<Rate> set = new ArrayList<>();
++        for (Line line : lines) {
++            set.add(rates.set(sheetId, user, line.grade(), line.from(), line.to(), line.pct()));
++        }
++        return set;
++    }
++
++    private static Line line(int number, String text) {
++        String[] fields = text.split(",", -1);
++        if (fields.length < 2) {
++            throw refused("Line " + number + " needs at least a grade and a rate.");
++        }
++        if (fields.length > 4) {
++            throw refused("Line " + number + " has more than grade,rate,from,to.");
++        }
++        String grade = fields[0].trim();
++        if (!grade.matches("[ABC]")) {
++            throw refused("Line " + number + ": the grade must be A, B or C.");
++        }
++        String pct = fields[1].trim();
++        if (!PERCENT.matcher(pct).matches()) {
++            throw refused("Line " + number + ": the rate must be 0.00 or more, with up to two decimals.");
++        }
++        LocalDate from = date(number, "from", fields.length > 2 ? fields[2] : "");
++        LocalDate to = date(number, "to", fields.length > 3 ? fields[3] : "");
++        if (from != null && to != null && to.isBefore(from)) {
++            throw refused("Line " + number + ": the to-date cannot be before the from-date.");
++        }
++        return new Line(grade, new BigDecimal(pct), from, to);
++    }
++
++    private static LocalDate date(int number, String which, String field) {
++        String value = field.trim();
++        if (value.isEmpty()) {
++            return null;
++        }
++        try {
++            return LocalDate.parse(value);
++        } catch (DateTimeParseException e) {
++            throw refused("Line " + number + ": the " + which + "-date must be yyyy-mm-dd.");
++        }
++    }
++
++    private static ResponseStatusException refused(String reason) {
++        return new ResponseStatusException(HttpStatus.BAD_REQUEST, reason);
++    }
++}
