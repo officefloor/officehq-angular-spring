@@ -751,6 +751,7 @@ export class People {
       const byId = new Map(stated.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
     } catch {
+      asOfInput.value = '';
       this.personError.set({ id: person.id, message: 'The statement could not be taken.' });
     }
   }

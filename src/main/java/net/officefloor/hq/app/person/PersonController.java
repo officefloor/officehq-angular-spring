@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.person;
 
+import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.history.AsOfGuard;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
@@ -81,17 +83,21 @@ public class PersonController {
 
     private final PersonService service;
     private final WatchService watches;
+    private final SheetHistory history;
 
-    public PersonController(PersonService service, WatchService watches) {
+    public PersonController(PersonService service, WatchService watches, SheetHistory history) {
         this.service = service;
         this.watches = watches;
+        this.history = history;
     }
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in the order they were added; with an as-of date, as they stood at the end of it. */
     @GetMapping
     public List<PersonView> list(
-            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
-        return service.list(sheetId).stream().map(PersonView::of).toList();
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        return history.views(sheetId, AsOfGuard.date(asOf)).map(SheetHistory.Views::people)
+                .orElseGet(() -> service.list(sheetId).stream().map(PersonView::of).toList());
     }
 
     /** Add a person to the sheet. */

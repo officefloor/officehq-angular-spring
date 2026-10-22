@@ -72,6 +72,12 @@ export class Session {
   readonly cap = signal('');
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
+  /**
+   * The date (yyyy-mm-dd) this user's screen shows the sheet as of; empty when none is set. While it
+   * is set, every list is read as it stood at the end of that date, it stands in for the sheet's today,
+   * and every change is refused.
+   */
+  readonly asOf = signal('');
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -86,6 +92,20 @@ export class Session {
     );
     this.show(view);
     this.loads.update((n) => n + 1);
+  }
+
+  /** Show the active sheet as of a date (empty: as it stands), re-reading it from the store. */
+  async setAsOf(date: string): Promise<void> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet is loaded.');
+    const was = this.asOf();
+    this.asOf.set(date);
+    try {
+      await this.loadSheet(id);
+    } catch (e) {
+      this.asOf.set(was);
+      throw e;
+    }
   }
 
   /** Change the active sheet's today in the store. */

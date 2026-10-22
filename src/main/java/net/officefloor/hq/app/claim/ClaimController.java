@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.claim;
 
+import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.history.AsOfGuard;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -117,18 +119,22 @@ public class ClaimController {
     private final ClaimService service;
     private final BulkMoveService bulk;
     private final PasteService paste;
+    private final SheetHistory history;
 
-    public ClaimController(ClaimService service, BulkMoveService bulk, PasteService paste) {
+    public ClaimController(ClaimService service, BulkMoveService bulk, PasteService paste, SheetHistory history) {
         this.service = service;
         this.bulk = bulk;
         this.paste = paste;
+        this.history = history;
     }
 
-    /** The sheet's claims, newest first. */
+    /** The sheet's claims, newest first; with an as-of date, as they stood at the end of it. */
     @GetMapping("/claims")
     public List<ClaimView> list(
-            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
-        return service.list(sheetId).stream().map(ClaimView::of).toList();
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        return history.views(sheetId, AsOfGuard.date(asOf)).map(SheetHistory.Views::claims)
+                .orElseGet(() -> service.list(sheetId).stream().map(ClaimView::of).toList());
     }
 
     /** Add a claim for a person. */

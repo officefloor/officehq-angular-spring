@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.sheet;
 
+import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.history.AsOfGuard;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -168,17 +170,23 @@ public class SheetController {
 
     private final SheetService service;
     private final RoleService roles;
+    private final SheetHistory history;
 
-    public SheetController(SheetService service, RoleService roles) {
+    public SheetController(SheetService service, RoleService roles, SheetHistory history) {
         this.service = service;
         this.roles = roles;
+        this.history = history;
     }
 
-    /** Load a sheet by id, starting an empty one if the id was never used. */
+    /**
+     * Load a sheet by id, starting an empty one if the id was never used; with an as-of date, the sheet
+     * as it stood at the end of that date, with that date as its today.
+     */
     @PostMapping("/{id}/load")
     public SheetView load(
-            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id) {
-        return SheetView.of(service.load(id));
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        return SheetView.of(history.sheet(service.load(id), AsOfGuard.date(asOf)));
     }
 
     /** Change the sheet's today. */
@@ -202,11 +210,12 @@ public class SheetController {
         return SheetView.of(service.archive(id, name));
     }
 
-    /** The sheet's settings. */
+    /** The sheet's settings; with an as-of date, as they stood at the end of that date. */
     @GetMapping("/{id}/settings")
     public SettingsView settings(
-            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id) {
-        return SettingsView.of(service.load(id));
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        return SettingsView.of(history.sheet(service.load(id), AsOfGuard.date(asOf)));
     }
 
     /** Record the sheet's clerk limit from a date (blank: the sheet's today); a blank value means no limit. */

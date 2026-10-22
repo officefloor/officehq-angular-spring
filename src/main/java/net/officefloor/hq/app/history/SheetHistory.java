@@ -8,12 +8,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.period.PeriodController.PeriodView;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateController.RateView;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -67,20 +72,33 @@ public class SheetHistory {
     public record AsOf(Sheet sheet, Map<Long, Person> people, Map<Long, Claim> claims, Dues.Basis basis) {
     }
 
+    /**
+     * What the screen is told about the sheet as it stood at the end of a date: its people, claims
+     * (newest first), rates and periods, and whether it was archived.
+     */
+    public record Views(boolean archived, List<PersonView> people, List<ClaimView> claims, List<RateView> rates,
+            List<PeriodView> periods) {
+
+        /** The sheet before anything was kept for it. */
+        static final Views EMPTY = new Views(false, List.of(), List.of(), List.of(), List.of());
+    }
+
     private final SheetSnapshotRepository snapshots;
     private final SheetRepository sheets;
     private final RateRepository rates;
     private final PersonRepository people;
     private final ClaimRepository claims;
+    private final PeriodRepository periods;
     private final JsonMapper json;
 
     public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateRepository rates,
-            PersonRepository people, ClaimRepository claims, JsonMapper json) {
+            PersonRepository people, ClaimRepository claims, PeriodRepository periods, JsonMapper json) {
         this.snapshots = snapshots;
         this.sheets = sheets;
         this.rates = rates;
         this.people = people;
         this.claims = claims;
+        this.periods = periods;
         this.json = json;
     }
 
@@ -90,13 +108,60 @@ public class SheetHistory {
     public void todayLeaving(TodayLeaving leaving) {
         String sheetId = leaving.sheetId();
         Sheet sheet = sheets.findById(sheetId).orElseThrow();
+        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         State state = new State(sheet.getPolicyDate(),
                 sheet.getDated().stream().map(d -> new SettingState(d.getKey(), d.getFromDate(), d.getValue())).toList(),
-                rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId).stream()
-                        .map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())).toList(),
-                people.findBySheetIdOrderByIdAsc(sheetId).stream().map(SheetHistory::kept).toList(),
-                claims.findBySheetIdOrderByIdDesc(sheetId).stream().map(SheetHistory::kept).toList());
-        snapshots.save(new SheetSnapshot(sheetId, leaving.today(), json.writeValueAsString(state)));
+                sheetRates.stream().map(r -> new RateState(r.getGrade(), r.getFromDate(), r.getToDate(), r.getPct())).toList(),
+                sheetPeople.stream().map(SheetHistory::kept).toList(),
+                sheetClaims.stream().map(SheetHistory::kept).toList());
+        Views views = new Views(sheet.isArchived(), sheetPeople.stream().map(PersonView::of).toList(),
+                sheetClaims.stream().map(ClaimView::of).toList(), sheetRates.stream().map(RateView::of).toList(),
+                periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList());
+        snapshots.save(new SheetSnapshot(sheetId, leaving.today(), json.writeValueAsString(state),
+                json.writeValueAsString(views)));
+    }
+
+    /**
+     * What a screen showing the sheet as of a date before its today is told: the views kept for the
+     * last snapshot on or before that date, or an empty sheet when none was kept by then. Empty when
+     * no as-of date is set (null), or it is on or after the sheet's today: every change made so far
+     * counts then, and the screen is told the sheet as it stands.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Views> views(String sheetId, LocalDate asOf) {
+        if (!past(sheetId, asOf)) {
+            return Optional.empty();
+        }
+        return Optional.of(snapshots.findFirstBySheetIdAndAsOfLessThanEqualOrderByIdDesc(sheetId, asOf)
+                .map(snapshot -> snapshot.getViews() == null ? Views.EMPTY
+                        : json.readValue(snapshot.getViews(), Views.class))
+                .orElse(Views.EMPTY));
+    }
+
+    /**
+     * The sheet a screen showing it as of a date (null: none) is told about, held in no store: with no
+     * as-of date the sheet as it stands; else the sheet with the as-of date as its today, its settings
+     * as they stood at the end of that date (as they stand when it is on or after the sheet's today).
+     */
+    @Transactional(readOnly = true)
+    public Sheet sheet(Sheet now, LocalDate asOf) {
+        if (asOf == null) {
+            return now;
+        }
+        if (!asOf.isBefore(now.getToday())) {
+            return now.asOf(asOf, now.getDated(), now.getPolicyDate());
+        }
+        Sheet then = at(now.getId(), asOf).map(AsOf::sheet)
+                .orElseGet(() -> now.asOf(asOf, List.of(), null));
+        then.setArchived(views(now.getId(), asOf).orElse(Views.EMPTY).archived());
+        return then;
+    }
+
+    /** Whether an as-of date (null: none) is before the sheet's today. */
+    private boolean past(String sheetId, LocalDate asOf) {
+        return asOf != null && sheets.findById(sheetId).map(s -> asOf.isBefore(s.getToday())).orElse(false);
     }
 
     /**

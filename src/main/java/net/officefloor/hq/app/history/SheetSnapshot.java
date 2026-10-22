@@ -29,13 +29,19 @@ public class SheetSnapshot {
     @Column(name = "state", nullable = false)
     private String state;
 
+    /** What the screen is told about the sheet as it stood then (see {@link SheetHistory.Views}); null on older snapshots. */
+    @Lob
+    @Column(name = "views")
+    private String views;
+
     protected SheetSnapshot() {
     }
 
-    public SheetSnapshot(String sheetId, LocalDate asOf, String state) {
+    public SheetSnapshot(String sheetId, LocalDate asOf, String state, String views) {
         this.sheetId = sheetId;
         this.asOf = asOf;
         this.state = state;
+        this.views = views;
     }
 
     public Long getId() {
@@ -52,5 +58,9 @@ public class SheetSnapshot {
 
     public String getState() {
         return state;
+    }
+
+    public String getViews() {
+        return views;
     }
 }

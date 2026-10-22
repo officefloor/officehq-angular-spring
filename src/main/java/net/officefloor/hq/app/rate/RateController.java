@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.rate;
 
+import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.history.AsOfGuard;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -29,7 +31,7 @@ public class RateController {
      */
     public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
 
-        static RateView of(Rate rate) {
+        public static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFromDate(),
                     rate.getToDate());
         }
@@ -44,16 +46,23 @@ public class RateController {
     }
 
     private final RateService service;
+    private final SheetHistory history;
 
-    public RateController(RateService service) {
+    public RateController(RateService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
-    /** The sheet's rates by grade, each grade's by from-date; a grade with no rate is not listed. */
+    /**
+     * The sheet's rates by grade, each grade's by from-date; a grade with no rate is not listed. With an
+     * as-of date, as they stood at the end of it.
+     */
     @GetMapping
     public List<RateView> list(
-            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
-        return service.list(sheetId).stream().map(RateView::of).toList();
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        return history.views(sheetId, AsOfGuard.date(asOf)).map(SheetHistory.Views::rates)
+                .orElseGet(() -> service.list(sheetId).stream().map(RateView::of).toList());
     }
 
     /**

@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.period;
 
+import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.history.AsOfGuard;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -37,7 +39,7 @@ public class PeriodController {
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
             String closedTotal, Map<Long, String> personTotals, boolean softClosed) {
 
-        static PeriodView of(Period period) {
+        public static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
@@ -55,16 +57,20 @@ public class PeriodController {
     }
 
     private final PeriodService service;
+    private final SheetHistory history;
 
-    public PeriodController(PeriodService service) {
+    public PeriodController(PeriodService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
-    /** The sheet's periods by from-date. */
+    /** The sheet's periods by from-date; with an as-of date, as they stood at the end of it. */
     @GetMapping
     public List<PeriodView> list(
-            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
-        return service.list(sheetId).stream().map(PeriodView::of).toList();
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        return history.views(sheetId, AsOfGuard.date(asOf)).map(SheetHistory.Views::periods)
+                .orElseGet(() -> service.list(sheetId).stream().map(PeriodView::of).toList());
     }
 
     /** Add a period to the sheet. */
