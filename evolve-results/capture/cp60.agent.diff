@@ -1,0 +1,101 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 13f61dd4..cbaabe4b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -40,6 +40,15 @@ function countsInPeriod(claim: ClaimView, person: PersonView, today: string, per
+ }
+ 
+ /** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
++/**
++ * The sum of the people's figures in whole cents, leaving out the single highest and the single
++ * lowest when there are three or more.
++ */
++function trimmedCents(figures: number[]): number {
++  const total = figures.reduce((sum, f) => sum + f, 0);
++  return figures.length >= 3 ? total - Math.max(...figures) - Math.min(...figures) : total;
++}
++
+ function csvField(value: string): string {
+   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+ }
+@@ -423,19 +432,29 @@ export class People {
+   protected readonly claimedTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + this.claimedCents(p.id), 0)),
+   );
+-  /** Everyone's due-total added up, skipping those shown as n/a. */
++  /**
++   * Everyone's due-total added up, skipping those shown as n/a, and leaving out the highest and
++   * lowest when three or more have one.
++   */
+   protected readonly dueTotal = computed(() =>
+     money(
+-      this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0),
++      trimmedCents(
++        this.people()
++          .map((p) => this.dueTotalCents(p))
++          .filter((c): c is number => c !== null),
++      ),
+     ),
+   );
+   /** How many overdue claims count in the live totals, across everyone. */
+   protected readonly overdueCount = computed(() =>
+     this.people().reduce((sum, p) => sum + this.overdueOf(p.id).length, 0),
+   );
+-  /** The due of everyone's counting overdue claims added up. */
++  /**
++   * Everyone's overdue-total added up, leaving out the highest and lowest when there are three or
++   * more people.
++   */
+   protected readonly overdueTotal = computed(() =>
+-    money(this.people().reduce((sum, p) => sum + this.overdueCents(p), 0)),
++    money(trimmedCents(this.people().map((p) => this.overdueCents(p)))),
+   );
+   protected readonly name = signal('');
+   protected readonly grade = signal<Grade>('A');
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index 5bb00158..47a2a1b3 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -74,8 +74,8 @@ public class Rollups {
+         }
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = zero();
+-        BigDecimal dueTotal = zero();
+-        BigDecimal overdueTotal = zero();
++        List<BigDecimal> dueFigures = new ArrayList<>();
++        List<BigDecimal> overdueFigures = new ArrayList<>();
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of()).stream()
+                     .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today)))
+@@ -108,11 +108,28 @@ public class Rollups {
+             figures.put(person.getId(), new Figures(person.getName(), claimed, due, overdue));
+             claimedTotal = claimedTotal.add(claimed);
+             if (due != null) {
+-                dueTotal = dueTotal.add(due);
++                dueFigures.add(due);
+             }
+-            overdueTotal = overdueTotal.add(overdue);
++            overdueFigures.add(overdue);
+         }
+-        return new Rollup(figures, claimedTotal, dueTotal, overdueTotal);
++        return new Rollup(figures, claimedTotal, trimmed(dueFigures), trimmed(overdueFigures));
++    }
++
++    /**
++     * The sum of the people's figures, leaving out the single highest and the single lowest when there
++     * are three or more.
++     */
++    static BigDecimal trimmed(List<BigDecimal> figures) {
++        BigDecimal total = zero();
++        for (BigDecimal figure : figures) {
++            total = total.add(figure);
++        }
++        if (figures.size() >= 3) {
++            BigDecimal highest = figures.stream().max(BigDecimal::compareTo).orElseThrow();
++            BigDecimal lowest = figures.stream().min(BigDecimal::compareTo).orElseThrow();
++            total = total.subtract(highest).subtract(lowest);
++        }
++        return total;
+     }
+ 
+     /**
