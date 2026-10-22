@@ -1,0 +1,310 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index b62cf3e8..588ba858 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -34,6 +34,10 @@ export interface PersonView {
+   terms: number | null;
+   /** The person's contact, trimmed and lower-cased; null when they have none. */
+   contact: string | null;
++  /** The person's tags, sorted (trimmed, lower case, no repeats); empty (or absent, as kept by an old snapshot) for none. */
++  tags?: string[] | null;
++  /** Every tag the person has ever carried, sorted; empty (or absent, as kept by an old snapshot) for none. */
++  tagsUsed?: string[] | null;
+   /** Raised on every save of the person. */
+   version: number;
+   /** How many statements have been taken for the person. */
+@@ -111,6 +115,8 @@ export interface PersonForm {
+   contactGiven?: boolean;
+   /** On an edit, the version of the person the form loaded. */
+   version?: number;
++  /** The person's tags, comma separated; blank for none. */
++  tags?: string;
+ }
+ 
+ // The people kept on a sheet, read from and written to the store.
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 19b67441..d94f4ef7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -152,6 +152,13 @@ function csvField(value: string): string {
+           (focus)="contactGiven.set(true)"
+           (input)="contact.set(value($event)); contactGiven.set(true); error.set(null)"
+         />
++        <label for="person-form-tags">Tags (comma separated)</label>
++        <input
++          id="person-form-tags"
++          data-testid="person-form-tags"
++          [value]="tags()"
++          (input)="tags.set(value($event)); error.set(null)"
++        />
+         <button type="submit" data-testid="person-form-submit">
+           {{ editing() === null ? 'Add person' : 'Save person' }}
+         </button>
+@@ -305,6 +312,7 @@ function csvField(value: string): string {
+             <th scope="col">Grade</th>
+             <th scope="col">Terms</th>
+             <th scope="col">Contact</th>
++            <th scope="col">Tags</th>
+             <th scope="col">Claimed</th>
+             <th scope="col">Due</th>
+             <th scope="col">Due by period</th>
+@@ -361,6 +369,7 @@ function csvField(value: string): string {
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
+               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+               <td>
+@@ -764,15 +773,17 @@ export class People {
+   );
+   /**
+    * For every tag ever used on the sheet, sorted: the due of the claims that count in the live totals
+-   * (see countsLive) which carry it; a claim with two tags counts in both (a claim with no figure adds nothing).
++   * (see countsLive) which carry it, or whose person carries it; a claim with two tags counts in both, and a
++   * tag both the claim and its person carry counts it once (a claim with no figure adds nothing).
+    */
+   protected readonly tagTotals = computed(() => {
+     const totals = new Map<string, number>();
+     for (const c of this.claims()) for (const tag of c.tagsUsed ?? []) totals.set(tag, 0);
++    for (const p of this.people()) for (const tag of p.tagsUsed ?? []) totals.set(tag, 0);
+     for (const p of this.people()) {
+       for (const c of this.countingOf(p.id)) {
+         const due = this.dueCents(c, p) ?? 0;
+-        for (const tag of c.tags ?? []) totals.set(tag, (totals.get(tag) ?? 0) + due);
++        for (const tag of new Set([...(c.tags ?? []), ...(p.tags ?? [])])) totals.set(tag, (totals.get(tag) ?? 0) + due);
+       }
+     }
+     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
+@@ -821,6 +832,8 @@ export class People {
+   protected readonly terms = signal('');
+   /** The person's contact as typed: blank for none. */
+   protected readonly contact = signal('');
++  /** The person's tags as typed, comma separated: blank for none. */
++  protected readonly tags = signal('');
+   /** Whether the terms or the contact were taken up on the form since it was opened. */
+   protected readonly termsGiven = signal(false);
+   protected readonly contactGiven = signal(false);
+@@ -1728,6 +1741,7 @@ export class People {
+     this.gradeFrom.set(this.today());
+     this.terms.set(person.terms === null ? '' : String(person.terms));
+     this.contact.set(person.contact ?? '');
++    this.tags.set((person.tags ?? []).join(', '));
+     this.termsGiven.set(false);
+     this.contactGiven.set(false);
+     this.error.set(null);
+@@ -1740,6 +1754,7 @@ export class People {
+     this.gradeFrom.set(this.today());
+     this.terms.set('');
+     this.contact.set('');
++    this.tags.set('');
+     this.termsGiven.set(false);
+     this.contactGiven.set(false);
+     this.error.set(null);
+@@ -1759,7 +1774,7 @@ export class People {
+       return;
+     }
+     const form = { name: this.name(), grade: this.grade(), terms: typedTerms === '' ? null : Number(typedTerms),
+-      contact: this.contact(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven() };
++      contact: this.contact(), tags: this.tags(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven() };
+     if (!form.name.trim()) {
+       this.error.set('Type a name for the person.');
+       return;
+@@ -1808,6 +1823,7 @@ export class People {
+       this.grade.set(this.gradeOf(current));
+       this.terms.set(current.terms === null ? '' : String(current.terms));
+       this.contact.set(current.contact ?? '');
++      this.tags.set((current.tags ?? []).join(', '));
+     } catch {
+       // the form keeps what was typed; the refusal is still shown
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index bde6279a..8160f4de 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -71,6 +71,14 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    /** The person's tags, sorted and comma separated; null when they have none. */
++    @Column(name = "tags")
++    private String tags;
++
++    /** Every tag the person has ever carried, sorted and comma separated; null when none. */
++    @Column(name = "tags_used")
++    private String tagsUsed;
++
+     /** The sheet the person was last transferred from; null when they were never transferred. */
+     @Column(name = "origin_sheet_id")
+     private String originSheetId;
+@@ -228,6 +236,24 @@ public class Person {
+         this.contact = contactOf(contact);
+     }
+ 
++    /** The person's tags, sorted; empty when they have none. */
++    public List<String> getTags() {
++        return tags == null ? List.of() : List.of(tags.split(","));
++    }
++
++    /** Give the person their tags (see {@link net.officefloor.hq.app.claim.Claim#tagsOf}); empty for none. */
++    public void tag(List<String> tags) {
++        this.tags = tags.isEmpty() ? null : String.join(",", tags);
++        List<String> used = java.util.stream.Stream.concat(getTagsUsed().stream(), tags.stream())
++                .distinct().sorted().toList();
++        this.tagsUsed = used.isEmpty() ? null : String.join(",", used);
++    }
++
++    /** Every tag the person has ever carried, sorted; empty when none. */
++    public List<String> getTagsUsed() {
++        return tagsUsed == null ? List.of() : List.of(tagsUsed.split(","));
++    }
++
+     public long getVersion() {
+         return version;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 77e81587..18828e80 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -45,7 +45,8 @@ public class PersonController {
+      * Their grades are listed by the date each is in force from, the first with none (from the
+      * beginning of time).
+      */
+-    public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, long version, int statementCount,
++    public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, List<String> tags,
++            List<String> tagsUsed, long version, int statementCount,
+             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
+             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
+             String originSheetId) {
+@@ -58,7 +59,8 @@ public class PersonController {
+             List<GradeView> grades = new ArrayList<>();
+             grades.add(new GradeView(person.getGrade(), null));
+             person.getGradesFrom().forEach((from, grade) -> grades.add(new GradeView(grade, from)));
+-            return new PersonView(person.getId(), person.getName(), grades, person.getTerms(), person.getContact(), person.getVersion(),
++            return new PersonView(person.getId(), person.getName(), grades, person.getTerms(), person.getContact(),
++                    person.getTags(), person.getTagsUsed(), person.getVersion(),
+                     person.getStatementCount(),
+                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
+                     person.getStatementDate(), person.getRetiredFrom(),
+@@ -85,7 +87,8 @@ public class PersonController {
+      * A person's values as entered on the form: a name is required, the grade is A, B or C. On an edit
+      * the grade is recorded from its date (none: the sheet's today); a person's first grade applies
+      * from the beginning of time. Their own terms are a whole number of days, none for no terms of
+-     * their own. A contact is kept trimmed and lower-cased, blank for none. An edit says whether the
++     * their own. A contact is kept trimmed and lower-cased, blank for none. Tags are comma separated
++     * (blank: none; none at all keep the person's own). An edit says whether the
+      * terms and the contact were typed on the form (PERSON_EDITED then carries them), and carries the version of the person the form loaded.
+      */
+     public record PersonForm(
+@@ -96,7 +99,8 @@ public class PersonController {
+             @Size(max = 200) String contact,
+             boolean termsGiven,
+             boolean contactGiven,
+-            Long version) {
++            Long version,
++            @Size(max = 1000) String tags) {
+     }
+ 
+     /** The people selected to be given a grade together, the grade, and the date it is in force from (none: the sheet's today). */
+@@ -158,7 +162,7 @@ public class PersonController {
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PersonForm form) {
+         return view(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms(),
+-                form.contact()));
++                form.contact(), form.tags()));
+     }
+ 
+     /** The people an import added and those it updated, each in the order of their lines. */
+@@ -190,7 +194,7 @@ public class PersonController {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required.");
+         }
+         return view(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
+-                form.grade(), form.gradeFrom(), form.terms(), form.contact(), form.termsGiven(), form.contactGiven()));
++                form.grade(), form.gradeFrom(), form.terms(), form.contact(), form.termsGiven(), form.contactGiven(), form.tags()));
+     }
+ 
+     /** Give the selected people a grade from a date together, each as the person form would: the people changed. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 1705dadf..11af842a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -6,6 +6,7 @@ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -64,11 +65,19 @@ public class PersonService {
+      */
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
++        return add(sheetId, user, name, grade, terms, contact, null);
++    }
++
++    /** Add a person as {@link #add(String, String, String, String, Integer, String)} does, with their tags, comma separated (null or blank: none). */
++    @Transactional
++    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
++            String tags) {
+         sheets.load(sheetId);
+         requireNameFree(sheetId, name, null);
+         requireContactFree(sheetId, contact, null);
+         Rollups.Rollup before = rollups.take(sheetId);
+         Person added = new Person(sheetId, name, grade, terms, contact);
++        added.tag(Claim.tagsOf(tags));
+         added.setPosition(people.findMaxPositionBySheetId(sheetId) + 1);
+         Person person = people.saveAndFlush(added);
+         audited("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId), terms != null,
+@@ -87,6 +96,15 @@ public class PersonService {
+     @Transactional
+     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
+             LocalDate gradeFrom, Integer terms, String contact, boolean termsGiven, boolean contactGiven) {
++        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, termsGiven, contactGiven,
++                null);
++    }
++
++    /** Edit a person as {@link #edit} does, and set their tags from the comma separated text (null: kept as they are). */
++    @Transactional
++    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
++            LocalDate gradeFrom, Integer terms, String contact, boolean termsGiven, boolean contactGiven,
++            String tags) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+         if (person.getVersion() != version) {
+@@ -106,6 +124,9 @@ public class PersonService {
+         person.setName(name);
+         person.setTerms(terms);
+         person.setContact(contact);
++        if (tags != null) {
++            person.tag(Claim.tagsOf(tags));
++        }
+         person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
+         Person saved = people.saveAndFlush(person);
+         audited("PERSON_EDITED", sheetId, user, saved, today, withTerms, withContact);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 2e6cf110..ca1dde59 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -86,9 +86,9 @@ public class CloneService {
+         for (Long id : jdbc.queryForList("SELECT id FROM person WHERE sheet_id = ? ORDER BY list_position, id",
+                 Long.class, sheetId)) {
+             people.put(id, insert("""
+-                    INSERT INTO person (sheet_id, name, name_key, grade, list_position, terms, contact, retired_from,
++                    INSERT INTO person (sheet_id, name, name_key, grade, list_position, terms, contact, tags, tags_used, retired_from,
+                         origin_sheet_id)
+-                    SELECT ?, name, name_key, grade, list_position, terms, contact, retired_from, origin_sheet_id
++                    SELECT ?, name, name_key, grade, list_position, terms, contact, tags, tags_used, retired_from, origin_sheet_id
+                     FROM person WHERE id = ?""", toSheetId, id));
+         }
+         people.forEach((from, to) -> {
+diff --git a/src/main/resources/db/migration/V76__person_tags.sql b/src/main/resources/db/migration/V76__person_tags.sql
+new file mode 100644
+index 00000000..12f08b25
+--- /dev/null
++++ b/src/main/resources/db/migration/V76__person_tags.sql
+@@ -0,0 +1,4 @@
++-- A person's tags: trimmed, lower case, no repeats, sorted and comma separated (null: none); and every
++-- tag they have ever carried, in the same form (null: none), so the sheet lists each tag ever used on it.
++ALTER TABLE person ADD COLUMN tags VARCHAR(2000);
++ALTER TABLE person ADD COLUMN tags_used VARCHAR(4000);

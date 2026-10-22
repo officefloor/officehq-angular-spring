@@ -1,0 +1,64 @@
+{
+  "checkpoint": 133,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp133_person-tags",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may carry tags on the person form (comma separated, trimmed, lower-cased, repeats dropped;\nshown sorted, comma and space separated). The tag totals count a claim for a tag when the claim or\nits person carries it, once.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may carry tags on the person form (comma separated, trimmed, lower-cased, repeats dropped;\nshown sorted, comma and space separated). The tag totals count a claim for a tag when the claim or\nits person carries it, once.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8ffdaeb5c111fbf771fb4ea2d04d6092181286c7",
+  "reset_sha": "",
+  "preagent_sha": "92c780e5aade37c20b10d446ad04560d85bcc9ed",
+  "prev_sha": "92c780e5aade37c20b10d446ad04560d85bcc9ed",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.1743940000000004,
+    "input_tokens": 116,
+    "output_tokens": 22651,
+    "cache_read_tokens": 4376390,
+    "cache_creation_tokens": 105704,
+    "num_turns": 59,
+    "duration_ms": 1752392,
+    "duration_api_ms": 235708,
+    "model": "claude-opus-5-5",
+    "session_id": "0708ff96-ff88-4a1c-8073-fb244cae15be",
+    "stop_reason": "success",
+    "result_text": "Person tags are in and the main \"person tags\" test passes, as does \"scenario 1\". The last full `bin/e2e` run still fails: scenarios 2 and 3 fail on things outside this change, and I've left them alone.\n\n**What changed**\n- **Database:** new migration `V76__person_tags.sql` adds a person's tags and every tag they have ever had, stored the same way claim tags are.\n- **Server:**\n  - A person can now be given tags. They're cleaned the same way claim tags are (trimmed, lower-cased, repeats dropped, sorted), using the existing `Claim.tagsOf`.\n  - The person form and API accept an optional `tags` value, and the person data sent to the screen includes the tags.\n  - On an edit, leaving tags out keeps the person's current ones. Existing callers (import, bulk grade, quick add) are unchanged.\n  - Cloning a sheet copies the tags. The audit records don't change, which matches the test.\n- **Screen:**\n  - The person form has a new tags field (`person-form-tags`), filled in when you edit someone.\n  - Each person row shows its tags (`person-tags`), separated by \", \".\n  - In the tag totals, a claim now counts for a tag if the claim or its person has it, and only once if both do. A tag a person has carried also gets its own total line, even before any claim uses it.\n\n**The two failing scenarios**\n- **Scenario 2, line 758:** the test expects a person to show as not watched when the sheet is viewed as of an earlier date. The app doesn't keep watches in its history, so it shows today's watches; Ada is watched, so the screen shows \"yes\".\n- **Scenario 3, line 1125:** the test expects a steward to add a claim dated 2026-02-10. Its due-by is 2026-03-02 (the test itself expects that date), which falls in the March period the test closed earlier. The app refuses any claim due in a closed period, so the add is turned down.\n\nNeither failure involves tags. Making them pass would mean changing how watches work in past-date views and relaxing the closed-period rule, and the spec doesn't say what the rules should be. I didn't want to guess at those inside this change. If you want them handled, tell me the intended behaviour, for example whether a steward may add a claim due in a closed period.\n\nWhen I ran the main test on its own, it failed once because the add-person request lost its connection to the server. It passed on the rerun and in the earlier full run.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.1743940000000004,
+        "num_turns": 59,
+        "duration_ms": 1752392,
+        "duration_api_ms": 235708,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp133.agent.jsonl",
+  "agent_diff_file": "cp133.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
