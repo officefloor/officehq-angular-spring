@@ -9,6 +9,7 @@ import { Session, graceOn, valueOn } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
 import { Periods } from '../periods/periods';
+import { Pools } from '../pools/pools';
 import { PasteClaims } from '../paste-claims/paste-claims';
 import { QuickAdd } from '../quick-add/quick-add';
 import { Rates } from '../rates/rates';
@@ -70,7 +71,7 @@ function csvField(value: string): string {
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Header, PasteClaims, Periods, QuickAdd, Rates, Summary],
+  imports: [Claims, Header, PasteClaims, Periods, Pools, QuickAdd, Rates, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -493,6 +494,7 @@ function csvField(value: string): string {
         </tbody>
       </table>
     </section>
+    <app-pools [people]="people()" [today]="today()" />
   `,
 })
 export class People {
