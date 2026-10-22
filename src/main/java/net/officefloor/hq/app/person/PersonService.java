@@ -32,26 +32,26 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a person to the sheet; refused when the name is already in use on it. */
+    /** Add a person to the sheet, with their own terms (null: none); refused when the name is already in use on it. */
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         sheets.load(sheetId);
         requireNameFree(sheetId, name, null);
         Rollups.Rollup before = rollups.take(sheetId);
-        Person person = people.saveAndFlush(new Person(sheetId, name, grade));
-        audited("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId));
+        Person person = people.saveAndFlush(new Person(sheetId, name, grade, terms));
+        audited("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId), terms != null);
         rollups.audit(sheetId, user, before);
         return person;
     }
 
     /**
-     * Change a person's name and record their grade from a date (null: the sheet's today), keeping the
-     * grades already recorded, from the version of the person the editor loaded; refused when someone
+     * Change a person's name and own terms (null: none) and record their grade from a date (null: the
+     * sheet's today), keeping the grades already recorded, from the version of the person the editor loaded; refused when someone
      * has saved the person since, or when the name is in use by another person.
      */
     @Transactional
     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         if (person.getVersion() != version) {
@@ -62,9 +62,10 @@ public class PersonService {
         Rollups.Rollup before = rollups.take(sheetId);
         LocalDate today = sheets.today(sheetId);
         person.setName(name);
+        person.setTerms(terms);
         person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
         Person saved = people.saveAndFlush(person);
-        audited("PERSON_EDITED", sheetId, user, saved, today);
+        audited("PERSON_EDITED", sheetId, user, saved, today, true);
         rollups.audit(sheetId, user, before);
         return saved;
     }
@@ -125,10 +126,15 @@ public class PersonService {
         return saved;
     }
 
-    /** Record the change to the person, with the grade in force on the sheet's today, once it is committed. */
-    private void audited(String event, String sheetId, String user, Person person, LocalDate today) {
+    /**
+     * Record the change to the person, with the grade in force on the sheet's today and, when the form
+     * gave them, their own terms (empty when cleared), once it is committed.
+     */
+    private void audited(String event, String sheetId, String user, Person person, LocalDate today,
+            boolean withTerms) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.gradeOn(today));
+                + " name=" + person.getName() + " grade=" + person.gradeOn(today)
+                + (withTerms ? " terms=" + (person.getTerms() == null ? "" : person.getTerms()) : ""));
     }
 
     /** Refuse a name already held on the sheet by anyone other than {@code self}. */

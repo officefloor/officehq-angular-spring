@@ -30,6 +30,8 @@ export interface PersonView {
   name: string;
   /** The person's grades by the date each is in force from, the first from the beginning of time. */
   grades: GradeView[];
+  /** The person's own terms in days; null when they have none and take their grade's terms. */
+  terms: number | null;
   /** Raised on every save of the person. */
   version: number;
   /** How many statements have been taken for the person. */
@@ -70,6 +72,8 @@ export interface PersonForm {
   grade: Grade;
   /** On an edit, the date (yyyy-mm-dd) the grade is in force from; null for the sheet's today. */
   gradeFrom?: string | null;
+  /** The person's own terms in days; null for none. */
+  terms: number | null;
   /** On an edit, the version of the person the form loaded. */
   version?: number;
 }

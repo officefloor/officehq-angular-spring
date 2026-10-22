@@ -58,6 +58,10 @@ public class Person {
     @Column(name = "grade", nullable = false)
     private Map<LocalDate, String> gradesFrom = new TreeMap<>();
 
+    /** The person's own terms in days; null when they have none and take their grade's terms. */
+    @Column(name = "terms")
+    private Integer terms;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -95,10 +99,11 @@ public class Person {
     protected Person() {
     }
 
-    public Person(String sheetId, String name, String grade) {
+    public Person(String sheetId, String name, String grade, Integer terms) {
         this.sheetId = sheetId;
         setName(name);
         this.grade = grade;
+        this.terms = terms;
     }
 
     /** The name as it is kept: surrounding spaces removed. */
@@ -157,6 +162,16 @@ public class Person {
     /** Record a grade from a date, in place of any recorded from that same date. */
     public void gradeFrom(String grade, LocalDate from) {
         gradesFrom.put(from, grade);
+    }
+
+    /** The person's own terms in days; null when they have none. */
+    public Integer getTerms() {
+        return terms;
+    }
+
+    /** Set the person's own terms in days; null for none. */
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public long getVersion() {

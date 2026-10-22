@@ -104,6 +104,14 @@ function csvField(value: string): string {
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set(null)"
         />
+        <label for="person-form-terms">Terms (days)</label>
+        <input
+          id="person-form-terms"
+          data-testid="person-form-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -162,6 +170,7 @@ function csvField(value: string): string {
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
+            <th scope="col">Terms</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Due by period</th>
@@ -182,6 +191,7 @@ function csvField(value: string): string {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td>
@@ -460,6 +470,8 @@ export class People {
   protected readonly grade = signal<Grade>('A');
   /** The date the grade entered is in force from; the sheet's today unless another is typed. */
   protected readonly gradeFrom = signal('');
+  /** The person's own terms as typed: a whole number of days, or blank for none. */
+  protected readonly terms = signal('');
   /** The id of the person open in the form, or null when the form adds a new person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person open in the form, as it was loaded. */
@@ -909,6 +921,7 @@ export class People {
     this.name.set(person.name);
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set(this.today());
+    this.terms.set(person.terms === null ? '' : String(person.terms));
     this.error.set(null);
   }
 
@@ -917,6 +930,7 @@ export class People {
     this.name.set('');
     this.grade.set('A');
     this.gradeFrom.set(this.today());
+    this.terms.set('');
     this.error.set(null);
   }
 
@@ -926,7 +940,14 @@ export class People {
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    const form = { name: this.name(), grade: this.grade() };
+    const typedTerms = this.terms().trim();
+    if (typedTerms !== '' && !/^\d{1,5}$/.test(typedTerms)) {
+      // Nothing is saved: an edit is closed, leaving the person as they were, and the form adds again.
+      if (this.editing() !== null) this.reset();
+      this.error.set('Terms are a whole number of days, or blank for none.');
+      return;
+    }
+    const form = { name: this.name(), grade: this.grade(), terms: typedTerms === '' ? null : Number(typedTerms) };
     if (!form.name.trim()) {
       this.error.set('Type a name for the person.');
       return;
@@ -966,6 +987,7 @@ export class People {
       this.version.set(current.version);
       this.name.set(current.name);
       this.grade.set(this.gradeOf(current));
+      this.terms.set(current.terms === null ? '' : String(current.terms));
     } catch {
       // the form keeps what was typed; the refusal is still shown
     }

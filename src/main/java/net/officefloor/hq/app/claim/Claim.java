@@ -43,7 +43,7 @@ public class Claim {
     @Column(name = "claim_date", nullable = false)
     private LocalDate date;
 
-    /** The date the claim is due by, fixed when it was added from its person's grade's terms. */
+    /** The date the claim is due by, fixed when it was added from its person's own terms, else their grade's. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 

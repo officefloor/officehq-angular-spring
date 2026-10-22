@@ -66,7 +66,7 @@ public class ClaimService {
         Rollups.Rollup before = rollups.take(sheetId);
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.today(sheetId);
-        LocalDate dueBy = dated.plusDays(sheets.lock(sheetId).termsFor(person.gradeOn(dated), dated));
+        LocalDate dueBy = dueBy(sheets.lock(sheetId), person, dated);
         periods.refuseIfClosed(sheetId, dated);
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
@@ -373,7 +373,7 @@ public class ClaimService {
                     "The amount split off must be above 0.00 and below the claim's " + claim.getAmount().toPlainString() + ".");
         }
         Person person = person(sheetId, claim.getPersonId());
-        LocalDate dueBy = claim.getDate().plusDays(sheet.termsFor(person.gradeOn(claim.getDate()), claim.getDate()));
+        LocalDate dueBy = dueBy(sheet, person, claim.getDate());
         Claim split = claim.split(off, dueBy);
         split.number(periods.nextClaimNumber(sheetId, split.getDate()));
         split.openedBy(user);
@@ -456,6 +456,15 @@ public class ClaimService {
     private Claim claim(String sheetId, long claimId) {
         return claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+    }
+
+    /**
+     * The date a claim of the person dated on a date is due by: its date plus the first of the
+     * person's own terms, their grade's terms and the sheet's terms in force on it.
+     */
+    private static LocalDate dueBy(Sheet sheet, Person person, LocalDate date) {
+        Integer own = person.getTerms();
+        return date.plusDays(own != null ? own : sheet.termsFor(person.gradeOn(date), date));
     }
 
     private Person person(String sheetId, long personId) {
