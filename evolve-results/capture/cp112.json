@@ -1,0 +1,73 @@
+{
+  "checkpoint": 112,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp112_uniqueness-across-tree",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    109,
+    110,
+    111
+  ],
+  "replaced_tests": [
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+    "cp111_transfer-person.spec.ts::transfer person scenario 3"
+  ],
+  "request": {
+    "spec": "A name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box and the import are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box and the import are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "140db46c98ab58fedd48e2dda3fdf7dba3802c26",
+  "reset_sha": "",
+  "preagent_sha": "599bcd5e19e5630202c9c704056448ba3fe37194",
+  "prev_sha": "599bcd5e19e5630202c9c704056448ba3fe37194",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9534846000000001,
+    "input_tokens": 94,
+    "output_tokens": 22949,
+    "cache_read_tokens": 3439763,
+    "cache_creation_tokens": 100772,
+    "num_turns": 48,
+    "duration_ms": 625406,
+    "duration_api_ms": 320622,
+    "model": "claude-opus-5-5",
+    "session_id": "8cf76908-eeb0-460b-b8c3-ee5d3fb843f6",
+    "stop_reason": "success",
+    "result_text": "I've made the change: names and aliases are now unique across a sheet's whole tree, and people who already clash show it. On a full `bin/e2e` run, 2 of the 4 tests pass (the main \"uniqueness across tree\" test and scenario 2). The other two fail on spec lines that I think are wrong, and my change doesn't reach either of them.\n\n**What changed**\n- **Server, `PersonService`:** a name or alias is refused if it's already used as a name or alias on any ancestor or any descendant of the sheet, ignoring case. This applies to adding a person, renaming, adding an alias, and the quick-add bar. The paste box already refuses any name that isn't on the sheet itself, so a name from elsewhere in the tree can't get through it. A refusal returns the existing \"name in use\" error and writes nothing to the store or the audit file.\n- **Editing a clashing person:** every person-form edit is refused until it renames them to a name that's free across the tree, and none of their aliases clash either.\n- **Showing clashes:** each person's data now carries a `clashing` flag, and their row shows `person-clashing` as `yes` or `no`. Two new queries in `PersonRepository` fetch the names and aliases used on the other sheets. Changing a sheet's parent doesn't alter anyone; existing clashes just show `yes`.\n- **Front end:** a \"Clashing\" column in the people table, and the person-form error now reads \"already in use on this sheet or its tree.\"\n\n**The two failing tests**\n- **Scenario 1** gets as far as line 232, which expects `sheet-parent` to show the literal text `__SHEET__-p` (line 319 has the same). That's a placeholder that was never replaced with the real sheet id, so no app can pass it. When I ran a temporary copy with the placeholder filled in, it stopped earlier, at line 177: a viewer trying to edit a claim, where the screen showed neither a result nor an error. That step passed in the full run but failed twice on its own. I didn't touch that code; I deleted the copy afterwards.\n- **Scenario 3** never sets a parent, so it doesn't exercise this change. At line 902 it expects a three-line paste to be refused. The paste goes through the existing claim rules, which accept every line (Ada's 0.40 claim, for instance, is due on 1 April, after the closed P2 period). The audit log confirms the claims were added. Either the spec's data is off or the claim rules differ from what it assumes; I haven't changed either.\n\n**Gaps**\n- The change request mentions an import, but this app has no people import. `importPeople` exists in the test helpers but nothing in the app uses it, so there was nothing to change.\n- Past-date (\"as of\") views always show clashing as `no`, because those saved snapshots don't record it.\n- Bulk grade, merge and transfer aren't blocked for clashing people, since the request only names the person form.\n\n**Port note:** your environment sets `PORT=3001`, and another java server, apparently from a different run, is already using 3001 and 3003. I left those alone and ran with `PORT=3017 bin/e2e`. Plain `bin/e2e` will test against whatever is on 3001.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9534846000000001,
+        "num_turns": 48,
+        "duration_ms": 625406,
+        "duration_api_ms": 320622,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp112.agent.jsonl",
+  "agent_diff_file": "cp112.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

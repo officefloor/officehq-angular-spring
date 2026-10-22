@@ -1,0 +1,336 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index b6470707..0e394535 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -52,6 +52,8 @@ export interface PersonView {
+   patronIds: number[];
+   /** The other names the person goes by; absent from a view kept before aliases were. */
+   aliases?: string[];
++  /** Whether the person's name or an alias is in use on another sheet of the sheet's tree; absent from a view kept before this was. */
++  clashing?: boolean;
+ }
+ 
+ /** A hold on a person, from a date to a date (yyyy-mm-dd, both included); to is null with no end. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fb58be38..d9459402 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -275,6 +275,7 @@ function csvField(value: string): string {
+             <th scope="col"><span class="visually-hidden">Select</span></th>
+             <th scope="col">Name</th>
+             <th scope="col">Aliases</th>
++            <th scope="col">Clashing</th>
+             <th scope="col">Grade</th>
+             <th scope="col">Terms</th>
+             <th scope="col">Contact</th>
+@@ -327,6 +328,7 @@ function csvField(value: string): string {
+                   Add
+                 </button>
+               </td>
++              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+@@ -1572,7 +1574,7 @@ export class People {
+         await this.showCurrent(sheet, id);
+         this.error.set('Someone else has saved this person since you opened it. The form shows their values now.');
+       } else if (e instanceof HttpErrorResponse && e.status === 409) {
+-        this.error.set('That name or contact is already in use on this sheet.');
++        this.error.set('That name or contact is already in use on this sheet or its tree.');
+       } else {
+         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 7ed48647..adccb1f3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -311,6 +311,11 @@ public class Person {
+         return nameKey.equals(key) || aliases.stream().anyMatch(alias -> alias.getAliasKey().equals(key));
+     }
+ 
++    /** Whether the person's name or any alias, compared as names are, is among these keys. */
++    public boolean goesByAny(java.util.Set<String> keys) {
++        return keys.contains(nameKey) || aliases.stream().anyMatch(alias -> keys.contains(alias.getAliasKey()));
++    }
++
+     /** Add an alias, kept as names are kept. */
+     public void addAlias(String alias) {
+         aliases.add(new Alias(alias));
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 8d284a1f..0043df7e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.Set;
+ import net.officefloor.hq.app.SignedIn;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.dao.OptimisticLockingFailureException;
+@@ -39,15 +40,20 @@ public class PersonController {
+      * What the screen is told about a person, with their statement count, and the last statement's
+      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
+      * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons
+-     * in the order they were named.
++     * in the order they were named, and whether their name or an alias is in use on another sheet of the
++     * sheet's tree (clashing).
+      * Their grades are listed by the date each is in force from, the first with none (from the
+      * beginning of time).
+      */
+     public record PersonView(long id, String name, List<GradeView> grades, Integer terms, String contact, long version, int statementCount,
+             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held,
+-            List<HoldView> holds, List<Long> patronIds, List<String> aliases) {
++            List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing) {
+ 
+         public static PersonView of(Person person) {
++            return of(person, false);
++        }
++
++        public static PersonView of(Person person, boolean clashing) {
+             List<GradeView> grades = new ArrayList<>();
+             grades.add(new GradeView(person.getGrade(), null));
+             person.getGradesFrom().forEach((from, grade) -> grades.add(new GradeView(grade, from)));
+@@ -56,7 +62,7 @@ public class PersonController {
+                     person.getStatementTotal() == null ? null : person.getStatementTotal().toPlainString(),
+                     person.getStatementDate(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
+-                    person.getPatronIds(), person.getAliases());
++                    person.getPatronIds(), person.getAliases(), clashing);
+         }
+     }
+ 
+@@ -116,7 +122,11 @@ public class PersonController {
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+         return history.views(sheetId, AsOfGuard.date(asOf)).map(SheetHistory.Views::people)
+-                .orElseGet(() -> service.list(sheetId).stream().map(PersonView::of).toList());
++                .orElseGet(() -> {
++                    Set<Long> clashing = service.clashing(sheetId);
++                    return service.list(sheetId).stream()
++                            .map(person -> PersonView.of(person, clashing.contains(person.getId()))).toList();
++                });
+     }
+ 
+     /** Add a person to the sheet. */
+@@ -125,7 +135,7 @@ public class PersonController {
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PersonForm form) {
+-        return PersonView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms(),
++        return view(service.add(sheetId, SignedIn.name(user), form.name(), form.grade(), form.terms(),
+                 form.contact()));
+     }
+ 
+@@ -139,7 +149,7 @@ public class PersonController {
+         if (form.version() == null) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required.");
+         }
+-        return PersonView.of(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
++        return view(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
+                 form.grade(), form.gradeFrom(), form.terms(), form.contact(), form.termsGiven(), form.contactGiven()));
+     }
+ 
+@@ -164,7 +174,7 @@ public class PersonController {
+             @PathVariable long personId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody(required = false) RetireForm form) {
+-        return PersonView.of(service.retire(sheetId, SignedIn.name(user), personId,
++        return view(service.retire(sheetId, SignedIn.name(user), personId,
+                 form == null ? null : form.from()));
+     }
+ 
+@@ -179,7 +189,7 @@ public class PersonController {
+             @PathVariable long personId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody(required = false) HoldForm form) {
+-        return PersonView.of(service.hold(sheetId, SignedIn.name(user), personId,
++        return view(service.hold(sheetId, SignedIn.name(user), personId,
+                 form == null ? null : form.from(), form == null ? null : form.to()));
+     }
+ 
+@@ -194,7 +204,7 @@ public class PersonController {
+             @PathVariable long personId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PatronForm form) {
+-        return PersonView.of(service.addPatron(sheetId, SignedIn.name(user), personId, form.patronId()));
++        return view(service.addPatron(sheetId, SignedIn.name(user), personId, form.patronId()));
+     }
+ 
+     /** An alias a person goes by. */
+@@ -208,7 +218,7 @@ public class PersonController {
+             @PathVariable long personId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid AliasForm form) {
+-        return PersonView.of(service.addAlias(sheetId, SignedIn.name(user), personId, form.alias()));
++        return view(service.addAlias(sheetId, SignedIn.name(user), personId, form.alias()));
+     }
+ 
+     /** The person another is merged into. */
+@@ -222,7 +232,7 @@ public class PersonController {
+             @PathVariable long personId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid MergeForm form) {
+-        return PersonView.of(merges.merge(sheetId, SignedIn.name(user), personId, form.intoId()));
++        return view(merges.merge(sheetId, SignedIn.name(user), personId, form.intoId()));
+     }
+ 
+     /** The sheet a person is transferred to. */
+@@ -268,6 +278,11 @@ public class PersonController {
+         watches.unwatch(sheetId, SignedIn.name(user), personId);
+     }
+ 
++    /** What the screen is told about a person, with whether they clash. */
++    private PersonView view(Person person) {
++        return PersonView.of(person, service.clashing(person));
++    }
++
+     /** Someone else saved the person between the version check and the write. */
+     @ExceptionHandler(OptimisticLockingFailureException.class)
+     @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index b0c13cc4..f361374a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.person;
+ 
++import java.util.Collection;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+@@ -25,6 +26,14 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+         return named.isPresent() ? named : findBySheetIdAndAliasKey(sheetId, key);
+     }
+ 
++    /** The name keys of the people on these sheets. */
++    @Query("select p.nameKey from Person p where p.sheetId in :sheetIds")
++    List<String> findNameKeysBySheetIdIn(@Param("sheetIds") Collection<String> sheetIds);
++
++    /** The alias keys of the people on these sheets. */
++    @Query("select a.aliasKey from Person p join p.aliases a where p.sheetId in :sheetIds")
++    List<String> findAliasKeysBySheetIdIn(@Param("sheetIds") Collection<String> sheetIds);
++
+     /** The person on the sheet holding this contact, if any. */
+     Optional<Person> findBySheetIdAndContact(String sheetId, String contact);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index b5289426..d8f898a8 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,9 +1,13 @@
+ package net.officefloor.hq.app.person;
+ 
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.HashSet;
+ import java.util.List;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.Rollups;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -16,12 +20,15 @@ public class PersonService {
+ 
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final SheetRepository sheetStore;
+     private final Rollups rollups;
+     private final Audit audit;
+ 
+-    public PersonService(PersonRepository people, SheetService sheets, Rollups rollups, Audit audit) {
++    public PersonService(PersonRepository people, SheetService sheets, SheetRepository sheetStore, Rollups rollups,
++            Audit audit) {
+         this.people = people;
+         this.sheets = sheets;
++        this.sheetStore = sheetStore;
+         this.rollups = rollups;
+         this.audit = audit;
+     }
+@@ -32,6 +39,25 @@ public class PersonService {
+         return people.findBySheetIdOrderByIdAsc(sheetId);
+     }
+ 
++    /** The ids of the sheet's people whose name or an alias is in use, as a name or alias, on another sheet of its tree. */
++    @Transactional(readOnly = true)
++    public Set<Long> clashing(String sheetId) {
++        Set<String> used = treeKeys(sheetId);
++        Set<Long> ids = new HashSet<>();
++        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++            if (person.goesByAny(used)) {
++                ids.add(person.getId());
++            }
++        }
++        return ids;
++    }
++
++    /** Whether the person's name or an alias is in use, as a name or alias, on another sheet of its tree. */
++    @Transactional(readOnly = true)
++    public boolean clashing(Person person) {
++        return person.goesByAny(treeKeys(person.getSheetId()));
++    }
++
+     /**
+      * Add a person to the sheet, with their own terms (null: none) and contact (null or blank: none);
+      * refused when the name or the contact is already in use on it.
+@@ -66,6 +92,9 @@ public class PersonService {
+                     "Someone else has saved this person since it was opened.");
+         }
+         requireNameFree(sheetId, name, person.getId());
++        if (person.getAliases().stream().map(Person::keyOf).anyMatch(treeKeys(sheetId)::contains)) {
++            throw nameInUse();
++        }
+         requireContactFree(sheetId, contact, person.getId());
+         Rollups.Rollup before = rollups.take(sheetId);
+         LocalDate today = sheets.today(sheetId);
+@@ -154,7 +183,8 @@ public class PersonService {
+         if (alias == null || alias.isBlank()) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An alias is required.");
+         }
+-        if (people.findBySheetIdAndName(sheetId, alias).isPresent()) {
++        if (people.findBySheetIdAndName(sheetId, alias).isPresent()
++                || treeKeys(sheetId).contains(Person.keyOf(alias))) {
+             throw nameInUse();
+         }
+         person.addAlias(alias);
+@@ -190,8 +220,14 @@ public class PersonService {
+                 });
+     }
+ 
+-    /** Refuse a name already held on the sheet, as a name or an alias, by anyone other than {@code self}. */
++    /**
++     * Refuse a name already held on the sheet, as a name or an alias, by anyone other than {@code self},
++     * or held as a name or alias on any other sheet of its tree.
++     */
+     private void requireNameFree(String sheetId, String name, Long self) {
++        if (treeKeys(sheetId).contains(Person.keyOf(name))) {
++            throw nameInUse();
++        }
+         people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
+                 .filter(holder -> !holder.getId().equals(self))
+                 .ifPresent(holder -> {
+@@ -204,6 +240,22 @@ public class PersonService {
+                 });
+     }
+ 
++    /**
++     * The keys of the names and aliases in use on the other sheets of the sheet's tree: its ancestors,
++     * its descendants and theirs, among the sheets that exist.
++     */
++    private Set<String> treeKeys(String sheetId) {
++        List<String> tree = new ArrayList<>(sheetStore.ancestors(sheetId));
++        tree.addAll(sheetStore.descendants(sheetId));
++        tree.remove(sheetId);
++        if (tree.isEmpty()) {
++            return Set.of();
++        }
++        Set<String> keys = new HashSet<>(people.findNameKeysBySheetIdIn(tree));
++        keys.addAll(people.findAliasKeysBySheetIdIn(tree));
++        return keys;
++    }
++
+     static ResponseStatusException nameInUse() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet.");
+     }
