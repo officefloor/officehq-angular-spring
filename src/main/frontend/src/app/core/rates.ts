@@ -10,12 +10,18 @@ export interface RateView {
   pct: string;
   /** The date (yyyy-mm-dd) the rate applies from; null when it applies from the beginning of time. */
   from: string | null;
+  /** The last date (yyyy-mm-dd) the rate applies on; null when it has no end. */
+  to: string | null;
 }
 
-/** A rate as set through the form; a null from-date applies from the beginning of time. */
+/**
+ * A rate as set through the form; a null from-date applies from the beginning of time, a null
+ * to-date has no end.
+ */
 export interface RateForm {
   pct: string;
   from: string | null;
+  to: string | null;
 }
 
 /** A from-date as a rate takes it: yyyy-mm-dd. */
@@ -23,7 +29,8 @@ export const FROM_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The rate a grade has in force on a date (yyyy-mm-dd): of its rates with no from-date or one on or
- * before the date, the one with the latest; null when the date is before every rate of the grade.
+ * before the date, the one with the latest; null when the date is before every rate of the grade, or
+ * after that one's to-date.
  */
 export function rateOn(rates: RateView[], grade: Grade, date: string): string | null {
   let best: RateView | null = null;
@@ -31,7 +38,8 @@ export function rateOn(rates: RateView[], grade: Grade, date: string): string | 
     if (r.grade !== grade || (r.from !== null && r.from > date)) continue;
     if (best === null || (r.from !== null && (best.from === null || r.from > best.from))) best = r;
   }
-  return best?.pct ?? null;
+  if (best === null || (best.to !== null && best.to < date)) return null;
+  return best.pct;
 }
 
 /** Whether two rates are for the same grade and from-date, so one replaces the other. */

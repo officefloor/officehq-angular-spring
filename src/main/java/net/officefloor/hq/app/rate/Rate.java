@@ -11,7 +11,8 @@ import java.time.LocalDate;
 
 /**
  * A rate for a grade (A, B or C) on a sheet: a percent with two decimals, applying from its
- * from-date, or from the beginning of time when it has none.
+ * from-date, or from the beginning of time when it has none, through its to-date, or on with no end
+ * when it has none.
  */
 @Entity
 @Table(name = "rate")
@@ -32,6 +33,9 @@ public class Rate {
 
     @Column(name = "from_date")
     private LocalDate fromDate;
+
+    @Column(name = "to_date")
+    private LocalDate toDate;
 
     protected Rate() {
     }
@@ -63,6 +67,20 @@ public class Rate {
     /** Whether the rate applies to a claim on a date: it has no from-date, or one on or before the date. */
     public boolean appliesOn(LocalDate date) {
         return fromDate == null || !fromDate.isAfter(date);
+    }
+
+    /** The last date the rate applies on; null when it has no end. */
+    public LocalDate getToDate() {
+        return toDate;
+    }
+
+    public void setToDate(LocalDate toDate) {
+        this.toDate = toDate;
+    }
+
+    /** Whether the rate has ended by a date: it has a to-date before the date. */
+    public boolean endedBy(LocalDate date) {
+        return toDate != null && toDate.isBefore(date);
     }
 
     public BigDecimal getPct() {

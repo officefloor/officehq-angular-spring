@@ -25,20 +25,22 @@ public class RateController {
 
     /**
      * What the screen is told about a grade's rate; the percent with two decimals, and the date it
-     * applies from (null: from the beginning of time).
+     * applies from (null: from the beginning of time) and through (null: no end).
      */
-    public record RateView(String grade, String pct, LocalDate from) {
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
 
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFromDate());
+            return new RateView(rate.getGrade(), rate.getPct().toPlainString(), rate.getFromDate(),
+                    rate.getToDate());
         }
     }
 
     /**
      * A rate as entered on the form: a percent of 0.00 or more with up to two decimals, and the date
-     * it applies from (none: from the beginning of time).
+     * it applies from (none: from the beginning of time) and through (none: no end).
      */
-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from) {
+    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from,
+            LocalDate to) {
     }
 
     private final RateService service;
@@ -54,7 +56,10 @@ public class RateController {
         return service.list(sheetId).stream().map(RateView::of).toList();
     }
 
-    /** Set the rate for a grade from a date, replacing any it had from that date. */
+    /**
+     * Set the rate for a grade from a date (through a to-date, if given), replacing any it had from
+     * that date; a to-date before the from-date is refused.
+     */
     @PutMapping("/{grade}")
     public RateView set(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
@@ -62,6 +67,6 @@ public class RateController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid RateForm form) {
         return RateView.of(service.set(sheetId, SignedIn.name(user), grade, form.from(),
-                new BigDecimal(form.pct())));
+                form.to(), new BigDecimal(form.pct())));
     }
 }
