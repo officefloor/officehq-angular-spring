@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, cents, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
+import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, cents, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -8,7 +8,7 @@ import { Session, valueOn } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row,
 // moved through their statuses (open, settle, approve, reject with a reason, void, re-settle) from each
-// claim's row, and reassigned there to another person.
+// claim's row, deferred there until a date, and reassigned there to another person.
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
   settle: 'settled',
@@ -85,6 +85,8 @@ const PAST: Record<ClaimAction, string> = {
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+          <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
+          <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
@@ -115,6 +117,22 @@ const PAST: Record<ClaimAction, string> = {
               {{ a.label }}
             </button>
           }
+          <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+          <input
+            [id]="'claim-defer-date-' + c.id"
+            type="date"
+            data-testid="claim-defer-date"
+            [value]="deferDates()[c.id] ?? ''"
+            (input)="setDeferDate(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-defer"
+            [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date"
+            (click)="defer(c)"
+          >
+            Defer
+          </button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -189,6 +207,8 @@ export class Claims {
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
   /** The person chosen on each claim's row to reassign it to, by claim id. */
   protected readonly reassignTo = signal<Record<number, number>>({});
+  /** The date entered on each claim's row to defer it until, by claim id. */
+  protected readonly deferDates = signal<Record<number, string>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
 
@@ -214,6 +234,11 @@ export class Claims {
   /** Whether a claim is OPEN and due by a date before the sheet's today. */
   protected overdueOf(claim: ClaimView): boolean {
     return overdue(claim, this.session.today() ?? '');
+  }
+
+  /** Whether a claim is deferred on the sheet's today. */
+  protected deferredOf(claim: ClaimView): boolean {
+    return deferred(claim, this.session.today() ?? '');
   }
 
   /** The name of the period a claim's date falls in; empty when it falls in none. */
@@ -262,6 +287,44 @@ export class Claims {
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((reasons) => ({ ...reasons, [id]: reason }));
     if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Enter the date to defer a claim until; it clears any error left on the claim's row. */
+  protected setDeferDate(id: number, date: string): void {
+    this.deferDates.update((dates) => ({ ...dates, [id]: date }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Defer a claim until the date entered on its row; refused with an error on its row when no date is
+   * entered, when the claim is not OPEN, when the date is not after the sheet's today, or when the
+   * claim is dated in a closed period.
+   */
+  protected async defer(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const until = (this.deferDates()[claim.id] ?? '').trim();
+    if (until === '') {
+      this.claimError.set({ id: claim.id, message: 'Enter a date to defer the claim until.' });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.defer(sheet, claim.id, until));
+    } catch {
+      const today = this.session.today() ?? '';
+      const period = periodOn(this.periods(), claim.date);
+      this.claimError.set({
+        id: claim.id,
+        message: claim.status !== 'OPEN'
+          ? `A ${claim.status} claim cannot be deferred; only an OPEN one can.`
+          : until <= today
+            ? `A claim can only be deferred to a date after ${today}.`
+            : period?.closed
+              ? `Period ${period.name} is closed, so its claims cannot be deferred.`
+              : 'The claim could not be deferred.',
+      });
+    }
   }
 
   /** Choose the person to reassign a claim to; it clears any error left on the claim's row. */
@@ -322,11 +385,13 @@ export class Claims {
           || (action === 'resettle' && claim.status === 'SETTLED'));
       this.claimError.set({
         id: claim.id,
-        message: own
-          ? `You opened this claim, so someone else must ${action} it.`
-          : steward
-            ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
-            : `A ${claim.status} claim cannot be ${PAST[action]}.`,
+        message: action === 'settle' && deferred(claim, this.session.today() ?? '')
+          ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be settled before then.`
+          : own
+            ? `You opened this claim, so someone else must ${action} it.`
+            : steward
+              ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
+              : `A ${claim.status} claim cannot be ${PAST[action]}.`,
       });
     }
   }

@@ -78,7 +78,7 @@ public class Rollups {
         BigDecimal overdueTotal = zero();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of()).stream()
-                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated()))
+                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today)))
                     .toList();
             BigDecimal claimed = zero();
             BigDecimal due = zero();
@@ -138,9 +138,13 @@ public class Rollups {
         }
     }
 
-    /** Whether a claim is overdue: OPEN or PENDING with its due-by before the sheet's today. */
+    /**
+     * Whether a claim is overdue: OPEN or PENDING with its due-by before the sheet's today, and not
+     * deferred on it.
+     */
     private static boolean overdue(Claim claim, LocalDate today) {
-        return today != null && claim.getStatus().isOpen() && claim.getDueBy().isBefore(today);
+        return today != null && claim.getStatus().isOpen() && claim.getDueBy().isBefore(today)
+                && !claim.isDeferredOn(today);
     }
 
     /** Whether two figures are the same amount, or both n/a. */

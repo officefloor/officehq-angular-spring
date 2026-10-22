@@ -111,19 +111,24 @@ public class ClaimService {
      * is never reused. The user who opened a claim
      * is refused when settling it. A clerk settling a claim whose due is above the sheet's clerk limit
      * (a due of n/a is within any limit) sends it PENDING instead, for a steward to approve or reject;
-     * a steward settles any. A claim dated inside a closed period cannot be moved.
+     * a steward settles any. A claim dated inside a closed period cannot be moved, nor can a claim
+     * deferred on the sheet's today be settled.
      */
     @Transactional
     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
         // Every move takes the sheet's lock before reading the claim, so concurrent opens on the
         // sheet are serialised: each sees the other's committed claim and number.
-        sheets.lock(sheetId);
+        LocalDate today = sheets.lock(sheetId).getToday();
         Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = claim(sheetId, claimId);
         periods.refuseIfClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+        }
+        if (next == ClaimStatus.SETTLED && claim.isDeferredOn(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + ": it cannot be settled before then.");
         }
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -157,6 +162,34 @@ public class ClaimService {
                 ? " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
                 : "";
         audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it,
+     * the claim counts in no total, is not overdue, cannot be settled and is left unbound by a
+     * statement. Refused when the claim is not OPEN, when the date is not after the sheet's today, or
+     * when the claim is dated inside a closed period.
+     */
+    @Transactional
+    public Claim defer(String sheetId, String user, long claimId, LocalDate until) {
+        LocalDate today = sheets.lock(sheetId).getToday();
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deferred; only an OPEN one can.");
+        }
+        if (!until.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim can only be deferred to a date after the sheet's today, " + today + ".");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        claim.defer(until);
+        Claim saved = claims.saveAndFlush(claim);
+        audited("CLAIM_DEFERRED", sheetId, user, person(sheetId, saved.getPersonId()), saved, saved.getNumber(),
+                " until=" + until);
         rollups.audit(sheetId, user, before);
         return saved;
     }

@@ -81,7 +81,7 @@ public class PeriodService {
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
         // Take the sheet's lock first, so no claim in the period changes while its total is fixed.
-        sheets.lock(sheetId);
+        LocalDate today = sheets.lock(sheetId).getToday();
         Period period = periods.findByIdAndSheetId(periodId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
         if (period.isClosed()) {
@@ -93,7 +93,7 @@ public class PeriodService {
         byId.keySet().forEach(id -> totals.put(id, BigDecimal.ZERO.setScale(2)));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated()) || !period.contains(claim.getDate())) {
+            if (person == null || !person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today)) || !period.contains(claim.getDate())) {
                 continue;
             }
             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
@@ -114,7 +114,7 @@ public class PeriodService {
      */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {
-        sheets.lock(sheetId);
+        LocalDate today = sheets.lock(sheetId).getToday();
         Period period = periods.findByIdAndSheetId(periodId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
         if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {

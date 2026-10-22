@@ -47,6 +47,8 @@ export interface ClaimView {
   corrects: string | null;
   /** The claim's status log, oldest first: one line per status it has had. */
   log: ClaimLogLine[];
+  /** yyyy-mm-dd: the date the claim is deferred until; null when it was never deferred. */
+  deferredUntil: string | null;
 }
 
 /** A status a claim moved to, by whom, on the sheet's today then, with its due as computed then. */
@@ -74,9 +76,20 @@ export function dueBy(claim: ClaimView): string {
   return claim.dueBy;
 }
 
-/** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
+/**
+ * Whether a claim is deferred on the sheet's today: it is OPEN and today has not yet reached the date
+ * it is deferred until. Until then it counts in no total, is not overdue and cannot be settled.
+ */
+export function deferred(claim: ClaimView, today: string): boolean {
+  return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== '' && today < claim.deferredUntil;
+}
+
+/**
+ * Whether a claim is overdue: it is OPEN or PENDING, its due-by is before the sheet's today, and it is
+ * not deferred on it.
+ */
 export function overdue(claim: ClaimView, today: string): boolean {
-  return isOpen(claim) && today !== '' && dueBy(claim) < today;
+  return isOpen(claim) && today !== '' && dueBy(claim) < today && !deferred(claim, today);
 }
 
 /** What a late charge is worked from: the sheet's late percent and today. */
@@ -181,6 +194,14 @@ export class ClaimsApi {
   act(sheet: string, id: number, action: ClaimAction, reason?: string): Promise<ClaimView> {
     const body = action === 'reject' ? { reason: reason ?? '' } : null;
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/${action}`, body));
+  }
+
+  /**
+   * Defer an OPEN claim until a date; refused (409) when the claim is not OPEN, the date is not after
+   * the sheet's today, or the claim is dated inside a closed period.
+   */
+  defer(sheet: string, id: number, until: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/defer`, { until }));
   }
 
   /**

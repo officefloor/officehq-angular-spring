@@ -78,6 +78,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The date the claim is deferred until; null when it was never deferred. */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     /** The claim's status log, oldest first. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "claim_id", nullable = false)
@@ -202,6 +206,23 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    /** Defer the claim until a date; the caller checks the deferral is allowed. */
+    public void defer(LocalDate until) {
+        this.deferredUntil = until;
+    }
+
+    /**
+     * Whether the claim is deferred on a date (the sheet's today): it is OPEN and the date has not yet
+     * reached the date it is deferred until.
+     */
+    public boolean isDeferredOn(LocalDate today) {
+        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     public List<ClaimLogLine> getLog() {

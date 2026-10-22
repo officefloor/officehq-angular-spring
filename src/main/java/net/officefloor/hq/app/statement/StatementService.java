@@ -62,8 +62,9 @@ public class StatementService {
         boolean figured = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            // As in the live totals: an OPEN or PENDING claim dated within a hold, and not bound, is left out.
-            if (!person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated())) {
+            // As in the live totals: an OPEN or PENDING claim dated within a hold, and not bound, is left
+            // out, as is a claim deferred on the sheet's today.
+            if (!person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today))) {
                 claim.unbind();
                 continue;
             }

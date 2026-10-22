@@ -30,10 +30,11 @@ public class ClaimController {
      * opened it (null until opened), and whether it is bound by its person's last statement, with the
      * figure it was bound to (null when unbound, or when it was n/a), and the number of the claim it
      * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
-     * log, oldest first.
+     * log, oldest first, and the date it is deferred until (null when it was never deferred).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
-            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log) {
+            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
+            LocalDate deferredUntil) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -41,7 +42,7 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList());
+                    claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil());
         }
     }
 
@@ -68,6 +69,10 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim. */
     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
+    }
+
+    /** The date an OPEN claim is deferred until. */
+    public record DeferForm(@NotNull LocalDate until) {
     }
 
     /** The person a claim is moved to. */
@@ -213,6 +218,16 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.VOID));
+    }
+
+    /** Defer an OPEN claim until a date after the sheet's today. */
+    @PostMapping("/claims/{claimId}/defer")
+    public ClaimView defer(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid DeferForm form) {
+        return ClaimView.of(service.defer(sheetId, SignedIn.name(user), claimId, form.until()));
     }
 
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet; only a steward. */

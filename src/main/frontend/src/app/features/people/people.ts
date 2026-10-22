@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { ClaimView, ClaimsApi, cents, counts, isOpen, money, overdue, roundsHalfUp } from '../../core/claims';
+import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GRADES, Grade, PeopleApi, PersonView, gradeOn, heldOn } from '../../core/people';
 import { PeriodView, PeriodsApi, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
@@ -19,10 +19,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 /**
  * Whether a person's claim counts in the live totals: OPEN, PENDING and SETTLED claims do, but not an
- * OPEN or PENDING one dated within one of the person's holds, unless a statement has bound it.
+ * OPEN or PENDING one dated within one of the person's holds, unless a statement has bound it, nor
+ * one deferred on the sheet's today.
  */
-function countsLive(claim: ClaimView, person: PersonView): boolean {
-  return counts(claim) && !(isOpen(claim) && !claim.stated && heldOn(person, claim.date));
+function countsLive(claim: ClaimView, person: PersonView, today: string): boolean {
+  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && heldOn(person, claim.date));
 }
 
 /** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
@@ -349,7 +350,7 @@ export class People {
     for (const c of this.claims()) {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (!period || period.closed || !person || !countsLive(c, person)) continue;
+      if (!period || period.closed || !person || !countsLive(c, person, this.today())) continue;
       const row = figures.get(period.id)!;
       row.set(person.id, row.get(person.id)! + (this.dueCents(c, person) ?? 0));
     }
@@ -469,7 +470,7 @@ export class People {
   /** A person's claims that count in the live totals (see countsLive). */
   private countingOf(personId: number): ClaimView[] {
     const person = this.people().find((p) => p.id === personId);
-    return person ? this.claimsOf(personId).filter((c) => countsLive(c, person)) : [];
+    return person ? this.claimsOf(personId).filter((c) => countsLive(c, person, this.today())) : [];
   }
 
   /** What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsLive). */

@@ -88,10 +88,14 @@ public class Dues {
      * A figure with the claim's late charge on top: the late percent in force on the claim's date of the figure for every
      * full 30 days an OPEN or PENDING claim is past its due-by (fixed when it was added) on the sheet's
      * today, rounded by the claim's date against the policy date. The charge is never bound: it always follows the sheet's today.
-     * A correction has no late charge.
+     * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue).
      */
     private BigDecimal withLate(Claim claim, BigDecimal figure) {
         if (figure == null || claim.isCorrection() || !claim.getStatus().isOpen() || claim.getSettledDue() != null) {
+            return figure;
+        }
+        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+        if (sheet != null && claim.isDeferredOn(sheet.getToday())) {
             return figure;
         }
         return lateOn(claim, figure);
