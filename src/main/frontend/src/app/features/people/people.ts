@@ -185,6 +185,7 @@ function csvField(value: string): string {
                   [grades]="p.grades"
                   [rates]="rates()"
                   [periods]="periods()"
+                  [people]="people()"
                   [selected]="selectedClaims()"
                   (selectedChange)="selectClaim($event.id, $event.on)"
                   (saved)="claimSaved($event)"

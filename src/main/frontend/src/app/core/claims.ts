@@ -160,6 +160,14 @@ export class ClaimsApi {
   }
 
   /**
+   * Move a DRAFT, OPEN or PENDING claim to another person on the sheet; refused (403) when the user is
+   * not a steward, and (409) when the claim is SETTLED or VOID or cannot go to that person.
+   */
+  reassign(sheet: string, id: number, personId: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/reassign`, { personId }));
+  }
+
+  /**
    * Open the selected claims together, in list order (people in the order they were added, each
    * person's claims newest first); those that cannot be opened are refused and left as they are.
    */

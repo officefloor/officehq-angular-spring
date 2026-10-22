@@ -201,6 +201,42 @@ public class ClaimService {
     }
 
     /**
+     * Move a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its number and
+     * date, and loses any figure a statement bound it to, its due live again until its new person's
+     * next statement. Only a steward reassigns. Refused when the claim is SETTLED or VOID, when it is
+     * dated inside a closed period, when the new person is its own, is retired before its date, or (for
+     * a correction) has no SETTLED claim of the number it corrects.
+     */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long claimId, long personId) {
+        sheets.lock(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reassigns a claim.");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reassigned.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        Person from = person(sheetId, claim.getPersonId());
+        Person to = person(sheetId, personId);
+        if (from.getId().equals(to.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s.");
+        }
+        refuseIfRetired(to, claim.getDate());
+        refuseUnlessCorrects(sheetId, personId, claim.getAmount(), claim.getCorrects());
+        claim.reassign(to.getId());
+        claim.unbind();
+        Claim saved = claims.saveAndFlush(claim);
+        audited("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber(),
+                " from=" + from.getName() + " to=" + to.getName());
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * The PENDING claim a steward approves or rejects; refused when it is not PENDING, when its date
      * is inside a closed period, or when the user is not a steward.
      */

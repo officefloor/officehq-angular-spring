@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, cents, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
@@ -7,8 +7,8 @@ import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // A person's claims: listed newest first, added and edited through one form on the person's row,
-// and moved through their statuses (open, settle, approve, reject with a reason, void) from each
-// claim's row.
+// moved through their statuses (open, settle, approve, reject with a reason, void) from each
+// claim's row, and reassigned there to another person.
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
   settle: 'settled',
@@ -109,6 +109,25 @@ const PAST: Record<ClaimAction, string> = {
               {{ a.label }}
             </button>
           }
+          <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
+          <select
+            [id]="'claim-reassign-to-' + c.id"
+            data-testid="claim-reassign-to"
+            (change)="setReassignTo(c.id, value($event))"
+          >
+            <option value="">Choose a person</option>
+            @for (other of others(); track other.id) {
+              <option [value]="other.id" [selected]="reassignTo()[c.id] === other.id">{{ other.name }}</option>
+            }
+          </select>
+          <button
+            type="button"
+            data-testid="claim-reassign"
+            [attr.aria-label]="'Reassign claim of ' + c.amount + ' on ' + c.date"
+            (click)="reassign(c)"
+          >
+            Reassign
+          </button>
           @if (claimError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
@@ -131,6 +150,8 @@ export class Claims {
   readonly rates = input.required<RateView[]>();
   /** The sheet's periods; each claim belongs to the one whose dates contain its date, or to none. */
   readonly periods = input.required<PeriodView[]>();
+  /** The people on the sheet, any of whom (but this one) a claim may be reassigned to. */
+  readonly people = input.required<{ id: number; name: string }[]>();
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input.required<ReadonlySet<number>>();
   /** A claim's checkbox ticked (on) or cleared. */
@@ -157,6 +178,10 @@ export class Claims {
     { action: 'reject', label: 'Reject' },
     { action: 'void', label: 'Void' },
   ];
+  /** The people a claim of this person can be reassigned to. */
+  protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
+  /** The person chosen on each claim's row to reassign it to, by claim id. */
+  protected readonly reassignTo = signal<Record<number, number>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
 
@@ -229,6 +254,39 @@ export class Claims {
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((reasons) => ({ ...reasons, [id]: reason }));
     if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Choose the person to reassign a claim to; it clears any error left on the claim's row. */
+  protected setReassignTo(id: number, personId: string): void {
+    this.reassignTo.update((chosen) => ({ ...chosen, [id]: Number(personId) }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Move a claim to the person chosen on its row; refused with an error on its row when none is
+   * chosen, when the user is not a steward, or when the claim is SETTLED or VOID.
+   */
+  protected async reassign(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const to = this.reassignTo()[claim.id];
+    if (!to) {
+      this.claimError.set({ id: claim.id, message: 'Choose a person to reassign the claim to.' });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.reassign(sheet, claim.id, to));
+    } catch (e) {
+      this.claimError.set({
+        id: claim.id,
+        message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can reassign a claim.'
+          : claim.status === 'SETTLED' || claim.status === 'VOID'
+            ? `A ${claim.status} claim cannot be reassigned.`
+            : 'The claim could not be reassigned to that person.',
+      });
+    }
   }
 
   /**

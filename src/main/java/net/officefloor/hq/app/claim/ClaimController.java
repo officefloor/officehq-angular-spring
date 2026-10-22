@@ -60,6 +60,10 @@ public class ClaimController {
     public record RejectForm(@NotBlank @Size(max = 200) String reason) {
     }
 
+    /** The person a claim is moved to. */
+    public record ReassignForm(@NotNull Long personId) {
+    }
+
     /** The claims selected to be opened together. */
     public record BulkOpenForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds) {
     }
@@ -157,5 +161,15 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.VOID));
+    }
+
+    /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet; only a steward. */
+    @PostMapping("/claims/{claimId}/reassign")
+    public ClaimView reassign(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ReassignForm form) {
+        return ClaimView.of(service.reassign(sheetId, SignedIn.name(user), claimId, form.personId()));
     }
 }

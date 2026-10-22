@@ -171,6 +171,11 @@ public class Claim {
         this.statedDue = due;
     }
 
+    /** Move the claim to another person on the sheet. */
+    public void reassign(Long personId) {
+        this.personId = personId;
+    }
+
     /** Leave the claim unbound, its due live again. */
     public void unbind() {
         this.stated = false;
