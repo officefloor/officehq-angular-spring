@@ -1,0 +1,123 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index d0cf29c2..8ea49ced 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -17,7 +17,7 @@ export interface ClaimView {
+   date: string;
+   note: string;
+   status: ClaimStatus;
+-  /** The sheet's number given when the claim was opened; null while DRAFT and once VOID. */
++  /** The sheet's number given when the claim was opened; null while DRAFT, and kept once VOID. */
+   number: number | null;
+   /**
+    * The due fixed when the claim was settled, with two decimals; null when it is not fixed (not
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ea29fc85..f2904e22 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -136,9 +136,20 @@ export class Claims {
+     return (event.target as HTMLInputElement).value;
+   }
+ 
+-  /** Open a claim's editor: the form takes its values. */
++  /**
++   * Open a claim's editor: the form takes its values. Only a DRAFT claim can be edited; any other is
++   * refused with an error on its row (to change an OPEN claim, void it and add a new one).
++   */
+   protected open(claim: ClaimView): void {
+     this.claimError.set(null);
++    if (claim.status !== 'DRAFT') {
++      this.reset();
++      this.claimError.set({
++        id: claim.id,
++        message: `A ${claim.status} claim cannot be edited; void it and add a new one.`,
++      });
++      return;
++    }
+     this.editing.set(claim.id);
+     this.amount.set(claim.amount);
+     this.date.set(claim.date);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 84bf58ec..5d0cc829 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -42,7 +42,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The sheet's number given to the claim when opened; null while DRAFT and once VOID. */
++    /** The sheet's number given to the claim when opened; null while DRAFT, and kept once VOID. */
+     @Column(name = "claim_number")
+     private Integer number;
+ 
+@@ -128,7 +128,7 @@ public class Claim {
+         this.status = status;
+     }
+ 
+-    /** Give the claim its number (when opened), or clear it (when voided). */
++    /** Give the claim its number when it is opened; it keeps it from then on. */
+     public void number(Integer number) {
+         this.number = number;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 62858586..2dd3d3e4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -65,14 +65,19 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Change a claim's amount, date and note; with no date it keeps its own. Refused when the claim,
+-     * or the date it moves to, is inside a closed period.
++     * Change a claim's amount, date and note; with no date it keeps its own. Only a DRAFT claim can be
++     * edited: an OPEN one is changed by voiding it and adding a new one. Refused when the claim, or the
++     * date it moves to, is inside a closed period.
+      */
+     @Transactional
+     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+         Rollups.Rollup before = rollups.take(sheetId);
+         sheets.lock(sheetId);
+         Claim claim = claim(sheetId, claimId);
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be edited; only a DRAFT can.");
++        }
+         periods.refuseIfClosed(sheetId, claim.getDate());
+         if (date != null) {
+             periods.refuseIfClosed(sheetId, date);
+@@ -88,8 +93,9 @@ public class ClaimService {
+      * Move a claim to a new status, recording the event; refused (and nothing written) when the
+      * claim's current status does not allow the move. Settling fixes the claim's due at the rate
+      * the person's grade has in force on the claim's date, or at the figure a statement bound it to.
+-     * Opening records who opened the claim, and
+-     * that user is refused when settling it. A claim dated inside a closed period cannot be moved.
++     * Opening numbers the claim and records who opened it; a voided claim keeps its number, which
++     * is never reused. The user who opened a claim
++     * is refused when settling it. A claim dated inside a closed period cannot be moved.
+      */
+     @Transactional
+     public Claim move(String sheetId, String user, long claimId, ClaimStatus next) {
+@@ -108,13 +114,10 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "The user who opened a claim cannot settle it.");
+         }
+-        Integer had = claim.getNumber();
+         Person person = person(sheetId, claim.getPersonId());
+         claim.become(next);
+-        if (next == ClaimStatus.OPEN || next == ClaimStatus.VOID) {
+-            claim.number(number);
+-        }
+         if (next == ClaimStatus.OPEN) {
++            claim.number(number);
+             claim.openedBy(user);
+         }
+         if (next == ClaimStatus.SETTLED) {
+@@ -130,7 +133,7 @@ public class ClaimService {
+         String suffix = next == ClaimStatus.SETTLED
+                 ? " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE)
+                 : "";
+-        audited(event, sheetId, user, person, saved, next == ClaimStatus.VOID ? had : saved.getNumber(), suffix);
++        audited(event, sheetId, user, person, saved, saved.getNumber(), suffix);
+         rollups.audit(sheetId, user, before);
+         return saved;
+     }
