@@ -99,13 +99,28 @@ public class SheetService {
         return saved;
     }
 
-    /** Change the sheet's terms, in days, auditing the change. */
+    /** Change the sheet's terms, in days, auditing the change and the figures it moves (late charges). */
     @Transactional
     public Sheet setTerms(String id, String user, int terms) {
         Sheet sheet = lock(id);
+        Rollups.Rollup before = rollups.take(id);
         sheet.setTerms(terms);
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + saved.getTerms());
+        rollups.audit(id, user, before);
+        return saved;
+    }
+
+    /** Change the sheet's late percent, auditing the change and the figures it moves. */
+    @Transactional
+    public Sheet setLatePct(String id, String user, BigDecimal latePct) {
+        Sheet sheet = lock(id);
+        Rollups.Rollup before = rollups.take(id);
+        sheet.setLatePct(latePct.setScale(2, RoundingMode.UNNECESSARY));
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=late-pct value="
+                + saved.getLatePct().toPlainString());
+        rollups.audit(id, user, before);
         return saved;
     }
 }

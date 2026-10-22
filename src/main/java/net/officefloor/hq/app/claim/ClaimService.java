@@ -98,7 +98,8 @@ public class ClaimService {
     /**
      * Move a claim to a new status, recording the event; refused (and nothing written) when the
      * claim's current status does not allow the move. Settling fixes the claim's due at the rate
-     * the person's grade has in force on the claim's date, or at the figure a statement bound it to.
+     * the person's grade has in force on the claim's date, or at the figure a statement bound it to,
+     * with the late charge it has then frozen in.
      * Opening numbers the claim and records who opened it; a voided claim keeps its number, which
      * is never reused. The user who opened a claim
      * is refused when settling it. A clerk is refused settling a claim whose due is above the sheet's
@@ -123,7 +124,7 @@ public class ClaimService {
         }
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal settledDue = next == ClaimStatus.SETTLED
-                ? (claim.isStated() ? claim.getStatedDue() : dues.live(claim, person.getGrade()))
+                ? dues.settling(claim, person.getGrade())
                 : null;
         if (next == ClaimStatus.SETTLED) {
             refuseIfOverClerkLimit(sheetId, user, settledDue);
@@ -193,9 +194,14 @@ public class ClaimService {
                 + (number != null ? " number=" + number : "") + suffix);
     }
 
-    /** The due figure a claim shows (see {@link Dues#figure}). */
+    /** The due figure a claim shows, without its late charge (see {@link Dues#figure}). */
     public BigDecimal figure(Claim claim, String grade) {
         return dues.figure(claim, grade);
+    }
+
+    /** The due a claim shows, with its late charge (see {@link Dues#due}). */
+    public BigDecimal due(Claim claim, String grade) {
+        return dues.due(claim, grade);
     }
 
     private static BigDecimal money(BigDecimal amount) {

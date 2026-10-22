@@ -2,6 +2,8 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -30,6 +32,46 @@ public class Dues {
             return claim.getSettledDue();
         }
         return claim.isStated() ? claim.getStatedDue() : live(claim, grade);
+    }
+
+    /**
+     * The due a claim shows: its figure (see {@link #figure}) with the late charge on top while it is
+     * overdue; a settled claim's figure already holds the charge it was settled with. Null (n/a) when
+     * it has no figure.
+     */
+    public BigDecimal due(Claim claim, String grade) {
+        return withLate(claim, figure(claim, grade));
+    }
+
+    /**
+     * The due a claim is settled at: the figure a statement bound it to, else its live figure, with
+     * the late charge it has on the sheet's today on top; null when it has no figure.
+     */
+    public BigDecimal settling(Claim claim, String grade) {
+        return withLate(claim, claim.isStated() ? claim.getStatedDue() : live(claim, grade));
+    }
+
+    /**
+     * A figure with the claim's late charge on top: the sheet's late percent of the figure for every
+     * full 30 days an OPEN claim is past its due-by (its date plus the sheet's terms) on the sheet's
+     * today, rounded half to even. The charge is never bound: it always follows the sheet's today.
+     */
+    private BigDecimal withLate(Claim claim, BigDecimal figure) {
+        if (figure == null || claim.getStatus() != ClaimStatus.OPEN || claim.getSettledDue() != null) {
+            return figure;
+        }
+        Sheet sheet = sheets.findById(claim.getSheetId()).orElse(null);
+        if (sheet == null || sheet.getLatePct().signum() == 0) {
+            return figure;
+        }
+        LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
+        long periods = ChronoUnit.DAYS.between(dueBy, sheet.getToday()) / 30;
+        if (periods <= 0) {
+            return figure;
+        }
+        BigDecimal late = figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods))
+                .movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        return figure.add(late);
     }
 
     /**

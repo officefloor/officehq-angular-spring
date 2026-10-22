@@ -10,6 +10,8 @@ export interface SheetView {
   floor: string;
   /** The sheet's terms in days: a claim is due by its date plus them. */
   terms: number;
+  /** The sheet's late percent with two decimals: an overdue claim gains it of its figure every full 30 days. */
+  latePct: string;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Everything else in the
@@ -26,6 +28,8 @@ export class Session {
   readonly floor = signal('1.00');
   /** The active sheet's terms in days: a claim is due by its date plus them. */
   readonly terms = signal(14);
+  /** The active sheet's late percent with two decimals: an overdue claim gains it of its figure every full 30 days. */
+  readonly latePct = signal('0.00');
   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -57,5 +61,6 @@ export class Session {
     this.today.set(view.today);
     this.floor.set(view.floor);
     this.terms.set(view.terms);
+    this.latePct.set(view.latePct);
   }
 }

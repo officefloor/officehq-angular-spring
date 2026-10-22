@@ -78,7 +78,7 @@ public class Rollups {
             boolean fixed = false;
             for (Claim claim : counting) {
                 claimed = claimed.add(claim.getAmount());
-                BigDecimal figure = dues.figure(claim, person.getGrade());
+                BigDecimal figure = dues.due(claim, person.getGrade());
                 if (figure != null) {
                     due = due.add(figure);
                 }

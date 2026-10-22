@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { ClaimView, cents, money } from './claims';
+import { ClaimView, LateTerms, cents, latePeriods, money } from './claims';
 import { Grade } from './people';
 
 export interface RateView {
@@ -49,10 +49,10 @@ export const NO_RATE = 'n/a';
  * What is due on an amount in whole cents at a rate (a two-decimal percent): the amount times the
  * rate divided by 100, rounded half to even to whole cents. Worked in integers so it is exact.
  */
-export function dueCents(amountCents: number, pct: string): number {
+export function dueCents(amountCents: number, pct: string, times = 1): number {
   const [whole, frac = ''] = pct.split('.');
   const basisPoints = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
-  const exact = BigInt(amountCents) * basisPoints;
+  const exact = BigInt(amountCents) * basisPoints * BigInt(times);
   const quotient = exact / 10000n;
   const remainder = exact % 10000n;
   const up = remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n);
@@ -65,15 +65,29 @@ export function due(amountCents: number, pct: string | null): string {
 }
 
 /**
- * A claim's due figure in whole cents: the due fixed when it was settled, or else the figure its
- * person's last statement bound it to, or else its amount at the rate the grade has in force on the
- * claim's date raised to the sheet's floor (in whole cents) when below it; null when there is none.
+ * A claim's due in whole cents: the due fixed when it was settled (its late charge frozen in), or
+ * else its figure — the one its person's last statement bound it to, or else its amount at the rate
+ * the grade has in force on the claim's date raised to the sheet's floor (in whole cents) when below
+ * it — with the late charge on top: the late percent of the figure for every full 30 days the claim
+ * is overdue, rounded half to even. The charge is never bound by a statement. Null when there is no
+ * figure.
  */
-export function claimDueCents(claim: ClaimView, rates: RateView[], grade: Grade, floorCents: number): number | null {
+export function claimDueCents(
+  claim: ClaimView,
+  rates: RateView[],
+  grade: Grade,
+  floorCents: number,
+  late: LateTerms,
+): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
-  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
-  const pct = rateOn(rates, grade, claim.date);
-  return pct === null ? null : Math.max(dueCents(cents(claim.amount), pct), floorCents);
+  let figure: number | null;
+  if (claim.stated) {
+    figure = claim.statedDue === null ? null : cents(claim.statedDue);
+  } else {
+    const pct = rateOn(rates, grade, claim.date);
+    figure = pct === null ? null : Math.max(dueCents(cents(claim.amount), pct), floorCents);
+  }
+  return figure === null ? null : figure + dueCents(figure, late.pct, latePeriods(claim, late));
 }
 
 // The rates for the grades on a sheet, read from and written to the store.

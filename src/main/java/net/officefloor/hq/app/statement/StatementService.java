@@ -62,16 +62,19 @@ public class StatementService {
         boolean fixed = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts()) {
+            // As in the live totals: an OPEN claim of a person on hold is left out.
+            if (!person.countsLive(claim.getStatus())) {
                 claim.unbind();
                 continue;
             }
+            // The statement binds the figure; the late charge stays live, but counts in its total.
             BigDecimal figure = claimService.figure(claim, person.getGrade());
             fixed |= figure != null && (claim.getSettledDue() != null || claim.isStated());
             claim.bind(figure);
             counted++;
-            if (figure != null) {
-                total = total.add(figure);
+            BigDecimal due = claimService.due(claim, person.getGrade());
+            if (due != null) {
+                total = total.add(due);
             }
         }
         // As on the screen: n/a when the grade has no rate today, unless a claim keeps a fixed figure.

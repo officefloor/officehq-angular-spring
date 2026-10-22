@@ -217,7 +217,7 @@ export class People {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
       if (!period || !person || !countsLive(c, person)) continue;
-      totals.set(period.id, totals.get(period.id)! + (claimDueCents(c, this.rates(), person.grade, this.floorCents()) ?? 0));
+      totals.set(period.id, totals.get(period.id)! + (this.dueCents(c, person) ?? 0));
     }
     return new Map([...totals].map(([id, total]) => [id, money(total)]));
   });
@@ -225,6 +225,8 @@ export class People {
   private readonly floorCents = computed(() => cents(this.session.floor()));
   /** The sheet's today, on which each grade's rate in force is read. */
   protected readonly today = computed(() => this.session.today() ?? '');
+  /** What late charges are worked from: the sheet's late percent, terms and today. */
+  private readonly late = computed(() => ({ pct: this.session.latePct(), terms: this.session.terms(), today: this.today() }));
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.claimedCents(p.id), 0)),
   );
@@ -303,7 +305,7 @@ export class People {
 
   private overdueCents(person: PersonView): number {
     return this.overdueOf(person.id).reduce(
-      (sum, c) => sum + (claimDueCents(c, this.rates(), person.grade, this.floorCents()) ?? 0),
+      (sum, c) => sum + (this.dueCents(c, person) ?? 0),
       0,
     );
   }
@@ -328,7 +330,12 @@ export class People {
     const counting = this.countingOf(person.id);
     const fixed = (c: ClaimView) => c.settledDue !== null || (c.stated && c.statedDue !== null);
     if (this.pctOf(person.grade) === null && !counting.some(fixed)) return null;
-    return counting.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), person.grade, this.floorCents()) ?? 0), 0);
+    return counting.reduce((sum, c) => sum + (this.dueCents(c, person) ?? 0), 0);
+  }
+
+  /** A claim's due in whole cents at its person's grade, with its late charge (see claimDueCents). */
+  private dueCents(claim: ClaimView, person: PersonView): number | null {
+    return claimDueCents(claim, this.rates(), person.grade, this.floorCents(), this.late());
   }
 
   /** The last statement's due-total: n/a when it was, empty when none was taken. */

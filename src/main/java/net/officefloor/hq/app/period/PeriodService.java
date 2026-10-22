@@ -89,7 +89,7 @@ public class PeriodService {
             if (person == null || !person.countsLive(claim.getStatus()) || !period.contains(claim.getDate())) {
                 continue;
             }
-            BigDecimal figure = dues.figure(claim, person.getGrade());
+            BigDecimal figure = dues.due(claim, person.getGrade());
             if (figure != null) {
                 total = total.add(figure);
             }

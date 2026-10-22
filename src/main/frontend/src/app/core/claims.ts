@@ -48,6 +48,22 @@ export function overdue(claim: ClaimView, terms: number, today: string): boolean
   return claim.status === 'OPEN' && today !== '' && dueBy(claim, terms) < today;
 }
 
+/** What a late charge is worked from: the sheet's late percent, terms and today. */
+export interface LateTerms {
+  /** The late percent with two decimals. */
+  pct: string;
+  terms: number;
+  /** The sheet's today (yyyy-mm-dd); empty when none is loaded. */
+  today: string;
+}
+
+/** How many full 30 days an overdue claim is past its due-by on the sheet's today; 0 when not overdue. */
+export function latePeriods(claim: ClaimView, late: LateTerms): number {
+  if (!overdue(claim, late.terms, late.today)) return 0;
+  const days = (Date.parse(late.today) - Date.parse(dueBy(claim, late.terms))) / 86_400_000;
+  return Math.floor(days / 30);
+}
+
 export interface ClaimForm {
   amount: string;
   /** Empty means the sheet's today (or, on an edit, the claim's own date). */

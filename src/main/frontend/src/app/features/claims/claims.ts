@@ -123,10 +123,12 @@ export class Claims {
   /**
    * What is due on a claim: the due fixed when it was settled, or else the figure its person's last
    * statement bound it to, or else its amount at the rate the
-   * person's grade has in force on the claim's date (n/a when it is dated before every rate).
+   * person's grade has in force on the claim's date (n/a when it is dated before every rate), with
+   * its late charge on top while it is overdue.
    */
   protected dueOf(claim: ClaimView): string {
-    const figure = claimDueCents(claim, this.rates(), this.grade(), cents(this.session.floor()));
+    const late = { pct: this.session.latePct(), terms: this.session.terms(), today: this.session.today() ?? '' };
+    const figure = claimDueCents(claim, this.rates(), this.grade(), cents(this.session.floor()), late);
     return figure === null ? NO_RATE : money(figure);
   }
 
