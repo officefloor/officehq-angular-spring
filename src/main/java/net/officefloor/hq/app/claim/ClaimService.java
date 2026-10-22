@@ -482,6 +482,16 @@ public class ClaimService {
      */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long personId) {
+        return reassign(sheetId, user, claimId, personId, false);
+    }
+
+    /**
+     * Reassign a claim as {@link #reassign(String, String, long, long)} does; when {@code toOwn} is set,
+     * a claim already the new person's is not refused but reassigned to them again (as a bulk
+     * reassign does to each selected claim).
+     */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long claimId, long personId, boolean toOwn) {
         sheets.lock(sheetId);
         Rollups.Rollup before = rollups.take(sheetId);
         Claim claim = claim(sheetId, claimId);
@@ -495,7 +505,7 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         Person from = person(sheetId, claim.getPersonId());
         Person to = person(sheetId, personId);
-        if (from.getId().equals(to.getId())) {
+        if (!toOwn && from.getId().equals(to.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s.");
         }
         refuseIfRetired(to, claim.getDate());

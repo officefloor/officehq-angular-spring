@@ -214,6 +214,12 @@ export interface BulkSettleView {
   refused: number;
 }
 
+/** What a bulk reassign did: the claims reassigned, as they are now, and how many were refused. */
+export interface BulkReassignView {
+  reassigned: ClaimView[];
+  refused: number;
+}
+
 export interface ClaimForm {
   amount: string;
   /** Empty means the sheet's today (or, on an edit, the claim's own date). */
@@ -373,6 +379,16 @@ export class ClaimsApi {
 
   settleAll(sheet: string, claimIds: number[]): Promise<BulkSettleView> {
     return firstValueFrom(this.http.post<BulkSettleView>(`${this.url(sheet)}/claims/settle`, { claimIds }));
+  }
+
+  /**
+   * Reassign the selected claims to a person together, in list order, each as its Reassign button
+   * would; those that cannot be moved are refused and left as they are.
+   */
+  reassignAll(sheet: string, claimIds: number[], personId: number): Promise<BulkReassignView> {
+    return firstValueFrom(
+      this.http.post<BulkReassignView>(`${this.url(sheet)}/claims/reassign`, { claimIds, personId }),
+    );
   }
 
   private url(sheet: string): string {

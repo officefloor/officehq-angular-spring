@@ -186,6 +186,29 @@ function csvField(value: string): string {
           <span role="alert" data-testid="bulk-settle-error">{{ message }}</span>
         }
       </p>
+      <p>
+        <label for="bulk-reassign-to">Reassign selected claims to</label>
+        <select
+          id="bulk-reassign-to"
+          data-testid="bulk-reassign-to"
+          (change)="bulkReassignTo.set(value($event)); bulkReassigned.set(null); bulkReassignError.set(null)"
+        >
+          <option value="" [selected]="bulkReassignTo() === ''">Choose a person</option>
+          @for (p of people(); track p.id) {
+            <option [value]="p.id" [selected]="bulkReassignTo() === '' + p.id">{{ p.name }}</option>
+          }
+        </select>
+        <button type="button" data-testid="bulk-reassign" (click)="reassignSelected()">Reassign selected claims</button>
+        @if (bulkReassigned(); as result) {
+          <span role="status">
+            Reassigned <strong data-testid="bulk-reassigned">{{ result.reassigned }}</strong>,
+            refused <strong data-testid="bulk-reassign-refused">{{ result.refused }}</strong>
+          </span>
+        }
+        @if (bulkReassignError(); as message) {
+          <span role="alert" data-testid="bulk-reassign-error">{{ message }}</span>
+        }
+      </p>
       <form (submit)="gradeSelected($event)" aria-label="Grade the selected people">
         <label for="bulk-grade">Grade the selected people</label>
         <select
@@ -615,6 +638,11 @@ export class People {
   /** How many claims the last bulk settle settled (or sent PENDING) and refused; null until one is done. */
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
+  /** The id of the person chosen to reassign the selected claims to; empty until one is chosen. */
+  protected readonly bulkReassignTo = signal('');
+  /** How many claims the last bulk reassign reassigned and refused; null until one is done. */
+  protected readonly bulkReassigned = signal<{ reassigned: number; refused: number } | null>(null);
+  protected readonly bulkReassignError = signal<string | null>(null);
   /** The ids of the people ticked to be given a grade together. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** The grade to give the selected people. */
@@ -647,6 +675,9 @@ export class People {
         this.bulkOpenError.set(null);
         this.bulkSettled.set(null);
         this.bulkSettleError.set(null);
+        this.bulkReassignTo.set('');
+        this.bulkReassigned.set(null);
+        this.bulkReassignError.set(null);
         this.selectedPeople.set(new Set());
         this.bulkGraded.set(null);
         this.bulkGradeError.set(null);
@@ -1079,6 +1110,8 @@ export class People {
     });
     this.bulkOpenError.set(null);
     this.bulkSettleError.set(null);
+    this.bulkReassigned.set(null);
+    this.bulkReassignError.set(null);
   }
 
   /**
@@ -1135,6 +1168,41 @@ export class People {
       this.bulkSettled.set({ settled: result.settled.length, refused: result.refused });
     } catch {
       this.bulkSettleError.set('The claims could not be settled.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Reassign the selected claims to the chosen person together: each is moved as its Reassign button
+   * would, in list order, and each that cannot be is left as it is; how many were reassigned and
+   * refused is shown, and the selection cleared.
+   */
+  protected async reassignSelected(): Promise<void> {
+    if (this.busy) return;
+    this.bulkReassigned.set(null);
+    this.bulkReassignError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const ids = [...this.selectedClaims()];
+    if (ids.length === 0) {
+      this.bulkReassignError.set('Select the claims to reassign.');
+      return;
+    }
+    const to = this.bulkReassignTo();
+    if (to === '') {
+      this.bulkReassignError.set('Choose a person to reassign the claims to.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const result = await this.claimsApi.reassignAll(sheet, ids, Number(to));
+      if (this.session.sheet() !== sheet) return;
+      for (const claim of result.reassigned) this.claimSaved(claim);
+      this.selectedClaims.set(new Set());
+      this.bulkReassigned.set({ reassigned: result.reassigned.length, refused: result.refused });
+    } catch {
+      this.bulkReassignError.set('The claims could not be reassigned.');
     } finally {
       this.busy = false;
     }

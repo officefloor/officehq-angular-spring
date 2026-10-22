@@ -138,6 +138,14 @@ public class ClaimController {
     public record BulkSettleView(List<ClaimView> settled, int refused) {
     }
 
+    /** The claims selected to be reassigned together, and the person they are moved to. */
+    public record BulkReassignForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull Long personId) {
+    }
+
+    /** What a bulk reassign did: the claims reassigned, as they are now, and how many were refused. */
+    public record BulkReassignView(List<ClaimView> reassigned, int refused) {
+    }
+
     /** The paste box's text: lines of name,amount,date,note. */
     public record PasteForm(@NotNull @Size(max = 200_000) String text) {
     }
@@ -246,6 +254,16 @@ public class ClaimController {
             @RequestBody @Valid BulkSettleForm form) {
         BulkMoveService.Result result = bulk.settle(sheetId, SignedIn.name(user), form.claimIds());
         return new BulkSettleView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
+    }
+
+    /** Reassign the selected claims to a person together, in list order; those that cannot be moved are refused. */
+    @PostMapping("/claims/reassign")
+    public BulkReassignView reassignAll(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkReassignForm form) {
+        BulkMoveService.Result result = bulk.reassign(sheetId, SignedIn.name(user), form.claimIds(), form.personId());
+        return new BulkReassignView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
     }
 
     /** Approve a PENDING claim, settling it; only a steward, and not the user who opened or last edited it. */
