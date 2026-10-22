@@ -31,11 +31,11 @@ public class Alias {
 
     @Override
     public boolean equals(Object other) {
-        return other instanceof Alias that && aliasKey.equals(that.aliasKey);
+        return other instanceof Alias that && alias.equals(that.alias);
     }
 
     @Override
     public int hashCode() {
-        return aliasKey.hashCode();
+        return alias.hashCode();
     }
 }

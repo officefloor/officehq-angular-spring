@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -27,7 +28,10 @@ import org.springframework.web.server.ResponseStatusException;
  * and logs kept); each claim that had a number takes the other sheet's next, in the order the claims
  * were opened, and loses any figure a statement bound and its reference. No statement is counted for
  * them there. They leave this sheet entirely: anyone naming them as a patron no longer does, and their
- * patrons, holds, pool memberships, statements and watchers are dropped.
+ * patrons, holds, pool memberships, statements and watchers are dropped. When someone on the other
+ * sheet already goes by their name or an alias, they are merged into that person there: their claims
+ * listed after the other's own, their name and aliases joined to the other's aliases, and their contact
+ * dropped.
  */
 @Service
 public class TransferService {
@@ -60,8 +64,9 @@ public class TransferService {
 
     /**
      * Transfer a person to another sheet by its id. Refused unless the user is a steward on this sheet,
-     * for this sheet's own id, for an archived sheet, for a retired person, and when the person's name,
-     * an alias or their contact is already in use on the other sheet.
+     * for this sheet's own id, for an archived sheet, for a retired person, when their
+     * contact is already in use on the other sheet (unless they are merged there), and when the person
+     * they would be merged into is retired.
      */
     @Transactional
     public void transfer(String sheetId, String user, long personId, String toSheetId) {
@@ -81,12 +86,15 @@ public class TransferService {
         if (person.getRetiredFrom() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred.");
         }
-        for (String name : Stream.concat(Stream.of(person.getName()), person.getAliases().stream()).toList()) {
-            if (people.findBySheetIdAndName(toSheetId, name).isPresent()) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on the other sheet.");
-            }
+        // Someone there going by their name or an alias takes them in, as a merge would.
+        Person into = Stream.concat(Stream.of(person.getName()), person.getAliases().stream())
+                .map(name -> people.findBySheetIdAndName(toSheetId, name)).flatMap(Optional::stream)
+                .findFirst().orElse(null);
+        if (into != null && into.getRetiredFrom() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
         }
-        if (person.getContact() != null && people.findBySheetIdAndContact(toSheetId, person.getContact()).isPresent()) {
+        if (into == null && person.getContact() != null
+                && people.findBySheetIdAndContact(toSheetId, person.getContact()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That contact is already in use on the other sheet.");
         }
         Rollups.Rollup before = rollups.take(sheetId);
@@ -102,10 +110,12 @@ public class TransferService {
         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderBySeqDesc(sheetId, person.getId()));
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, person.getId()));
 
-        int last = people.findMaxPositionBySheetId(toSheetId);
-        person.transferTo(toSheetId);
-        person.setPosition(last + 1);
-        people.saveAndFlush(person);
+        if (into == null) {
+            int last = people.findMaxPositionBySheetId(toSheetId);
+            person.transferTo(toSheetId);
+            person.setPosition(last + 1);
+            people.saveAndFlush(person);
+        }
 
         // Their claims follow, each that had a number taking the other sheet's next in the order opened.
         List<Claim> moved = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, person.getId()).stream()
@@ -125,15 +135,32 @@ public class TransferService {
                 claim.number(numbers.get(claim.getNumber()));
             }
             claim.renumberLinks(numbers);
+            if (into != null) {
+                claim.reassign(into.getId());
+            }
         }
         claims.saveAllAndFlush(moved);
 
         String name = person.getName();
+        if (into != null) {
+            // Their name and aliases join the other's aliases, and they leave with their holds and contact.
+            into.addAlias(name);
+            person.getAliases().forEach(into::addAlias);
+            people.delete(person);
+            people.flush();
+            people.saveAndFlush(into);
+            // The arriving claims are listed after the other's own, in the order they were added.
+            moved.stream().map(Claim::getId).sorted().forEach(claims::relist);
+        }
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + name
                 + " to=" + toSheetId);
         rollups.audit(sheetId, user, before);
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name=" + name
                 + " from=" + sheetId);
+        if (into != null) {
+            audit.recordOnCommit("PERSON_MERGED sheet=" + toSheetId + " by=" + user + " from=" + name
+                    + " into=" + into.getName());
+        }
         rollups.audit(toSheetId, user, toBefore);
     }
 }
