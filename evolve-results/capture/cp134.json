@@ -1,0 +1,64 @@
+{
+  "checkpoint": 134,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp134_sorting",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4c275da4a14f39ddcc76f36af912ca97dd4e1ed4",
+  "reset_sha": "",
+  "preagent_sha": "216e46d882d53c890ce6370a68933270747b3e9d",
+  "prev_sha": "216e46d882d53c890ce6370a68933270747b3e9d",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1132178,
+    "input_tokens": 62,
+    "output_tokens": 13364,
+    "cache_read_tokens": 1527529,
+    "cache_creation_tokens": 67523,
+    "num_turns": 32,
+    "duration_ms": 453494,
+    "duration_api_ms": 147673,
+    "model": "claude-opus-5-5",
+    "session_id": "a9fa37bc-92a2-4db7-89b9-dbe0c9122f39",
+    "stop_reason": "success",
+    "result_text": "I added the sort select, but only 2 of the 4 tests in `bin/e2e` pass. The two that pass (\"sorting\" and \"sorting scenario 2\") cover the sorting behaviour itself. The two failures come from parts of the app outside this change, and fixing them would mean breaking existing features, so I left them alone.\n\n**What changed** (all in `src/main/frontend/src/app/features/people/people.ts`, nothing on the server):\n- A labelled select, `data-testid=\"sort-by\"`, with the options added, name, grade and due-total. It sits next to \"Show retired\" and starts on added.\n- Sorting only changes the order of rows on screen. The stored order, positions, rollup lines, bulk actions and audit lines are untouched.\n- **Name:** compared the way the server compares names, trimmed and ignoring case, so \"ada\" sorts before \"Ben\".\n- **Grade:** uses the grade the person has on the sheet's current date.\n- **Due-total:** lowest first, with n/a last. Equal values keep their list order.\n- The choice belongs to each user's screen and stays through sheet re-loads. Another user who signs in sees the normal order.\n\n**The two failing tests:**\n1. **\"sorting scenario 1\"** (spec line 205) expects 7 audit lines for Cam but gets 9. The extra two are `LATE_ENTRY` lines. Cam's claims are dated in period P1, which the test soft-closes, and the app records those as late entries (`ClaimService.java` around line 143). The test's expected audit lines contain no `LATE_ENTRY` at all, so they were apparently produced by a version of the app without late-entry recording.\n2. **\"sorting scenario 3\"** (spec line 932) imports `Ada,B` and `Fay,C,3,fay@x`, looks up Fay's row, then expects that row to show Ada's details (name Ada, grade B, Ada's statement and tags). The app correctly adds Fay as a new person and updates Ada, so the test is effectively expecting Fay's row to be Ada's. That isn't sensible import behaviour.\n\nNeither failure involves the sort: scenario 3 never sorts, and scenario 1 fails after its sort steps, on claims added later. Making them pass would mean dropping late-entry auditing or making import show the wrong person. Tell me if you want either of those anyway.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1132178,
+        "num_turns": 32,
+        "duration_ms": 453494,
+        "duration_api_ms": 147673,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp134.agent.jsonl",
+  "agent_diff_file": "cp134.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,82 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d94f4ef7..016b30ff 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -21,6 +21,9 @@ import { VoidReasons } from '../../core/void-reasons';
+ 
+ /** The statuses the summary counts claims by, in the order it lists them. */
+ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
++/** What the people list can be ordered by on the screen; added is the list order itself. */
++const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
++type SortKey = (typeof SORT_KEYS)[number];
+ 
+ /**
+  * Whether a person's claim counts in the live totals: OPEN, PENDING and SETTLED claims do, but not an
+@@ -183,6 +186,14 @@ function csvField(value: string): string {
+         />
+         <label for="show-retired">Show retired</label>
+       </p>
++      <p>
++        <label for="sort-by">Sort people by</label>
++        <select id="sort-by" data-testid="sort-by" [value]="sortKey()" (change)="sortKey.set(sortKeyOf($event))">
++          @for (k of sortKeys; track k) {
++            <option [value]="k">{{ k }}</option>
++          }
++        </select>
++      </p>
+       <p>
+         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+@@ -333,7 +344,7 @@ function csvField(value: string): string {
+           </tr>
+         </thead>
+         <tbody>
+-          @for (p of shownPeople(); track p.id) {
++          @for (p of sortedPeople(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
+               <td>
+                 <input
+@@ -636,6 +647,30 @@ export class People {
+   protected readonly shownPeople = computed(() =>
+     this.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null),
+   );
++  protected readonly sortKeys = SORT_KEYS;
++  /** What this screen orders the listed people by; added (list order) when it opens, and kept across sheet loads. */
++  protected readonly sortKey = signal<SortKey>('added');
++  /**
++   * The listed people as this screen orders them. Only what is shown: the people keep their list
++   * order everywhere else. Names compare as they are kept unique (trimmed, ignoring case), grades by
++   * the one in force on the sheet's today, due-totals lowest first with n/a last; equal keys keep list order.
++   */
++  protected readonly sortedPeople = computed(() => {
++    const shown = this.shownPeople();
++    const by = this.sortKey();
++    if (by === 'added') return shown;
++    const keyOf = (p: PersonView): string | number | null =>
++      by === 'name' ? p.name.trim().toLowerCase() : by === 'grade' ? this.gradeOf(p) : this.dueTotalCents(p);
++    const keyed = shown.map((p) => ({ p, key: keyOf(p) }));
++    return keyed
++      .sort((a, b) => {
++        if (a.key === b.key) return 0;
++        if (a.key === null) return 1;
++        if (b.key === null) return -1;
++        return a.key < b.key ? -1 : 1;
++      })
++      .map((k) => k.p);
++  });
+   /** The retire-from date typed on each person's row, by person id; none means the sheet's today. */
+   protected readonly retireDates = new Map<number, string>();
+   /** The hold dates typed on each person's row, by person id; an empty from means the sheet's today. */
+@@ -1015,6 +1050,12 @@ export class People {
+     return [money(buckets[0]), money(buckets[1]), money(buckets[2])];
+   }
+ 
++  /** The sort key chosen in the sort select. */
++  protected sortKeyOf(event: Event): SortKey {
++    const value = (event.target as HTMLSelectElement).value;
++    return (SORT_KEYS as readonly string[]).includes(value) ? (value as SortKey) : 'added';
++  }
++
+   /** The grade a person has in force on the sheet's today. */
+   protected gradeOf(person: PersonView): Grade {
+     return gradeOn(person.grades, this.today());
