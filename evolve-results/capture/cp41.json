@@ -1,0 +1,64 @@
+{
+  "checkpoint": 41,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp41_header-counters",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen gains a header with counters, shown at all times: the number of people on the sheet\n(retired people included), the number of claims in each status (DRAFT, OPEN, PENDING, SETTLED,\nVOID), the sheet's due-total and the sheet's overdue-total. Each counter always equals the figure\nit repeats: the status counts those of the summary, the two totals the sheet's totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen gains a header with counters, shown at all times: the number of people on the sheet\n(retired people included), the number of claims in each status (DRAFT, OPEN, PENDING, SETTLED,\nVOID), the sheet's due-total and the sheet's overdue-total. Each counter always equals the figure\nit repeats: the status counts those of the summary, the two totals the sheet's totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "605aed75bcff5cc1dc591e8cf061d1d6bc32caf0",
+  "reset_sha": "",
+  "preagent_sha": "c5e1d1f24c53a1bd1c01d3591ae30bc422590d6e",
+  "prev_sha": "c5e1d1f24c53a1bd1c01d3591ae30bc422590d6e",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.265262,
+    "input_tokens": 14,
+    "output_tokens": 2225,
+    "cache_read_tokens": 156690,
+    "cache_creation_tokens": 23671,
+    "num_turns": 7,
+    "duration_ms": 113477,
+    "duration_api_ms": 26698,
+    "model": "claude-opus-5-5",
+    "session_id": "81f7db37-3deb-4e40-8e81-586324e62ffd",
+    "stop_reason": "success",
+    "result_text": "The screen now has a header with the counters, and all 4 tests in `bin/e2e` pass.\n\n- **New component:** `src/main/frontend/src/app/features/header/header.ts` shows the number of people, the claim count for each status (DRAFT, OPEN, PENDING, SETTLED, VOID), and the due and overdue totals. It uses the `data-testid` values the test expects.\n- **Where it gets its figures:** it's placed at the top of the people section in `features/people/people.ts`. It reuses the figures already worked out there, so it can't drift from what it repeats. The status counts are the summary's own (`statusSummary()`), and the totals are the sheet's (`dueTotal()` and `overdueTotal()`). The people count is `people().length`, which includes retired people whether or not \"Show retired\" is ticked.\n\nNo server or database changes were needed, since every figure was already on the screen.\n\nThe header only appears once a sheet is loaded, because that's when there are figures to show. Before then you see just the sign-in and load forms.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.265262,
+        "num_turns": 7,
+        "duration_ms": 113477,
+        "duration_api_ms": 26698,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp41.agent.jsonl",
+  "agent_diff_file": "cp41.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
