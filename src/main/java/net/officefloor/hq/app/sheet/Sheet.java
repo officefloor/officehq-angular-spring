@@ -51,7 +51,7 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
-    /** The last claim number the sheet gave out; 0 before any claim is opened. */
+    /** The last plain sheet-wide claim number the sheet gave out, before numbering restarted each fiscal year; 0 when none. */
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
@@ -142,6 +142,13 @@ public class Sheet {
     @MapKeyColumn(name = "action")
     @Column(name = "roles", nullable = false)
     private Map<String, String> permissions = new HashMap<>();
+
+    /** The last sheet-wide claim number given out in each fiscal year, by the year it is named after. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_fiscal_claim_number", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "fiscal_year")
+    @Column(name = "last_number", nullable = false)
+    private Map<Integer, Integer> lastFiscalClaimNumbers = new HashMap<>();
 
     protected Sheet() {
     }
@@ -380,6 +387,7 @@ public class Sheet {
         then.archived = archived;
         then.dated = new ArrayList<>(datedThen);
         then.permissions = new HashMap<>(permissions);
+        then.lastFiscalClaimNumbers = new HashMap<>(lastFiscalClaimNumbers);
         return then;
     }
 
@@ -514,20 +522,26 @@ public class Sheet {
         return ++lastSettleBatch;
     }
 
-    /** Give out the sheet's next claim number: 1 for the first, then 2, and so on. */
-    public int nextClaimNumber() {
-        return ++lastClaimNumber;
-    }
-
     /** The last claim number the sheet gave out; 0 before any claim is opened. */
     public int getLastClaimNumber() {
         return lastClaimNumber;
     }
 
-    /** Give out the next claim number after the last given anywhere in the sheet's tree. */
-    public int nextClaimNumberAfter(int lastInTree) {
-        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
-        return lastClaimNumber;
+    /** The year the fiscal year a date falls in is named after: the calendar year it starts in. */
+    public int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= fiscalStartMonth ? date.getYear() : date.getYear() - 1;
+    }
+
+    /** The last claim number the sheet gave out in a fiscal year; 0 before any. */
+    public int getLastClaimNumberIn(int fiscalYear) {
+        return lastFiscalClaimNumbers.getOrDefault(fiscalYear, 0);
+    }
+
+    /** Give out the next claim number in a fiscal year after the last given in it anywhere in the sheet's tree. */
+    public int nextClaimNumberIn(int fiscalYear, int lastInTree) {
+        int next = Math.max(getLastClaimNumberIn(fiscalYear), lastInTree) + 1;
+        lastFiscalClaimNumbers.put(fiscalYear, next);
+        return next;
     }
 
     /** The roles set for an action, comma separated; null when it keeps its standing rule. */
