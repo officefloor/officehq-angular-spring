@@ -1,0 +1,64 @@
+{
+  "checkpoint": 73,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp73_statement-as-of",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ada920a46b039a473631be04e87721dd0f5bea3e",
+  "reset_sha": "",
+  "preagent_sha": "0b923387f630c989f711bae5b3a43bc399de47bd",
+  "prev_sha": "0b923387f630c989f711bae5b3a43bc399de47bd",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.3719628000000004,
+    "input_tokens": 60,
+    "output_tokens": 37859,
+    "cache_read_tokens": 2793234,
+    "cache_creation_tokens": 131987,
+    "num_turns": 36,
+    "duration_ms": 450741,
+    "duration_api_ms": 349218,
+    "model": "claude-opus-5-5",
+    "session_id": "8a7d5482-92e5-451a-bb3c-dc7882af4daf",
+    "stop_reason": "success",
+    "result_text": "You can now take a statement as of a past date, and `bin/e2e` passes all 4 acceptance tests, all on the first run.\n\n**How it works**\n- **Keeping the past:** whenever the sheet's today moves on, the app first saves a copy of the sheet as it stands. The copy holds the settings, policy date, rates, people (grades, holds, retirement) and claims (status, settled and bound figures, deferrals). It is stored as JSON in a new `sheet_snapshot` table, added by migration `V48`, and the code is in the new `history` package (`SheetHistory`).\n- **Taking a statement as of a date:** for a past date, the app reads the last saved copy for that date or earlier. It works out the person's figures from it, with that date standing in for today: rates, floor, cap, late charges, holds, retirement and rounding all come from the copy. A blank date, or the sheet's today, uses the sheet as it is now, same as before.\n- **What changes on the person:** their current claims that counted then are bound to their figures as they stood then. Every other claim of theirs is left unbound. The row shows that date as the statement date and that day's due-total as the stated total. The `STATEMENT` audit line ends with `asof=<date>` when a date was given.\n- **Figure calculations:** `Dues` can now work out figures from either the live sheet or a saved copy, so the as-of statement uses the same rules as everything else. Existing callers behave as before.\n- **Screen:** each person row has a date entry (`person-statement-asof`) beside the Statement button. It is cleared after a statement goes through, so a following plain statement doesn't pick up the old date.\n- **Refusals:**\n  - A date after the sheet's today.\n  - A date the sheet or the person had no saved copy for. The request doesn't say this, but the tests expect it: three of them refuse dates before the person was added.\n  - Archived sheets and viewers, which the existing guards already refuse.\n\n**Limitations**\n- The saved copies are exact only if the sheet's today moves forward. If someone moves today back and makes changes, a later as-of statement may include changes it should leave out. Getting this exact would need a per-change history, which is a much bigger change.\n- Closed periods don't affect a person's figures in this app, so they play no part in an as-of statement.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.3719628000000004,
+        "num_turns": 36,
+        "duration_ms": 450741,
+        "duration_api_ms": 349218,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp73.agent.jsonl",
+  "agent_diff_file": "cp73.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
