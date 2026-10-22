@@ -31,11 +31,12 @@ public class ClaimController {
      * figure it was bound to (null when unbound, or when it was n/a), and the number of the claim it
      * corrects (null unless it is a correction), and the date it is due by, fixed when it was added, and its status
      * log, oldest first, and the date it is deferred until (null when it was never deferred), and its proofs count,
-     * and the number of the claim it was split from (null unless it was split off another).
+     * and the number of the claim it was split from (null unless it was split off another), and the user whose open
+     * editor locks it (null when none does).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
-            LocalDate deferredUntil, int proofs, String splitFrom) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -44,7 +45,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
         }
     }
 
@@ -157,6 +158,24 @@ public class ClaimController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimForm form) {
         return ClaimView.of(service.edit(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects()));
+    }
+
+    /** Open a claim's editor, locking the claim for every other user. */
+    @PostMapping("/claims/{claimId}/lock")
+    public ClaimView lock(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.lock(sheetId, SignedIn.name(user), claimId));
+    }
+
+    /** Cancel the user's editor of a claim, releasing its lock. */
+    @PostMapping("/claims/{claimId}/unlock")
+    public ClaimView unlock(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.unlock(sheetId, SignedIn.name(user), claimId));
     }
 
     /** Open a DRAFT claim. */

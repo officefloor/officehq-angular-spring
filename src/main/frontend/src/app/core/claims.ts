@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import type { DatedValue } from './session';
 
@@ -55,6 +55,8 @@ export interface ClaimView {
   proofs: number;
   /** The number of the claim this one was split from; null unless it was split off another. */
   splitFrom: string | null;
+  /** The user whose open editor locks the claim for everyone else; null when none does. */
+  lockedBy: string | null;
 }
 
 /** What a split did: the original claim, as it is now, and the new claim split off it. */
@@ -198,6 +200,25 @@ export function money(cents: number): string {
   return `${cents < 0 ? '-' : ''}${Math.trunc(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
+// The claim each person's form is editing, by user, sheet and person: kept across loads of the sheet,
+// so an editor left open is still open when the sheet is shown again.
+@Injectable({ providedIn: 'root' })
+export class ClaimEditors {
+  private readonly editing = signal<Record<string, number>>({});
+
+  /** The id of the claim open in the form, or null when the form adds a new claim. */
+  of(key: string): number | null {
+    return this.editing()[key] ?? null;
+  }
+
+  set(key: string, id: number | null): void {
+    this.editing.update((all) => {
+      const { [key]: _, ...rest } = all;
+      return id === null ? rest : { ...rest, [key]: id };
+    });
+  }
+}
+
 // The claims people on a sheet make, read from and written to the store.
 @Injectable({ providedIn: 'root' })
 export class ClaimsApi {
@@ -219,6 +240,20 @@ export class ClaimsApi {
 
   edit(sheet: string, id: number, form: ClaimForm): Promise<ClaimView> {
     return firstValueFrom(this.http.put<ClaimView>(`${this.url(sheet)}/claims/${id}`, form));
+  }
+
+  /**
+   * Open a claim's editor, locking the claim for every other user until it is saved or cancelled or
+   * the sheet's today changes; refused (409) when the claim cannot be edited, (423) when another
+   * user's editor holds it, and (403) for a viewer.
+   */
+  lock(sheet: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/lock`, null));
+  }
+
+  /** Cancel this user's editor of a claim, releasing its lock. */
+  unlock(sheet: string, id: number): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/unlock`, null));
   }
 
   /**

@@ -90,6 +90,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The user whose open editor locks the claim for everyone else; null when no editor holds it. */
+    @Column(name = "locked_by")
+    private String lockedBy;
+
     /** The claim's status log, oldest first. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "claim_id", nullable = false)
@@ -263,6 +267,20 @@ public class Claim {
     /** Raise the claim's proofs count by one; the caller checks the claim can take a proof. */
     public void addProof() {
         proofs++;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    /** Whether an editor of a user other than this one holds the claim. */
+    public boolean isLockedAgainst(String user) {
+        return lockedBy != null && !lockedBy.equals(user);
+    }
+
+    /** Lock the claim for the user's editor (null: release it); the caller checks the lock is theirs to take. */
+    public void lockFor(String user) {
+        this.lockedBy = user;
     }
 
     public List<ClaimLogLine> getLog() {

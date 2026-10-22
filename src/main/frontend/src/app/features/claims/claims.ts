@@ -1,12 +1,14 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimView, ClaimsApi, cents, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, cents, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
 import { Session, valueOn } from '../../core/session';
 
-// A person's claims: listed newest first, added and edited through one form on the person's row,
+// A person's claims: listed newest first, added and edited through one form on the person's row (an
+// open editor locks its claim for other users until it is saved or cancelled, and stays open across
+// loads of the sheet),
 // moved through their statuses (open, settle, approve, reject with a reason, void, re-settle) from each
 // claim's row, deferred there until a date, split there into two, re-dated there, and reassigned there to another person.
 const PAST: Record<ClaimAction, string> = {
@@ -28,7 +30,7 @@ const PAST: Record<ClaimAction, string> = {
         data-testid="claim-form-amount"
         inputmode="decimal"
         [value]="amount()"
-        (input)="amount.set(value($event)); error.set(null)"
+        (input)="amount.set(value($event)); typed()"
       />
       <label [for]="'claim-form-date-' + personId()">Date</label>
       <input
@@ -36,14 +38,14 @@ const PAST: Record<ClaimAction, string> = {
         type="date"
         data-testid="claim-form-date"
         [value]="date()"
-        (input)="date.set(value($event)); error.set(null)"
+        (input)="date.set(value($event)); typed()"
       />
       <label [for]="'claim-form-note-' + personId()">Note</label>
       <input
         [id]="'claim-form-note-' + personId()"
         data-testid="claim-form-note"
         [value]="note()"
-        (input)="note.set(value($event)); error.set(null)"
+        (input)="note.set(value($event)); typed()"
       />
       <label [for]="'claim-form-corrects-' + personId()">Corrects claim no.</label>
       <input
@@ -51,13 +53,13 @@ const PAST: Record<ClaimAction, string> = {
         data-testid="claim-form-corrects"
         inputmode="numeric"
         [value]="corrects()"
-        (input)="corrects.set(value($event)); error.set(null)"
+        (input)="corrects.set(value($event)); typed()"
       />
       <button type="submit" data-testid="claim-form-submit">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
       @if (editing() !== null) {
-        <button type="button" data-testid="claim-form-cancel" (click)="reset()">Cancel</button>
+        <button type="button" data-testid="claim-form-cancel" (click)="cancelEditor()">Cancel</button>
       }
       @if (error(); as message) {
         <p role="alert" data-testid="claim-form-error">{{ message }}</p>
@@ -101,6 +103,14 @@ const PAST: Record<ClaimAction, string> = {
             (click)="open(c)"
           >
             Edit
+          </button>
+          <button
+            type="button"
+            data-testid="claim-cancel"
+            [attr.aria-label]="'Cancel editing claim of ' + c.amount + ' on ' + c.date"
+            (click)="cancel(c)"
+          >
+            Cancel edit
           </button>
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
           <input
@@ -205,6 +215,7 @@ const PAST: Record<ClaimAction, string> = {
 export class Claims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
+  private readonly editors = inject(ClaimEditors);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -230,8 +241,14 @@ export class Claims {
   protected readonly note = signal('');
   /** The number of the SETTLED claim a correction corrects; empty on any other claim. */
   protected readonly corrects = signal('');
+  /** Whose form this is: the signed-in user's, on the sheet, for the person. */
+  private readonly editorKey = computed(() => `${this.session.user()}/${this.session.sheet()}/${this.personId()}`);
   /** The id of the claim open in the form, or null when the form adds a new claim. */
-  protected readonly editing = signal<number | null>(null);
+  protected readonly editing = computed(() => this.editors.of(this.editorKey()));
+  /** The form was typed in since the edit button was last pressed. */
+  private typedSinceOpen = false;
+  /** The editor left open has been put back in the form once this person's claims arrived. */
+  private restored = false;
   protected readonly error = signal<string | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
@@ -257,6 +274,23 @@ export class Claims {
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+
+  constructor() {
+    // Put back the editor left open on this person's form (or, failing that, the one whose lock this
+    // user holds) once their claims are shown.
+    effect(() => {
+      const claims = this.claims();
+      if (this.restored || claims.length === 0) return;
+      untracked(() => {
+        this.restored = true;
+        const me = this.session.user()?.trim();
+        const id = this.editing() ?? claims.find((c) => c.status === 'DRAFT' && c.lockedBy === me)?.id ?? null;
+        const claim = claims.find((c) => c.id === id && c.status === 'DRAFT');
+        this.setEditing(claim?.id ?? null);
+        if (claim) this.fill(claim);
+      });
+    });
+  }
 
   /**
    * What is due on a claim: the due fixed when it was settled, or else the greater of the floor in
@@ -302,12 +336,16 @@ export class Claims {
   }
 
   /**
-   * Open a claim's editor: the form takes its values. Only a DRAFT claim can be edited; any other is
-   * refused with an error on its row (to change an OPEN claim, void it and add a new one), as is one
-   * dated in a closed period.
+   * Open a claim's editor: the claim is locked for other users and the form takes its values. Only a
+   * DRAFT claim can be edited; any other is refused with an error on its row (to change an OPEN claim,
+   * void it and add a new one), as is one dated in a closed period, both taking no lock. A claim
+   * another user's editor holds is refused with an error on its row, the form left on it to save once
+   * the lock is released; a viewer's edit is refused like any of their actions.
    */
-  protected open(claim: ClaimView): void {
+  protected async open(claim: ClaimView): Promise<void> {
     this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
     if (claim.status !== 'DRAFT') {
       this.reset();
       this.claimError.set({
@@ -322,11 +360,83 @@ export class Claims {
       this.claimError.set({ id: claim.id, message: `Period ${period.name} is closed, so its claims cannot be edited.` });
       return;
     }
-    this.editing.set(claim.id);
+    const me = this.session.user()?.trim();
+    if (claim.lockedBy !== null && claim.lockedBy !== me) {
+      this.setEditing(claim.id);
+      this.claimError.set({ id: claim.id, message: this.lockedMessage(claim.lockedBy) });
+      return;
+    }
+    const previous = this.editing();
+    // the form is the claim's from the press on, so a save typed before the lock answers edits it
+    this.setEditing(claim.id);
+    this.typedSinceOpen = false;
+    try {
+      const locked = await this.api.lock(sheet, claim.id);
+      this.saved.emit(locked);
+      if (previous !== null && previous !== claim.id) void this.release(sheet, previous);
+      if (this.editing() === claim.id && !this.typedSinceOpen) this.fill(locked);
+    } catch (e) {
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      if (status !== 423 && this.editing() === claim.id) this.setEditing(previous);
+      this.claimError.set({
+        id: claim.id,
+        message: status === 423
+          ? this.lockedMessage(null)
+          : status === 403
+            ? 'Your role is not allowed to edit a claim.'
+            : 'The claim cannot be edited.',
+      });
+    }
+  }
+
+  /**
+   * Cancel the editor of a claim: the form goes back to adding a claim and this user's lock on the
+   * claim is released.
+   */
+  protected async cancel(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    if (this.editing() === claim.id) this.reset();
+    const sheet = this.session.sheet();
+    if (sheet) await this.release(sheet, claim.id);
+  }
+
+  /** The form's own cancel: the editor open in it is cancelled. */
+  protected cancelEditor(): void {
+    const id = this.editing();
+    const claim = this.claims().find((c) => c.id === id);
+    if (claim) void this.cancel(claim);
+    else this.reset();
+  }
+
+  /** Release this user's lock on a claim; one that cannot be released is left to the sheet's next today. */
+  private async release(sheet: string, id: number): Promise<void> {
+    try {
+      this.saved.emit(await this.api.unlock(sheet, id));
+    } catch {
+      // nothing of this user's to release
+    }
+  }
+
+  private lockedMessage(by: string | null): string {
+    return `The claim is being edited by ${by ?? 'another user'}, so it cannot be edited until they save or cancel.`;
+  }
+
+  private setEditing(id: number | null): void {
+    this.editors.set(this.editorKey(), id);
+  }
+
+  /** The form takes a claim's values. */
+  private fill(claim: ClaimView): void {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
+    this.error.set(null);
+  }
+
+  /** A field of the form was typed in: it clears the form's error. */
+  protected typed(): void {
+    this.typedSinceOpen = true;
     this.error.set(null);
   }
 
@@ -549,8 +659,9 @@ export class Claims {
     }
   }
 
+  /** The form goes back to adding a claim; a lock its editor held is not released here. */
   protected reset(): void {
-    this.editing.set(null);
+    this.setEditing(null);
     this.amount.set('');
     this.date.set('');
     this.note.set('');
@@ -583,9 +694,11 @@ export class Claims {
         : await this.api.edit(sheet, id, form);
       this.saved.emit(claim);
       this.reset();
-    } catch {
+    } catch (e) {
       const verb = id === null ? 'added' : 'saved';
-      this.error.set(amount.startsWith('-') || corrects !== ''
+      this.error.set(e instanceof HttpErrorResponse && e.status === 423
+        ? this.lockedMessage(null)
+        : amount.startsWith('-') || corrects !== ''
         ? `The claim could not be ${verb}: a correction (an amount below 0.00) must name a SETTLED claim of ${this.personName()}, and only a correction names one.`
         : `The claim could not be ${verb}.`);
       if (id === null) {
