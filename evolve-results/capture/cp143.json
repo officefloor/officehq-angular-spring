@@ -1,0 +1,64 @@
+{
+  "checkpoint": 143,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp143_fiscal-year",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a fiscal year start month (settings, 1 to 12, 1 unless set, not dated;\nSETTING_CHANGED key=fiscal-start-month value=<month>; anything else is refused). A fiscal year is\nnamed FY<yyyy> by the calendar year its first day falls in; show on each period the fiscal year its\nfrom-date falls in. A year entry and a button generate that fiscal year's twelve monthly periods\nexactly as the period generator does; show how many were made.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a fiscal year start month (settings, 1 to 12, 1 unless set, not dated;\nSETTING_CHANGED key=fiscal-start-month value=<month>; anything else is refused). A fiscal year is\nnamed FY<yyyy> by the calendar year its first day falls in; show on each period the fiscal year its\nfrom-date falls in. A year entry and a button generate that fiscal year's twelve monthly periods\nexactly as the period generator does; show how many were made.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "41dabd2f0999b5b7abc573afd47ca0c061515384",
+  "reset_sha": "",
+  "preagent_sha": "52862f6eb4507d8856f455981c9a8d36aee4e248",
+  "prev_sha": "52862f6eb4507d8856f455981c9a8d36aee4e248",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.8716794,
+    "input_tokens": 126,
+    "output_tokens": 27993,
+    "cache_read_tokens": 6199337,
+    "cache_creation_tokens": 133931,
+    "num_turns": 64,
+    "duration_ms": 893417,
+    "duration_api_ms": 277865,
+    "model": "claude-opus-5-5",
+    "session_id": "e3953d40-6afb-49a6-84e1-69e9b5fc393b",
+    "stop_reason": "success",
+    "result_text": "The fiscal-year change is in and the main `fiscal year` test passes. `bin/e2e` still exits 1, because three longer \"scenario\" tests in the same spec fail. None of the three gets as far as a fiscal-year check, and one can't pass as written.\n\n**What I changed**\n- **Stored data:** a new migration, `V79__sheet_fiscal_start_month.sql`, adds `fiscal_start_month` to the sheet, defaulting to 1. It is copied when a sheet is cloned and kept when the sheet is viewed as of a past date.\n- **Server:**\n  - A new setting endpoint, `PUT \u2026/settings/fiscal-start-month`, accepts only 1 to 12 and anything else is refused. It writes `SETTING_CHANGED \u2026 key=fiscal-start-month value=<month>`.\n  - A new `POST \u2026/periods/generate-fy` takes a four-digit year. It works out the fiscal year from the start month and hands the dates to the existing monthly period generator, so months already taken or overlapping are skipped exactly as that generator does.\n- **Front end:**\n  - A `setting-fiscal-start-month` input and a `setting-fiscal-start-month-current` display in Settings.\n  - A `period-fy` column on each period row, showing FY<yyyy> for its from-date.\n  - A year box and button (`period-generate-fy-year`, `period-generate-fy`) that show the count made, or an error, through the existing generate result and error elements.\n\n**The three failing scenarios**\n- **Scenario 2:** at line 753 it expects the parent sheet to show the literal text `__SHEET__-p`. That placeholder was never filled in with the real sheet id, so no app can pass it.\n- **Scenario 1:** at line 165 it expects a claim dated 2026-02-10 to be accepted. The app uses the terms in force on the claim's date: the default 14 business days, not the 7 set later from 2026-03-20. That puts the due-by on 2026-03-02, inside the closed period P1, so the app refuses it. I confirmed this with temporary logging, now removed.\n- **Scenario 3:** at line 1278 it expects period 2026-02 to have closed itself, which is the grace-days rule, not fiscal years.\n\nI left all three alone. Making 1 and 3 pass would mean changing how terms and grace days work, which is outside this change request. Scenario 2 would need the spec itself fixed, and I'm not allowed to edit it.\n\nMy temporary debug spec and logging are removed, and the app I started is stopped.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.8716794,
+        "num_turns": 64,
+        "duration_ms": 893417,
+        "duration_api_ms": 277865,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp143.agent.jsonl",
+  "agent_diff_file": "cp143.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
