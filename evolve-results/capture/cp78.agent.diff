@@ -1,0 +1,81 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5eb6fa96..27dd4c41 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -216,6 +216,7 @@ function csvField(value: string): string {
+             <th scope="col">Due by period</th>
+             <th scope="col">Excess</th>
+             <th scope="col">Overdue</th>
++            <th scope="col">Due by age</th>
+             <th scope="col">Statements</th>
+             <th scope="col">Retired</th>
+             <th scope="col">Active</th>
+@@ -259,6 +260,12 @@ function csvField(value: string): string {
+                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
+                 <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</span></span>
+               </td>
++              <td>
++                @let aged = agedOf(p);
++                <span>0&ndash;30 <span data-testid="person-aged-0-30">{{ aged[0] }}</span></span>
++                <span>31&ndash;60 <span data-testid="person-aged-31-60">{{ aged[1] }}</span></span>
++                <span>61+ <span data-testid="person-aged-61">{{ aged[2] }}</span></span>
++              </td>
+               <td>
+                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
+                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
+@@ -663,6 +670,20 @@ export class People {
+     );
+   }
+ 
++  /**
++   * The due of a person's counting OPEN and PENDING claims split by their age on the sheet's today
++   * (days from the claim's date): 0 to 30, 31 to 60 and 61 or more. A claim dated after today is 0 to 30.
++   */
++  protected agedOf(person: PersonView): [string, string, string] {
++    const buckets = [0, 0, 0];
++    const today = Date.parse(this.today());
++    for (const c of this.countingOf(person.id).filter(isOpen)) {
++      const days = Number.isNaN(today) ? 0 : (today - Date.parse(c.date)) / 86_400_000;
++      buckets[days <= 30 ? 0 : days <= 60 ? 1 : 2] += this.dueCents(c, person) ?? 0;
++    }
++    return [money(buckets[0]), money(buckets[1]), money(buckets[2])];
++  }
++
+   /** The grade a person has in force on the sheet's today. */
+   protected gradeOf(person: PersonView): Grade {
+     return gradeOn(person.grades, this.today());
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 80e7dd1d..5b069f34 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
+ 
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Objects;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -61,11 +62,12 @@ public class PersonService {
+         requireNameFree(sheetId, name, person.getId());
+         Rollups.Rollup before = rollups.take(sheetId);
+         LocalDate today = sheets.today(sheetId);
++        boolean termsChanged = !Objects.equals(person.getTerms(), terms);
+         person.setName(name);
+         person.setTerms(terms);
+         person.gradeFrom(grade, gradeFrom != null ? gradeFrom : today);
+         Person saved = people.saveAndFlush(person);
+-        audited("PERSON_EDITED", sheetId, user, saved, today, true);
++        audited("PERSON_EDITED", sheetId, user, saved, today, termsChanged);
+         rollups.audit(sheetId, user, before);
+         return saved;
+     }
+@@ -133,7 +135,7 @@ public class PersonService {
+ 
+     /**
+      * Record the change to the person, with the grade in force on the sheet's today and, when the form
+-     * gave them, their own terms (left off when they have none), once it is committed.
++     * gave or changed them, their own terms (left off when they have none), once it is committed.
+      */
+     private void audited(String event, String sheetId, String user, Person person, LocalDate today,
+             boolean withTerms) {
