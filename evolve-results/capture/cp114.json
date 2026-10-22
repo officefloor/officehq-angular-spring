@@ -1,0 +1,64 @@
+{
+  "checkpoint": 114,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp114_delete-and-restore-draft",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A DRAFT claim can be deleted (a button on the claim; any other status, or a claim in a closed\nperiod, is refused with an error on the claim): its status becomes DELETED, it counts nowhere (not\nin any total, not in the status counts of the header or the summary), it cannot be edited, opened\nor voided, its log gains a DELETED line, and CLAIM_DELETED is written naming the claim. On the same\nsheet-today it was deleted, a restore button makes it a DRAFT again (CLAIM_RESTORED, a DRAFT line in\nthe log); on a later day the restore is refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA DRAFT claim can be deleted (a button on the claim; any other status, or a claim in a closed\nperiod, is refused with an error on the claim): its status becomes DELETED, it counts nowhere (not\nin any total, not in the status counts of the header or the summary), it cannot be edited, opened\nor voided, its log gains a DELETED line, and CLAIM_DELETED is written naming the claim. On the same\nsheet-today it was deleted, a restore button makes it a DRAFT again (CLAIM_RESTORED, a DRAFT line in\nthe log); on a later day the restore is refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b1175c385216d380d665e2f8ea8845002471a6de",
+  "reset_sha": "",
+  "preagent_sha": "4f68cdacf63494d3b162fb66661eb36819ab1a96",
+  "prev_sha": "4f68cdacf63494d3b162fb66661eb36819ab1a96",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.7144824000000005,
+    "input_tokens": 76,
+    "output_tokens": 15897,
+    "cache_read_tokens": 2881112,
+    "cache_creation_tokens": 102502,
+    "num_turns": 39,
+    "duration_ms": 372154,
+    "duration_api_ms": 160583,
+    "model": "claude-opus-5-5",
+    "session_id": "01452267-c183-4f7f-af6c-078185276d87",
+    "stop_reason": "success",
+    "result_text": "Delete and restore for DRAFT claims are in, but only 2 of the 4 tests in the real spec pass: the main \"delete and restore draft\" test and scenario 2. Scenarios 1 and 3 fail at steps that don't involve deleting or restoring.\n\n**Why the other two fail**\n- **Scenario 3 can't pass.** At `acceptance.spec.ts:1145` it expects the screen to show the literal text `__SHEET__-p`. That's a placeholder the test never filled in; the app correctly shows the real sheet id plus `-p`.\n- **Scenario 1 trips on how adding a claim works today.** At `acceptance.spec.ts:219` it expects Cam's claim dated 2026-03-01 to be refused. The app accepts it, because it only refuses a new claim when the date it's due by falls in a closed period. Here that date is 2026-03-20, in P2, which is open. The test seems to expect a claim dated inside a closed period (P1) to be refused too. The extra claim then throws off later counts, such as `header-claims-DRAFT-count` showing 1 instead of 0.\n- The previous change's run (`.e2e.log`, the pools feature) failed the same two scenarios, so this was already the case before my change.\n\n**Diagnostic run:** I ran a temporary copy of the spec with those two lines relaxed. The main test and scenarios 2 and 3 passed. Scenario 1 failed only on the DRAFT count knocked off by that extra claim. I deleted the copy afterwards and didn't edit the real spec.\n\n**Decision for you:** I didn't change the rule for adding claims, since the request doesn't ask for it and the current rule is documented in `ClaimService.add`. If you want \"a claim dated inside a closed period is refused\" added, it's a small change. It may also fix the matching failure in the pools test.\n\n**What changed**\n- **Data:** a new `DELETED` status, with a migration (`V68__claim_deleted.sql`) to allow it in the database.\n- **Server:** new delete and restore endpoints for a claim.\n  - **Delete:** works only on a DRAFT whose due-by date isn't in a closed period. It adds a DELETED line to the claim's log and writes `CLAIM_DELETED`.\n  - **Restore:** works only on the sheet-today the claim was deleted, and turns it back into a DRAFT. It adds a DRAFT line to the log and writes `CLAIM_RESTORED`.\n  - **Effects of deleting:** the existing open, void and edit checks already refuse a deleted claim. Deleted claims count in no total, and the header and summary don't list them.\n- **Front end:** Delete and Restore buttons on each claim (`claim-delete`, `claim-restore`). A refusal shows in the claim's existing `claim-error`, with wording for each case.\n\nPort 3001, which `bin/e2e` uses by default here, is taken by another process that isn't mine. I left it alone and ran the tests with `PORT=3047 bin/e2e`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.7144824000000005,
+        "num_turns": 39,
+        "duration_ms": 372154,
+        "duration_api_ms": 160583,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp114.agent.jsonl",
+  "agent_diff_file": "cp114.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
