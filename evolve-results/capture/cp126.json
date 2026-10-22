@@ -1,0 +1,64 @@
+{
+  "checkpoint": 126,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp126_clone-sheet",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can clone the sheet to another id (an entry and a button; SHEET_CLONE_MADE to=<id> on\nthis sheet). The other sheet must be empty (never used); otherwise, or for anyone but a steward,\nthe clone is refused with an error on the sheet. The clone gets this sheet's today, settings, roles,\nrates, holidays, void reasons, templates, people (grades, terms, contacts, aliases, tags, holds,\nretirements, patrons), pools, periods (all open) and claims (status, frozen figures, dates, notes,\nlogs; numbers given afresh in the order the originals were opened, by the clone's own numbering);\nstatements are not copied. The clone's first audit line is SHEET_CLONED from=<this sheet's id>,\nfollowed by its rollup lines for every person and its totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can clone the sheet to another id (an entry and a button; SHEET_CLONE_MADE to=<id> on\nthis sheet). The other sheet must be empty (never used); otherwise, or for anyone but a steward,\nthe clone is refused with an error on the sheet. The clone gets this sheet's today, settings, roles,\nrates, holidays, void reasons, templates, people (grades, terms, contacts, aliases, tags, holds,\nretirements, patrons), pools, periods (all open) and claims (status, frozen figures, dates, notes,\nlogs; numbers given afresh in the order the originals were opened, by the clone's own numbering);\nstatements are not copied. The clone's first audit line is SHEET_CLONED from=<this sheet's id>,\nfollowed by its rollup lines for every person and its totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4c6db2be0ccffc9ff1bcc8f05ad122f8b6d3a0db",
+  "reset_sha": "",
+  "preagent_sha": "94a6465f13835e0b7442abe0fe19cf239f25c840",
+  "prev_sha": "94a6465f13835e0b7442abe0fe19cf239f25c840",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.657372,
+    "input_tokens": 62,
+    "output_tokens": 25757,
+    "cache_read_tokens": 3567360,
+    "cache_creation_tokens": 178564,
+    "num_turns": 34,
+    "duration_ms": 376620,
+    "duration_api_ms": 252368,
+    "model": "claude-opus-5-5",
+    "session_id": "b9f16fe4-4118-47c1-90eb-dd497711f404",
+    "stop_reason": "success",
+    "result_text": "I've added the clone, and the main `clone sheet` test passes. The full `bin/e2e` run still reports 2 of 4 tests failing: scenarios 1 and 2. Neither of them clones anything; the reasons are below.\n\n**What I built**\n- **Server:** a new endpoint `POST /api/sheets/{id}/clone` in `SheetController`, backed by a new `CloneService`.\n  - It refuses anyone who isn't a steward on the sheet, and any target id that has ever been used (including the sheet's own id).\n  - It copies the sheet's today and settings, and its roles, rates, holidays, void reasons and templates.\n  - People come across with their grades, terms, contacts, aliases, holds, retirements and patrons, all pointed at the new copies. Pools and their members are copied too.\n  - Periods all start open, with no fixed totals.\n  - Claims keep their status, settled figures, dates, notes, logs and comments, and are listed in the same order as on the original.\n  - Statements are not copied, so no claim stays tied to a statement figure. Watchers, delegations and the sheet's history aren't copied either.\n- **Claim numbers:** every claim that had one gets a new number from the clone's own numbering, in the order the originals were opened. The test needs people's list order to break ties when several claims were opened on the same day. (Transferring a person breaks ties by claim id instead, which gives different numbers here.)\n- **Audit:** the original sheet gets `SHEET_CLONE_MADE \u2026 to=<id>`. The clone gets `SHEET_CLONED \u2026 from=<id>`, then a `ROLLUP` line for every person and a `TOTALS` line. A refused clone writes nothing.\n- **Screen:** under the archive button there's now a \"Clone to sheet id\" box, a Clone button and a \"Last clone made\" value. Refusals show in the existing `sheet-error` message.\n\n**The two failing tests (I didn't change the code involved in either)**\n- **Scenario 2** checks `sheet-parent` for the literal text `\"__SHEET__-p\"`, but the page shows the real generated id (e.g. `smvk1rc72se30-p`). The test can't pass as written, and I'm not allowed to edit it.\n- **Scenario 1** expects `claim-late-entry` to be \"no\" for a claim dated 2026-03-15. That date falls in period P1, which is soft-closed, and the app's existing claim-adding code marks such claims as late entries. Making it pass would mean changing existing claim behaviour that this request doesn't cover, so I left it alone. I'm inferring this from the code: with no git history here, I couldn't run the tests against the unchanged app to confirm the failure was already there.\n\nThe copy is written as direct SQL statements (through Spring's `JdbcTemplate`) rather than through the app's usual data classes. It's shorter and copies every column. The catch is that any column added to these tables later will need adding to `CloneService` too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.657372,
+        "num_turns": 34,
+        "duration_ms": 376620,
+        "duration_api_ms": 252368,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp126.agent.jsonl",
+  "agent_diff_file": "cp126.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
