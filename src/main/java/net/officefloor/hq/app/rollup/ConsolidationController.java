@@ -26,6 +26,13 @@ public class ConsolidationController {
             Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
     }
 
+    /**
+     * A sheet's own summary due-total per grade, with two decimals (a grade nobody has left out); not
+     * found when no sheet has the id.
+     */
+    public record GradeDueTotalsView(boolean found, Map<String, String> gradeDueTotals) {
+    }
+
     private final Consolidation consolidation;
 
     public ConsolidationController(Consolidation consolidation) {
@@ -45,5 +52,18 @@ public class ConsolidationController {
         figures.gradeDueTotals().forEach((grade, due) -> grades.put(grade, due.toPlainString()));
         return new ConsolidatedView(figures.peopleCount(), figures.dueTotal().toPlainString(),
                 figures.overdueTotal().toPlainString(), grades, figures.statusCounts());
+    }
+
+    /** A sheet's own summary due-totals per grade as it stands now, to compare another sheet with it. */
+    @GetMapping("/{id}/grade-due-totals")
+    public GradeDueTotalsView gradeDueTotals(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id) {
+        return consolidation.gradeDueTotals(id)
+                .map(totals -> {
+                    Map<String, String> grades = new LinkedHashMap<>();
+                    totals.forEach((grade, due) -> grades.put(grade, due.toPlainString()));
+                    return new GradeDueTotalsView(true, grades);
+                })
+                .orElseGet(() -> new GradeDueTotalsView(false, Map.of()));
     }
 }

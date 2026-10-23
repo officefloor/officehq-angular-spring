@@ -13,6 +13,7 @@ import { RoleName, SettingsApi } from '../../core/settings';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
+import { ConsolidatedApi, GradeDueTotalsView } from '../../core/consolidated';
 import { Dashboard } from '../dashboard/dashboard';
 import { Periods } from '../periods/periods';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
@@ -246,6 +247,19 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
         <ul aria-label="Snapshot comparison">
           @for (line of snapshotLines(); track $index) {
             <li data-testid="snapshot-line">{{ line }}</li>
+          }
+        </ul>
+      }
+      <form (submit)="compareSheet($event)" aria-label="Compare with another sheet">
+        <label for="compare-sheet">Compare this sheet with sheet</label>
+        <input type="text" id="compare-sheet" data-testid="compare-sheet" [value]="compareWith()"
+          (input)="compareWith.set(value($event))" />
+        <button type="submit" data-testid="compare">Compare sheets</button>
+      </form>
+      @if (compareLines().length > 0) {
+        <ul aria-label="Sheet comparison">
+          @for (line of compareLines(); track $index) {
+            <li data-testid="compare-line">{{ line }}</li>
           }
         </ul>
       }
@@ -893,6 +907,7 @@ export class People {
   private readonly ratesApi = inject(RatesApi);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly settingsApi = inject(SettingsApi);
+  private readonly consolidatedApi = inject(ConsolidatedApi);
   protected readonly voidReasons = inject(VoidReasons);
   protected readonly columns = inject(Columns);
   protected readonly peopleColumns = PEOPLE_COLUMNS;
@@ -958,6 +973,10 @@ export class People {
   protected readonly snapshotTo = signal('');
   /** The last comparison made, one line per person in list order: name, then and now due-totals. */
   protected readonly snapshotLines = signal<string[]>([]);
+  /** The id of the other sheet typed to compare this one with. */
+  protected readonly compareWith = signal('');
+  /** The last sheet comparison made, one line per grade: this sheet's and the other's summary due-totals. */
+  protected readonly compareLines = signal<string[]>([]);
   /** The retire-from date typed on each person's row, by person id; none means the sheet's today. */
   protected readonly retireDates = new Map<number, string>();
   /** The grade chosen on each person's row. */
@@ -1335,6 +1354,7 @@ export class People {
         this.people.set([]);
         this.myRole.set(null);
         this.snapshotLines.set([]);
+        this.compareLines.set([]);
         this.watched.set(new Set());
         this.claims.set([]);
         this.rates.set([]);
@@ -1528,6 +1548,28 @@ export class People {
       (kept.get(p.id) ?? []).filter((s) => s.asOf === day).at(-1)?.dueTotal ?? '';
     this.snapshotLines.set(
       this.people().map((p) => `${p.name} ${keptOn(p, from)} ${to === '' ? this.dueTotalOf(p) : keptOn(p, to)}`),
+    );
+  }
+
+  /**
+   * Compare this sheet with another: per grade, this sheet's summary due-total and the other sheet's
+   * (0.00 for a grade nobody there has); no lines when the other sheet does not exist.
+   */
+  protected async compareSheet(event: Event): Promise<void> {
+    event.preventDefault();
+    const sheet = this.session.sheet();
+    const other = this.compareWith().trim();
+    this.compareLines.set([]);
+    if (!sheet || other === '') return;
+    let theirs: GradeDueTotalsView;
+    try {
+      theirs = await this.consolidatedApi.gradeDueTotals(other);
+    } catch {
+      return;
+    }
+    if (this.session.sheet() !== sheet || !theirs.found) return;
+    this.compareLines.set(
+      this.gradeSummary().map((g) => `${g.grade} ${g.dueTotal} ${theirs.gradeDueTotals[g.grade] ?? '0.00'}`),
     );
   }
 

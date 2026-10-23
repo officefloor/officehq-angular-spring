@@ -22,6 +22,12 @@ export interface ConsolidatedView {
   statusCounts: Record<string, number>;
 }
 
+/** A sheet's own summary due-total per grade, with two decimals (a grade nobody has left out); not found when no sheet has the id. */
+export interface GradeDueTotalsView {
+  found: boolean;
+  gradeDueTotals: Record<string, string>;
+}
+
 // The consolidated figures, read from the store.
 @Injectable({ providedIn: 'root' })
 export class ConsolidatedApi {
@@ -29,5 +35,12 @@ export class ConsolidatedApi {
 
   get(sheet: string): Promise<ConsolidatedView> {
     return firstValueFrom(this.http.get<ConsolidatedView>(`/api/sheets/${encodeURIComponent(sheet)}/consolidated`));
+  }
+
+  /** Another sheet's own summary due-totals per grade, as it stands now. */
+  gradeDueTotals(sheet: string): Promise<GradeDueTotalsView> {
+    return firstValueFrom(
+      this.http.get<GradeDueTotalsView>(`/api/sheets/${encodeURIComponent(sheet)}/grade-due-totals`),
+    );
   }
 }

@@ -9,6 +9,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.claim.Claim;
@@ -97,21 +98,41 @@ public class Consolidation {
                     persons.add(keys(person));
                 }
             });
-            LocalDate today = taken.sheet() == null ? null : taken.sheet().getToday();
-            taken.people().forEach((personId, person) -> {
-                Rollups.Figures figures = rollup.people().get(personId);
-                if (person.getRetiredFrom() != null || today == null || figures == null) {
-                    return;
-                }
-                BigDecimal figure = figures.dueTotal() == null ? BigDecimal.ZERO.setScale(2) : figures.dueTotal();
-                grades.merge(person.gradeOn(today), figure, BigDecimal::add);
-            });
+            addGradeDueTotals(taken, grades);
             for (Claim claim : taken.claims()) {
                 statuses.merge(claim.getStatus().name(), 1, Integer::sum);
             }
         }
         return new Consolidated(distinct(persons), Rollups.trimmed(dueFigures), Rollups.trimmed(overdueFigures),
                 grades, statuses);
+    }
+
+    /**
+     * The sheet's own summary due-total per grade, as it stands now: the due-totals of the people not
+     * retired who have it in force on its today (those shown as n/a skipped) added up; a grade nobody has
+     * is left out. Empty when no sheet has the id.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Map<String, BigDecimal>> gradeDueTotals(String sheetId) {
+        if (sheets.findById(sheetId).isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, BigDecimal> grades = new TreeMap<>();
+        addGradeDueTotals(now(sheetId), grades);
+        return Optional.of(grades);
+    }
+
+    /** Add a sheet's people's due-totals to the per-grade totals (see {@link Consolidated}). */
+    private static void addGradeDueTotals(Taken taken, Map<String, BigDecimal> grades) {
+        LocalDate today = taken.sheet() == null ? null : taken.sheet().getToday();
+        taken.people().forEach((personId, person) -> {
+            Rollups.Figures figures = taken.rollup().people().get(personId);
+            if (person.getRetiredFrom() != null || today == null || figures == null) {
+                return;
+            }
+            BigDecimal figure = figures.dueTotal() == null ? BigDecimal.ZERO.setScale(2) : figures.dueTotal();
+            grades.merge(person.gradeOn(today), figure, BigDecimal::add);
+        });
     }
 
     /** A person's name and aliases, each as names are compared. */
