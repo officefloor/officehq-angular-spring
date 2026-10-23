@@ -1,0 +1,57 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3f4b557f..18b1de9d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1554,11 +1554,11 @@ export class People {
+   }
+ 
+   /**
+-   * A person's score: their settled-total over 100, less 5 for each overdue claim of theirs that counts,
+-   * rounded half to even to a whole number.
++   * A person's score: the due of their counting SETTLED claims that correct nothing over 100, less 5
++   * for each overdue claim of theirs that counts, rounded half to even to a whole number.
+    */
+   protected scoreOf(person: PersonView): string {
+-    return String(halfEven(this.settledCents(person) - 50000 * this.overdueOf(person.id).length, 10000));
++    return String(halfEven(this.scoreSettledCents(person) - 50000 * this.overdueOf(person.id).length, 10000));
+   }
+ 
+   /**
+@@ -1590,6 +1590,13 @@ export class People {
+       .reduce((sum, c) => sum + (this.dueCents(c, person) ?? 0), 0);
+   }
+ 
++  /** The due of a person's counting SETTLED claims that correct nothing, which makes their score. */
++  private scoreSettledCents(person: PersonView): number {
++    return this.countingOf(person.id)
++      .filter((c) => c.status === 'SETTLED' && !c.corrects)
++      .reduce((sum, c) => sum + (this.dueCents(c, person) ?? 0), 0);
++  }
++
+   private openCents(person: PersonView): number {
+     return this.countingOf(person.id)
+       .filter(isOpen)
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index 794a0947..641cf51b 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -32,7 +32,7 @@ public class Rollups {
+     /**
+      * A person's figures: what they have claimed, their due-total (null when n/a) and their
+      * overdue-total (the due of their counting overdue claims), with their settled-total (the due of
+-     * their counting SETTLED claims) and how many of their counting claims are overdue, which make their score.
++     * their counting SETTLED claims that correct nothing) and how many of their counting claims are overdue, which make their score.
+      */
+     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+             BigDecimal settledTotal, int overdueCount) {
+@@ -134,7 +134,9 @@ public class Rollups {
+                     if (late) {
+                         overdue = overdue.add(figure);
+                     }
+-                    if (claim.getStatus() == ClaimStatus.SETTLED) {
++                    // The score's settled figures leave out claims that correct another.
++                    if (claim.getStatus() == ClaimStatus.SETTLED
++                            && (claim.getCorrects() == null || claim.getCorrects().isBlank())) {
+                         settled = settled.add(figure);
+                     }
+                 }

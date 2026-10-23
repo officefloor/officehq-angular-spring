@@ -1,0 +1,68 @@
+{
+  "checkpoint": 212,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp212_score-without-corrections",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    209
+  ],
+  "replaced_tests": [
+    "cp209_score.spec.ts::score"
+  ],
+  "request": {
+    "spec": "The score's settled figures now leave out corrections: only SETTLED claims that correct nothing\ncount toward it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe score's settled figures now leave out corrections: only SETTLED claims that correct nothing\ncount toward it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4d66b02cab85efc6d6024bbe0e4a207df04b8aa7",
+  "reset_sha": "",
+  "preagent_sha": "7a462bbe34debd5010a3f34306735827123c5d25",
+  "prev_sha": "7a462bbe34debd5010a3f34306735827123c5d25",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.49049499999999996,
+    "input_tokens": 38,
+    "output_tokens": 5313,
+    "cache_read_tokens": 593055,
+    "cache_creation_tokens": 33184,
+    "num_turns": 19,
+    "duration_ms": 677533,
+    "duration_api_ms": 81816,
+    "model": "claude-opus-5-5",
+    "session_id": "ab5ead3f-dc3f-4fe8-89bf-37f9727b7a90",
+    "stop_reason": "success",
+    "result_text": "The score now counts only SETTLED claims that correct nothing. The main test (\"score without corrections\") passes, but the other three scenarios in the spec still fail. They failed at exactly the same lines before my change.\n\n**What changed**\n- **Server** (`src/main/java/net/officefloor/hq/app/rollup/Rollups.java:137`): the settled figure behind each person's score now skips SETTLED claims that correct another. This is the same check already used for \"claimed\". That figure only feeds the score, so the score log's `score=` value follows automatically.\n- **Front end** (`src/main/frontend/src/app/features/people/people.ts:1594`): I added a separate `scoreSettledCents` that skips corrections, and `person-score` / `person-band` now use it.\n- I left the shown settled totals (`person-settled-total` and `rollup-settled-total`) as they were. The request only names the score, and nothing in the spec says those totals should change. If you meant them too, it's a one-line change.\n\n**Test results (`bin/e2e`)**\n- \"score without corrections\" passes. Ada's score is 3 and her band is HIGH, because the \u22121000 correction no longer lowers the score.\n- I ran the spec once with my change taken out. The main test then failed at its score check (line 24), and the other three failed at the same lines they fail at now:\n  - **Scenario 1, line 499:** expects `pool-cut` to be empty but the app shows `0.00`. This scenario's score checks (lines 361 and 430) pass before it gets there.\n  - **Scenario 2, line 723:** expects an inline edit to be refused, but the app accepts it.\n  - **Scenario 3, line 1262:** expects `sheet-parent` to read the literal `__SHEET__-p`. The app shows the real sheet id, so this looks like a placeholder left unfilled in the spec.\n\nScenarios 2 and 3 stop before they reach any score check, so they don't exercise this change. I didn't change pool cuts, inline edits or sheet parents, since they're outside this request and the spec can't be edited.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.49049499999999996,
+        "num_turns": 19,
+        "duration_ms": 677533,
+        "duration_api_ms": 81816,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp212.agent.jsonl",
+  "agent_diff_file": "cp212.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
