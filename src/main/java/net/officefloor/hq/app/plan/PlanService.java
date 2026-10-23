@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -92,6 +93,32 @@ public class PlanService {
         Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, day, end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " amount=" + money.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+        return saved;
+    }
+
+    /**
+     * Pause a running plan, or resume a paused one, on the sheet's today: a plan date on or after the day
+     * paused and before the day resumed is skipped. Pausing a paused plan or resuming a running one is refused.
+     */
+    @Transactional
+    public Plan pause(String sheetId, String user, long planId, boolean on) {
+        Sheet sheet = sheets.lock(sheetId);
+        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
+        if (plan.isPaused() == on) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    on ? "The plan is paused already." : "The plan is not paused.");
+        }
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (on) {
+            plan.pause(sheet.getToday());
+        } else {
+            plan.resume(sheet.getToday());
+        }
+        Plan saved = plans.saveAndFlush(plan);
+        audit.recordOnCommit((on ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " start=" + plan.getStart());
         return saved;
     }
 

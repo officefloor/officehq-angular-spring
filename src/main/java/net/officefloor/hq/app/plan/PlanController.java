@@ -26,14 +26,16 @@ public class PlanController {
 
     /**
      * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
-     * the month, the other null), how many claims it has made, and its next five dates after the sheet's today.
+     * the month, the other null), how many claims it has made, its next five dates after the sheet's today, and
+     * whether it is paused.
      */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates) {
+            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
 
         static PlanView of(Plan plan, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5));
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5),
+                    plan.isPaused());
         }
     }
 
@@ -77,6 +79,24 @@ public class PlanController {
         Plan added = service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
                 form.start(), number(form.every()), number(form.day()), form.end());
         return PlanView.of(added, service.today(sheetId));
+    }
+
+    /** Pause a plan from the sheet's today; refused when it is paused already. */
+    @PostMapping("/plans/{planId}/pause")
+    public PlanView pause(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long planId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PlanView.of(service.pause(sheetId, SignedIn.name(user), planId, true), service.today(sheetId));
+    }
+
+    /** Resume a paused plan on the sheet's today; refused when it is running. */
+    @PostMapping("/plans/{planId}/resume")
+    public PlanView resume(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long planId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return PlanView.of(service.pause(sheetId, SignedIn.name(user), planId, false), service.today(sheetId));
     }
 
     /** A whole number typed on the form, or null when left out. */

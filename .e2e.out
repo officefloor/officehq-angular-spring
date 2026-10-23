@@ -2,119 +2,93 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✘  1 [chromium] › acceptance.spec.ts:6:7 › snapshot comparison › snapshot comparison (8.2s)
-  ✘  2 [chromium] › acceptance.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 (25.9s)
-  ✓  3 [chromium] › acceptance.spec.ts:632:7 › snapshot comparison › snapshot comparison scenario 2 (39.7s)
-  ✘  4 [chromium] › acceptance.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 (45.5s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan pause › plan pause (9.6s)
+  ✓  2 [chromium] › acceptance.spec.ts:56:7 › plan pause › plan pause scenario 1 (48.9s)
+  ✘  3 [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 (23.4s)
+  ✘  4 [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 (26.5s)
 
 
-  1) [chromium] › acceptance.spec.ts:6:7 › snapshot comparison › snapshot comparison ───────────────
-
-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
-
-    [32m- Expected  - 2[39m
-    [31m+ Received  + 2[39m
-
-    [2m  Array [[22m
-    [32m-   "Ada  ",[39m
-    [32m-   "Ben  ",[39m
-    [31m+   "Ada",[39m
-    [31m+   "Ben",[39m
-    [2m  ][22m
-
-      22 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-01", "2026-03-05")).toEqual(["Ada 1.00 2.00", "Ben 0.00 1.00"]);
-      23 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-05", "")).toEqual(["Ada 2.00 2.00", "Ben 1.00 1.00"]);
-    > 24 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-02", "2026-03-10")).toEqual(["Ada  ", "Ben  "]);
-         |                                                                          ^
-      25 |     await ui.setToday(pg_uma, "2026-03-11");
-      26 |     expect(await ui.snapshotCompare(pg_uma, "2026-03-01", "2026-03-10")).toEqual(["Ada 1.00 2.00", "Ben 0.00 1.00"]);
-      27 |     await ui.refresh(pg_uma);
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:24:74
-
-  2) [chromium] › acceptance.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 ───
+  1) [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 ────────────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
     Locator: getByTestId('sheet-parent')
     Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvkqmx1zu6go[27m-p"[39m
+    Received string: [31m"[7msmvkqxjo9ctt5[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
     [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqmx1zu6go-p</strong>[22m
-    [2m  -   unexpected value "smvkqmx1zu6go-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
 
 
-      181 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
-      182 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-04-02");
-    > 183 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+      615 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      616 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+    > 617 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
           |                                                      ^
-      184 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
-      185 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      186 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+      618 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      619 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      620 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:183:54
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:617:54
 
-  3) [chromium] › acceptance.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 ─
+  2) [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 ───────────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
     Locator: getByTestId('sheet-parent')
     Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvkqodlzqxh4[27m-p"[39m
+    Received string: [31m"[7msmvkqy2x5ffv7[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
     [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqodlzqxh4-p</strong>[22m
-    [2m  -   unexpected value "smvkqodlzqxh4-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
 
 
-      1399 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("yes");
-      1400 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
-    > 1401 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+      1244 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1245 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+    > 1246 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
            |                                                      ^
-      1402 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
-      1403 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      1404 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+      1247 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      1248 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1249 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1401:54
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1246:54
 
-  3 failed
-    [chromium] › acceptance.spec.ts:6:7 › snapshot comparison › snapshot comparison ────────────────
-    [chromium] › acceptance.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 ────
-    [chromium] › acceptance.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 ──
-  1 passed (2.1m)
- 1785246
+  2 failed
+    [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 ─────────────────────
+    [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 ────────────────────
+  2 passed (1.9m)

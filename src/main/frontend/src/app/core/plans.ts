@@ -23,6 +23,8 @@ export interface PlanView {
   generated: number;
   /** The first five plan dates after the sheet's today and on or before the end, oldest first. */
   nextDates: string[];
+  /** Whether the plan is paused: its dates from the day paused until it is resumed are skipped. */
+  paused: boolean;
 }
 
 /** A plan as typed on the form. */
@@ -56,6 +58,16 @@ export class PlansApi {
   /** Add a plan on a person; refused (400) for a bad amount, interval or day of the month, or an end before the start. */
   add(sheet: string, personId: number, form: PlanForm): Promise<PlanView> {
     return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/people/${personId}/plans`, form));
+  }
+
+  /** Pause a running plan from the sheet's today; refused (400) when it is paused already. */
+  pause(sheet: string, planId: number): Promise<PlanView> {
+    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/plans/${planId}/pause`, null));
+  }
+
+  /** Resume a paused plan on the sheet's today; refused (400) when it is running. */
+  resume(sheet: string, planId: number): Promise<PlanView> {
+    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/plans/${planId}/resume`, null));
   }
 
   /** Make a DRAFT claim for every plan date up to the sheet's today that has none yet. */
@@ -99,6 +111,12 @@ export class Plans {
   async add(sheet: string, personId: number, form: PlanForm): Promise<void> {
     const added = await this.api.add(sheet, personId, form);
     if (this.session.sheet() === sheet) this.list.update((all) => [...all, added]);
+  }
+
+  /** Pause (true) or resume (false) a plan on the active sheet: shown as it is after it. */
+  async pause(sheet: string, planId: number, on: boolean): Promise<void> {
+    const changed = on ? await this.api.pause(sheet, planId) : await this.api.resume(sheet, planId);
+    if (this.session.sheet() === sheet) this.list.update((all) => all.map((p) => (p.id === changed.id ? changed : p)));
   }
 
   /** Generate the plans' claims on the active sheet: what was made, the plans shown as they are after it. */

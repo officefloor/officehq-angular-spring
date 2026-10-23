@@ -61,6 +61,11 @@ public class Plan {
     @Column(name = "claim_id")
     private Map<LocalDate, Long> made = new TreeMap<>();
 
+    /** The plan's pauses, each from the day paused to the day resumed; the last one open while it is paused. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+    private List<PlanPause> pauses = new ArrayList<>();
+
     protected Plan() {
     }
 
@@ -78,7 +83,7 @@ public class Plan {
     /**
      * The plan's dates, oldest first, up to its end and the given day: from its start every N days, or for a
      * monthly plan its day in every month from the start's month (the month's last day when the month is
-     * shorter), leaving out those before the start.
+     * shorter), leaving out those before the start and those skipped by a pause.
      */
     public List<LocalDate> datesUpTo(LocalDate today) {
         LocalDate last = today == null || end.isBefore(today) ? end : today;
@@ -86,14 +91,16 @@ public class Plan {
         if (day != null) {
             for (YearMonth month = YearMonth.from(start); !month.atDay(1).isAfter(last); month = month.plusMonths(1)) {
                 LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
-                if (!d.isBefore(start) && !d.isAfter(last)) {
+                if (!d.isBefore(start) && !d.isAfter(last) && !skipped(d)) {
                     dates.add(d);
                 }
             }
             return dates;
         }
         for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
-            dates.add(d);
+            if (!skipped(d)) {
+                dates.add(d);
+            }
         }
         return dates;
     }
@@ -101,6 +108,26 @@ public class Plan {
     /** The first count plan dates after the given day, oldest first, on or before the plan's end. */
     public List<LocalDate> nextDates(LocalDate today, int count) {
         return datesUpTo(null).stream().filter(d -> d.isAfter(today)).limit(count).toList();
+    }
+
+    /** Whether a pause skips the plan date: on or after the day paused and before the day resumed. */
+    private boolean skipped(LocalDate date) {
+        return pauses.stream().anyMatch(p -> p.skips(date));
+    }
+
+    /** Whether the plan is paused now: its last pause has not been resumed. */
+    public boolean isPaused() {
+        return !pauses.isEmpty() && pauses.get(pauses.size() - 1).isOpen();
+    }
+
+    /** Pause the plan from the day; the caller has checked it is running. */
+    public void pause(LocalDate on) {
+        pauses.add(new PlanPause(on));
+    }
+
+    /** Resume the plan on the day; the caller has checked it is paused. */
+    public void resume(LocalDate on) {
+        pauses.get(pauses.size() - 1).resume(on);
     }
 
     /** Whether the plan has made a claim for the date. */

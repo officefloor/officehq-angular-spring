@@ -25,7 +25,13 @@ function reasonOf(e: unknown): string | null {
           }
           to {{ plan.end }};
           made <span data-testid="plan-generated">{{ plan.generated }}</span>;
-          next <span data-testid="plan-next-dates">{{ plan.nextDates.join(', ') }}</span>
+          next <span data-testid="plan-next-dates">{{ plan.nextDates.join(', ') }}</span>;
+          paused <span data-testid="plan-paused">{{ plan.paused ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="plan-pause" (click)="pause(plan.id, true)">Pause plan</button>
+          <button type="button" data-testid="plan-resume" (click)="pause(plan.id, false)">Resume plan</button>
+          @if (rowError()?.planId === plan.id) {
+            <p role="alert" data-testid="plan-error">{{ rowError()?.message }}</p>
+          }
         </li>
       }
     </ul>
@@ -92,11 +98,25 @@ export class PersonPlans {
   protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The refusal of the last pause or resume, on the plan it was taken on. */
+  protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Pause (true) or resume (false) a plan; a refusal is shown on its row. */
+  protected async pause(planId: number, on: boolean): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      await this.store.pause(sheet, planId, on);
+    } catch (e) {
+      this.rowError.set({ planId, message: reasonOf(e) ?? (on ? 'The plan could not be paused.' : 'The plan could not be resumed.') });
+    }
   }
 
   protected async save(event: Event): Promise<void> {
