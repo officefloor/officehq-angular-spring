@@ -822,6 +822,37 @@ public class ClaimService {
     }
 
     /**
+     * Refuse when settling an OPEN claim would be refused: the user's role may not settle, the claim
+     * is not OPEN, is due by inside a closed period, is deferred on the sheet's today, was opened or
+     * last edited by the user, or its due is above the proof threshold with no proof. Taken before a
+     * part-settle splits the claim, so a part-settle such a settle would refuse writes nothing.
+     */
+    @Transactional(readOnly = true)
+    public void refuseSettling(String sheetId, String user, long claimId) {
+        LocalDate today = sheets.load(sheetId).getToday();
+        Claim claim = claim(sheetId, claimId);
+        periods.refuseIfClosed(sheetId, claim.getDueBy());
+        if (!roles.permits(sheetId, user, "settle")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not settle a claim.");
+        }
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be part-settled; only an OPEN one can.");
+        }
+        if (claim.isDeferredOn(today)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is deferred until " + claim.getDeferredUntil() + ": it cannot be settled before then.");
+        }
+        if (claim.isOpenedOrEditedBy(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The user who opened or last edited a claim cannot settle it.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        String grade = person.gradeOn(claim.getDate());
+        refuseUnproved(sheetId, claim, grade, dues.settling(claim, grade));
+    }
+
+    /**
      * The PENDING claim a steward approves or rejects; refused when it is not PENDING, when its date
      * is inside a closed period, or when the user is not a steward.
      */

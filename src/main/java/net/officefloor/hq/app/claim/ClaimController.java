@@ -483,6 +483,24 @@ public class ClaimController {
         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
+    /**
+     * Part-settle an OPEN claim: refused, writing nothing, when settling the claim would be refused; else
+     * the amount is split off it as the split does and the new claim settled as the settle does
+     * (PENDING when a clerk settles it above the clerk limit).
+     */
+    @PostMapping("/claims/{claimId}/settle-part")
+    public SplitView settlePart(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid SplitForm form) {
+        String name = SignedIn.name(user);
+        service.refuseSettling(sheetId, name, claimId);
+        ClaimService.Split split = service.split(sheetId, name, claimId, new BigDecimal(form.amount()));
+        Claim settled = service.move(sheetId, name, split.split().getId(), ClaimStatus.SETTLED);
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(settled));
+    }
+
     /** Re-date an OPEN or PENDING claim; only a steward. */
     @PostMapping("/claims/{claimId}/redate")
     public ClaimView redate(

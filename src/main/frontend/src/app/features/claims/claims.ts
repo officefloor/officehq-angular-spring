@@ -359,6 +359,22 @@ const PAST: Record<ClaimAction, string> = {
           >
             Split
           </button>
+          <label [for]="'claim-settle-part-amount-' + c.id">Part-settle amount</label>
+          <input
+            [id]="'claim-settle-part-amount-' + c.id"
+            data-testid="claim-settle-part-amount"
+            inputmode="decimal"
+            [value]="settlePartAmounts()[c.id] ?? ''"
+            (input)="setSettlePartAmount(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-settle-part"
+            [attr.aria-label]="'Part-settle claim of ' + c.amount + ' on ' + c.date"
+            (click)="settlePart(c)"
+          >
+            Part-settle
+          </button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -462,6 +478,8 @@ export class Claims {
   protected readonly newDates = signal<Record<number, string>>({});
   /** The amount typed on each claim's row to split off it, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The amount typed on each claim's row to part-settle, by claim id. */
+  protected readonly settlePartAmounts = signal<Record<number, string>>({});
   /** The comment typed on each claim's row, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
   /** The line typed on each claim's row, by claim id. */
@@ -874,6 +892,41 @@ export class Claims {
       this.splitAmounts.update((amounts) => ({ ...amounts, [claim.id]: '' }));
     } catch {
       this.claimError.set({ id: claim.id, message: refuse() });
+    }
+  }
+
+  /** Type the amount to part-settle a claim; it clears any error left on the claim's row. */
+  protected setSettlePartAmount(id: number, amount: string): void {
+    this.settlePartAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Part-settle a claim: split the amount typed on its row off it and settle the new claim (PENDING
+   * when a clerk settles it above the clerk limit); refused with an error on its row when the split or
+   * the settle would be.
+   */
+  protected async settlePart(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.settlePartAmounts()[claim.id] ?? '').trim();
+    if (!AMOUNT.test(amount) || amount.startsWith('-') || cents(amount) <= 0 || cents(amount) >= cents(claim.amount)) {
+      this.claimError.set({ id: claim.id, message: `Type an amount above 0.00 and below ${claim.amount} to part-settle the claim.` });
+      return;
+    }
+    try {
+      const result = await this.api.settlePart(sheet, claim.id, amount);
+      this.saved.emit(result.original);
+      this.saved.emit(result.split);
+      this.settlePartAmounts.update((amounts) => ({ ...amounts, [claim.id]: '' }));
+    } catch (e) {
+      this.claimError.set({
+        id: claim.id,
+        message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role is not allowed to settle a claim.'
+          : 'The claim cannot be part-settled: the split or the settle of the new claim was refused.',
+      });
     }
   }
 

@@ -461,6 +461,14 @@ export class ClaimsApi {
   }
 
   /**
+   * Part-settle an OPEN claim: split an amount off it and settle the new claim (PENDING when a clerk
+   * settles it above the clerk limit), returning the original as it is now and the new claim; refused (403/409) when the split or the settle would be.
+   */
+  settlePart(sheet: string, id: number, amount: string): Promise<SplitView> {
+    return firstValueFrom(this.http.post<SplitView>(`${this.url(sheet)}/claims/${id}/settle-part`, { amount }));
+  }
+
+  /**
    * Re-date an OPEN or PENDING claim; refused (403) when the user is not a steward, and (409) when the
    * claim is not OPEN or PENDING, either date is inside a closed period, or the new date is after its
    * person's retirement.
