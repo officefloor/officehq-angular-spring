@@ -1,0 +1,189 @@
+diff --git a/.e2e.out b/.e2e.out
+index ee55d5a5..9caa8ab6 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,11 +2,46 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › crews › crews (15.4s)
+-  ✓  2 [chromium] › acceptance.spec.ts:83:7 › crews › crews scenario 1 (17.5s)
+-  ✓  3 [chromium] › acceptance.spec.ts:396:7 › crews › crews scenario 2 (18.5s)
+-  ✓  4 [chromium] › acceptance.spec.ts:921:7 › crews › crews scenario 3 (18.1s)
+-
+-  Slow test file: [chromium] › acceptance.spec.ts (1.2m)
+-  Consider splitting slow test files to speed up parallel execution
+-  4 passed (1.2m)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › crew lead total › crew lead total (10.2s)
++  ✓  2 [chromium] › acceptance.spec.ts:137:7 › crew lead total › crew lead total scenario 1 (16.0s)
++  ✘  3 [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 (7.3s)
++  ✘  4 [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 (15.3s)
++
++
++  1) [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 ──────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
++
++    Received: [31m"10"[39m
++
++      717 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
++      718 |     expect(await ui.periodAction(pg_vic, "P2", "close")).toBe(true);
++    > 719 |     expect(await ui.addClaim(pg_vic, p_ben, {"amount": "12.50", "ref": "inv 7"})).toBeNull();
++          |                                                                                   ^
++      720 |     expect(await ui.setRate(pg_vic, {"grade": "B", "pct": "7.50"})).toBe(true);
++      721 |     await ui.refresh(pg_vic);
++      722 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:719:83
++
++  2) [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 ─────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
++
++    Received: [31m"14"[39m
++
++      1230 |     expect(await ui.addPatron(pg_uma, p_ada, "Ben")).toBe(true);
++      1231 |     expect(await ui.addLine(pg_uma, c_ada_1, {"label": "y", "qty": "3", "unit": "4.00"})).toBe(false);
++    > 1232 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "20.00", "note": "n"})).toBeNull();
++           |                                                                                ^
++      1233 |     await ui.showRetired(pg_uma, true);
++      1234 |     expect(await ui.unretire(pg_uma, p_ben)).toBe(true);
++      1235 |     expect(await ui.addAlias(pg_uma, p_ben, "")).toBe(false);
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1232:80
++
++  2 failed
++    [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 ───────────
++    [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 ──────────
++  2 passed (52.0s)
++ 1356982
+\ No newline at end of file
+diff --git a/src/main/frontend/src/app/core/crews.ts b/src/main/frontend/src/app/core/crews.ts
+index d4088290..b00551b8 100644
+--- a/src/main/frontend/src/app/core/crews.ts
++++ b/src/main/frontend/src/app/core/crews.ts
+@@ -17,6 +17,14 @@ export interface CrewView {
+   members: CrewMemberView[];
+ }
+ 
++/**
++ * A crew's due-total in whole cents: its lead's and members' due-totals, as shown, added up, skipping
++ * those shown as n/a (null) in the given due-totals by person id.
++ */
++export function crewDueCents(crew: CrewView, dues: Map<number, number | null>): number {
++  return [crew.leadId, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
++}
++
+ // The sheet's crews, read from and written to the store.
+ @Injectable({ providedIn: 'root' })
+ export class CrewsApi {
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index b82eb5c3..32f0ebbb 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -1,7 +1,7 @@
+-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
++import { Component, computed, effect, inject, input, model, signal, untracked } from '@angular/core';
+ import { FigurePipe } from '../../core/locale';
+ import { money } from '../../core/claims';
+-import { CrewView, CrewsApi } from '../../core/crews';
++import { CrewView, CrewsApi, crewDueCents } from '../../core/crews';
+ import { PersonView } from '../../core/people';
+ import { Session } from '../../core/session';
+ 
+@@ -86,7 +86,8 @@ export class Crews {
+   /** Each person's due-total in whole cents as shown, by person id; null when shown as n/a. */
+   readonly dueTotals = input.required<Map<number, number | null>>();
+ 
+-  protected readonly crews = signal<CrewView[]>([]);
++  /** The sheet's crews as read from the store, shared with the screen around. */
++  readonly crews = model<CrewView[]>([]);
+   protected readonly name = signal('');
+   /** The lead chosen on the form: a person id, or empty. */
+   protected readonly lead = signal('');
+@@ -100,9 +101,7 @@ export class Crews {
+     const dues = this.dueTotals();
+     return this.crews().map((crew) => ({
+       crew,
+-      dueTotal: money(
+-        [crew.leadId, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0),
+-      ),
++      dueTotal: money(crewDueCents(crew, dues)),
+     }));
+   });
+   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 4cc724bd..df6a5204 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -4,7 +4,8 @@ import { StatusSummary } from '../summary/summary';
+ 
+ // The sheet's header: its counters, each repeating a figure shown elsewhere on the screen — the people
+ // on the sheet (retired people included), the summary's claim count per status, and the sheet's
+-// due-total and overdue-total; and the signed-in user's own figures, when a person goes by their name.
++// due-total and overdue-total; and the signed-in user's own figures, when a person goes by their name,
++// with the due-total of the crews that person leads.
+ @Component({
+   selector: 'app-header',
+   imports: [FigurePipe],
+@@ -20,6 +21,7 @@ import { StatusSummary } from '../summary/summary';
+       <p>Overdue <strong data-testid="header-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+       <p>My due <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong></p>
+       <p>My overdue <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
++      <p>My crews <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+     </header>
+   `,
+ })
+@@ -31,4 +33,6 @@ export class Header {
+   /** The signed-in user's own due-total and overdue-total, as the person going by their name; empty when none does. */
+   readonly myDueTotal = input.required<string>();
+   readonly myOverdueTotal = input.required<string>();
++  /** The due-totals of the crews led by the person going by the user's name, added up; empty when they lead none. */
++  readonly myCrewDueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fbc86afc..298106e0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,6 +16,7 @@ import { Periods } from '../periods/periods';
+ import { PersonPlans, PlanGenerate } from '../plans/plans';
+ import { Pools } from '../pools/pools';
+ import { Crews } from '../crews/crews';
++import { CrewView, crewDueCents } from '../../core/crews';
+ import { ImportPeople } from '../import-people/import-people';
+ import { PasteClaims } from '../paste-claims/paste-claims';
+ import { QuickAdd } from '../quick-add/quick-add';
+@@ -98,6 +99,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       [overdueTotal]="overdueTotal()"
+       [myDueTotal]="me() ? dueTotalOf(me()!) : ''"
+       [myOverdueTotal]="me() ? overdueTotalOf(me()!) : ''"
++      [myCrewDueTotal]="myCrewDueTotal()"
+     />
+     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
+@@ -760,7 +762,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       </table>
+     </section>
+     <app-pools [people]="people()" [today]="today()" />
+-    <app-crews [people]="people()" [dueTotals]="crewDueTotals()" />
++    <app-crews [people]="people()" [dueTotals]="crewDueTotals()" [(crews)]="crews" />
+   `,
+ })
+ export class People {
+@@ -948,6 +950,16 @@ export class People {
+   protected readonly crewDueTotals = computed(
+     () => new Map(this.people().map((p) => [p.id, this.dueTotalCents(p)] as [number, number | null])),
+   );
++  /** The sheet's crews, as the crews section reads them from the store. */
++  protected readonly crews = signal<CrewView[]>([]);
++  /** The due-totals of the crews the signed-in user's person leads, added up; empty when they lead none. */
++  protected readonly myCrewDueTotal = computed(() => {
++    const me = this.me();
++    const led = me ? this.crews().filter((c) => c.leadId === me.id) : [];
++    if (led.length === 0) return '';
++    const dues = this.crewDueTotals();
++    return money(led.reduce((sum, c) => sum + crewDueCents(c, dues), 0));
++  });
+   /** Everyone's due-total added up with no trimming, skipping those shown as n/a. */
+   protected readonly classicDueTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
