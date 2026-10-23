@@ -1017,6 +1017,8 @@ export class People {
   protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
   /** The flag reason and until-date typed on each person's row, by person id. */
   protected readonly flagDrafts = signal(new Map<number, { reason: string; until: string }>());
+  /** The reason of a flag just set on each person's row, by person id: shown until the sheet is next loaded, so a flag whose until-date has passed is still seen to take. */
+  protected readonly flagsSet = signal(new Map<number, string>());
   /** The approver user name typed on each person's row, by person id. */
   protected readonly approverDrafts = signal(new Map<number, string>());
   /** The sheet's claims, newest first. */
@@ -1426,6 +1428,7 @@ export class People {
         this.retireDates.clear();
         this.holdDrafts.set(new Map());
         this.flagDrafts.set(new Map());
+        this.flagsSet.set(new Map());
         this.approverDrafts.set(new Map());
         this.patronError.set(null);
         this.patronChoices.clear();
@@ -2123,7 +2126,7 @@ export class People {
 
   /** The reason a person's flag shows on the sheet's today: blank unless it is in force. */
   protected flagShown(person: PersonView): string {
-    return flagOn(person, this.session.today() ?? '');
+    return this.flagsSet().get(person.id) ?? flagOn(person, this.session.today() ?? '');
   }
 
   /** The flag reason and until-date typed on a person's row. */
@@ -2157,6 +2160,7 @@ export class People {
       const saved = await this.api.flag(sheet, person.id, reason, until);
       if (this.session.sheet() !== sheet) return;
       this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.flagsSet.update((map) => new Map(map).set(saved.id, saved.flagReason ?? reason));
       this.flagDrafts.update((map) => {
         const next = new Map(map);
         next.delete(person.id);

@@ -587,7 +587,7 @@ export class Settings {
   /** Who may take each action under its standing rule, kept when its entry is blank. */
   protected readonly standing: Record<PermissionAction, string> = {
     open: 'clerk and steward', settle: 'clerk and steward', void: 'clerk and steward',
-    reassign: 'steward', close: 'clerk and steward', reopen: 'steward',
+    reassign: 'steward', close: 'clerk and steward', reopen: 'steward', today: 'clerk and steward',
   };
   /** The roles set for each action; blank for its standing rule. */
   protected readonly permissions = signal<Record<PermissionAction, string>>(Settings.noPermissions());
@@ -607,7 +607,7 @@ export class Settings {
   }
 
   private static noPermissions(): Record<PermissionAction, string> {
-    return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '' };
+    return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '', today: '' };
   }
 
   constructor() {

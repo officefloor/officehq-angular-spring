@@ -374,14 +374,18 @@ public class SheetController {
                 : SheetView.of(now.asOf(day, now.getDated(), now.getPolicyDate()), now.getToday(), day);
     }
 
-    /** Change the sheet's today. */
+    /** Change the sheet's today: only a role the sheet's permission matrix allows (anyone but a viewer by default) may. */
     @PutMapping("/{id}/today")
     public SheetView setToday(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestHeader(value = PreviewDate.HEADER, required = false) String preview,
             @RequestBody @Valid TodayChange change) {
-        return previewed(service.setToday(id, SignedIn.name(user), change.today()), PreviewDate.date(preview));
+        String name = SignedIn.name(user);
+        if (!roles.permits(id, name, "today")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not change the sheet's today.");
+        }
+        return previewed(service.setToday(id, name, change.today()), PreviewDate.date(preview));
     }
 
     /** Archive the sheet: only a steward may. */
@@ -712,7 +716,7 @@ public class SheetController {
     @PutMapping("/{id}/settings/perm-{action}")
     public SettingsView setPermission(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PermissionChange change) {
         return SettingsView.of(service.setPermission(id, SignedIn.name(user), action, change.roles()));

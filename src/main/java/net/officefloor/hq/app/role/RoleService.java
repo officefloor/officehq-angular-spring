@@ -41,7 +41,7 @@ public class RoleService {
     }
 
     /**
-     * Whether a user name may take an action (open, settle, void, reassign, close or reopen) on the
+     * Whether a user name may take an action (open, settle, void, reassign, close, reopen or today) on the
      * sheet: its role is among those the sheet's permission matrix sets for it, else its standing rule.
      */
     @Transactional(readOnly = true)

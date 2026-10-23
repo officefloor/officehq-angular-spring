@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { Columns } from '../../core/columns';
 import { LOCALES, Locale } from '../../core/locale';
@@ -234,8 +235,12 @@ export class Home {
     this.savingToday = true;
     try {
       await this.session.setToday(date);
-    } catch {
-      this.sheetError.set(`Today could not be changed to ${date}.`);
+    } catch (e) {
+      this.sheetError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role is not allowed to change the sheet\'s today.'
+          : `Today could not be changed to ${date}.`,
+      );
     } finally {
       this.savingToday = false;
     }

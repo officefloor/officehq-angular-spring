@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { StatusSummary } from '../summary/summary';
 
 // The steward's dashboard, over the sheet and all its descendants: their PENDING claims, REVIEW claims and overdue claims that count, as
-// the store holds them now. The cells are empty for a user who is not a steward, and while an as-of date is set. Re-read on every sheet load
+// the store holds them now. The cells are empty for a user who is not a steward; while an as-of date is set they still show the sheet as it stands now. Re-read on every sheet load
 // and whenever the sheet's claims or figures move.
 @Component({
   selector: 'app-dashboard',

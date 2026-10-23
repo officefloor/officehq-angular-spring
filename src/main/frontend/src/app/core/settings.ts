@@ -100,7 +100,7 @@ export interface SettingsView {
 }
 
 /** The actions the permission matrix covers. */
-export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
 /** An action's roles as the form takes them: clerk or steward, comma separated, or blank for the standing rule. */
