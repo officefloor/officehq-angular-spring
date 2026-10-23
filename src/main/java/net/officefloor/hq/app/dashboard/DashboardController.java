@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import net.officefloor.hq.app.SignedIn;
+import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.PreviewDate;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,14 +31,16 @@ public class DashboardController {
     /**
      * The sheet's steward dashboard as it stands now, for the signed-in user, even while an as-of date
      * is set, as the dashboard shows only the sheet as it stands now; its figures read as if the sheet's
-     * today were the preview date while one is set.
+     * today were the preview date while one is set. While an as-of date is set, it is shown only to a
+     * user who was a steward on the sheet at the end of that date.
      */
     @GetMapping("/{id}/dashboard")
     public DashboardView dashboard(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf,
             @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
-        return service.of(id, SignedIn.name(user), PreviewDate.date(preview))
+        return service.of(id, SignedIn.name(user), AsOfGuard.date(asOf), PreviewDate.date(preview))
                 .map(d -> new DashboardView(d.pendingCount(), d.reviewCount(), d.overdueCount()))
                 .orElse(new DashboardView(null, null, null));
     }

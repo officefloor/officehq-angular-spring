@@ -24,7 +24,8 @@ public class ConsolidationController {
      * found the due-totals, and per status found the count of claims.
      */
     public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal,
-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     /**
@@ -55,7 +56,9 @@ public class ConsolidationController {
         Map<String, String> grades = new LinkedHashMap<>();
         figures.gradeDueTotals().forEach((grade, due) -> grades.put(grade, due.toPlainString()));
         return new ConsolidatedView(figures.peopleCount(), figures.dueTotal().toPlainString(),
-                figures.overdueTotal().toPlainString(), grades, figures.statusCounts());
+                figures.overdueTotal().toPlainString(), grades, figures.statusCounts(),
+                figures.settledTotal().toPlainString(), figures.openTotal().toPlainString(),
+                figures.cutTotal().toPlainString());
     }
 
     /** A sheet's own summary due-totals per grade as it stands now, to compare another sheet with it. */

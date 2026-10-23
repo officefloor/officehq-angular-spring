@@ -33,10 +33,12 @@ public class Rollups {
     /**
      * A person's figures: what they have claimed, their due-total (null when n/a) and their
      * overdue-total (the due of their counting overdue claims), with their settled-total (the due of
-     * their counting SETTLED claims that correct nothing) and how many of their counting claims are overdue, which make their score.
+     * their counting SETTLED claims that correct nothing) and how many of their counting claims are overdue, which make their score,
+     * and the due of all their counting SETTLED claims and of their counting OPEN and PENDING claims as the
+     * screen shows them.
      */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
-            BigDecimal settledTotal, int overdueCount) {
+            BigDecimal settledTotal, int overdueCount, BigDecimal settledShown, BigDecimal openShown) {
 
         /**
          * Their score as the screen shows it: their settled-total over 100, less 5 for each overdue
@@ -180,6 +182,8 @@ public class Rollups {
             BigDecimal due = zero();
             BigDecimal overdue = zero();
             BigDecimal settled = zero();
+            BigDecimal settledShown = zero();
+            BigDecimal openShown = zero();
             int personOverdue = 0;
             boolean figured = false;
             for (Claim claim : counting) {
@@ -196,6 +200,11 @@ public class Rollups {
                     figured = true;
                     if (late) {
                         overdue = overdue.add(figure);
+                    }
+                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                        settledShown = settledShown.add(figure);
+                    } else if (claim.getStatus().isOpen()) {
+                        openShown = openShown.add(figure);
                     }
                     // The score's settled figures leave out claims that correct another.
                     if (claim.getStatus() == ClaimStatus.SETTLED
@@ -219,7 +228,8 @@ public class Rollups {
             if (sheet != null) {
                 due = sheet.capped(due, personCuts.getOrDefault(entry.getKey(), zero()));
             }
-            figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue, settled, personOverdue));
+            figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue, settled, personOverdue,
+                    settledShown, openShown));
             claimedTotal = claimedTotal.add(claimed);
             if (due != null) {
                 dueFigures.add(due);

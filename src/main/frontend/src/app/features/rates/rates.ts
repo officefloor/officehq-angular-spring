@@ -266,6 +266,9 @@ export class Rates {
   protected async runPreview(event: Event): Promise<void> {
     event.preventDefault();
     this.clearPreview();
+    // The last import's result is the answer to the last action on rates; a preview moves on from it.
+    this.importSet.set(null);
+    this.importError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const grade = this.previewGrade();

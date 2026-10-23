@@ -37,14 +37,17 @@ public class Consolidation {
      * overdue-totals over the whole tree added up, leaving out the single highest and single lowest when
      * there are three or more, per grade the due-totals of the
      * people not retired who have it in force on their sheet's today (those shown as n/a skipped) added
-     * up, and per status how many claims have it.
+     * up, per status how many claims have it, and the people's settled-totals, open-totals and cut totals
+     * over the whole tree added up, trimmed once as the due-totals are.
      */
     public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
-            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {
+            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts, BigDecimal settledTotal,
+            BigDecimal openTotal, BigDecimal cutTotal) {
     }
 
-    /** A sheet's figures with the people and claims they were read from. */
-    private record Taken(Sheet sheet, Rollups.Rollup rollup, Map<Long, Person> people, Iterable<Claim> claims) {
+    /** A sheet's figures with the people and claims they were read from, and each person's cut total by id. */
+    private record Taken(Sheet sheet, Rollups.Rollup rollup, Map<Long, Person> people, Iterable<Claim> claims,
+            Map<Long, BigDecimal> cuts) {
     }
 
     private final SheetRepository sheets;
@@ -92,17 +95,23 @@ public class Consolidation {
         all.addAll(sheets.descendants(sheetId));
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
+        List<BigDecimal> settledFigures = new ArrayList<>();
+        List<BigDecimal> openFigures = new ArrayList<>();
+        List<BigDecimal> cutFigures = new ArrayList<>();
         List<Set<String>> persons = new ArrayList<>();
         Map<String, BigDecimal> grades = new TreeMap<>();
         Map<String, Integer> statuses = new TreeMap<>();
         for (String id : all) {
             Taken taken = asOf != null ? asOf(id, asOf) : preview != null ? preview(id, preview) : now(id);
             Rollups.Rollup rollup = taken.rollup();
-            rollup.people().values().forEach(figures -> {
+            rollup.people().forEach((personId, figures) -> {
                 if (figures.dueTotal() != null) {
                     dueFigures.add(figures.dueTotal());
                 }
                 overdueFigures.add(figures.overdueTotal());
+                settledFigures.add(figures.settledShown());
+                openFigures.add(figures.openShown());
+                cutFigures.add(taken.cuts().getOrDefault(personId, BigDecimal.ZERO.setScale(2)));
             });
             rollup.people().keySet().forEach(personId -> {
                 Person person = taken.people().get(personId);
@@ -116,7 +125,8 @@ public class Consolidation {
             }
         }
         return new Consolidated(distinct(persons), Rollups.trimmed(dueFigures), Rollups.trimmed(overdueFigures),
-                grades, statuses);
+                grades, statuses, Rollups.trimmed(settledFigures), Rollups.trimmed(openFigures),
+                Rollups.trimmed(cutFigures));
     }
 
     /**
@@ -181,8 +191,9 @@ public class Consolidation {
         LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
-        return new Taken(sheet, rollups.take(sheet, dues.live(sheetId), sheetPeople, sheetClaims,
-                cuts.personCuts(sheet, sheetPeople.values())), sheetPeople, sheetClaims);
+        Map<Long, BigDecimal> personCuts = cuts.personCuts(sheet, sheetPeople.values());
+        return new Taken(sheet, rollups.take(sheet, dues.live(sheetId), sheetPeople, sheetClaims, personCuts),
+                sheetPeople, sheetClaims, personCuts);
     }
 
     /** A sheet's figures over its records as they stand now, read as if its today were a preview day. */
@@ -195,8 +206,9 @@ public class Consolidation {
         LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
-        return new Taken(then, rollups.take(then, rollups.previewBasis(then), sheetPeople, sheetClaims,
-                cuts.personCuts(then, sheetPeople.values())), sheetPeople, sheetClaims);
+        Map<Long, BigDecimal> personCuts = cuts.personCuts(then, sheetPeople.values());
+        return new Taken(then, rollups.take(then, rollups.previewBasis(then), sheetPeople, sheetClaims, personCuts),
+                sheetPeople, sheetClaims, personCuts);
     }
 
     /**
@@ -212,11 +224,12 @@ public class Consolidation {
             return history.at(sheetId, day)
                     .map(then -> new Taken(then.sheet(),
                             rollups.take(then.sheet(), then.basis(), then.people(), then.claims().values()),
-                            then.people(), then.claims().values()))
+                            then.people(), then.claims().values(),
+                            cuts.personCuts(then.sheet(), then.people().values())))
                     .orElseGet(() -> {
                         Sheet empty = now.asOf(day, List.of(), null);
                         return new Taken(empty, rollups.take(empty, dues.live(sheetId), new LinkedHashMap<>(),
-                                List.of()), Map.of(), List.of());
+                                List.of()), Map.of(), List.of(), Map.of());
                     });
         }
         Sheet then = now.asOf(day, now.getDated(), now.getPolicyDate());
@@ -225,6 +238,7 @@ public class Consolidation {
         LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
-        return new Taken(then, rollups.take(then, basis, sheetPeople, sheetClaims), sheetPeople, sheetClaims);
+        return new Taken(then, rollups.take(then, basis, sheetPeople, sheetClaims), sheetPeople, sheetClaims,
+                cuts.personCuts(then, sheetPeople.values()));
     }
 }

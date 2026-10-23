@@ -48,7 +48,17 @@ public class DashboardService {
     /** As {@link #of(String, String)}, each sheet's overdue claims read as if its today were a preview day (null: its own). */
     @Transactional(readOnly = true)
     public Optional<Dashboard> of(String sheetId, String userName, LocalDate preview) {
-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, userName))) {
+        return of(sheetId, userName, null, preview);
+    }
+
+    /**
+     * As {@link #of(String, String, LocalDate)}, for a user who was a steward on the sheet at the end of an
+     * as-of date (null: who acts as one now); the counts are still the sheet's as it stands now.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Dashboard> of(String sheetId, String userName, LocalDate asOf, LocalDate preview) {
+        String role = asOf == null ? roles.roleOf(sheetId, userName) : roles.roleAsOf(sheetId, userName, asOf);
+        if (!Role.STEWARD.equals(role)) {
             return Optional.empty();
         }
         List<String> tree = new ArrayList<>();

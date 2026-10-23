@@ -13,6 +13,12 @@ export interface ConsolidatedView {
   dueTotal: string;
   /** The sheets' overdue-totals added up, with two decimals. */
   overdueTotal: string;
+  /** The people's settled-totals over the tree added up, trimmed once, with two decimals. */
+  settledTotal: string;
+  /** The people's open-totals over the tree added up, trimmed once, with two decimals. */
+  openTotal: string;
+  /** The people's cut totals over the tree added up, trimmed once, with two decimals. */
+  cutTotal: string;
   /**
    * Per grade, the due-totals of the people not retired who have it in force on their sheet's today
    * added up, with two decimals; a grade nobody has is left out.

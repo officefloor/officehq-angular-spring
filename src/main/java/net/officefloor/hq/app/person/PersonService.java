@@ -190,13 +190,16 @@ public class PersonService {
         }
     }
 
-    /** Record a person's grade from the sheet's today, keeping the rest of them, as the person form would. */
+    /**
+     * Record a person's grade from the sheet's today, keeping the rest of them, as the person form would
+     * with the grade chosen on it: recorded even when it is already in force.
+     */
     @Transactional
     public Person grade(String sheetId, String user, long personId, long version, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
-        return edit(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(),
-                person.getContact(), false, false);
+        return edit(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(), null,
+                person.getContact(), false, false, null, true);
     }
 
     /**

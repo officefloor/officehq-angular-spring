@@ -120,7 +120,8 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       [myReviewsCount]="myReviewsCount()"
       [watchedDueTotal]="watchedDueTotal()"
     />
-    <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+    <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
+      [settledTotal]="settledTotal()" [openTotal]="openTotal()" [cutTotal]="cutTotal()" />
     <app-dashboard [statuses]="statusSummary()" [overdueTotal]="overdueTotal()" />
     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
     <app-periods
@@ -1280,17 +1281,15 @@ export class People {
       ),
     ),
   );
-  /** Everyone's settled-total added up (not trimmed). */
-  protected readonly settledTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + this.settledCents(p), 0)),
-  );
+  /** Everyone's settled-total added up, leaving out the highest and lowest when there are three or more. */
+  protected readonly settledTotal = computed(() => money(trimmedCents(this.people().map((p) => this.settledCents(p)))));
   /** The sheet's pools, which work out each person's cuts. */
   private readonly pools = viewChild.required(Pools);
   /** Each person's cut total in cents, by person id. */
   private readonly cutCents = computed(() => this.pools().personCuts());
-  /** Everyone's cut total added up. */
+  /** Everyone's cut total added up, leaving out the highest and lowest when there are three or more. */
   protected readonly cutTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + (this.cutCents().get(p.id) ?? 0), 0)),
+    money(trimmedCents(this.people().map((p) => this.cutCents().get(p.id) ?? 0))),
   );
   /** Everyone's age buckets added up, bucket by bucket (not trimmed). */
   protected readonly agedTotal = computed(() => {
@@ -1300,10 +1299,8 @@ export class People {
     }
     return [money(totals[0]), money(totals[1]), money(totals[2])] as const;
   });
-  /** Everyone's open-total added up (not trimmed). */
-  protected readonly openTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + this.openCents(p), 0)),
-  );
+  /** Everyone's open-total added up, leaving out the highest and lowest when there are three or more. */
+  protected readonly openTotal = computed(() => money(trimmedCents(this.people().map((p) => this.openCents(p)))));
   /**
    * For every tag ever used on the sheet, sorted: the due of the claims that count in the live totals
    * (see countsLive) which carry it, or whose person carries it; a claim with two tags counts in both, and a

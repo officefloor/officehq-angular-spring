@@ -50,6 +50,13 @@ public class RoleService {
         return inForce.values().stream().sorted(Comparator.comparing(Role::getUserName)).toList();
     }
 
+    /** The role set for a user name on the sheet in force at the end of a date (see {@link #listAsOf}), else clerk. */
+    @Transactional(readOnly = true)
+    public String roleAsOf(String sheetId, String userName, LocalDate asOf) {
+        return listAsOf(sheetId, asOf).stream().filter(role -> role.getUserName().equals(userName))
+                .map(Role::getRole).findFirst().orElse(Role.CLERK);
+    }
+
     /**
      * The role a user name acts in on the sheet: steward while a delegation to it is in force on the
      * sheet's today, else the one set for it, else clerk.

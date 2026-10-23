@@ -8,8 +8,8 @@ import { Session } from '../../core/session';
 const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 
 // The sheet's figures consolidated over it and all its descendants: the number of people, and each
-// sheet's due-total and overdue-total, as that sheet shows them (as of the as-of date while one is set),
-// added up; per grade the due-totals of the people on it (retired people left out) added up, and per
+// person's due-total, overdue-total, settled-total, open-total and cut total, as their sheet shows them (as of the as-of date while one is set),
+// added up once over the tree (the single highest and lowest left out when three or more have one); per grade the due-totals of the people on it (retired people left out) added up, and per
 // status the count of claims in it, over the tree. Re-read on every sheet load
 // and whenever the sheet's own figures move.
 @Component({
@@ -20,6 +20,9 @@ const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as co
       <p>Consolidated people <strong data-testid="consolidated-people-count">{{ figures()?.peopleCount }}</strong></p>
       <p>Consolidated due <strong data-testid="consolidated-due-total">{{ (figures()?.dueTotal) | figure }}</strong></p>
       <p>Consolidated overdue <strong data-testid="consolidated-overdue-total">{{ (figures()?.overdueTotal) | figure }}</strong></p>
+      <p>Consolidated settled <strong data-testid="consolidated-settled-total">{{ (figures()?.settledTotal) | figure }}</strong>,
+        open <strong data-testid="consolidated-open-total">{{ (figures()?.openTotal) | figure }}</strong></p>
+      <p>Consolidated cut <strong data-testid="consolidated-cut-total">{{ (figures()?.cutTotal) | figure }}</strong></p>
       <table>
         <caption>Consolidated by grade</caption>
         <thead>
@@ -66,6 +69,9 @@ export class Consolidated {
   readonly peopleCount = input.required<number>();
   readonly dueTotal = input.required<string>();
   readonly overdueTotal = input.required<string>();
+  readonly settledTotal = input.required<string>();
+  readonly openTotal = input.required<string>();
+  readonly cutTotal = input.required<string>();
 
   protected readonly figures = signal<ConsolidatedView | null>(null);
   /** Per grade, its consolidated due-total; empty until the figures are read. */
@@ -109,6 +115,9 @@ export class Consolidated {
       this.peopleCount();
       this.dueTotal();
       this.overdueTotal();
+      this.settledTotal();
+      this.openTotal();
+      this.cutTotal();
       untracked(() => {
         const sheet = this.session.sheet();
         if (sheet) void this.reload(sheet);
