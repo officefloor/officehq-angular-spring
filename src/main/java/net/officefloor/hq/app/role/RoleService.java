@@ -1,6 +1,10 @@
 package net.officefloor.hq.app.role;
 
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -11,12 +15,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class RoleService {
 
     private final RoleRepository roles;
+    private final RoleChangeRepository changes;
     private final SheetService sheets;
     private final DelegationService delegations;
     private final Audit audit;
 
-    public RoleService(RoleRepository roles, SheetService sheets, DelegationService delegations, Audit audit) {
+    public RoleService(RoleRepository roles, RoleChangeRepository changes, SheetService sheets,
+            DelegationService delegations, Audit audit) {
         this.roles = roles;
+        this.changes = changes;
         this.sheets = sheets;
         this.delegations = delegations;
         this.audit = audit;
@@ -26,6 +33,21 @@ public class RoleService {
     @Transactional(readOnly = true)
     public List<Role> list(String sheetId) {
         return roles.findBySheetIdOrderByUserNameAsc(sheetId);
+    }
+
+    /**
+     * The roles in force on the sheet at the end of a date, by user name: for each name, the last role
+     * set on it on a sheet-today on or before that date. A name with none set by then is not listed.
+     */
+    @Transactional(readOnly = true)
+    public List<Role> listAsOf(String sheetId, LocalDate asOf) {
+        Map<String, Role> inForce = new LinkedHashMap<>();
+        for (RoleChange change : changes.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (change.getSetOn() == null || !change.getSetOn().isAfter(asOf)) {
+                inForce.put(change.getUserName(), new Role(sheetId, change.getUserName(), change.getRole()));
+            }
+        }
+        return inForce.values().stream().sorted(Comparator.comparing(Role::getUserName)).toList();
     }
 
     /**
@@ -52,11 +74,12 @@ public class RoleService {
     /** Set the role of a user name on the sheet, replacing any it had. */
     @Transactional
     public Role set(String sheetId, String user, String userName, String role) {
-        sheets.lock(sheetId);
+        LocalDate today = sheets.lock(sheetId).getToday();
         Role saved = roles.findBySheetIdAndUserName(sheetId, userName)
                 .orElseGet(() -> new Role(sheetId, userName, role));
         saved.setRole(role);
         saved = roles.saveAndFlush(saved);
+        changes.save(new RoleChange(sheetId, saved.getUserName(), saved.getRole(), today));
         audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + user
                 + " user=" + saved.getUserName() + " role=" + saved.getRole());
         return saved;

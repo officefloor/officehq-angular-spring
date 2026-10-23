@@ -6,7 +6,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import java.time.LocalDate;
 import net.officefloor.hq.app.SignedIn;
+import net.officefloor.hq.app.history.AsOfGuard;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,11 +43,17 @@ public class RoleController {
         this.service = service;
     }
 
-    /** The roles set on the sheet, by user name; a name not listed is a clerk. */
+    /**
+     * The roles set on the sheet, by user name; a name not listed is a clerk. With an as-of date, those
+     * in force at the end of it.
+     */
     @GetMapping
     public List<RoleView> list(
-            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
-        return service.list(sheetId).stream().map(RoleView::of).toList();
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+        LocalDate date = AsOfGuard.date(asOf);
+        List<Role> roles = date == null ? service.list(sheetId) : service.listAsOf(sheetId, date);
+        return roles.stream().map(RoleView::of).toList();
     }
 
     /** The role the signed-in user acts in on the sheet. */

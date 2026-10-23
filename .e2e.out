@@ -2,72 +2,119 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › period claim counts › period claim counts (14.0s)
-  ✘  2 [chromium] › acceptance.spec.ts:70:7 › period claim counts › period claim counts scenario 1 (41.5s)
-  ✘  3 [chromium] › acceptance.spec.ts:969:7 › period claim counts › period claim counts scenario 2 (21.5s)
-  ✓  4 [chromium] › acceptance.spec.ts:1324:7 › period claim counts › period claim counts scenario 3 (26.6s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › as of roles › as of roles (9.1s)
+  ✘  2 [chromium] › acceptance.spec.ts:42:7 › as of roles › as of roles scenario 1 (30.1s)
+  ✘  3 [chromium] › acceptance.spec.ts:524:7 › as of roles › as of roles scenario 2 (20.4s)
+  ✘  4 [chromium] › acceptance.spec.ts:1311:7 › as of roles › as of roles scenario 3 (24.4s)
 
 
-  1) [chromium] › acceptance.spec.ts:70:7 › period claim counts › period claim counts scenario 1 ───
+  1) [chromium] › acceptance.spec.ts:42:7 › as of roles › as of roles scenario 1 ───────────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Locator: getByTestId('dash-pending-count')
-    Expected string: [32m""[39m
-    Received string: [31m"0"[39m
+    Locator: getByTestId('header-claims-OPEN-count')
+    Expected string: [32m"2"[39m
+    Received string: [31m"1"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('dash-pending-count')[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
+    [2m  - waiting for getByTestId('header-claims-OPEN-count')[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
+    [2m  -   locator resolved to <strong data-testid="header-claims-OPEN-count">1</strong>[22m
+    [2m  -   unexpected value "1"[22m
 
 
-      363 |     await expect(pg_wes.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
-      364 |     await expect(pg_wes.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
-    > 365 |     await expect(pg_wes.getByTestId("dash-pending-count")).toHaveText("");
-          |                                                            ^
-      366 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
-      367 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
-      368 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
+      155 |     await expect(pg_uma.getByTestId("header-people-count")).toHaveText("2");
+      156 |     await expect(pg_uma.getByTestId("header-claims-DRAFT-count")).toHaveText("1");
+    > 157 |     await expect(pg_uma.getByTestId("header-claims-OPEN-count")).toHaveText("2");
+          |                                                                  ^
+      158 |     await expect(pg_uma.getByTestId("header-claims-PENDING-count")).toHaveText("0");
+      159 |     await expect(pg_uma.getByTestId("header-claims-SETTLED-count")).toHaveText("0");
+      160 |     await expect(pg_uma.getByTestId("header-claims-VOID-count")).toHaveText("0");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:365:60
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:157:66
 
-  2) [chromium] › acceptance.spec.ts:969:7 › period claim counts › period claim counts scenario 2 ──
+  2) [chromium] › acceptance.spec.ts:524:7 › as of roles › as of roles scenario 2 ──────────────────
 
-    Error: save dated setting: neither a result nor an error appeared within 8000ms
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
 
-       at ../support/ui.ts:136
+    Locator: getByTestId('person-row-5').locator('[data-testid^="claim-row-"]').nth(-2)
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toBeVisible with timeout 8000ms[22m
+    [2m  - waiting for getByTestId('person-row-5').locator('[data-testid^="claim-row-"]').nth(-2)[22m
 
-      134 |   if (await done()) return true;
-      135 |   if (await error.isVisible().catch(() => false)) return false;
-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
-          |         ^
-      137 | }
-      138 |
-      139 | async function sleep(ms: number): Promise<void> {
 
-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
-        at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1149:14)
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1047:12
+       at ../support/ui.ts:656
 
-  2 failed
-    [chromium] › acceptance.spec.ts:70:7 › period claim counts › period claim counts scenario 1 ────
-    [chromium] › acceptance.spec.ts:969:7 › period claim counts › period claim counts scenario 2 ───
-  2 passed (1.9m)
- 2212073
+      654 |   const n = await all.count();
+      655 |   const r = all.nth(n - 1 - idx);
+    > 656 |   await expect(r).toBeVisible({ timeout: WAIT });
+          |                   ^
+      657 |   return idOf(await r.getAttribute('data-testid'), 'claim-row-');
+      658 | }
+      659 |
+
+        at Object.claimAt (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:656:19)
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:562:21
+
+  3) [chromium] › acceptance.spec.ts:1311:7 › as of roles › as of roles scenario 3 ─────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvl3jclfjcuf[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3jclfjcuf-p</strong>[22m
+    [2m  -   unexpected value "smvl3jclfjcuf-p"[22m
+
+
+      1486 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      1487 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-01");
+    > 1488 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1489 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+      1490 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      1491 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1488:54
+
+  3 failed
+    [chromium] › acceptance.spec.ts:42:7 › as of roles › as of roles scenario 1 ────────────────────
+    [chromium] › acceptance.spec.ts:524:7 › as of roles › as of roles scenario 2 ───────────────────
+    [chromium] › acceptance.spec.ts:1311:7 › as of roles › as of roles scenario 3 ──────────────────
+  1 passed (1.5m)
