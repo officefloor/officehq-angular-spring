@@ -1,0 +1,456 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index b6ab28d8..36926559 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -236,6 +236,26 @@ export function reviewLate(claim: ClaimView, sla: string, today: string): boolea
+   return new Date(Date.parse(day) + Number(sla) * 86_400_000).toISOString().slice(0, 10) < today;
+ }
+ 
++/** The day a PENDING claim last went to PENDING (the sheet's today then); null when it is not PENDING. */
++export function pendingDay(claim: ClaimView): string | null {
++  if (claim.status !== 'PENDING') return null;
++  let day: string | null = null;
++  for (const line of claim.log) {
++    if (line.status === 'PENDING') day = line.on;
++  }
++  return day;
++}
++
++/**
++ * Whether a claim is late pending: it is PENDING and its pending day plus the sheet's pending SLA days
++ * (empty: none, so never late) is before the sheet's today.
++ */
++export function pendingLate(claim: ClaimView, sla: string, today: string): boolean {
++  const day = pendingDay(claim);
++  if (day === null || sla === '' || today === '') return false;
++  return new Date(Date.parse(day) + Number(sla) * 86_400_000).toISOString().slice(0, 10) < today;
++}
++
+ /** What a late charge is worked from: the sheet's late percent by from-date and its today. */
+ export interface LateTerms {
+   /** The late percent's values by from-date (see valueOn). */
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 14f18d13..87252ab2 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -55,6 +55,8 @@ export interface SheetView {
+   roundingHistory?: DatedValue[];
+   /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
+   reviewSla?: number | null;
++  /** The pending SLA in days: a PENDING claim whose pending day plus them is before the sheet's today is late; null when none. */
++  pendingSla?: number | null;
+   /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null when none. */
+   scoreMid?: number | null;
+   /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null when none. */
+@@ -128,6 +130,8 @@ export class Session {
+   readonly archived = signal(false);
+   /** The active sheet's review SLA in days; empty when there is none. */
+   readonly reviewSla = signal('');
++  /** The active sheet's pending SLA in days; empty when there is none. */
++  readonly pendingSla = signal('');
+   /** The active sheet's mid score threshold; empty when there is none. */
+   readonly scoreMid = signal('');
+   /** The active sheet's high score threshold; empty when there is none. */
+@@ -254,6 +258,7 @@ export class Session {
+     this.graceHistory.set(view.graceHistory ?? {});
+     this.lastSettleBatch.set(view.lastSettleBatch ?? null);
+     this.reviewSla.set(view.reviewSla?.toString() ?? '');
++    this.pendingSla.set(view.pendingSla?.toString() ?? '');
+     this.scoreMid.set(view.scoreMid?.toString() ?? '');
+     this.scoreHigh.set(view.scoreHigh?.toString() ?? '');
+     this.proofKinds.set(view.proofKinds ?? '');
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index be0acf4b..42a5523b 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -77,6 +77,8 @@ export interface SettingsView {
+   escalateAfter: number | null;
+   /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
+   reviewSla: number | null;
++  /** The pending SLA in days: a PENDING claim whose pending day plus them is before the sheet's today is late; null when none. */
++  pendingSla: number | null;
+   /** The most OPEN or PENDING claims a person may have: opening one more is refused; null when none. */
+   maxOpen: number | null;
+   /** The mid score threshold: a person scoring at or above it is MID (while the high one is set too); null when none. */
+@@ -293,6 +295,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/max-open`, { value }));
+   }
+ 
++  /** Set the pending SLA in days; a blank value means none. */
++  setPendingSla(sheet: string, value: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/pending-sla`, { value }));
++  }
++
+   /** Set the review SLA in days; a blank value means none. */
+   setReviewSla(sheet: string, value: string): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/review-sla`, { value }));
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index d02d0988..3fd74344 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,7 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FigurePipe } from '../../core/locale';
+ import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, PROOF_KINDS, ProofKind, cents, tagsText, deferred, dueBy, money, overdue, reviewLate, roundsHalfUp } from '../../core/claims';
++import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, PROOF_KINDS, ProofKind, cents, tagsText, deferred, dueBy, money, overdue, pendingLate, reviewLate, roundsHalfUp } from '../../core/claims';
+ import { GradeView, gradeOn } from '../../core/people';
+ import { PeriodView, periodOn } from '../../core/periods';
+ import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
+@@ -118,6 +118,7 @@ const PAST: Record<ClaimAction, string> = {
+           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
+           <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
++          <span>Pending late <span data-testid="claim-pending-late">{{ pendingLateOf(c) ? 'yes' : 'no' }}</span></span>
+           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+           <span data-testid="claim-status">{{ c.status }}</span>
+           <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssigned ?? '' }}</span></span>
+@@ -614,6 +615,11 @@ export class Claims {
+     return dueBy(claim);
+   }
+ 
++  /** Whether a claim is PENDING and its pending day plus the sheet's pending SLA is before the sheet's today. */
++  protected pendingLateOf(claim: ClaimView): boolean {
++    return pendingLate(claim, this.session.pendingSla(), this.session.today() ?? '');
++  }
++
+   /** Whether a claim is REVIEW and its review day plus the sheet's review SLA is before the sheet's today. */
+   protected reviewLateOf(claim: ClaimView): boolean {
+     return reviewLate(claim, this.session.reviewSla(), this.session.today() ?? '');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 202248b4..604c2d1c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { FigurePipe } from '../../core/locale';
+ import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
+ import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
+ import { downloadCsv } from '../../core/csv';
+-import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
++import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, pendingLate, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
+ import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
+ import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
+ import { QuickAddView } from '../../core/quick-add';
+@@ -119,7 +119,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       (locked)="periodChanged($event)"
+       (rolledOver)="openingsImported()"
+     />
+-    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
++    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" [pendingLateCount]="pendingLateCount()" />
+     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -1163,6 +1163,11 @@ export class People {
+       count: this.claims().filter((c) => c.status === status).length,
+     })),
+   );
++
++  /** How many of the sheet's PENDING claims are late by the sheet's pending SLA. */
++  protected readonly pendingLateCount = computed(() =>
++    this.claims().filter((c) => pendingLate(c, this.session.pendingSla(), this.session.today() ?? '')).length,
++  );
+   /** How many of the sheet's REVIEW claims are late in review by the sheet's review SLA. */
+   protected readonly reviewLateCount = computed(() =>
+     this.claims().filter((c) => reviewLate(c, this.session.reviewSla(), this.session.today() ?? '')).length,
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 728ec126..e883ff40 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -286,6 +286,16 @@ import { Session } from '../../core/session';
+           (keydown.delete)="cleared($event, 'reviewSla')"
+           (keydown.backspace)="cleared($event, 'reviewSla')"
+         />
++        <label for="setting-pending-sla">Pending SLA: a claim pending longer than this many days is late (a whole number; empty: none)</label>
++        <input
++          id="setting-pending-sla"
++          data-testid="setting-pending-sla"
++          inputmode="numeric"
++          [value]="pendingSlaInput()"
++          (input)="pendingSlaInput.set(value($event)); pendingSlaEdited = true; settingsError.set(null)"
++          (keydown.delete)="cleared($event, 'pendingSla')"
++          (keydown.backspace)="cleared($event, 'pendingSla')"
++        />
+         <label for="setting-max-open">Maximum open claims per person: opening one more OPEN or PENDING claim is refused (a whole number; empty: none)</label>
+         <input
+           id="setting-max-open"
+@@ -425,6 +435,7 @@ import { Session } from '../../core/session';
+       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
+       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
+       <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
++      <p>Pending SLA days in force: <span data-testid="setting-pending-sla-current">{{ session.pendingSla() }}</span></p>
+       <p>Maximum open claims per person in force: <span data-testid="setting-max-open-current">{{ maxOpen() }}</span></p>
+       <p>Mid score threshold in force: <span data-testid="setting-score-mid-current">{{ session.scoreMid() }}</span></p>
+       <p>High score threshold in force: <span data-testid="setting-score-high-current">{{ session.scoreHigh() }}</span></p>
+@@ -527,6 +538,7 @@ export class Settings {
+   protected readonly defaultGrade = signal('');
+   protected readonly defaultGradeInput = signal('');
+   protected readonly reviewSlaInput = signal('');
++  protected readonly pendingSlaInput = signal('');
+   protected readonly maxOpen = signal('');
+   protected readonly maxOpenInput = signal('');
+   protected readonly scoreMidInput = signal('');
+@@ -561,6 +573,7 @@ export class Settings {
+   protected escalateAfterEdited = false;
+   protected defaultGradeEdited = false;
+   protected reviewSlaEdited = false;
++  protected pendingSlaEdited = false;
+   protected maxOpenEdited = false;
+   protected scoreMidEdited = false;
+   protected scoreHighEdited = false;
+@@ -678,7 +691,7 @@ export class Settings {
+    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
+    * change, so a save sets it empty.
+    */
+-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'maxOpen' | 'scoreMid' | 'scoreHigh' | 'scoreLog' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
++  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'pendingSla' | 'maxOpen' | 'scoreMid' | 'scoreHigh' | 'scoreLog' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
+     if (this.value(event) !== '') return;
+     if (setting === 'cap') {
+       this.capInput.set('');
+@@ -719,6 +732,9 @@ export class Settings {
+     } else if (setting === 'reviewSla') {
+       this.reviewSlaInput.set('');
+       this.reviewSlaEdited = true;
++    } else if (setting === 'pendingSla') {
++      this.pendingSlaInput.set('');
++      this.pendingSlaEdited = true;
+     } else if (setting === 'maxOpen') {
+       this.maxOpenInput.set('');
+       this.maxOpenEdited = true;
+@@ -805,6 +821,7 @@ export class Settings {
+     const escalateAfter = this.escalateAfterInput().trim();
+     const defaultGrade = this.defaultGradeInput().trim();
+     const reviewSla = this.reviewSlaInput().trim();
++    const pendingSla = this.pendingSlaInput().trim();
+     const maxOpen = this.maxOpenInput().trim();
+     const scoreMid = this.scoreMidInput().trim();
+     const scoreHigh = this.scoreHighInput().trim();
+@@ -817,7 +834,7 @@ export class Settings {
+     const saveLimit =
+       this.limitEdited ||
+       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && this.gradeClerkLimitEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.maxOpenEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.scoreLogEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
++        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.pendingSlaEdited && !this.maxOpenEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.scoreLogEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+     const saveNoteThreshold = this.noteThresholdEdited;
+@@ -841,6 +858,7 @@ export class Settings {
+     const saveEscalateAfter = this.escalateAfterEdited;
+     const saveDefaultGrade = this.defaultGradeEdited;
+     const saveReviewSla = this.reviewSlaEdited;
++    const savePendingSla = this.pendingSlaEdited;
+     const saveMaxOpen = this.maxOpenEdited;
+     const saveScoreMid = this.scoreMidEdited;
+     const saveScoreHigh = this.scoreHighEdited;
+@@ -953,6 +971,10 @@ export class Settings {
+       this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
+       return;
+     }
++    if (savePendingSla && !GRACE_DAYS.test(pendingSla)) {
++      this.settingsError.set('Type the pending SLA as a whole number of days, or leave it empty for none.');
++      return;
++    }
+     if (saveMaxOpen && !GRACE_DAYS.test(maxOpen)) {
+       this.settingsError.set('Type the maximum open claims as a whole number, or leave it empty for none.');
+       return;
+@@ -1010,6 +1032,7 @@ export class Settings {
+     if (saveEscalateAfter) this.escalateAfterEdited = false;
+     if (saveDefaultGrade) this.defaultGradeEdited = false;
+     if (saveReviewSla) this.reviewSlaEdited = false;
++    if (savePendingSla) this.pendingSlaEdited = false;
+     if (saveMaxOpen) this.maxOpenEdited = false;
+     if (saveScoreMid) this.scoreMidEdited = false;
+     if (saveScoreHigh) this.scoreHighEdited = false;
+@@ -1115,6 +1138,11 @@ export class Settings {
+           this.session.reviewSla.set(view.reviewSla?.toString() ?? '');
+           if (!this.reviewSlaEdited) this.reviewSlaInput.set(view.reviewSla?.toString() ?? '');
+         }
++        if (savePendingSla) {
++          const view = await this.api.setPendingSla(sheet, pendingSla);
++          this.session.pendingSla.set(view.pendingSla?.toString() ?? '');
++          if (!this.pendingSlaEdited) this.pendingSlaInput.set(view.pendingSla?.toString() ?? '');
++        }
+         if (saveMaxOpen) {
+           const view = await this.api.setMaxOpen(sheet, maxOpen);
+           this.maxOpen.set(view.maxOpen?.toString() ?? '');
+@@ -1284,6 +1312,10 @@ export class Settings {
+       this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
+       this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');
+       this.reviewSlaEdited = false;
++      // The pending SLA starts at the one set, so clearing it is a change.
++      this.session.pendingSla.set(settings.pendingSla?.toString() ?? '');
++      this.pendingSlaInput.set(settings.pendingSla?.toString() ?? '');
++      this.pendingSlaEdited = false;
+       // The maximum open claims starts at the one set, so clearing it is a change.
+       this.maxOpen.set(settings.maxOpen?.toString() ?? '');
+       this.maxOpenInput.set(settings.maxOpen?.toString() ?? '');
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index afb429c3..cd78043b 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -100,6 +100,7 @@ export interface VoidReasonSummary {
+         </tbody>
+       </table>
+       <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
++      <p>Late pending: <span data-testid="summary-pending-late-count">{{ pendingLateCount() }}</span></p>
+       <table>
+         <caption>By void reason</caption>
+         <thead>
+@@ -127,4 +128,6 @@ export class Summary {
+   readonly voidReasons = input.required<VoidReasonSummary[]>();
+   /** How many REVIEW claims are late in review. */
+   readonly reviewLateCount = input.required<number>();
++  /** How many PENDING claims are late pending. */
++  readonly pendingLateCount = input.required<number>();
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 4744bb0b..383afa4f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -69,10 +69,10 @@ public class CloneService {
+         jdbc.update("""
+                 INSERT INTO sheet (id, created_at, today, last_claim_number, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, last_unperiod_claim_number, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, max_open, proof_kinds, default_grade, score_mid, score_high, score_log, cloned_from)
++                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, pending_sla, max_open, proof_kinds, default_grade, score_mid, score_high, score_log, cloned_from)
+                 SELECT ?, CURRENT_TIMESTAMP, today, 0, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, 0, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, max_open, proof_kinds, default_grade, score_mid, score_high, score_log, ?
++                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, pending_sla, max_open, proof_kinds, default_grade, score_mid, score_high, score_log, ?
+                 FROM sheet WHERE id = ?""", toSheetId, sheetId, sheetId);
+         copyRows("sheet_setting", "setting_key, from_date, setting_value", toSheetId, sheetId);
+         copyRows("sheet_permission", "action, roles", toSheetId, sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 3cf9373d..7372ffc2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -127,6 +127,10 @@ public class Sheet {
+     @Column(name = "review_sla")
+     private Integer reviewSla;
+ 
++    /** The pending SLA in days: a PENDING claim whose pending day plus them is before the sheet's today is late; null for none. Not dated. */
++    @Column(name = "pending_sla")
++    private Integer pendingSla;
++
+     /** The most OPEN or PENDING claims a person may have: opening one more is refused; null for none. Not dated. */
+     @Column(name = "max_open")
+     private Integer maxOpen;
+@@ -478,6 +482,7 @@ public class Sheet {
+         then.alertThreshold = alertThreshold;
+         then.escalateAfter = escalateAfter;
+         then.reviewSla = reviewSla;
++        then.pendingSla = pendingSla;
+         then.maxOpen = maxOpen;
+         then.scoreMid = scoreMid;
+         then.scoreHigh = scoreHigh;
+@@ -632,6 +637,15 @@ public class Sheet {
+         this.reviewSla = reviewSla;
+     }
+ 
++    /** The pending SLA in days; null when blank (none). */
++    public Integer getPendingSla() {
++        return pendingSla;
++    }
++
++    public void setPendingSla(Integer pendingSla) {
++        this.pendingSla = pendingSla;
++    }
++
+     /** The most OPEN or PENDING claims a person may have; null when blank (none). */
+     public Integer getMaxOpen() {
+         return maxOpen;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 118a950f..66f31fad 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -40,7 +40,7 @@ public class SheetController {
+             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
+             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
+             int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds,
+-            Integer scoreMid, Integer scoreHigh, LocalDate sheetToday, LocalDate preview) {
++            Integer scoreMid, Integer scoreHigh, LocalDate sheetToday, LocalDate preview, Integer pendingSla) {
+ 
+         static SheetView of(Sheet sheet) {
+             return of(sheet, sheet.getToday(), null);
+@@ -58,7 +58,8 @@ public class SheetController {
+                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
+                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+                     sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla(),
+-                    sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh(), sheetToday, preview);
++                    sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh(), sheetToday, preview,
++                    sheet.getPendingSla());
+         }
+ 
+         /** Each grade's grace values by from-date, its starting value (none) first. */
+@@ -94,7 +95,7 @@ public class SheetController {
+      * and the proof kinds, comma separated, null for none, and the default grade, null for none (A), and
+      * each grade's clerk limit with two decimals, null for none (the sheet's applies), and the mid and high
+      * score thresholds, null for none, and the score log switch, on or blank (off), and the maximum of OPEN
+-     * or PENDING claims per person, null for none. */
++     * or PENDING claims per person, null for none, and the pending SLA in days, null for none. */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
+             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+@@ -103,7 +104,7 @@ public class SheetController {
+             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
+             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
+             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits, Integer scoreMid,
+-            Integer scoreHigh, String scoreLog, Integer maxOpen) {
++            Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla) {
+ 
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -124,7 +125,7 @@ public class SheetController {
+                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
+                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
+                     sheet.getDefaultGrade(), gradeClerkLimits(sheet), sheet.getScoreMid(), sheet.getScoreHigh(),
+-                    sheet.isScoreLog() ? "on" : "", sheet.getMaxOpen());
++                    sheet.isScoreLog() ? "on" : "", sheet.getMaxOpen(), sheet.getPendingSla());
+         }
+ 
+         /** Each grade's clerk limit in force with two decimals; null when it has none (the sheet's applies). */
+@@ -608,6 +609,15 @@ public class SheetController {
+         return SettingsView.of(service.setReviewSla(id, SignedIn.name(user), change.days()));
+     }
+ 
++    /** Change the sheet's pending SLA; a blank value means none. */
++    @PutMapping("/{id}/settings/pending-sla")
++    public SettingsView setPendingSla(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid GraceDaysChange change) {
++        return SettingsView.of(service.setPendingSla(id, SignedIn.name(user), change.days()));
++    }
++
+     /** Change the sheet's maximum of open claims per person; a blank value means none. */
+     @PutMapping("/{id}/settings/max-open")
+     public SettingsView setMaxOpen(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 8ee1db03..7b238419 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -313,6 +313,17 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** Change the sheet's pending SLA in days (null: none), auditing the change. */
++    @Transactional
++    public Sheet setPendingSla(String id, String user, Integer days) {
++        Sheet sheet = lock(id);
++        sheet.setPendingSla(days);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pending-sla value="
++                + (saved.getPendingSla() == null ? "" : saved.getPendingSla().toString()));
++        return saved;
++    }
++
+     /** Change the sheet's maximum of open claims per person (null: none), auditing the change. */
+     @Transactional
+     public Sheet setMaxOpen(String id, String user, Integer max) {
+diff --git a/src/main/resources/db/migration/V121__pending_sla.sql b/src/main/resources/db/migration/V121__pending_sla.sql
+new file mode 100644
+index 00000000..10b98900
+--- /dev/null
++++ b/src/main/resources/db/migration/V121__pending_sla.sql
+@@ -0,0 +1,3 @@
++-- The pending SLA in days: a PENDING claim whose pending day (the sheet's today when it last went to
++-- PENDING) plus them is before the sheet's today is late. Null means none; not dated.
++ALTER TABLE sheet ADD COLUMN pending_sla INT;
