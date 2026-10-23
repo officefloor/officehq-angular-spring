@@ -2,93 +2,134 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › restricted role › restricted role (18.4s)
-  ✓  2 [chromium] › acceptance.spec.ts:143:7 › restricted role › restricted role scenario 1 (32.0s)
-  ✘  3 [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 (32.5s)
-  ✘  4 [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 (38.1s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › year end rollover › year end rollover (26.7s)
+  ✘  2 [chromium] › acceptance.spec.ts:535:7 › year end rollover › year end rollover scenario 1 (29.9s)
+  ✘  3 [chromium] › acceptance.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 (27.0s)
+  ✘  4 [chromium] › acceptance.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 (42.2s)
 
 
-  1) [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 ──────────
+  1) [chromium] › acceptance.spec.ts:535:7 › year end rollover › year end rollover scenario 1 ──────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-5').getByTestId('person-due-total')
+    Expected string: [32m"[7m2[27m.00"[39m
+    Received string: [31m"[7m1[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-5').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">1.00</td>[22m
+    [2m  -   unexpected value "1.00"[22m
+
+
+      646 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_0).getByTestId("claim-stated")).toHaveText("no");
+      647 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("7.77");
+    > 648 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("2.00");
+          |                                                                                             ^
+      649 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-due")).toHaveText("1.00");
+      650 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-status")).toHaveText("OPEN");
+      651 |     await expect(pg_uma.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:648:93
+
+  2) [chromium] › acceptance.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 ─────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
     Locator: getByTestId('sheet-parent')
     Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvkrr06mirp8[27m-p"[39m
+    Received string: [31m"[7msmvks46tgj0yl[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
     [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
-    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks46tgj0yl-p</strong>[22m
+    [2m  -   unexpected value "smvks46tgj0yl-p"[22m
 
 
-      924 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
-      925 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
-    > 926 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
-          |                                                      ^
-      927 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
-      928 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      929 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+      1240 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+      1241 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+    > 1242 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      1243 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+      1244 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("1.00");
+      1245 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:926:54
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1242:54
 
-  2) [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 ─────────
+  3) [chromium] › acceptance.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 ─────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Locator: getByTestId('claim-row-11').getByTestId('claim-status')
-    Expected string: [32m"SETTLED"[39m
-    Received string: [31m"DRAFT"[39m
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvks4stb3sba[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('claim-row-11').getByTestId('claim-status')[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
-    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
-    [2m  -   unexpected value "DRAFT"[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvks4stb3sba-p</strong>[22m
+    [2m  -   unexpected value "smvks4stb3sba-p"[22m
 
 
-      1238 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-stated")).toHaveText("no");
-      1239 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-due")).toHaveText("n/a");
-    > 1240 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-status")).toHaveText("SETTLED");
-           |                                                                                          ^
-      1241 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-stated")).toHaveText("no");
-      1242 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-due")).toHaveText("n/a");
-      1243 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-status")).toHaveText("VOID");
+      2052 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      2053 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 2054 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+      2055 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
+      2056 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      2057 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1240:90
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:2054:54
 
-  2 failed
-    [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 ───────────
-    [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 ──────────
-  2 passed (2.1m)
+  3 failed
+    [chromium] › acceptance.spec.ts:535:7 › year end rollover › year end rollover scenario 1 ───────
+    [chromium] › acceptance.spec.ts:1112:7 › year end rollover › year end rollover scenario 2 ──────
+    [chromium] › acceptance.spec.ts:1851:7 › year end rollover › year end rollover scenario 3 ──────
+  1 passed (2.2m)

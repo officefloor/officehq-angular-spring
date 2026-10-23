@@ -113,6 +113,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       (closed)="periodChanged($event)"
       (reopened)="periodChanged($event)"
       (locked)="periodChanged($event)"
+      (rolledOver)="openingsImported()"
     />
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />

@@ -126,6 +126,19 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
+    /**
+     * Roll the fiscal year over: generate the next fiscal year's periods and carry each person's open
+     * figure into its first period; a steward only. The periods made, in month order.
+     */
+    @PostMapping("/rollover")
+    public List<PeriodView> rollover(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid FiscalYearForm form) {
+        return service.rollover(sheetId, SignedIn.name(user), Integer.parseInt(form.year().trim())).stream()
+                .map(PeriodView::of).toList();
+    }
+
     /** A calendar year to generate quarterly periods for: four digits. */
     public record QuartersForm(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
     }

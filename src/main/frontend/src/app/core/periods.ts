@@ -109,6 +109,14 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/generate-fy`, { year }));
   }
 
+  /**
+   * Roll the fiscal year over: generate the next fiscal year's periods as generateFiscalYear does and
+   * carry each person's open figure into its first period; a steward only. The periods made.
+   */
+  rollover(sheet: string, year: string): Promise<PeriodView[]> {
+    return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/rollover`, { year }));
+  }
+
   /** Generate the calendar year's four quarters, named yyyy-Q1 to yyyy-Q4, as generate does; the periods made. */
   generateQuarters(sheet: string, year: string): Promise<PeriodView[]> {
     return firstValueFrom(this.http.post<PeriodView[]>(`${this.url(sheet)}/generate-quarters`, { year }));

@@ -14,7 +14,9 @@ import { Session } from '../../core/session';
 // a third does the same for the twelve months of a fiscal year, and a fourth for the four calendar
 // quarters of a year, named yyyy-Q1 to yyyy-Q4. Each period shows the fiscal year its
 // from-date falls in. A period may cap the OPEN or PENDING claims due by in it each person may have.
-// A steward can lock a period, so it cannot be reopened, and unlock it again.
+// A steward can lock a period, so it cannot be reopened, and unlock it again. A steward can roll a
+// fiscal year over: the next one's periods are generated and each person's open figure at the old
+// year's end is added to their carried figure for the new year's first period.
 @Component({
   selector: 'app-periods',
   imports: [FigurePipe],
@@ -93,6 +95,23 @@ import { Session } from '../../core/session';
           (input)="fiscalYear.set(value($event)); generateReset()"
         />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
+      <form (submit)="rollover($event)" aria-label="Roll a fiscal year over">
+        <label for="rollover-year">Fiscal year to roll over (the calendar year it starts in, yyyy)</label>
+        <input
+          id="rollover-year"
+          data-testid="rollover-year"
+          inputmode="numeric"
+          [value]="rolloverYear()"
+          (input)="rolloverYear.set(value($event)); rolloverReset()"
+        />
+        <button type="submit" data-testid="rollover">Roll the year over</button>
+        @if (rolloverMade() !== null) {
+          <p role="status">Periods made: <span data-testid="rollover-made">{{ rolloverMade() }}</span></p>
+        }
+        @if (rolloverError(); as message) {
+          <p role="alert" data-testid="rollover-error">{{ message }}</p>
+        }
       </form>
       <form (submit)="generateQuarters($event)" aria-label="Generate a year's quarterly periods">
         <label for="period-generate-quarters-year">Calendar year (yyyy)</label>
@@ -201,6 +220,8 @@ export class Periods {
   readonly reopened = output<PeriodView>();
   /** A period locked or unlocked through its row. */
   readonly locked = output<PeriodView>();
+  /** A fiscal year was rolled over: periods and opening balances changed. */
+  readonly rolledOver = output<void>();
 
   protected readonly name = signal('');
   protected readonly from = signal('');
@@ -214,6 +235,10 @@ export class Periods {
   /** How many periods the last generate made; null before one, or once its range is changed. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
+  protected readonly rolloverYear = signal('');
+  /** How many periods the last rollover made; null before one, or once its year is changed. */
+  protected readonly rolloverMade = signal<number | null>(null);
+  protected readonly rolloverError = signal<string | null>(null);
   /** The refusal of the last action taken on a period's row, shown on that row. */
   protected readonly periodError = signal<{ id: number; message: string } | null>(null);
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -350,6 +375,42 @@ export class Periods {
       this.generated.set(made.length);
     } catch {
       this.generateError.set('The fiscal year\'s periods could not be generated.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  protected rolloverReset(): void {
+    this.rolloverMade.set(null);
+    this.rolloverError.set(null);
+  }
+
+  /** Roll the fiscal year over; how many periods were made is shown, a refusal as an error. */
+  protected async rollover(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy) return;
+    this.rolloverReset();
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const year = this.rolloverYear().trim();
+    if (!FISCAL_YEAR.test(year)) {
+      this.rolloverError.set('Type the fiscal year as the four-digit calendar year it starts in.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const made = await this.api.rollover(sheet, year);
+      if (this.session.sheet() !== sheet) return;
+      this.rolloverMade.set(made.length);
+      this.rolledOver.emit();
+    } catch (e) {
+      this.rolloverError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward may roll the year over.'
+          : e instanceof HttpErrorResponse && e.status === 409
+            ? 'That fiscal year has no periods to roll over.'
+            : 'The year could not be rolled over.',
+      );
     } finally {
       this.busy = false;
     }

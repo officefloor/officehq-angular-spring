@@ -151,6 +151,78 @@ public class PeriodService {
     }
 
     /**
+     * Roll fiscal year FY{@code year} over: generate the next fiscal year's twelve periods exactly as
+     * {@link #generateFiscalYear} does, then add each person's open figure at the end of the old year's
+     * last period to their opening balance for the new year's first period, each as an OPENING_SET, and
+     * record ROLLOVER with how many periods were made. A person's open figure is the sum of the due
+     * figures, as computed now, of their claims due by in a period of the old year (a period whose
+     * from-date falls in it) that were OPEN or PENDING at the end of the old year's last period by their
+     * status log, each at the grade its person has in force on its date, leaving out the same claims as
+     * {@link #carried}; a person whose figure is nothing gets no line. Refused for anyone but a steward,
+     * and when the old year has no periods. The periods made, in month order.
+     */
+    @Transactional
+    public List<Period> rollover(String sheetId, String user, int year) {
+        Sheet sheet = sheets.lock(sheetId);
+        LocalDate today = sheet.getToday();
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may roll the year over.");
+        }
+        List<Period> old = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> sheet.fiscalYearOf(p.getFromDate()) == year)
+                .toList();
+        if (old.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "FY" + year + " has no periods to roll over.");
+        }
+        LocalDate end = old.stream().map(Period::getToDate).max(Comparator.naturalOrder()).orElseThrow();
+        Map<Long, BigDecimal> open = openAt(sheetId, old, end, today);
+        List<Period> made = generateFiscalYear(sheetId, user, year + 1);
+        periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> sheet.fiscalYearOf(p.getFromDate()) == year + 1)
+                .findFirst()
+                .ifPresent(first -> {
+                    for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+                        BigDecimal amount = open.get(person.getId());
+                        if (amount == null || amount.signum() == 0) {
+                            continue;
+                        }
+                        first.addOpening(person.getId(), amount);
+                        periods.saveAndFlush(first);
+                        audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                                + " period=" + first.getName() + " amount=" + amount.toPlainString());
+                    }
+                });
+        audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
+        return made;
+    }
+
+    /**
+     * Each person's open figure at the end of a day, by person id: the sum of the due figures of their
+     * claims due by in one of the given periods that were OPEN or PENDING then (see {@link #rollover}).
+     */
+    private Map<Long, BigDecimal> openAt(String sheetId, List<Period> within, LocalDate end, LocalDate today) {
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, person -> person));
+        Map<Long, BigDecimal> open = new LinkedHashMap<>();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || within.stream().noneMatch(p -> p.contains(claim.getDueBy()))) {
+                continue;
+            }
+            ClaimStatus then = claim.statusAt(end);
+            if (then == null || !then.isOpen() || claim.isDeferredOn(today)
+                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(today))) {
+                continue;
+            }
+            BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
+            if (figure != null) {
+                open.merge(person.getId(), figure.setScale(2), BigDecimal::add);
+            }
+        }
+        return open;
+    }
+
+    /**
      * Close a period, fixing at this moment each person's due-total and carried figure (see {@link #carried})
      * for it and its own due-total, their sum. A person's is the sum of the due figures,
      * as computed now, of the claims due by in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
