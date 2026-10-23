@@ -11,7 +11,7 @@ import { VoidReasons } from '../../core/void-reasons';
 // A person's claims: listed newest first, added and edited through one form on the person's row (an
 // open editor locks its claim for other users until it is saved or cancelled, and stays open across
 // loads of the sheet),
-// moved through their statuses (open, settle, approve, reject with a reason, void, re-settle) from each
+// moved through their statuses (open, review, settle, approve, reject with a reason, void, re-settle) from each
 // claim's row, deferred there until a date, split there into two, re-dated there, and reassigned there to another person.
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
@@ -22,6 +22,7 @@ const PAST: Record<ClaimAction, string> = {
   resettle: 're-settled',
   delete: 'deleted',
   restore: 'restored',
+  review: 'reviewed',
 };
 
 @Component({
@@ -395,6 +396,7 @@ export class Claims {
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly actions: { action: ClaimAction; label: string }[] = [
     { action: 'open', label: 'Open' },
+    { action: 'review', label: 'Review' },
     { action: 'settle', label: 'Settle' },
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
@@ -987,6 +989,7 @@ export class Claims {
         && claim.status === 'DRAFT' && (claim.note ?? '').trim() === '';
       const steward = e instanceof HttpErrorResponse && e.status === 403
         && (((action === 'approve' || action === 'reject') && claim.status === 'PENDING')
+          || (action === 'review' && claim.status === 'REVIEW')
           || ((action === 'resettle' || action === 'void') && claim.status === 'SETTLED'));
       const forbidden = e instanceof HttpErrorResponse && e.status === 403 && !steward
         && (action === 'open' || action === 'settle' || action === 'void');

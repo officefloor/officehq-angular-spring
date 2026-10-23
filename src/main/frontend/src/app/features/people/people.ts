@@ -22,7 +22,7 @@ import { VoidReasons } from '../../core/void-reasons';
 import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
 
 /** The statuses the summary counts claims by, in the order it lists them. */
-const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 /** What the people list can be ordered by on the screen; added is the list order itself. */
 const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
 type SortKey = (typeof SORT_KEYS)[number];

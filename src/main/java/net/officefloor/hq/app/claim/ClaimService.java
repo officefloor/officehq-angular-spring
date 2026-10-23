@@ -286,7 +286,9 @@ public class ClaimService {
      * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
      * refused. A claim due by inside a closed period cannot be moved, nor can a claim
      * deferred on the sheet's today be settled, nor a claim opened whose person already has as many OPEN
-     * or PENDING claims due by in its period as the period's claim cap. A SETTLED claim is voided only by a steward, within
+     * or PENDING claims due by in its period as the period's claim cap. A claim opened whose due is above the
+     * sheet's review threshold in force on its date (a due of n/a is within any threshold) goes to REVIEW
+     * instead, with no number yet, audited as CLAIM_REVIEW (see {@link #review}). A SETTLED claim is voided only by a steward, within
      * {@link ClaimStatus#VOID_SETTLED_DAYS} days of its settlement; its frozen figure leaves every
      * total and the audit records it as reversed.
      */
@@ -312,7 +314,7 @@ public class ClaimService {
             case OPEN -> "open";
             case SETTLED -> "settle";
             case VOID -> "void";
-            case PENDING, DRAFT, DELETED -> throw new IllegalArgumentException("No move to " + next + ".");
+            case PENDING, DRAFT, DELETED, REVIEW -> throw new IllegalArgumentException("No move to " + next + ".");
         };
         if (!roles.permits(sheetId, user, action)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim.");
@@ -340,7 +342,11 @@ public class ClaimService {
                 : null;
         if (next == ClaimStatus.OPEN) {
             periods.refuseIfCapped(sheetId, claim);
-            refuseUnnoted(sheetId, claim, dues.due(claim, person.gradeOn(claim.getDate())));
+            BigDecimal due = dues.due(claim, person.gradeOn(claim.getDate()));
+            refuseUnnoted(sheetId, claim, due);
+            if (overReviewThreshold(sheetId, claim, due)) {
+                next = ClaimStatus.REVIEW;
+            }
         }
         if (next == ClaimStatus.SETTLED) {
             refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), settledDue);
@@ -352,6 +358,8 @@ public class ClaimService {
         claim.become(next);
         if (next == ClaimStatus.OPEN) {
             claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
+        }
+        if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) {
             claim.openedBy(user);
         }
         if (next == ClaimStatus.SETTLED) {
@@ -365,6 +373,7 @@ public class ClaimService {
             case OPEN -> "CLAIM_OPENED";
             case SETTLED -> "CLAIM_SETTLED";
             case PENDING -> "CLAIM_PENDING";
+            case REVIEW -> "CLAIM_REVIEW";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT, DELETED -> throw new IllegalStateException();
         };
@@ -535,6 +544,34 @@ public class ClaimService {
         audited("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(),
                 " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE));
         watches.notifyWatchers(sheetId, user, person, saved.getNumber());
+        rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Review a REVIEW claim: it becomes OPEN, numbered now, keeping who opened it; audited as
+     * CLAIM_REVIEWED, then CLAIM_OPENED with its number. Only a steward reviews; refused when the claim
+     * is not REVIEW, or is due by inside a closed period.
+     */
+    @Transactional
+    public Claim review(String sheetId, String user, long claimId) {
+        sheets.lock(sheetId);
+        Rollups.Rollup before = rollups.take(sheetId);
+        Claim claim = claim(sheetId, claimId);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reviews a claim.");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim is not awaiting review.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDueBy());
+        Person person = person(sheetId, claim.getPersonId());
+        claim.become(ClaimStatus.OPEN);
+        claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
+        Claim saved = logged(claims.saveAndFlush(claim), user, person);
+        audited("CLAIM_REVIEWED", sheetId, user, person, saved, null, "");
+        audited("CLAIM_OPENED", sheetId, user, person, saved);
         rollups.audit(sheetId, user, before);
         return saved;
     }
@@ -774,6 +811,12 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A SETTLED claim can only be voided within "
                     + ClaimStatus.VOID_SETTLED_DAYS + " days of its settlement.");
         }
+    }
+
+    /** Whether a claim's due is above the sheet's review threshold in force on the claim's date. */
+    private boolean overReviewThreshold(String sheetId, Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheets.load(sheetId).reviewThresholdOn(claim.getDate());
+        return threshold != null && due != null && due.compareTo(threshold) > 0;
     }
 
     /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit. */

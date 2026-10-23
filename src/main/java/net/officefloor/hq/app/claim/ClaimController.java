@@ -254,6 +254,15 @@ public class ClaimController {
         return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.OPEN));
     }
 
+    /** Review a REVIEW claim, making it OPEN; only a steward reviews. */
+    @PostMapping("/claims/{claimId}/review")
+    public ClaimView review(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.review(sheetId, SignedIn.name(user), claimId));
+    }
+
     /** Open the selected claims together, in list order; those that cannot be opened are refused. */
     @PostMapping("/claims/open")
     public BulkOpenView openAll(

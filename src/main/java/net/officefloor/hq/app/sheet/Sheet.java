@@ -34,6 +34,7 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String REVIEW_THRESHOLD = "review-threshold";
     public static final String GRACE = "grace";
     /** The key of the rounding mode: half-up or half-even, dated; none before every from-date. */
     public static final String ROUNDING = "rounding";
@@ -245,6 +246,19 @@ public class Sheet {
      */
     public BigDecimal noteThresholdOn(LocalDate date) {
         return decimal(valueOn(NOTE_THRESHOLD, date, null));
+    }
+
+    /** The review threshold in force on the sheet's today, with two decimals; null when there is none. */
+    public BigDecimal getReviewThreshold() {
+        return reviewThresholdOn(today);
+    }
+
+    /**
+     * The review threshold in force on a date, with two decimals: a claim dated then whose due is above
+     * it goes to REVIEW when opened; null when there is none (as before every from-date).
+     */
+    public BigDecimal reviewThresholdOn(LocalDate date) {
+        return decimal(valueOn(REVIEW_THRESHOLD, date, null));
     }
 
     /** The floor in force on the sheet's today, with two decimals. */

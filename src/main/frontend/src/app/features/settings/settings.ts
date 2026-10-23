@@ -97,6 +97,23 @@ import { Session } from '../../core/session';
           [value]="fromInput()['note-threshold']"
           (input)="fromTyped('note-threshold', value($event))"
         />
+        <label for="setting-review-threshold">Review threshold (empty: none)</label>
+        <input
+          id="setting-review-threshold"
+          data-testid="setting-review-threshold"
+          inputmode="decimal"
+          [value]="reviewThresholdInput()"
+          (input)="reviewThresholdInput.set(value($event)); reviewThresholdEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'reviewThreshold')"
+          (keydown.backspace)="cleared($event, 'reviewThreshold')"
+        />
+        <label for="setting-review-threshold-from">Review threshold from (yyyy-mm-dd; empty: the sheet's today)</label>
+        <input
+          id="setting-review-threshold-from"
+          data-testid="setting-review-threshold-from"
+          [value]="fromInput()['review-threshold']"
+          (input)="fromTyped('review-threshold', value($event))"
+        />
         <label for="setting-rounding">Rounding mode (half-up or half-even; empty: none, the policy date decides)</label>
         <input
           id="setting-rounding"
@@ -287,6 +304,7 @@ import { Session } from '../../core/session';
           <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThreshold()[g] ?? '' }}</span></p>
       }
       <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
+      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span></p>
       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
@@ -368,6 +386,8 @@ export class Settings {
   protected readonly gradeProofThresholdInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly noteThreshold = signal<string | null>(null);
   protected readonly noteThresholdInput = signal('');
+  protected readonly reviewThreshold = signal<string | null>(null);
+  protected readonly reviewThresholdInput = signal('');
   protected readonly rounding = signal<string | null>(null);
   protected readonly roundingInput = signal('');
   protected readonly floorInput = signal('');
@@ -399,6 +419,7 @@ export class Settings {
   protected capEdited = false;
   protected proofThresholdEdited = false;
   protected noteThresholdEdited = false;
+  protected reviewThresholdEdited = false;
   protected roundingEdited = false;
   protected floorEdited = false;
   protected termsEdited = false;
@@ -434,7 +455,7 @@ export class Settings {
   private saving: Promise<void> = Promise.resolve();
 
   private static noFroms(): Record<DatedKey, string> {
-    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '', rounding: '' };
+    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '', 'review-threshold': '', rounding: '' };
   }
 
   private static noPermissions(): Record<PermissionAction, string> {
@@ -450,6 +471,7 @@ export class Settings {
         this.clerkLimit.set(null);
         this.proofThreshold.set(null);
         this.noteThreshold.set(null);
+        this.reviewThreshold.set(null);
         this.rounding.set(null);
         this.gradeTerms.set({ A: null, B: null, C: null });
         this.gradeGrace.set({ A: null, B: null, C: null });
@@ -486,6 +508,7 @@ export class Settings {
     else if (key === 'cap') this.capEdited = true;
     else if (key === 'proof-threshold') this.proofThresholdEdited = true;
     else if (key === 'note-threshold') this.noteThresholdEdited = true;
+    else if (key === 'review-threshold') this.reviewThresholdEdited = true;
     else if (key === 'rounding') this.roundingEdited = true;
     else if (key === 'floor') this.floorEdited = true;
     else if (key === 'terms') this.termsEdited = true;
@@ -512,7 +535,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'alertThreshold' | 'parent'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'alertThreshold' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -523,6 +546,9 @@ export class Settings {
     } else if (setting === 'noteThreshold') {
       this.noteThresholdInput.set('');
       this.noteThresholdEdited = true;
+    } else if (setting === 'reviewThreshold') {
+      this.reviewThresholdInput.set('');
+      this.reviewThresholdEdited = true;
     } else if (setting === 'rounding') {
       this.roundingInput.set('');
       this.roundingEdited = true;
@@ -590,6 +616,7 @@ export class Settings {
     const rounding = this.roundingInput().trim();
     const proofThreshold = this.proofThresholdInput().trim();
     const noteThreshold = this.noteThresholdInput().trim();
+    const reviewThreshold = this.reviewThresholdInput().trim();
     // With nothing typed since the last save, saving sets the clerk limit again as it stands.
     const terms = this.termsInput().trim();
     const latePct = this.latePctInput().trim();
@@ -603,11 +630,12 @@ export class Settings {
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     const saveLimit =
       this.limitEdited ||
-      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
         !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
+    const saveReviewThreshold = this.reviewThresholdEdited;
     const saveRounding = this.roundingEdited;
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
@@ -636,6 +664,7 @@ export class Settings {
       ...(saveProofThreshold ? (['proof-threshold'] as const) : []),
       ...saveGradeProofThresholds.map((t) => this.proofKey(t.grade)),
       ...(saveNoteThreshold ? (['note-threshold'] as const) : []),
+      ...(saveReviewThreshold ? (['review-threshold'] as const) : []),
       ...(saveRounding ? (['rounding'] as const) : []),
       ...(saveFloor ? (['floor'] as const) : []),
       ...(saveTerms ? (['terms'] as const) : []),
@@ -665,6 +694,10 @@ export class Settings {
     }
     if (saveNoteThreshold && !NOTE_THRESHOLD.test(noteThreshold)) {
       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it empty for none.');
+      return;
+    }
+    if (saveReviewThreshold && !NOTE_THRESHOLD.test(reviewThreshold)) {
+      this.settingsError.set('Type a review threshold of 0.00 or more, with up to two decimals, or leave it empty for none.');
       return;
     }
     if (saveRounding && !ROUNDING.test(rounding)) {
@@ -733,6 +766,7 @@ export class Settings {
     if (saveProofThreshold) this.proofThresholdEdited = false;
     for (const t of saveGradeProofThresholds) this.gradeProofThresholdEdited.delete(t.grade);
     if (saveNoteThreshold) this.noteThresholdEdited = false;
+    if (saveReviewThreshold) this.reviewThresholdEdited = false;
     if (saveRounding) this.roundingEdited = false;
     if (saveFloor) this.floorEdited = false;
     if (saveTerms) this.termsEdited = false;
@@ -775,6 +809,11 @@ export class Settings {
           const view = await this.api.setNoteThreshold(sheet, noteThreshold, from('note-threshold'));
           this.inForce(view);
           if (!this.noteThresholdEdited) this.noteThresholdInput.set(view.noteThreshold ?? '');
+        }
+        if (saveReviewThreshold) {
+          const view = await this.api.setReviewThreshold(sheet, reviewThreshold, from('review-threshold'));
+          this.inForce(view);
+          if (!this.reviewThresholdEdited) this.reviewThresholdInput.set(view.reviewThreshold ?? '');
         }
         if (saveRounding) {
           const view = await this.api.setRounding(sheet, rounding, from('rounding'));
@@ -889,6 +928,7 @@ export class Settings {
     this.proofThreshold.set(view.proofThreshold);
     this.gradeProofThreshold.set({ A: view.gradeProofThresholds['A'], B: view.gradeProofThresholds['B'], C: view.gradeProofThresholds['C'] });
     this.noteThreshold.set(view.noteThreshold);
+    this.reviewThreshold.set(view.reviewThreshold);
     this.rounding.set(view.rounding);
     this.session.roundingHistory.set(view.roundingHistory);
     this.session.floor.set(view.floor);
@@ -921,6 +961,9 @@ export class Settings {
       // And the note threshold's.
       this.noteThresholdInput.set(settings.noteThreshold ?? '');
       this.noteThresholdEdited = false;
+      // And the review threshold's.
+      this.reviewThresholdInput.set(settings.reviewThreshold ?? '');
+      this.reviewThresholdEdited = false;
       // And the rounding mode's.
       this.roundingInput.set(settings.rounding ?? '');
       this.roundingEdited = false;

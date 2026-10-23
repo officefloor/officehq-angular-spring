@@ -7,15 +7,16 @@ import { valueOn, type DatedValue } from './session';
  * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID (SETTLED → VOID by a
  * steward within 7 days of its settlement). A clerk settling a claim
  * above the clerk limit sends it PENDING; a steward approves it (SETTLED) or rejects it (OPEN again).
- * A DRAFT may be DELETED, and restored to a DRAFT on the sheet's today it was deleted.
+ * A DRAFT may be DELETED, and restored to a DRAFT on the sheet's today it was deleted. A DRAFT opened
+ * above the review threshold goes to REVIEW, which a steward reviews (OPEN) or anyone voids.
  */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 /**
  * A move of a claim's status: open, settle, approve, reject, void, re-settle a SETTLED one, delete a
- * DRAFT, or restore a DELETED one.
+ * DRAFT, restore a DELETED one, or review a REVIEW one.
  */
-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle' | 'delete' | 'restore';
+export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle' | 'delete' | 'restore' | 'review';
 
 /** Whether a claim is open: OPEN, or PENDING a steward's approval. */
 export function isOpen(claim: ClaimView): boolean {
