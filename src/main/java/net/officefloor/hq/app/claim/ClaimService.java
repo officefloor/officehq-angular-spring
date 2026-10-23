@@ -286,7 +286,8 @@ public class ClaimService {
      * (a due of n/a is within any limit) sends it PENDING instead, for a steward to approve or reject;
      * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
      * refused. A claim due by inside a closed period cannot be moved, nor can a claim
-     * deferred on the sheet's today be settled. A SETTLED claim is voided only by a steward, within
+     * deferred on the sheet's today be settled, nor a claim opened whose person already has as many OPEN
+     * or PENDING claims due by in its period as the period's claim cap. A SETTLED claim is voided only by a steward, within
      * {@link ClaimStatus#VOID_SETTLED_DAYS} days of its settlement; its frozen figure leaves every
      * total and the audit records it as reversed.
      */
@@ -339,6 +340,7 @@ public class ClaimService {
                 ? dues.settling(claim, person.gradeOn(claim.getDate()))
                 : null;
         if (next == ClaimStatus.OPEN) {
+            periods.refuseIfCapped(sheetId, claim);
             refuseUnnoted(sheetId, claim, dues.due(claim, person.gradeOn(claim.getDate())));
         }
         if (next == ClaimStatus.SETTLED) {

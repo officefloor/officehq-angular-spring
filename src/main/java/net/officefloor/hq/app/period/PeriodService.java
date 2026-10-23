@@ -58,10 +58,12 @@ public class PeriodService {
 
     /**
      * Add a period to the sheet; refused when its from-date is after its to-date, when its name is
-     * already in use on the sheet, or when it shares a day with another period.
+     * already in use on the sheet, or when it shares a day with another period. A cap, when given,
+     * is the most OPEN or PENDING claims due by in it a person may have (see {@link #refuseIfCapped});
+     * it must be at least 1, and PERIOD_ADDED ends with cap=&lt;n&gt;.
      */
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         // Take the sheet's lock first, so two periods added at once cannot both pass the checks.
         sheets.lock(sheetId);
         if (from.isAfter(to)) {
@@ -73,9 +75,13 @@ public class PeriodService {
         if (periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().anyMatch(p -> p.overlaps(from, to))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period overlaps another period on this sheet.");
         }
-        Period period = periods.saveAndFlush(new Period(sheetId, name, from, to));
+        if (cap != null && cap < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A period's claim cap must be at least 1.");
+        }
+        Period period = periods.saveAndFlush(new Period(sheetId, name, from, to, cap));
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + period.getName()
-                + " from=" + period.getFromDate() + " to=" + period.getToDate());
+                + " from=" + period.getFromDate() + " to=" + period.getToDate()
+                + (period.getClaimCap() != null ? " cap=" + period.getClaimCap() : ""));
         return period;
     }
 
@@ -285,6 +291,26 @@ public class PeriodService {
     public boolean softClosedOn(String sheetId, LocalDate date) {
         return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
                 .anyMatch(p -> p.isSoftClosed() && p.contains(date));
+    }
+
+    /**
+     * Refuse opening a claim due by a date (its due-by) inside a period with a claim cap when its person
+     * already has that many OPEN or PENDING claims due by in the period.
+     */
+    public void refuseIfCapped(String sheetId, Claim claim) {
+        periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> p.getClaimCap() != null && p.contains(claim.getDueBy()))
+                .findFirst()
+                .ifPresent(period -> {
+                    long open = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()).stream()
+                            .filter(c -> !c.getId().equals(claim.getId()) && c.getStatus().isOpen()
+                                    && period.contains(c.getDueBy()))
+                            .count();
+                    if (open >= period.getClaimCap()) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, "The person already has "
+                                + period.getClaimCap() + " open claims in period " + period.getName() + ".");
+                    }
+                });
     }
 
     /** Refuse a change to a claim due by a date (its due-by) inside one of the sheet's closed periods. */

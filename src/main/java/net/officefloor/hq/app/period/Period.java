@@ -68,15 +68,24 @@ public class Period {
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
+    /** The most OPEN or PENDING claims due by in the period a person may have; null for no cap. */
+    @Column(name = "claim_cap")
+    private Integer claimCap;
+
     protected Period() {
     }
 
     public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate) {
+        this(sheetId, name, fromDate, toDate, null);
+    }
+
+    public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate, Integer claimCap) {
         this.sheetId = sheetId;
         this.name = clean(name);
         this.nameKey = keyOf(name);
         this.fromDate = fromDate;
         this.toDate = toDate;
+        this.claimCap = claimCap;
     }
 
     /** The name as it is kept: surrounding spaces removed. */
@@ -107,6 +116,11 @@ public class Period {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    /** The most OPEN or PENDING claims due by in the period a person may have; null for no cap. */
+    public Integer getClaimCap() {
+        return claimCap;
     }
 
     public boolean isClosed() {

@@ -24,6 +24,8 @@ export interface PeriodView {
    * the period can still be added and changed. A soft-closed period is not closed.
    */
   softClosed: boolean;
+  /** The most OPEN or PENDING claims due by in the period a person may have; null for no cap. */
+  cap: number | null;
 }
 
 /** Whether a period's figures are fixed: it is closed or soft-closed. */
@@ -35,7 +37,12 @@ export interface PeriodForm {
   name: string;
   from: string;
   to: string;
+  /** A whole number of at least 1; null for no cap. */
+  cap: number | null;
 }
+
+/** A period's claim cap as the form takes it: a whole number of at least 1. */
+export const PERIOD_CAP = /^[1-9]\d{0,5}$/;
 
 /** A period's date as the form takes it: yyyy-mm-dd. */
 export const PERIOD_DATE = /^\d{4}-\d{2}-\d{2}$/;

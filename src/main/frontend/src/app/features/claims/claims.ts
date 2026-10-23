@@ -979,7 +979,11 @@ export class Claims {
         && (mine || edited);
       const unproved = e instanceof HttpErrorResponse && e.status === 409 && claim.proofs === 0
         && ((action === 'settle' && claim.status === 'OPEN') || (action === 'approve' && claim.status === 'PENDING'));
-      const unnoted = e instanceof HttpErrorResponse && e.status === 409 && action === 'open'
+      const cap = action === 'open' ? periodOn(this.periods(), claim.dueBy) : null;
+      const capped = e instanceof HttpErrorResponse && e.status === 409 && cap?.cap != null
+        && this.claims().filter((c) => c.id !== claim.id && (c.status === 'OPEN' || c.status === 'PENDING')
+          && cap.from <= c.dueBy && c.dueBy <= cap.to).length >= cap.cap;
+      const unnoted = e instanceof HttpErrorResponse && e.status === 409 && action === 'open' && !capped
         && claim.status === 'DRAFT' && (claim.note ?? '').trim() === '';
       const steward = e instanceof HttpErrorResponse && e.status === 403
         && (((action === 'approve' || action === 'reject') && claim.status === 'PENDING')
@@ -998,6 +1002,8 @@ export class Claims {
             ? `You ${edited ? 'last edited' : 'opened'} this claim, so someone else must ${action} it.`
             : unproved
               ? `The claim's due is above the proof threshold, so it needs a proof before it can be ${PAST[action]}.`
+            : capped
+              ? `The person already has ${cap?.cap} open claims in period ${cap?.name}, its cap.`
             : unnoted
               ? "The claim's due is above the note threshold, so it needs a note before it can be opened."
             : steward

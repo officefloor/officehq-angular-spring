@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
-import { FISCAL_YEAR, PERIOD_DATE, PeriodView, PeriodsApi, fiscalYearOf } from '../../core/periods';
+import { FISCAL_YEAR, PERIOD_CAP, PERIOD_DATE, PeriodView, PeriodsApi, fiscalYearOf } from '../../core/periods';
 import { Session } from '../../core/session';
 
 // The sheet's periods: listed by from-date with the due-total of the counting claims dated in each,
@@ -11,7 +11,7 @@ import { Session } from '../../core/session';
 // closed period, making its due-total live again. A second form generates a period per calendar month
 // over a range of dates, named yyyy-mm, leaving out months whose name is taken or that overlap a period;
 // a third does the same for the twelve months of a fiscal year. Each period shows the fiscal year its
-// from-date falls in.
+// from-date falls in. A period may cap the OPEN or PENDING claims due by in it each person may have.
 @Component({
   selector: 'app-periods',
   template: `
@@ -40,6 +40,14 @@ import { Session } from '../../core/session';
           data-testid="period-form-to"
           [value]="to()"
           (input)="to.set(value($event)); error.set(null)"
+        />
+        <label for="period-form-cap">Open claims cap (blank for none)</label>
+        <input
+          id="period-form-cap"
+          inputmode="numeric"
+          data-testid="period-form-cap"
+          [value]="cap()"
+          (input)="cap.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as message) {
@@ -91,6 +99,7 @@ import { Session } from '../../core/session';
             <th scope="col">Due</th>
             <th scope="col">Closed</th>
             <th scope="col">Fiscal year</th>
+            <th scope="col">Cap</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -103,6 +112,7 @@ import { Session } from '../../core/session';
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fiscalYearOf(p.from, session.fiscalStartMonth()) }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 @if (!p.closed) {
                   <button
@@ -160,6 +170,7 @@ export class Periods {
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
+  protected readonly cap = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
@@ -294,7 +305,8 @@ export class Periods {
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    const form = { name: this.name().trim(), from: this.from().trim(), to: this.to().trim() };
+    const cap = this.cap().trim();
+    const form = { name: this.name().trim(), from: this.from().trim(), to: this.to().trim(), cap: cap ? Number(cap) : null };
     if (!form.name) {
       this.error.set('Type a name for the period.');
       return;
@@ -307,12 +319,17 @@ export class Periods {
       this.error.set('The from date cannot be after the to date.');
       return;
     }
+    if (cap && !PERIOD_CAP.test(cap)) {
+      this.error.set('The cap must be a whole number of at least 1, or blank for none.');
+      return;
+    }
     this.busy = true;
     try {
       this.saved.emit(await this.api.add(sheet, form));
       this.name.set('');
       this.from.set('');
       this.to.set('');
+      this.cap.set('');
     } catch (e) {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 409

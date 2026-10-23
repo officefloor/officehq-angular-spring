@@ -3,6 +3,8 @@ package net.officefloor.hq.app.period;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.AsOfGuard;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -37,7 +39,7 @@ public class PeriodController {
      * fixed as on a close, while not closed).
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal, Map<Long, String> personTotals, boolean softClosed) {
+            String closedTotal, Map<Long, String> personTotals, boolean softClosed, Integer cap) {
 
         public static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
@@ -45,15 +47,19 @@ public class PeriodController {
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
                     period.getPersonTotals().entrySet().stream()
                             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
-                    period.isSoftClosed());
+                    period.isSoftClosed(), period.getClaimCap());
         }
     }
 
-    /** A period as entered on the form: a name, and a from and to date, both required. */
+    /**
+     * A period as entered on the form: a name, and a from and to date, all required, and a cap on each
+     * person's open claims in it, a whole number of at least 1 (absent for none).
+     */
     public record PeriodForm(
             @NotBlank @Size(max = 200) String name,
             @NotNull LocalDate from,
-            @NotNull LocalDate to) {
+            @NotNull LocalDate to,
+            @Min(1) @Max(1_000_000) Integer cap) {
     }
 
     private final PeriodService service;
@@ -79,7 +85,7 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PeriodForm form) {
-        return PeriodView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.from(), form.to()));
+        return PeriodView.of(service.add(sheetId, SignedIn.name(user), form.name(), form.from(), form.to(), form.cap()));
     }
 
     /** A range of months to generate periods for: a from and a to date, both required. */
