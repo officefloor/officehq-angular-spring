@@ -1,0 +1,371 @@
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index 60ab05e2..af984b05 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -1,6 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
++import { PersonView } from './people';
+ 
+ /**
+  * A pool's member: a person on the sheet or another pool (the other null), its name, its share percent with
+@@ -35,6 +36,20 @@ export interface PoolView {
+   members: PoolMemberView[];
+ }
+ 
++/**
++ * A period whose to-date is on or before the sheet's today, with what its pools' cuts at the end of it are
++ * worked out from: when its to-date is the sheet's today (current) the sheet as it stands, else the pot
++ * (null for none), people and pools as they stood at the end of its to-date.
++ */
++export interface PeriodPoolsView {
++  period: string;
++  to: string;
++  current: boolean;
++  pot: string | null;
++  people: PersonView[];
++  pools: PoolView[];
++}
++
+ // The sheet's pools, read from and written to the store.
+ @Injectable({ providedIn: 'root' })
+ export class PoolsApi {
+@@ -45,6 +60,11 @@ export class PoolsApi {
+     return firstValueFrom(this.http.get<PoolView[]>(this.url(sheet)));
+   }
+ 
++  /** Each period whose to-date is on or before the sheet's today, with its pools as they stood at its end. */
++  history(sheet: string): Promise<PeriodPoolsView[]> {
++    return firstValueFrom(this.http.get<PeriodPoolsView[]>(`${this.url(sheet)}/history`));
++  }
++
+   /** Add a pool; refused when its name, trimmed, is blank or already a pool's or a crew's. */
+   add(sheet: string, name: string): Promise<PoolView> {
+     return firstValueFrom(this.http.post<PoolView>(this.url(sheet), { name }));
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index aff934a4..7c1ad2f6 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -4,7 +4,7 @@ import { cents, money } from '../../core/claims';
+ import { CrewView } from '../../core/crews';
+ import { downloadCsv } from '../../core/csv';
+ import { PersonView, heldOn, retiredOn } from '../../core/people';
+-import { PoolMemberView, PoolView, PoolsApi, memberOn } from '../../core/pools';
++import { PeriodPoolsView, PoolMemberView, PoolView, PoolsApi, memberOn } from '../../core/pools';
+ import { Session } from '../../core/session';
+ 
+ /** A day, yyyy-mm-dd. */
+@@ -74,6 +74,46 @@ function cuts(pool: PoolView, pot: bigint, retired: Set<number>, held: Set<numbe
+   return all;
+ }
+ 
++/**
++ * Each pool with its total share in hundredths of a percent and its members' cuts in cents by member key,
++ * on a day as the sheet's today with a pot (empty for none). A membership not in force on the day is left
++ * out entirely; a pool's pot is the sheet's or its cut in the pool above; none when the pool is unbalanced,
++ * has no pot, or has every member retired.
++ */
++function poolCuts(
++  allPools: PoolView[],
++  people: PersonView[],
++  today: string,
++  sheetPot: string,
++): { pool: PoolView; total: number; cuts: Map<string, bigint> }[] {
++  const retired = new Set(people.filter((p) => retiredOn(p, today)).map((p) => p.id));
++  const held = new Set(people.filter((p) => heldOn(p, today)).map((p) => p.id));
++  const pools = allPools.map((pool) => ({ ...pool, members: pool.members.filter((m) => memberOn(m, today)) }));
++  const parents = new Map(
++    allPools.flatMap((pool) => pool.members.filter((m) => m.poolId !== null).map((m) => [m.poolId!, pool.id])),
++  );
++  const totals = new Map(pools.map((pool) => [pool.id, pool.members.reduce((sum, m) => sum + cents(m.share), 0)]));
++  const memo = new Map<number, Map<string, bigint>>();
++  const cutsOf = (pool: PoolView): Map<string, bigint> => {
++    const known = memo.get(pool.id);
++    if (known) return known;
++    memo.set(pool.id, new Map());
++    let pot: bigint | undefined;
++    const parentId = parents.get(pool.id);
++    const parent = parentId === undefined ? undefined : pools.find((p) => p.id === parentId);
++    if (parent) pot = cutsOf(parent).get(`pool:${pool.id}`);
++    else if (parentId === undefined && sheetPot !== '') pot = BigInt(cents(sheetPot));
++    const allRetired = pool.members.length > 0 && pool.members.every((m) => isPersonIn(m, retired));
++    const found =
++      totals.get(pool.id) === 10000 && pot !== undefined && !allRetired
++        ? cuts(pool, pot, retired, held)
++        : new Map<string, bigint>();
++    memo.set(pool.id, found);
++    return found;
++  };
++  return allPools.map((pool, i) => ({ pool, total: totals.get(pool.id) ?? 0, cuts: cutsOf(pools[i]) }));
++}
++
+ /** Whether a member is a person in a set of person ids. */
+ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
+   return m.personId !== null && ids.has(m.personId);
+@@ -123,6 +163,11 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
+                   <span data-testid="pool-member-name">{{ m.poolId !== null ? 'pool:' + m.name : m.name }}</span>
+                   <span data-testid="pool-share">{{ m.share | figure }}</span>
+                   <span data-testid="pool-cut">{{ (line.cuts.get(key(m)) ?? '') | figure }}</span>
++                  @for (h of history(); track h.period) {
++                    <span [attr.data-testid]="'pool-cut-' + h.period">{{
++                      (h.byPool.get(line.pool.id)?.get(key(m)) ?? '') | figure
++                    }}</span>
++                  }
+                 </li>
+               }
+             </ul>
+@@ -227,39 +272,31 @@ export class Pools {
+     return totals;
+   });
+   /** Each pool with its total share in hundredths of a percent and its members' cuts in cents by member key. */
+-  private readonly cutLines = computed(() => {
+-    const retired = new Set(this.people().filter((p) => retiredOn(p, this.today())).map((p) => p.id));
+-    const held = new Set(this.people().filter((p) => heldOn(p, this.today())).map((p) => p.id));
+-    const today = this.today();
+-    // A membership not in force on the sheet's today is left out entirely.
+-    const pools = this.pools().map((pool) => ({ ...pool, members: pool.members.filter((m) => memberOn(m, today)) }));
+-    const parents = this.parents();
+-    const sheetPot = this.session.pot();
+-    const totals = new Map(
+-      pools.map((pool) => [pool.id, pool.members.reduce((sum, m) => sum + cents(m.share), 0)]),
+-    );
+-    // Each pool's cuts in cents, a pool's pot being the sheet's or its cut in the pool above; none when
+-    // the pool is unbalanced, has no pot, or has every member retired.
+-    const memo = new Map<number, Map<string, bigint>>();
+-    const cutsOf = (pool: PoolView): Map<string, bigint> => {
+-      const known = memo.get(pool.id);
+-      if (known) return known;
+-      memo.set(pool.id, new Map());
+-      let pot: bigint | undefined;
+-      const parentId = parents.get(pool.id);
+-      const parent = parentId === undefined ? undefined : pools.find((p) => p.id === parentId);
+-      if (parent) pot = cutsOf(parent).get(`pool:${pool.id}`);
+-      else if (parentId === undefined && sheetPot !== '') pot = BigInt(cents(sheetPot));
+-      const allRetired = pool.members.length > 0 && pool.members.every((m) => isPersonIn(m, retired));
+-      const found =
+-        totals.get(pool.id) === 10000 && pot !== undefined && !allRetired
+-          ? cuts(pool, pot, retired, held)
+-          : new Map<string, bigint>();
+-      memo.set(pool.id, found);
+-      return found;
+-    };
+-    return this.pools().map((pool, i) => ({ pool, total: totals.get(pool.id) ?? 0, cuts: cutsOf(pools[i]) }));
++  private readonly cutLines = computed(() =>
++    poolCuts(this.pools(), this.people(), this.today(), this.session.pot()),
++  );
++  /**
++   * Each period whose to-date is on or before the sheet's today, by name, with each member's cut as it
++   * stood at the end of it as shown, by pool id then member key: worked out from the pools, people and pot
++   * as they were then with its to-date as the sheet's today; a period ending on the sheet's today shows the
++   * cuts as they stand.
++   */
++  protected readonly history = computed(() => {
++    const lines = this.lines();
++    return this.periodPools().map((h) => {
++      const byPool = h.current
++        ? new Map(lines.map((line) => [line.pool.id, line.cuts]))
++        : new Map(
++            poolCuts(h.pools, h.people, h.to, h.pot ?? '').map(({ pool, cuts }) => [
++              pool.id,
++              new Map([...cuts].map(([id, c]) => [id, money(Number(c))])),
++            ]),
++          );
++      return { period: h.period, byPool };
++    });
+   });
++  /** What each past period's cuts are worked out from, re-read from the store on every load and today. */
++  private readonly periodPools = signal<PeriodPoolsView[]>([]);
+   /** The pool each member pool is in, by member pool id. */
+   private readonly parents = computed(
+     () => new Map(this.pools().flatMap((pool) => pool.members.filter((m) => m.poolId !== null).map((m) => [m.poolId!, pool.id]))),
+@@ -284,6 +321,15 @@ export class Pools {
+         if (sheet) void this.reload(sheet, loads);
+       });
+     });
++    // Every sheet load, and every move of the sheet's today, re-reads the past periods' pools.
++    effect(() => {
++      const sheet = this.session.sheet();
++      const loads = this.session.loads();
++      this.today();
++      untracked(() => {
++        if (sheet) void this.reloadHistory(sheet, loads);
++      });
++    });
+     // A crew added or given a member changes its pool: the pools are re-read from the store.
+     let first = true;
+     effect(() => {
+@@ -446,6 +492,17 @@ export class Pools {
+     });
+   }
+ 
++  /** The latest read of the past periods' pools: an earlier one answering later is not shown. */
++  private historyReads = 0;
++
++  private async reloadHistory(sheet: string, loads: number): Promise<void> {
++    const read = ++this.historyReads;
++    const history = await this.api.history(sheet).catch(() => []);
++    if (this.session.sheet() === sheet && this.session.loads() === loads && this.historyReads === read) {
++      this.periodPools.set(history);
++    }
++  }
++
+   private async reload(sheet: string, loads: number): Promise<void> {
+     const read = ++this.reads;
+     try {
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index 28d73461..d065fc18 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -17,6 +17,8 @@ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonController.PersonView;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolController.PoolView;
++import net.officefloor.hq.app.pool.PoolService;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateController.RateView;
+ import net.officefloor.hq.app.rate.RateRepository;
+@@ -94,13 +96,23 @@ public class SheetHistory {
+ 
+     /**
+      * What the screen is told about the sheet as it stood at the end of a date: its people, claims
+-     * (newest first), rates and periods, and whether it was archived.
++     * (newest first), rates, periods and pools, and whether it was archived (its pools null in views kept
++     * before pools were).
+      */
+     public record Views(boolean archived, List<PersonView> people, List<ClaimView> claims, List<RateView> rates,
+-            List<PeriodView> periods) {
++            List<PeriodView> periods, List<PoolView> pools) {
+ 
+         /** The sheet before anything was kept for it. */
+-        static final Views EMPTY = new Views(false, List.of(), List.of(), List.of(), List.of());
++        static final Views EMPTY = new Views(false, List.of(), List.of(), List.of(), List.of(), List.of());
++    }
++
++    /**
++     * What a pool's cuts at the end of a period are worked out from: the period, whether its to-date is
++     * the sheet's today (the sheet as it stands then, not told here), and else the sheet's pot (null for
++     * none), people and pools as they stood at the end of its to-date.
++     */
++    public record PeriodPools(String period, LocalDate to, boolean current, String pot, List<PersonView> people,
++            List<PoolView> pools) {
+     }
+ 
+     private final SheetSnapshotRepository snapshots;
+@@ -109,10 +121,13 @@ public class SheetHistory {
+     private final PersonRepository people;
+     private final ClaimRepository claims;
+     private final PeriodRepository periods;
++    private final PoolService pools;
+     private final JsonMapper json;
+ 
+     public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateRepository rates,
+-            PersonRepository people, ClaimRepository claims, PeriodRepository periods, JsonMapper json) {
++            PersonRepository people, ClaimRepository claims, PeriodRepository periods, PoolService pools,
++            JsonMapper json) {
++        this.pools = pools;
+         this.snapshots = snapshots;
+         this.sheets = sheets;
+         this.rates = rates;
+@@ -138,7 +153,8 @@ public class SheetHistory {
+                 sheetClaims.stream().map(SheetHistory::kept).toList(), new PotState(sheet.getPot()));
+         Views views = new Views(sheet.isArchived(), sheetPeople.stream().map(PersonView::of).toList(),
+                 sheetClaims.stream().map(ClaimView::of).toList(), sheetRates.stream().map(RateView::of).toList(),
+-                periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList());
++                periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList(),
++                pools.list(sheetId).stream().map(PoolView::of).toList());
+         snapshots.save(new SheetSnapshot(sheetId, leaving.today(), json.writeValueAsString(state),
+                 json.writeValueAsString(views)));
+     }
+@@ -179,6 +195,39 @@ public class SheetHistory {
+         return then;
+     }
+ 
++    /**
++     * Each period whose to-date is on or before the sheet's today, in from-date order, with what its pools'
++     * cuts at the end of it are worked out from: for a to-date before the sheet's today, the pot, people
++     * and pools kept for the last snapshot on or before it (none when nothing was kept by then).
++     */
++    @Transactional(readOnly = true)
++    public List<PeriodPools> periodPools(String sheetId) {
++        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
++        if (today == null) {
++            return List.of();
++        }
++        return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
++                .filter(p -> !p.getToDate().isAfter(today))
++                .map(p -> {
++                    if (p.getToDate().equals(today)) {
++                        return new PeriodPools(p.getName(), p.getToDate(), true, null, List.of(), List.of());
++                    }
++                    return snapshots.findFirstBySheetIdAndAsOfLessThanEqualOrderByIdDesc(sheetId, p.getToDate())
++                            .map(snapshot -> {
++                                State state = json.readValue(snapshot.getState(), State.class);
++                                Views views = snapshot.getViews() == null ? Views.EMPTY
++                                        : json.readValue(snapshot.getViews(), Views.class);
++                                BigDecimal pot = state.pot() == null ? null : state.pot().value();
++                                return new PeriodPools(p.getName(), p.getToDate(), false,
++                                        pot == null ? null : pot.toPlainString(), views.people(),
++                                        views.pools() == null ? List.of() : views.pools());
++                            })
++                            .orElseGet(() -> new PeriodPools(p.getName(), p.getToDate(), false, null, List.of(),
++                                    List.of()));
++                })
++                .toList();
++    }
++
+     /** Whether an as-of date (null: none) is before the sheet's today. */
+     private boolean past(String sheetId, LocalDate asOf) {
+         return asOf != null && sheets.findById(sheetId).map(s -> asOf.isBefore(s.getToday())).orElse(false);
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 71d109ac..bc3766fa 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -9,6 +9,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.SignedIn;
++import net.officefloor.hq.app.history.SheetHistory;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+@@ -34,7 +35,7 @@ public class PoolController {
+      */
+     public record PoolView(long id, String name, Long crewId, List<MemberView> members) {
+ 
+-        static PoolView of(PoolService.PoolWithMembers pool) {
++        public static PoolView of(PoolService.PoolWithMembers pool) {
+             return new PoolView(pool.pool().getId(), pool.pool().getName(), pool.pool().getCrewId(),
+                     pool.members().stream().map(MemberView::of).toList());
+         }
+@@ -66,9 +67,11 @@ public class PoolController {
+     }
+ 
+     private final PoolService service;
++    private final SheetHistory history;
+ 
+-    public PoolController(PoolService service) {
++    public PoolController(PoolService service, SheetHistory history) {
+         this.service = service;
++        this.history = history;
+     }
+ 
+     /** The sheet's pools in the order they were added. */
+@@ -78,6 +81,16 @@ public class PoolController {
+         return service.list(sheetId).stream().map(PoolView::of).toList();
+     }
+ 
++    /**
++     * Each period whose to-date is on or before the sheet's today, with the pot, people and pools its cuts
++     * are worked out from as they stood at the end of it.
++     */
++    @GetMapping("/history")
++    public List<SheetHistory.PeriodPools> history(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        return history.periodPools(sheetId);
++    }
++
+     /** Add a pool to the sheet. */
+     @PostMapping
+     public PoolView add(

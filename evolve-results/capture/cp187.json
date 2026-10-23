@@ -1,0 +1,64 @@
+{
+  "checkpoint": 187,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp187_cut-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "92412221b8624d88628f35157b711f9a90e54f9f",
+  "reset_sha": "",
+  "preagent_sha": "9104ffe49c671ae91c504b3183610a48dc492520",
+  "prev_sha": "9104ffe49c671ae91c504b3183610a48dc492520",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.2339188,
+    "input_tokens": 86,
+    "output_tokens": 27593,
+    "cache_read_tokens": 3657694,
+    "cache_creation_tokens": 118772,
+    "num_turns": 44,
+    "duration_ms": 799677,
+    "duration_api_ms": 294209,
+    "model": "claude-opus-5-5",
+    "session_id": "f0a3544f-752e-4b5c-af18-def17c1ee228",
+    "stop_reason": "success",
+    "result_text": "I've built the cut-history feature, but the test doesn't fully pass yet: 3 of the 4 tests pass. The fourth, \"scenario 1\", fails at a check that has nothing to do with pools, and I haven't changed the code behind it.\n\n**The failure.** At `e2e/specs/acceptance.spec.ts:260`, the test adds a claim dated 2026-03-28. That date falls in period P2, which has been soft-closed and then locked. The test expects the claim to show late entry \"no\" and expects no `LATE_ENTRY` audit line. The app shows \"yes\" and writes the line. That matches the documented rule in `ClaimService.add` (`ClaimService.java:142-146`): a claim dated in a soft-closed period is a late entry.\n\nThe test's data fits at least three different rules, and I couldn't tell which one it intends:\n- a locked period doesn't count as soft-closed for late entries;\n- only the due-by date counts, not the claim's own date;\n- a date the user typed in isn't checked at all.\n\nAny of these would change behaviour outside this request, so I left it for you to decide. Because the test stops at line 260, scenario 1's own pool checks further down never ran. It uses no per-period cuts, though, since no period has ended by its today.\n\nThe failure is the same every time. One of my runs hit an app from another session that was holding port 3000, so I re-ran everything on port 3017 (`PORT=3017 bin/e2e`) and got the same result.\n\n**What I built.**\n- **Saving pools in the daily snapshot:** when the sheet's today moves on, the app already saves a copy of the sheet as it stood that day. That copy now also includes the pools and their members, crew pools too (`SheetHistory.java`). Copies saved before this change have no pools, so those periods show empty cuts.\n- **New endpoint:** `GET /api/sheets/{id}/pools/history` lists every period whose to-date is on or before the sheet's today. For each one it returns the pot, the people (with their holds and retirements) and the pools from the last copy saved on or before the to-date. A period ending exactly on today is marked as current and uses the live data.\n- **Pools screen** (`pools.ts`): I pulled the existing cut calculation out into a function, `poolCuts`, so the same code works out both the live cuts and each period's cuts, using the period's to-date as today. Each member's line now shows `pool-cut-<period name>` for each of those periods, empty when there was no cut. The data reloads on every sheet load and whenever today changes.\n\nNo database migration was needed, since the snapshots are stored as JSON.\n\nShould I change the late-entry rule to one of the three options so scenario 1 can run to the end, or leave it as it is?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.2339188,
+        "num_turns": 44,
+        "duration_ms": 799677,
+        "duration_api_ms": 294209,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp187.agent.jsonl",
+  "agent_diff_file": "cp187.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
