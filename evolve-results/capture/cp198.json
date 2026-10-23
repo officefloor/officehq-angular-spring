@@ -1,0 +1,64 @@
+{
+  "checkpoint": 198,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp198_duplicate-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the duplicate claims: for each person, date and amount with two or more claims (VOID and\nDELETED claims left out), one line <name> <date> <amount> x<count>, people in list order, then by\ndate, then by amount.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the duplicate claims: for each person, date and amount with two or more claims (VOID and\nDELETED claims left out), one line <name> <date> <amount> x<count>, people in list order, then by\ndate, then by amount.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ce0df5de1441f1bd9aab0e898c0fbe950f01453e",
+  "reset_sha": "",
+  "preagent_sha": "ee489670352a736b82fb08db701b9572caf75780",
+  "prev_sha": "ee489670352a736b82fb08db701b9572caf75780",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6867880000000001,
+    "input_tokens": 38,
+    "output_tokens": 7694,
+    "cache_read_tokens": 745060,
+    "cache_creation_tokens": 47968,
+    "num_turns": 20,
+    "duration_ms": 368768,
+    "duration_api_ms": 79589,
+    "model": "claude-opus-5-5",
+    "session_id": "d236ef72-07ee-40f0-a97e-eadfcbec0f60",
+    "stop_reason": "success",
+    "result_text": "I've added the duplicate claims list. The main test, **\"duplicate claims\"**, passes, but the other three tests in the spec still fail. As far as I can tell those failures come from the test data or from older features, not from this change.\n\n**What I added**\n- **Server:** a new `ClaimService.duplicates(sheetId)` method and a `GET /api/sheets/{sheetId}/claims/duplicates` endpoint. It skips VOID and DELETED claims and groups the rest by person, date and amount. For every group with two or more claims it returns one line, `<name> <date> <amount> x<count>`. People come in the order the list shows them, then by date, then by amount. It only reads; nothing is written to the store or the audit file.\n- **Front end:** a new \"Duplicate claims\" section on the home screen (`features/claims/duplicates.ts`), built the same way as the existing Activity section. It has a `dups-show` button, one `dup-line` per result and a `dups-error` message if the list can't be read. Loading a sheet clears the list.\n\n**Failing tests (`bin/e2e`: 1 passed, 3 failed)**\n- **Scenarios 1 and 2** fail where they check `sheet-parent` (spec lines 192 and 762). The test expects the literal text `\"__SHEET__-p\"`, but the screen correctly shows the real parent id, such as `smvkp6mt0byev-p`. The `__SHEET__` placeholder in the spec is never replaced with the test's sheet id, so no app change can make this pass.\n- **Scenario 3** fails at spec line 1156. It flags a person \"late\" until 2026-03-12 while the sheet's today is 2026-04-05, then expects the flag to show. The app accepts the flag, but by design it only shows a flag up to its end date, and this one has already passed. Making it pass would mean changing how flags work, so I left it alone.\n\nI didn't edit the spec, since the rules forbid that. If you can regenerate it, or confirm what those three checks should expect, I can run the tests again.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6867880000000001,
+        "num_turns": 20,
+        "duration_ms": 368768,
+        "duration_api_ms": 79589,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp198.agent.jsonl",
+  "agent_diff_file": "cp198.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

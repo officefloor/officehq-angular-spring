@@ -1,0 +1,176 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 07c564c3..1f22d42a 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -415,6 +415,11 @@ export class ClaimsApi {
+    * Defer an OPEN claim until a date; refused (409) when the claim is not OPEN, the date is not after
+    * the sheet's today, or the claim is dated inside a closed period.
+    */
++  /** The sheet's duplicate claims: one line `<name> <date> <amount> x<count>` per person, date and amount claimed twice or more. */
++  duplicates(sheet: string): Promise<string[]> {
++    return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/duplicates`));
++  }
++
+   /**
+    * The claim's timeline: the audit lines about it, newest first, as the file holds them — those
+    * carrying its number, or for a claim with no number those naming its person, amount and date.
+diff --git a/src/main/frontend/src/app/features/claims/duplicates.ts b/src/main/frontend/src/app/features/claims/duplicates.ts
+new file mode 100644
+index 00000000..e8bf609c
+--- /dev/null
++++ b/src/main/frontend/src/app/features/claims/duplicates.ts
+@@ -0,0 +1,60 @@
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { ClaimsApi } from '../../core/claims';
++import { Session } from '../../core/session';
++
++// The sheet's duplicate claims: for each person, date and amount with two or more claims (VOID and
++// DELETED left out), one line `<name> <date> <amount> x<count>`, people in list order, then by date,
++// then by amount. It reads the store; it records nothing.
++@Component({
++  selector: 'app-duplicates',
++  template: `
++    <section aria-labelledby="dups-heading">
++      <h2 id="dups-heading">Duplicate claims</h2>
++      <button type="button" data-testid="dups-show" (click)="show()">Show duplicates</button>
++      @if (error(); as message) {
++        <p role="alert" data-testid="dups-error">{{ message }}</p>
++      }
++      <ol aria-label="Duplicate claims">
++        @for (line of lines(); track $index) {
++          <li data-testid="dup-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class Duplicates {
++  private readonly session = inject(Session);
++  private readonly api = inject(ClaimsApi);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  /** Counts the shows asked for, so only the latest one's answer is shown. */
++  private shows = 0;
++
++  constructor() {
++    // A sheet load clears what was shown for the sheet before.
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      untracked(() => {
++        this.shows++;
++        this.lines.set([]);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const show = ++this.shows;
++    this.lines.set([]);
++    try {
++      const lines = await this.api.duplicates(sheet);
++      if (show === this.shows) this.lines.set(lines);
++    } catch {
++      if (show === this.shows) this.error.set('The duplicate claims could not be read.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 75faa171..2444caac 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -11,12 +11,13 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ import { TemplatesList } from '../templates/templates';
+ import { AuditViewer } from '../audit/audit';
+ import { Activity } from '../audit/activity';
++import { Duplicates } from '../claims/duplicates';
+ import { TreeSearch } from '../tree-search/tree-search';
+ 
+ // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
+ @Component({
+   selector: 'app-home',
+-  imports: [People, Settings, Delegation, Holidays, Notes, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch],
++  imports: [People, Settings, Delegation, Holidays, Notes, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch, Duplicates],
+   template: `
+     @if (session.user(); as user) {
+       <section aria-label="Session">
+@@ -106,6 +107,7 @@ import { TreeSearch } from '../tree-search/tree-search';
+           <app-tree-search />
+           <app-audit-viewer />
+           <app-activity />
++          <app-duplicates />
+         }
+         <p data-testid="home-empty">Nothing here yet.</p>
+       </section>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 12617d5c..3a4244d4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -220,6 +220,13 @@ public class ClaimController {
+                 .orElseGet(() -> service.list(sheetId).stream().map(ClaimView::of).toList());
+     }
+ 
++    /** The sheet's duplicate claims: one line {@code <name> <date> <amount> x<count>} per person, date and amount claimed twice or more. */
++    @GetMapping("/claims/duplicates")
++    public List<String> duplicates(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        return service.duplicates(sheetId);
++    }
++
+     /** A claim's timeline: the audit lines about it, newest first, as the file holds them. */
+     @GetMapping("/claims/{claimId}/timeline")
+     public List<String> timeline(
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 96136fb5..b57cfaa5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -4,7 +4,10 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.HashMap;
+ import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.holiday.HolidayService;
+@@ -96,6 +99,33 @@ public class ClaimService {
+         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+     }
+ 
++    /**
++     * The sheet's duplicate claims: for each person, date and amount with two or more claims (VOID and
++     * DELETED claims left out), one line {@code <name> <date> <amount> x<count>}; people in list order,
++     * then by date, then by amount.
++     */
++    @Transactional(readOnly = true)
++    public List<String> duplicates(String sheetId) {
++        Map<Long, Map<LocalDate, Map<BigDecimal, Integer>>> counts = new HashMap<>();
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (claim.getStatus() == ClaimStatus.VOID || claim.getStatus() == ClaimStatus.DELETED) {
++                continue;
++            }
++            counts.computeIfAbsent(claim.getPersonId(), id -> new TreeMap<>())
++                    .computeIfAbsent(claim.getDate(), date -> new TreeMap<>())
++                    .merge(claim.getAmount().setScale(2, RoundingMode.HALF_UP), 1, Integer::sum);
++        }
++        List<String> lines = new ArrayList<>();
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            counts.getOrDefault(person.getId(), Map.of()).forEach((date, amounts) -> amounts.forEach((amount, count) -> {
++                if (count >= 2) {
++                    lines.add(person.getName() + " " + date + " " + amount.toPlainString() + " x" + count);
++                }
++            }));
++        }
++        return lines;
++    }
++
+     /**
+      * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
+      * while one is set, else the sheet's today. One given a date in a soft-closed period (with no date given, the
