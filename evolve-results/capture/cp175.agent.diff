@@ -1,0 +1,313 @@
+diff --git a/.e2e.out b/.e2e.out
+index 265a2a97..732c6d8f 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,52 +2,70 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › late charge waiver › late charge waiver (12.8s)
+-  ✓  2 [chromium] › acceptance.spec.ts:105:7 › late charge waiver › late charge waiver scenario 1 (35.4s)
+-  ✘  3 [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 (29.3s)
+-  ✓  4 [chromium] › acceptance.spec.ts:951:7 › late charge waiver › late charge waiver scenario 3 (33.1s)
++  ✘  1 [chromium] › acceptance.spec.ts:6:7 › transfer undo › transfer undo (24.1s)
++  ✓  2 [chromium] › acceptance.spec.ts:103:7 › transfer undo › transfer undo scenario 1 (37.8s)
++  ✘  3 [chromium] › acceptance.spec.ts:665:7 › transfer undo › transfer undo scenario 2 (23.3s)
++  ✓  4 [chromium] › acceptance.spec.ts:1111:7 › transfer undo › transfer undo scenario 3 (50.4s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 ────
++  1) [chromium] › acceptance.spec.ts:6:7 › transfer undo › transfer undo ───────────────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkguf5q5xk5[27m-p"[39m
++    Locator: getByTestId('person-row-2').getByTestId('person-origin')
++    Expected string: [32m"__SHEET__"[39m
++    Received string: [31m"smvkh1isi9c1f"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
+-    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
+-
+-
+-      711 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+-      712 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+-    > 713 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      714 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+-      715 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("39.98");
+-      716 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("39.98");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:713:54
+-
+-  1 failed
+-    [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 ─────
+-  3 passed (1.9m)
++    [2m  - waiting for getByTestId('person-row-2').getByTestId('person-origin')[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++    [2m  -   locator resolved to <td data-testid="person-origin">smvkh1isi9c1f</td>[22m
++    [2m  -   unexpected value "smvkh1isi9c1f"[22m
++
++
++      38 |     await ui.refresh(pg_wes);
++      39 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-name")).toHaveText("Ben");
++    > 40 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-origin")).toHaveText("__SHEET__");
++         |                                                                                            ^
++      41 |     await expect(pg_wes.getByTestId("person-row-" + p_ben_2).getByTestId("person-statement-count")).toHaveText("0");
++      42 |     await expect(pg_wes.getByTestId("rollup-claimed-total")).toHaveText("0.00");
++      43 |     await expect(pg_wes.getByTestId("rollup-due-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:40:92
++
++  2) [chromium] › acceptance.spec.ts:665:7 › transfer undo › transfer undo scenario 2 ──────────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
++
++    Expected: [32mfalse[39m
++    Received: [31mtrue[39m
++
++      745 |     expect(await ui.inlineGrade(pg_vic, p_ada, "B")).toBe(true);
++      746 |     expect(await ui.periodAction(pg_vic, "P2", "close")).toBe(true);
++    > 747 |     expect(await ui.editInline(pg_vic, c_ben_0, "4.00")).toBe(false);
++          |                                                          ^
++      748 |     expect(await ui.pasteClaims(pg_vic, "Ben,10.35,2026-02-25,\nBen,25.00,2026-03-20,")).toBeNull();
++      749 |     await ui.refresh(pg_vic);
++      750 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:747:58
++
++  2 failed
++    [chromium] › acceptance.spec.ts:6:7 › transfer undo › transfer undo ────────────────────────────
++    [chromium] › acceptance.spec.ts:665:7 › transfer undo › transfer undo scenario 2 ───────────────
++  2 passed (2.4m)
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 4a761725..8af4966a 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -258,6 +258,14 @@ export class PeopleApi {
+     return firstValueFrom(this.http.post<void>(`${this.url(sheet)}/${id}/transfer`, { toSheetId }));
+   }
+ 
++  /**
++   * Undo the transfer that brought a person to this sheet on its today (a steward only): they go back
++   * to the sheet they came from.
++   */
++  transferUndo(sheet: string, id: number): Promise<void> {
++    return firstValueFrom(this.http.post<void>(`${this.url(sheet)}/${id}/transfer-undo`, {}));
++  }
++
+   /** Merge a person into another on the sheet (a steward only): the person merged into, after it. */
+   merge(sheet: string, id: number, intoId: number): Promise<PersonView> {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/merge`, { intoId }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1b9c1edf..6b6e7d2f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -762,6 +762,14 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 >
+                   Transfer
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-transfer-undo"
++                  [attr.aria-label]="'Undo the transfer that brought ' + p.name + ' here'"
++                  (click)="transferUndo(p)"
++                >
++                  Undo transfer
++                </button>
+                 @if (personError()?.id === p.id) {
+                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                 }
+@@ -1578,6 +1586,31 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Undo the transfer that brought a person to this sheet today (a steward only): they go back to the
++   * sheet they came from and leave the list, and the people and claims show what the store holds after it.
++   */
++  protected async transferUndo(person: PersonView): Promise<void> {
++    this.personError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    try {
++      await this.api.transferUndo(sheet, person.id);
++      const [people, claims] = await Promise.all([this.api.list(sheet), this.claimsApi.list(sheet)]);
++      if (this.session.sheet() !== sheet) return;
++      this.claims.set(claims);
++      this.people.set(people);
++    } catch (e) {
++      this.personError.set({
++        id: person.id,
++        message:
++          e instanceof HttpErrorResponse && e.status === 403
++            ? 'Only a steward may undo a transfer.'
++            : 'The transfer could not be undone: only one that brought the person here today can be, by the transfer rules.',
++      });
++    }
++  }
++
+   /** The last statement's due-total: n/a when it was, empty when none was taken. */
+   protected statedTotalOf(person: PersonView): string {
+     if (person.statementCount === 0) return '';
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 6d008f3d..1c8e5097 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -96,6 +96,10 @@ public class Person {
+     @Column(name = "origin_sheet_id")
+     private String originSheetId;
+ 
++    /** The sheet's today on which the person arrived by transfer; null when they did not arrive so. */
++    @Column(name = "arrived_on")
++    private LocalDate arrivedOn;
++
+     @Version
+     @Column(name = "version", nullable = false)
+     private long version;
+@@ -341,6 +345,15 @@ public class Person {
+         return originSheetId;
+     }
+ 
++    public LocalDate getArrivedOn() {
++        return arrivedOn;
++    }
++
++    /** Whether the person arrived on their sheet by transfer on this day. */
++    public boolean arrivedOn(LocalDate day) {
++        return originSheetId != null && arrivedOn != null && arrivedOn.equals(day);
++    }
++
+     public LocalDate getRetiredFrom() {
+         return retiredFrom;
+     }
+@@ -490,10 +503,12 @@ public class Person {
+ 
+     /**
+      * Move the person to another sheet: they keep their grades, terms, contact, aliases and
+-     * statements, but name no patrons and have no holds. They show the sheet they came from.
++     * statements, but name no patrons and have no holds. They show the sheet they came from, and
++     * keep the other sheet's today they arrived on.
+      */
+-    public void transferTo(String sheetId) {
++    public void transferTo(String sheetId, LocalDate arrivedOn) {
+         this.originSheetId = this.sheetId;
++        this.arrivedOn = arrivedOn;
+         this.sheetId = sheetId;
+         this.patronIds.clear();
+         this.holds.clear();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 9819f24a..8500d1b2 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -364,6 +364,19 @@ public class PersonController {
+         transfers.transfer(sheetId, SignedIn.name(user), personId, form.toSheetId());
+     }
+ 
++    /**
++     * Undo the transfer that brought a person to this sheet on its today; a steward only. They go back
++     * to the sheet they came from.
++     */
++    @PostMapping("/{personId}/transfer-undo")
++    @ResponseStatus(HttpStatus.NO_CONTENT)
++    public void transferUndo(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long personId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        transfers.undo(sheetId, SignedIn.name(user), personId);
++    }
++
+     /**
+      * The ids of the people on the sheet the signed-in user watches; none while the sheet is shown as
+      * of a date, as watches are not kept in the sheet's history.
+diff --git a/src/main/java/net/officefloor/hq/app/person/TransferService.java b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+index 21b4182d..3d88d12d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/TransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+@@ -118,7 +118,7 @@ public class TransferService {
+ 
+         if (into == null) {
+             int last = people.findMaxPositionBySheetId(toSheetId);
+-            person.transferTo(toSheetId);
++            person.transferTo(toSheetId, sheets.today(toSheetId));
+             person.setPosition(last + 1);
+             people.saveAndFlush(person);
+             statements.follow(sheetId, person);
+@@ -173,4 +173,34 @@ public class TransferService {
+         }
+         rollups.audit(toSheetId, user, toBefore);
+     }
++
++    /**
++     * Undo the transfer that brought a person to this sheet: they are transferred back to the sheet they
++     * came from by exactly the transfer's rules and records, and this sheet then records the undo. Refused
++     * unless the user is a steward on this sheet and the person arrived here by transfer on the sheet's today.
++     */
++    @Transactional
++    public void undo(String sheetId, String user, long personId) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        String fromSheetId = person.getOriginSheetId();
++        if (fromSheetId != null) {
++            Stream.of(sheetId, fromSheetId).sorted().forEach(sheets::lock);
++        } else {
++            sheets.lock(sheetId);
++        }
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward undoes a transfer.");
++        }
++        if (!person.arrivedOn(sheets.today(sheetId))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "Only a transfer that brought the person here today can be undone.");
++        }
++        String name = person.getName();
++        Rollups.Rollup before = rollups.take(sheetId);
++        transfer(sheetId, user, personId, fromSheetId);
++        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user + " name=" + name
++                + " to=" + fromSheetId);
++        rollups.audit(sheetId, user, before);
++    }
+ }
+diff --git a/src/main/resources/db/migration/V98__person_arrived_on.sql b/src/main/resources/db/migration/V98__person_arrived_on.sql
+new file mode 100644
+index 00000000..e80161a9
+--- /dev/null
++++ b/src/main/resources/db/migration/V98__person_arrived_on.sql
+@@ -0,0 +1,2 @@
++-- The sheet's today on which a person arrived by transfer; null when they did not arrive by transfer.
++ALTER TABLE person ADD COLUMN arrived_on DATE;
