@@ -27,15 +27,18 @@ public class PlanController {
     /**
      * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
      * the month, the other null), how many claims it has made, its next five dates after the sheet's today, and
-     * whether it is paused, and the changes of its amount, oldest first.
+     * whether it is paused, and the changes of its amount, oldest first, and the descendant sheet its claims
+     * are made on (null: its own).
      */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
+            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes,
+            String sheet) {
 
         static PlanView of(Plan plan, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
                     plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5),
-                    plan.isPaused(), plan.getChanges().stream().map(ChangeView::of).toList());
+                    plan.isPaused(), plan.getChanges().stream().map(ChangeView::of).toList(),
+                    plan.getTargetSheetId());
         }
     }
 
@@ -53,14 +56,16 @@ public class PlanController {
 
     /**
      * A plan as entered on the form: an amount as the claim form takes it, a start, every N days or a day of the
-     * month (one of the two, the other absent or blank), and an end.
+     * month (one of the two, the other absent or blank), an end, and a descendant sheet its claims are made on
+     * (absent or blank: the plan's own).
      */
     public record PlanForm(
             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
             @NotNull LocalDate start,
             @Pattern(regexp = "|\\d{1,5}") String every,
             @Pattern(regexp = "|\\d{1,2}") String day,
-            @NotNull LocalDate end) {
+            @NotNull LocalDate end,
+            @Pattern(regexp = "|[A-Za-z0-9._-]{1,64}") String sheet) {
     }
 
     /** What a generate made: how many claims, the claims in the order made, and the sheet's plans after it. */
@@ -89,7 +94,7 @@ public class PlanController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PlanForm form) {
         Plan added = service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
-                form.start(), number(form.every()), number(form.day()), form.end());
+                form.start(), number(form.every()), number(form.day()), form.end(), form.sheet());
         return PlanView.of(added, service.today(sheetId));
     }
 
@@ -134,7 +139,9 @@ public class PlanController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         PlanService.Generated generated = service.generate(sheetId, SignedIn.name(user));
         LocalDate today = service.today(sheetId);
-        return new GeneratedView(generated.claims().size(), generated.claims().stream().map(ClaimView::of).toList(),
+        // The claims made on a descendant sheet count, but are not this sheet's to show.
+        return new GeneratedView(generated.claims().size(), generated.claims().stream()
+                .filter(claim -> claim.getSheetId().equals(sheetId)).map(ClaimView::of).toList(),
                 generated.plans().stream().map(plan -> PlanView.of(plan, today)).toList());
     }
 }

@@ -13,6 +13,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,16 +32,18 @@ public class PlanService {
     private final PlanRepository plans;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final SheetRepository sheetStore;
     private final ClaimService claims;
     private final RoleService roles;
     private final TransactionTemplate eachClaim;
     private final Audit audit;
 
-    public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets, ClaimService claims,
-            RoleService roles, PlatformTransactionManager transactions, Audit audit) {
+    public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets,
+            SheetRepository sheetStore, ClaimService claims, RoleService roles, PlatformTransactionManager transactions, Audit audit) {
         this.plans = plans;
         this.people = people;
         this.sheets = sheets;
+        this.sheetStore = sheetStore;
         this.claims = claims;
         this.roles = roles;
         this.eachClaim = new TransactionTemplate(transactions);
@@ -65,11 +68,13 @@ public class PlanService {
     /**
      * Add a plan on a person: an amount (not below 0.00), claimed every N days (at least 1) or monthly on a
      * day of the month (1 to 31), exactly one of the two, from a start date to an end date; refused when the
-     * end is before the start.
+     * end is before the start. A plan may name one of the sheet's descendants (blank or null: none): its claims
+     * are then made on that sheet; one that is not a descendant is refused. PLAN_ADDED then ends with
+     * sheet=&lt;that sheet&gt;.
      */
     @Transactional
     public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String target) {
         if (amount.signum() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount cannot be below 0.00.");
         }
@@ -86,13 +91,19 @@ public class PlanService {
         if (end.isBefore(start)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan cannot end before it starts.");
         }
+        String targetSheet = target == null || target.isBlank() ? null : target.trim();
         sheets.lock(sheetId);
+        if (targetSheet != null && !sheetStore.descendants(sheetId).contains(targetSheet)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A plan can only name a sheet below this one: " + targetSheet + " is not.");
+        }
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         BigDecimal money = amount.setScale(2, RoundingMode.UNNECESSARY);
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, day, end));
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, day, end, targetSheet));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " amount=" + money.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+                + " amount=" + money.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end
+                + (targetSheet != null ? " sheet=" + targetSheet : ""));
         return saved;
     }
 
@@ -149,7 +160,8 @@ public class PlanService {
      * and an empty note for each plan date up to its end and the sheet's today that has none yet, dated
      * that day. Each claim is added by the claim form's rules, on its own: a date the form refuses is
      * skipped, and tried again on the next generate. A viewer's generate makes nothing: every claim it
-     * would make is refused.
+     * would make is refused. A plan naming a descendant sheet makes its claims there, by that sheet's rules,
+     * for the person there of the plan's person's name: none while there is no such person.
      */
     public Generated generate(String sheetId, String user) {
         LocalDate today = sheets.today(sheetId);
@@ -182,7 +194,18 @@ public class PlanService {
         if (plan == null || plan.hasMade(date)) {
             return null;
         }
-        Claim claim = claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), date, "", null);
+        Long personId = plan.getPersonId();
+        String claimSheet = sheetId;
+        if (plan.getTargetSheetId() != null) {
+            claimSheet = plan.getTargetSheetId();
+            Person own = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElse(null);
+            Person there = own == null ? null : people.findBySheetIdAndName(claimSheet, own.getName()).orElse(null);
+            if (there == null) {
+                return null;
+            }
+            personId = there.getId();
+        }
+        Claim claim = claims.add(claimSheet, user, personId, plan.getAmount(), date, "", null);
         plan.made(date, claim.getId());
         plans.saveAndFlush(plan);
         return claim;

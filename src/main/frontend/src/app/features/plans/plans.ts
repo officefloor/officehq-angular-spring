@@ -10,7 +10,8 @@ function reasonOf(e: unknown): string | null {
 }
 
 // A person's plans, each with how many claims it has made so far, and the form adding one: an amount,
-// a start date, every N days or a day of the month, and an end date.
+// a start date, every N days or a day of the month, an end date, and optionally a descendant sheet the
+// claims are made on.
 @Component({
   selector: 'app-person-plans',
   template: `
@@ -23,7 +24,9 @@ function reasonOf(e: unknown): string | null {
           } @else {
             every {{ plan.every }} days
           }
-          to {{ plan.end }};
+          to {{ plan.end }}@if (plan.sheet !== null) {
+            on sheet {{ plan.sheet }}
+          };
           made <span data-testid="plan-generated">{{ plan.generated }}</span>;
           next <span data-testid="plan-next-dates">{{ plan.nextDates.join(', ') }}</span>;
           paused <span data-testid="plan-paused">{{ plan.paused ? 'yes' : 'no' }}</span>
@@ -90,6 +93,13 @@ function reasonOf(e: unknown): string | null {
         [value]="end()"
         (input)="end.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-form-sheet-' + personId()">On sheet (optional)</label>
+      <input
+        [id]="'plan-form-sheet-' + personId()"
+        data-testid="plan-form-sheet"
+        [value]="sheet()"
+        (input)="sheet.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
       @if (error(); as message) {
         <p role="alert" data-testid="plan-error">{{ message }}</p>
@@ -111,6 +121,7 @@ export class PersonPlans {
   protected readonly every = signal('');
   protected readonly day = signal('');
   protected readonly end = signal('');
+  protected readonly sheet = signal('');
   protected readonly error = signal<string | null>(null);
   /** The refusal of the last pause or resume, on the plan it was taken on. */
   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
@@ -170,6 +181,7 @@ export class PersonPlans {
       every: this.every().trim(),
       day: this.day().trim(),
       end: this.end(),
+      sheet: this.sheet().trim(),
     };
     if (!/^\d{1,12}(\.\d{1,2})?$/.test(form.amount)) {
       this.error.set('Type an amount of 0.00 or more, with at most two decimals.');
@@ -203,6 +215,7 @@ export class PersonPlans {
       this.every.set('');
       this.day.set('');
       this.end.set('');
+      this.sheet.set('');
     } catch (e) {
       this.error.set(reasonOf(e) ?? 'The plan could not be added.');
     } finally {

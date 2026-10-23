@@ -27,6 +27,8 @@ export interface PlanView {
   paused: boolean;
   /** The changes of the plan's amount, oldest first. */
   changes: PlanChangeView[];
+  /** The descendant sheet the plan's claims are made on, or null for its own sheet. */
+  sheet: string | null;
 }
 
 /** A change of a plan's amount: the sheet's today it was changed on, and the new amount with two decimals. */
@@ -44,6 +46,8 @@ export interface PlanForm {
   /** The day of the month, blank for a plan every N days. */
   day: string;
   end: string;
+  /** A descendant sheet the claims are made on, blank for this sheet. */
+  sheet: string;
 }
 
 /** What a generate made: how many claims, those claims in the order made, and the sheet's plans after it. */
