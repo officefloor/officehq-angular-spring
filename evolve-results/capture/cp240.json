@@ -1,0 +1,76 @@
+{
+  "checkpoint": 240,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp240_shared-due-per-holder",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    217,
+    226,
+    228,
+    229,
+    233
+  ],
+  "replaced_tests": [
+    "cp217_shared-claims.spec.ts::shared claims",
+    "cp226_preview-date.spec.ts::preview date scenario 1",
+    "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 2",
+    "cp229_grades-editable.spec.ts::grades editable scenario 2",
+    "cp233_due-by-override.spec.ts::due by override scenario 1"
+  ],
+  "request": {
+    "spec": "A shared claim's parts are now worked out per holder: each holder's part is the claim's amount\ntimes their share divided by 100, times the rate of the holder's own grade in force on the claim's\ndate, divided by 100, rounded like the claim (0.00 when their grade has no rate); the claim's own\nperson counts the claim's due less those parts. A settled claim keeps its parts as frozen.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA shared claim's parts are now worked out per holder: each holder's part is the claim's amount\ntimes their share divided by 100, times the rate of the holder's own grade in force on the claim's\ndate, divided by 100, rounded like the claim (0.00 when their grade has no rate); the claim's own\nperson counts the claim's due less those parts. A settled claim keeps its parts as frozen.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f1729368ff99a0083014948e6fe251020aaba808",
+  "reset_sha": "",
+  "preagent_sha": "6f1344740ba4ad220eef1dd0bec742aac5304774",
+  "prev_sha": "6f1344740ba4ad220eef1dd0bec742aac5304774",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3998005999999998,
+    "input_tokens": 66,
+    "output_tokens": 18807,
+    "cache_read_tokens": 1987183,
+    "cache_creation_tokens": 78245,
+    "num_turns": 34,
+    "duration_ms": 519067,
+    "duration_api_ms": 211657,
+    "model": "claude-opus-5-5",
+    "session_id": "f45dc25f-4bee-4f4a-9c34-56c57fb974ff",
+    "stop_reason": "success",
+    "result_text": "I've made the change, but `bin/e2e` still fails one of its four tests (scenario 2). That test has one step that can't pass whatever the app does, and one step that disagrees with how the dashboard is meant to work. Neither is about shares.\n\n**Results:** the main test and scenarios 1 and 3 pass in `bin/e2e`. To check the rest of scenario 2, I ran a temporary copy of the spec with the four lines below relaxed, then deleted it. The rest of scenario 2 passed, including its share figures and audit checks.\n\n**What changed:**\n- **Each holder's part** is now the claim's amount \u00d7 their share / 100 \u00d7 the rate of their own grade on the claim's date / 100, rounded the way the claim rounds. If their grade has no rate, the part is 0.00 and their due-total still shows `n/a`.\n- **The claim's own person** counts the claim's due less all the holders' parts.\n- **Settled claims** still use the old rule: the settled due \u00d7 share / 100. The test expects this; if each holder's part were locked in at the moment of settling, Ben's figures in the main test would come out wrong.\n- **Where:** the calculation lives in `Dues.part` on the server and is used by the totals (`Rollups`) and by statements (`StatementService`). The screen does the same calculation in `people.ts`.\n\n**The two scenario 2 problems:**\n1. **Line 699 can't pass.** It expects `[\"Cam 0.00 \", \"Ben 0.00 \"]`, with a trailing space. The helper trims each line first (`e2e/support/ui.ts:1399`), so it can never return a string ending in a space. The app shows `\"Cam 0.00\"`, which is presumably what was meant. This needs a fix to the test.\n2. **Lines 886\u2013888 expect blank dashboard counts.** They read them while vic's as-of date (2026-04-02) is earlier than the day vic was made steward. The dashboard is documented to always show the sheet as it stands now, and scenario 3 expects `0` in the same situation. I left the dashboard alone rather than change it beyond this request; say if you want the role checked as of that date instead.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3998005999999998,
+        "num_turns": 34,
+        "duration_ms": 519067,
+        "duration_api_ms": 211657,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp240.agent.jsonl",
+  "agent_diff_file": "cp240.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
