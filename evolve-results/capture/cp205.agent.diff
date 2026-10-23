@@ -1,0 +1,444 @@
+diff --git a/.e2e.out b/.e2e.out
+index 9a594aa6..f0ae484a 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,93 +2,66 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan pause › plan pause (9.6s)
+-  ✓  2 [chromium] › acceptance.spec.ts:56:7 › plan pause › plan pause scenario 1 (48.9s)
+-  ✘  3 [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 (23.4s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 (26.5s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan history › plan history (13.3s)
++  ✘  2 [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 (39.6s)
++  ✘  3 [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 (29.0s)
++  ✓  4 [chromium] › acceptance.spec.ts:1288:7 › plan history › plan history scenario 3 (24.8s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 ────────────────────
++  1) [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 ─────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkqxjo9ctt5[27m-p"[39m
++    Locator: getByTestId('note-line')
++    [32m- Expected  - 1[39m
++    [31m+ Received  + 3[39m
++
++    [32m- Array [][39m
++    [31m+ Array [[39m
++    [31m+   "2026-03-10 wes: hi",[39m
++    [31m+ ][39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqxjo9ctt5-p</strong>[22m
+-    [2m  -   unexpected value "smvkqxjo9ctt5-p"[22m
+-
+-
+-      615 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      616 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+-    > 617 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      618 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+-      619 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      620 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:617:54
+-
+-  2) [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 ───────────────────
++    [2m  - waiting for getByTestId('note-line')[22m
++    [2m  -   locator resolved to 1 element[22m
++    [2m  -   locator resolved to 1 element[22m
++    [2m  -   locator resolved to 1 element[22m
++    [2m  -   locator resolved to 1 element[22m
++    [2m  -   locator resolved to 1 element[22m
++    [2m  -   locator resolved to 1 element[22m
++    [2m  -   locator resolved to 1 element[22m
++    [2m  -   locator resolved to 1 element[22m
++    [2m  -   locator resolved to 1 element[22m
+ 
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkqy2x5ffv7[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkqy2x5ffv7-p</strong>[22m
+-    [2m  -   unexpected value "smvkqy2x5ffv7-p"[22m
+-
+-
+-      1244 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+-      1245 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+-    > 1246 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1247 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+-      1248 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1249 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1246:54
++      354 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
++      355 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
++    > 356 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
++          |                                                   ^
++      357 |     await ui.expectAudit(sheet, [
++      358 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
++      359 |       `SETTING_CHANGED sheet=${sheet} by=uma key=clerk-limit value=3.00`,
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:356:51
++
++  2) [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 ────────────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
++
++    Received: [31m"16"[39m
++
++      1027 |     expect(await ui.statementAsOf(pg_uma, p_ada, "2026-03-05")).toBe(false);
++      1028 |     expect(await ui.quickAdd(pg_uma, {"name": "Dot", "amount": "10.35"})).toBeNull();
++    > 1029 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "99.95", "date": "2026-02-25", "note": "n", "ref": "R-1"})).toBeNull();
++           |                                                                                                                    ^
++      1030 |     await ui.refresh(pg_uma);
++      1031 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
++      1032 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1029:116
+ 
+   2 failed
+-    [chromium] › acceptance.spec.ts:488:7 › plan pause › plan pause scenario 2 ─────────────────────
+-    [chromium] › acceptance.spec.ts:1108:7 › plan pause › plan pause scenario 3 ────────────────────
++    [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 ──────────────────
++    [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 ─────────────────
+   2 passed (1.9m)
++ 1816197
+\ No newline at end of file
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 51a91681..0924f80f 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -25,6 +25,14 @@ export interface PlanView {
+   nextDates: string[];
+   /** Whether the plan is paused: its dates from the day paused until it is resumed are skipped. */
+   paused: boolean;
++  /** The changes of the plan's amount, oldest first. */
++  changes: PlanChangeView[];
++}
++
++/** A change of a plan's amount: the sheet's today it was changed on, and the new amount with two decimals. */
++export interface PlanChangeView {
++  on: string;
++  amount: string;
+ }
+ 
+ /** A plan as typed on the form. */
+@@ -70,6 +78,11 @@ export class PlansApi {
+     return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/plans/${planId}/resume`, null));
+   }
+ 
++  /** Change a plan's amount on the sheet's today; refused (400) for a bad amount. */
++  amount(sheet: string, planId: number, amount: string): Promise<PlanView> {
++    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/plans/${planId}/amount`, { amount }));
++  }
++
+   /** Make a DRAFT claim for every plan date up to the sheet's today that has none yet. */
+   generate(sheet: string): Promise<GeneratedView> {
+     return firstValueFrom(this.http.post<GeneratedView>(`${this.url(sheet)}/plans/generate`, null));
+@@ -119,6 +132,12 @@ export class Plans {
+     if (this.session.sheet() === sheet) this.list.update((all) => all.map((p) => (p.id === changed.id ? changed : p)));
+   }
+ 
++  /** Change a plan's amount on the active sheet: shown as it is after it. */
++  async amount(sheet: string, planId: number, amount: string): Promise<void> {
++    const changed = await this.api.amount(sheet, planId, amount);
++    if (this.session.sheet() === sheet) this.list.update((all) => all.map((p) => (p.id === changed.id ? changed : p)));
++  }
++
+   /** Generate the plans' claims on the active sheet: what was made, the plans shown as they are after it. */
+   async generate(sheet: string): Promise<GeneratedView> {
+     const generated = await this.api.generate(sheet);
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 15767a39..0dbc83de 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -29,6 +29,20 @@ function reasonOf(e: unknown): string | null {
+           paused <span data-testid="plan-paused">{{ plan.paused ? 'yes' : 'no' }}</span>
+           <button type="button" data-testid="plan-pause" (click)="pause(plan.id, true)">Pause plan</button>
+           <button type="button" data-testid="plan-resume" (click)="pause(plan.id, false)">Resume plan</button>
++          <label [for]="'plan-amount-' + plan.id">New amount</label>
++          <input
++            [id]="'plan-amount-' + plan.id"
++            data-testid="plan-amount"
++            inputmode="decimal"
++            [value]="newAmounts()[plan.id] ?? ''"
++            (input)="typeAmount(plan.id, value($event))"
++          />
++          <button type="button" data-testid="plan-amount-save" (click)="changeAmount(plan.id)">Save amount</button>
++          <ol aria-label="Amount changes">
++            @for (change of plan.changes; track $index) {
++              <li data-testid="plan-change-line">{{ change.on }} amount={{ change.amount }}</li>
++            }
++          </ol>
+           @if (rowError()?.planId === plan.id) {
+             <p role="alert" data-testid="plan-error">{{ rowError()?.message }}</p>
+           }
+@@ -100,6 +114,8 @@ export class PersonPlans {
+   protected readonly error = signal<string | null>(null);
+   /** The refusal of the last pause or resume, on the plan it was taken on. */
+   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
++  /** The new amount typed on each plan, by plan id. */
++  protected readonly newAmounts = signal<Record<number, string>>({});
+   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
+   private busy = false;
+ 
+@@ -119,6 +135,29 @@ export class PersonPlans {
+     }
+   }
+ 
++  protected typeAmount(planId: number, amount: string): void {
++    this.newAmounts.update((all) => ({ ...all, [planId]: amount }));
++    if (this.rowError()?.planId === planId) this.rowError.set(null);
++  }
++
++  /** Change a plan's amount to the one typed on its row; a refusal is shown on its row. */
++  protected async changeAmount(planId: number): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const amount = (this.newAmounts()[planId] ?? '').trim();
++    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) {
++      this.rowError.set({ planId, message: 'Type an amount of 0.00 or more, with at most two decimals.' });
++      return;
++    }
++    try {
++      await this.store.amount(sheet, planId, amount);
++      this.newAmounts.update((all) => ({ ...all, [planId]: '' }));
++    } catch (e) {
++      this.rowError.set({ planId, message: reasonOf(e) ?? 'The amount could not be changed.' });
++    }
++  }
++
+   protected async save(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.busy) return;
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 5945d031..04d793b5 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.MapKeyColumn;
++import jakarta.persistence.OrderColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+@@ -66,6 +67,12 @@ public class Plan {
+     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+     private List<PlanPause> pauses = new ArrayList<>();
+ 
++    /** The changes of the plan's amount, oldest first. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "plan_change", joinColumns = @JoinColumn(name = "plan_id"))
++    @OrderColumn(name = "seq")
++    private List<PlanChange> changes = new ArrayList<>();
++
+     protected Plan() {
+     }
+ 
+@@ -130,6 +137,17 @@ public class Plan {
+         pauses.get(pauses.size() - 1).resume(on);
+     }
+ 
++    /** Change the plan's amount on the day: the claims made from then on take it, those made keep theirs. */
++    public void changeAmount(LocalDate on, BigDecimal amount) {
++        this.amount = amount;
++        changes.add(new PlanChange(on, amount));
++    }
++
++    /** The changes of the plan's amount, oldest first. */
++    public List<PlanChange> getChanges() {
++        return List.copyOf(changes);
++    }
++
+     /** Whether the plan has made a claim for the date. */
+     public boolean hasMade(LocalDate date) {
+         return made.containsKey(date);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanChange.java b/src/main/java/net/officefloor/hq/app/plan/PlanChange.java
+new file mode 100644
+index 00000000..b0d5ea4c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanChange.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A change of a plan's amount: the day it was changed on, and the new amount. */
++@Embeddable
++public class PlanChange {
++
++    @Column(name = "changed_on", nullable = false)
++    private LocalDate changedOn;
++
++    @Column(name = "amount", nullable = false)
++    private BigDecimal amount;
++
++    protected PlanChange() {
++    }
++
++    PlanChange(LocalDate changedOn, BigDecimal amount) {
++        this.changedOn = changedOn;
++        this.amount = amount;
++    }
++
++    public LocalDate getChangedOn() {
++        return changedOn;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index e3c472a1..ff91de91 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -27,18 +27,30 @@ public class PlanController {
+     /**
+      * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
+      * the month, the other null), how many claims it has made, its next five dates after the sheet's today, and
+-     * whether it is paused.
++     * whether it is paused, and the changes of its amount, oldest first.
+      */
+     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
++            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
+ 
+         static PlanView of(Plan plan, LocalDate today) {
+             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
+                     plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5),
+-                    plan.isPaused());
++                    plan.isPaused(), plan.getChanges().stream().map(ChangeView::of).toList());
+         }
+     }
+ 
++    /** A change of a plan's amount: the day it was changed on, and the new amount with two decimals. */
++    public record ChangeView(LocalDate on, String amount) {
++
++        static ChangeView of(PlanChange change) {
++            return new ChangeView(change.getChangedOn(), change.getAmount().toPlainString());
++        }
++    }
++
++    /** A plan's new amount as typed, as the claim form takes it. */
++    public record AmountForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
++    }
++
+     /**
+      * A plan as entered on the form: an amount as the claim form takes it, a start, every N days or a day of the
+      * month (one of the two, the other absent or blank), and an end.
+@@ -99,6 +111,17 @@ public class PlanController {
+         return PlanView.of(service.pause(sheetId, SignedIn.name(user), planId, false), service.today(sheetId));
+     }
+ 
++    /** Change a plan's amount on the sheet's today; refused for a bad amount. */
++    @PostMapping("/plans/{planId}/amount")
++    public PlanView amount(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long planId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid AmountForm form) {
++        return PlanView.of(service.changeAmount(sheetId, SignedIn.name(user), planId, new BigDecimal(form.amount())),
++                service.today(sheetId));
++    }
++
+     /** A whole number typed on the form, or null when left out. */
+     private static Integer number(String typed) {
+         return typed == null || typed.isEmpty() ? null : Integer.valueOf(typed);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 293f7ea4..406248e3 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -122,6 +122,28 @@ public class PlanService {
+         return saved;
+     }
+ 
++    /**
++     * Change a plan's amount (not below 0.00) on the sheet's today: the claims generated from then on take it,
++     * those already made keep theirs.
++     */
++    @Transactional
++    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
++        if (amount.signum() < 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount cannot be below 0.00.");
++        }
++        Sheet sheet = sheets.lock(sheetId);
++        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
++        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        BigDecimal money = amount.setScale(2, RoundingMode.UNNECESSARY);
++        plan.changeAmount(sheet.getToday(), money);
++        Plan saved = plans.saveAndFlush(plan);
++        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " start=" + plan.getStart() + " amount=" + money.toPlainString());
++        return saved;
++    }
++
+     /**
+      * For every plan on the sheet, in the order they were added, make a DRAFT claim with the plan's amount
+      * and an empty note for each plan date up to its end and the sheet's today that has none yet, dated
+diff --git a/src/main/resources/db/migration/V109__plan_change.sql b/src/main/resources/db/migration/V109__plan_change.sql
+new file mode 100644
+index 00000000..923ac135
+--- /dev/null
++++ b/src/main/resources/db/migration/V109__plan_change.sql
+@@ -0,0 +1,9 @@
++-- A plan's amount may be changed, on the sheet's today. The plan's amount is the latest one, used for the
++-- claims generated from then on; claims already made keep theirs. Each change is kept, oldest first by seq.
++CREATE TABLE plan_change (
++    plan_id    BIGINT         NOT NULL REFERENCES plan (id),
++    seq        INT            NOT NULL,
++    changed_on DATE           NOT NULL,
++    amount     DECIMAL(14, 2) NOT NULL,
++    PRIMARY KEY (plan_id, seq)
++);

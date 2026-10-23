@@ -1,0 +1,64 @@
+{
+  "checkpoint": 205,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp205_plan-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e2ad8c4dde99327f412f6503c2342662b849664b",
+  "reset_sha": "",
+  "preagent_sha": "b14a3824b4135c5da7b3f6ff7f42901380362ded",
+  "prev_sha": "b14a3824b4135c5da7b3f6ff7f42901380362ded",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.176158,
+    "input_tokens": 54,
+    "output_tokens": 14466,
+    "cache_read_tokens": 1399390,
+    "cache_creation_tokens": 75843,
+    "num_turns": 27,
+    "duration_ms": 339347,
+    "duration_api_ms": 149046,
+    "model": "claude-opus-5-5",
+    "session_id": "34882e5b-6132-4378-a2f3-4c4ca431b4aa",
+    "stop_reason": "success",
+    "result_text": "I added plan amount changes. The main `plan history` test and `plan history scenario 3` pass. `plan history scenario 1` and `plan history scenario 2` still fail, and the failing steps don't involve plans.\n\n**What changed**\n- **Stored data:** a new migration, `V109__plan_change.sql`, adds a `plan_change` table. Each change records the plan, the day it was made (the sheet's today) and the new amount, kept in order.\n- **Server:**\n  - `Plan` now keeps its list of changes. Changing the amount updates the plan's current amount and adds a change entry. Claims made after that use the new amount, and claims already made keep theirs.\n  - `PlanService.changeAmount` refuses an amount below 0.00. It writes `PLAN_CHANGED sheet=\u2026 by=\u2026 name=<person> start=<plan start> amount=<new amount>` to the audit file only when the change is saved.\n  - A new endpoint, `POST /api/sheets/{id}/plans/{planId}/amount`, refuses a badly formed amount (like `1.005`) with the same rule the plan form uses. Changes from viewers and from the as-of view are already blocked by the existing guards.\n  - `PlanView` now includes the plan's `changes`.\n- **Front end:** each plan row has an amount entry (`plan-amount`), a save button (`plan-amount-save`) and its list of changes, oldest first (`plan-change-line`, shown as `<date> amount=<amount>`). A bad amount shows `plan-error` on that row. The error clears when you type in the entry or save again.\n\n**The two failing scenarios**\n- **Scenario 1** (`acceptance.spec.ts:356`): its plan step at line 199 passes. It fails later because a note dated 2026-03-10 is still listed while the screen is set to \"as of 2026-03-05\". The notes list on the server doesn't take the as-of date into account at all.\n- **Scenario 2** (`acceptance.spec.ts:1029`): it never changes a plan amount. It expects adding Ada's claim of 99.95 dated 2026-02-25 to be refused, but the app accepts it. A run from before my change, against a different spec, logged the same claim (99.95 dated 2026-02-25) being accepted and failed on one audit line too many, so this looks like an existing gap. I couldn't tell which rule should refuse it: Ada's hold, the `entry-date` setting, or something else.\n\nI didn't fix either one because both are in other features, outside this one change request, and the claim rule would be a guess. If you want those scenarios green, the notes as-of filter is a small, clear fix. For the claim, I'd need to know which rule is meant to refuse it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.176158,
+        "num_turns": 27,
+        "duration_ms": 339347,
+        "duration_api_ms": 149046,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp205.agent.jsonl",
+  "agent_diff_file": "cp205.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
