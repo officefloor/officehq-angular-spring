@@ -19,6 +19,7 @@ import { QuickAdd } from '../quick-add/quick-add';
 import { Rates } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
+import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
 
 /** The statuses the summary counts claims by, in the order it lists them. */
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
@@ -85,7 +86,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, QuickAdd, Rates, Summary],
+  imports: [Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, QuickAdd, Rates, Summary, ClassicSummary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -105,6 +106,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       (reopened)="periodChanged($event)"
     />
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+    <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="save($event)" [attr.aria-label]="editing() === null ? 'Add a person' : 'Edit a person'">
@@ -795,6 +797,31 @@ export class People {
       };
     });
   });
+  /**
+   * Per period, the classic way: while open, the due figures, as shown now, of the claims due by in it that
+   * count in the live totals by their status now (see countsLive); once closed or soft-closed, the figure
+   * fixed then.
+   */
+  protected readonly classicPeriodSummary = computed<ClassicPeriodSummary[]>(() => {
+    const totals = new Map<number, number>(
+      this.periods().map((period) => [
+        period.id,
+        fixed(period) ? Object.values(period.personTotals).reduce((sum, t) => sum + cents(t), 0) : 0,
+      ]),
+    );
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    for (const c of this.claims()) {
+      const period = periodOn(this.periods(), c.dueBy);
+      const person = byId.get(c.personId);
+      if (!period || fixed(period) || !person || !countsLive(c, person, this.today())) continue;
+      totals.set(period.id, totals.get(period.id)! + (this.dueCents(c, person) ?? 0));
+    }
+    return this.periods().map((p) => ({ name: p.name, dueTotal: money(totals.get(p.id) ?? 0) }));
+  });
+  /** Everyone's due-total added up with no trimming, skipping those shown as n/a. */
+  protected readonly classicDueTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
+  );
   /** Per status: how many of the sheet's claims have it. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
     SUMMARY_STATUSES.map((status) => ({
