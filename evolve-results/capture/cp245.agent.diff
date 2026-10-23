@@ -1,0 +1,386 @@
+diff --git a/.e2e.out b/.e2e.out
+index 34e5880e..b7b206a6 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,112 +2,69 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › person timeline › person timeline (6.7s)
+-  ✘  2 [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 (25.1s)
+-  ✘  3 [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 (31.3s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 (31.7s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › rate withdraw › rate withdraw (15.0s)
++  ✓  2 [chromium] › acceptance.spec.ts:98:7 › rate withdraw › rate withdraw scenario 1 (31.1s)
++  ✘  3 [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 (20.7s)
++  ✘  4 [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 (26.1s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 ───────────
++  1) [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ──────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvl3mrh31as5[27m-p"[39m
++    Locator: getByTestId('claim-row-6').getByTestId('claim-status')
++    Expected string: [32m"DRAFT"[39m
++    Received string: [31m"OPEN"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
+-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
+-
+-
+-      178 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+-      179 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+-    > 180 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      181 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+-      182 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("2.00");
+-      183 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:180:54
+-
+-  2) [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 ──────────
+-
+-    Error: save dated setting: neither a result nor an error appeared within 8000ms
+-
+-       at ../support/ui.ts:136
+-
+-      134 |   if (await done()) return true;
+-      135 |   if (await error.isVisible().catch(() => false)) return false;
+-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+-          |         ^
+-      137 | }
+-      138 |
+-      139 | async function sleep(ms: number): Promise<void> {
+-
+-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
+-        at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1149:14)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:624:12
+-
+-  3) [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 ─────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('dash-pending-count')
+-    Expected string: [32m""[39m
+-    Received string: [31m"0"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('dash-pending-count')[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
+-    [2m  -   unexpected value "0"[22m
+-
+-
+-      1566 |     await expect(pg_wes.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
+-      1567 |     await expect(pg_wes.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
+-    > 1568 |     await expect(pg_wes.getByTestId("dash-pending-count")).toHaveText("");
++    [2m  - waiting for getByTestId('claim-row-6').getByTestId('claim-status')[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
++    [2m  -   unexpected value "OPEN"[22m
++
++
++      669 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_3).getByTestId("claim-stated")).toHaveText("no");
++      670 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-due")).toHaveText("1.00");
++    > 671 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-status")).toHaveText("DRAFT");
++          |                                                                                          ^
++      672 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-stated")).toHaveText("no");
++      673 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_1).getByTestId("claim-due")).toHaveText("1.00");
++      674 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_1).getByTestId("claim-status")).toHaveText("DRAFT");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:671:90
++
++  2) [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ─────────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
++
++    Received: [31m"14"[39m
++
++      1300 |     await expect(pg_vic.getByTestId("watched-due-total")).toHaveText("0.00");
++      1301 |     expect(await ui.setRate(pg_vic, {"grade": "C", "pct": "7.50"})).toBe(true);
++    > 1302 |     expect(await ui.split(pg_vic, p_ben, c_ben_0, "0.01")).toBeNull();
+            |                                                            ^
+-      1569 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
+-      1570 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
+-      1571 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
++      1303 |     expect(await ui.importOpenings(pg_vic, "Cam,P1,1.00")).toBe(1);
++      1304 |     expect(await ui.claimAction(pg_vic, c_ben_1, "open")).toBe(false);
++      1305 |     await ui.setAsOf(pg_vic, "2026-03-01");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1568:60
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1302:60
+ 
+-  3 failed
+-    [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 ────────────
+-    [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 ───────────
+-    [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 ──────────
+-  1 passed (1.7m)
++  2 failed
++    [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ───────────────
++    [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ──────────────
++  2 passed (1.7m)
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 3169d6ea..48360db0 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -201,6 +201,16 @@ export class RatesApi {
+     return firstValueFrom(this.http.put<RateView>(`${this.url(sheet)}/${grade}`, form));
+   }
+ 
++  /**
++   * Withdraw the newest version of a grade's rate from a date (null: from the start); the version
++   * before it applies again, or the rate is gone. Answers the sheet's rates after.
++   */
++  withdraw(sheet: string, grade: Grade, from: string | null): Promise<RateView[]> {
++    return firstValueFrom(
++      this.http.delete<RateView[]>(`${this.url(sheet)}/${grade}`, { params: from === null ? {} : { from } }),
++    );
++  }
++
+   /** Set a rate per line of grade,rate,from,to, in order; all or none. */
+   importRates(sheet: string, text: string): Promise<RateImportView> {
+     return firstValueFrom(this.http.post<RateImportView>(`${this.url(sheet)}/import`, { text }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a7162784..0adc65a3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -123,7 +123,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
+       [settledTotal]="settledTotal()" [openTotal]="openTotal()" [cutTotal]="cutTotal()" />
+     <app-dashboard [statuses]="statusSummary()" [overdueTotal]="overdueTotal()" />
+-    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
++    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" (withdrawn)="rates.set($event)" />
+     <app-periods
+       [periods]="periods()"
+       [dueTotals]="periodDueTotals()"
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 776b4911..d71bccdd 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -153,6 +153,7 @@ import { Session } from '../../core/session';
+             <th scope="col">To</th>
+             <th scope="col">Rate (%)</th>
+             <th scope="col">Versions</th>
++            <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -163,6 +164,16 @@ import { Session } from '../../core/session';
+               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
+               <td data-testid="rate-pct">{{ r.pct | figure }}</td>
+               <td data-testid="rate-version">{{ r.versions ?? 1 }}</td>
++              <td>
++                <button
++                  type="button"
++                  data-testid="rate-withdraw"
++                  [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' from ' + (r.from ?? 'the start')"
++                  (click)="withdraw(r)"
++                >
++                  Withdraw
++                </button>
++              </td>
+             </tr>
+           }
+         </tbody>
+@@ -184,6 +195,8 @@ export class Rates {
+   readonly saved = output<RateView>();
+   /** The sheet's rates after an import. */
+   readonly imported = output<RateView[]>();
++  /** The sheet's rates after a rate's newest version is withdrawn. */
++  readonly withdrawn = output<RateView[]>();
+ 
+   protected readonly grades = inject(GradesStore).codes;
+   protected readonly noRate = NO_RATE;
+@@ -352,4 +365,22 @@ export class Rates {
+       this.busy = false;
+     }
+   }
++
++  /** Withdraw the newest version of a rate; refused for anyone but a steward. */
++  protected async withdraw(rate: RateView): Promise<void> {
++    if (this.busy) return;
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.busy = true;
++    try {
++      const rates = await this.api.withdraw(sheet, rate.grade, rate.from);
++      if (this.session.sheet() !== sheet) return;
++      this.withdrawn.emit(rates);
++    } catch {
++      this.error.set(`The rate for grade ${rate.grade} from ${rate.from ?? 'the start'} could not be withdrawn.`);
++    } finally {
++      this.busy = false;
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index a348b8dd..85823bcd 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -126,6 +126,22 @@ public class Rate {
+         return replaced;
+     }
+ 
++    /**
++     * Withdraw the newest version: the newest older version, when there is one, is held again as the
++     * newest and returned (to be dropped from the older versions kept); empty when there is none.
++     */
++    public Optional<RateVersion> withdraw() {
++        if (older.isEmpty()) {
++            return Optional.empty();
++        }
++        RateVersion restored = older.remove(0);
++        this.pct = restored.getPct();
++        this.toDate = restored.getToDate();
++        this.forwardAfter = restored.getForwardAfter();
++        this.version = restored.getVersion();
++        return Optional.of(restored);
++    }
++
+     /** Where the newest version was saved in the order claims are added when forward-only; else null. */
+     public Long getForwardAfter() {
+         return forwardAfter;
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 19f4dcb0..e4419de7 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -13,6 +13,8 @@ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.SignedIn;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -119,6 +121,19 @@ public class RateController {
+                 form.to(), new BigDecimal(form.pct())));
+     }
+ 
++    /**
++     * Withdraw the newest version of a grade's rate from a date (none: from the beginning of time); the
++     * version before it applies again, or with none the rate is gone. Answers the sheet's rates after.
++     */
++    @DeleteMapping("/{grade}")
++    public List<RateView> withdraw(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @Pattern(regexp = GradeService.CODE) String grade,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
++        return service.withdraw(sheetId, SignedIn.name(user), grade, from).stream().map(RateView::of).toList();
++    }
++
+     /**
+      * Set a rate per imported line, in order, each as the rate form would; nothing is set when any line
+      * is refused.
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index dc88e12e..ed1d26f3 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -15,6 +15,8 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollups;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+@@ -36,10 +38,12 @@ public class RateService {
+     private final RateVersionRepository versions;
+ 
+     private final GradeService grades;
++    private final RoleService roles;
+ 
+     public RateService(RateRepository rates, SheetService sheets, Rollups rollups, Audit audit, PersonRepository people,
+-            ClaimRepository claims, Dues dues, RateVersionRepository versions, GradeService grades) {
++            ClaimRepository claims, Dues dues, RateVersionRepository versions, GradeService grades, RoleService roles) {
+         this.grades = grades;
++        this.roles = roles;
+         this.rates = rates;
+         this.versions = versions;
+         this.sheets = sheets;
+@@ -138,4 +142,30 @@ public class RateService {
+         rollups.audit(sheetId, user, before);
+         return saved;
+     }
++
++    /**
++     * Withdraw the newest version of a grade's rate from a date (null: from the beginning of time): the
++     * version before it, when there is one, applies again; with none the rate is gone. Refused for
++     * anyone but a steward, and when the grade has no rate from that date.
++     */
++    @Transactional
++    public synchronized List<Rate> withdraw(String sheetId, String user, String grade, LocalDate from) {
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may withdraw a rate.");
++        }
++        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "The grade has no rate from that date."));
++        Rollups.Rollup before = rollups.take(sheetId);
++        rate.withdraw().ifPresentOrElse(restored -> {
++            versions.delete(restored);
++            rates.saveAndFlush(rate);
++        }, () -> {
++            rates.delete(rate);
++            rates.flush();
++        });
++        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user + " grade=" + grade
++                + (from != null ? " from=" + from : ""));
++        rollups.audit(sheetId, user, before);
++        return list(sheetId);
++    }
+ }
