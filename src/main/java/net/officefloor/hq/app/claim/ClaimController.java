@@ -155,6 +155,10 @@ public class ClaimController {
     public record RedateForm(@NotNull LocalDate date) {
     }
 
+    /** The due-by a steward sets a claim's to directly. */
+    public record DueByForm(@NotNull LocalDate dueBy) {
+    }
+
     /** The user a REVIEW claim is assigned to for review; blank is refused by the service. */
     public record AssignReviewForm(@NotNull @Size(max = 200) String user) {
     }
@@ -579,5 +583,15 @@ public class ClaimController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid RedateForm form) {
         return ClaimView.of(service.redate(sheetId, SignedIn.name(user), claimId, form.date()));
+    }
+
+    /** Set a DRAFT, OPEN or PENDING claim's due-by directly; only a steward. */
+    @PostMapping("/claims/{claimId}/due-by")
+    public ClaimView setDueBy(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid DueByForm form) {
+        return ClaimView.of(service.setDueBy(sheetId, SignedIn.name(user), claimId, form.dueBy()));
     }
 }

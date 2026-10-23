@@ -43,7 +43,7 @@ public class HolidayService {
 
     /**
      * Add a holiday to the sheet; refused when the date is already on its list. Every claim on the sheet
-     * that is not SETTLED or VOID and is due by the holiday or later has its due-by worked out again from
+     * that is not SETTLED or VOID, whose due-by was not set directly, and is due by the holiday or later has its due-by worked out again from
      * its date, with the terms it was fixed with, against the holidays now; the figures that moves are audited.
      */
     @Transactional
@@ -58,7 +58,8 @@ public class HolidayService {
         Set<LocalDate> days = days(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             ClaimStatus status = claim.getStatus();
-            if (status != ClaimStatus.SETTLED && status != ClaimStatus.VOID && !claim.getDueBy().isBefore(date)) {
+            if (status != ClaimStatus.SETTLED && status != ClaimStatus.VOID && !claim.isDueBySet()
+                    && !claim.getDueBy().isBefore(date)) {
                 claim.workOutDueBy(days);
             }
         }

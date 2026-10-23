@@ -2,30 +2,53 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › period export › period export (12.0s)
-  ✓  2 [chromium] › acceptance.spec.ts:25:7 › period export › period export scenario 1 (40.3s)
-  ✘  3 [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 (15.3s)
-  ✓  4 [chromium] › acceptance.spec.ts:1404:7 › period export › period export scenario 3 (40.6s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › due by override › due by override (16.1s)
+  ✓  2 [chromium] › acceptance.spec.ts:94:7 › due by override › due by override scenario 1 (1.1m)
+  ✘  3 [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 (22.1s)
+  ✓  4 [chromium] › acceptance.spec.ts:1148:7 › due by override › due by override scenario 3 (36.2s)
 
 
-  1) [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 ──────────────
+  1) [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 ──────────
 
-    Error: the screen refused this action (its error element appeared)
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-       at ../support/ui.ts:25
+    Locator: getByTestId('person-row-5').getByTestId('person-due-total')
+    Expected string: [32m"[7m3[27m.00"[39m
+    Received string: [31m"[7m2[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-5').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">2.00</td>[22m
+    [2m  -   unexpected value "2.00"[22m
 
-      23 |  *  lands on the arranging line rather than on a later assertion. */
-      24 | export function must(id: string | null): string {
-    > 25 |   if (id === null) throw new Error('the screen refused this action (its error element appeared)');
-         |                          ^
-      26 |   return id;
-      27 | }
-      28 |
 
-        at Object.must (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:25:26)
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:839:24
+      490 |     await ui.refresh(pg_vic);
+      491 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.04");
+    > 492 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("3.00");
+          |                                                                                             ^
+      493 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-due")).toHaveText("1.00");
+      494 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-status")).toHaveText("OPEN");
+      495 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_2).getByTestId("claim-stated")).toHaveText("no");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:492:93
 
   1 failed
-    [chromium] › acceptance.spec.ts:802:7 › period export › period export scenario 2 ───────────────
-  3 passed (1.9m)
- 2117931
+    [chromium] › acceptance.spec.ts:414:7 › due by override › due by override scenario 2 ───────────
+  3 passed (2.5m)
+ 2133534

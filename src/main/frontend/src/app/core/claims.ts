@@ -534,6 +534,14 @@ export class ClaimsApi {
   }
 
   /**
+   * Set a DRAFT, OPEN or PENDING claim's due-by directly; refused (403) when the user is not a steward,
+   * and (409) when the claim is any other status or either due-by is inside a closed period.
+   */
+  setDueBy(sheet: string, id: number, dueBy: string): Promise<ClaimView> {
+    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/due-by`, { dueBy }));
+  }
+
+  /**
    * Move a DRAFT, OPEN or PENDING claim to another person on the sheet; refused (403) when the user is
    * not a steward, and (409) when the claim is SETTLED or VOID or cannot go to that person.
    */

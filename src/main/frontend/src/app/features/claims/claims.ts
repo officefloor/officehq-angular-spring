@@ -368,6 +368,22 @@ const PAST: Record<ClaimAction, string> = {
           >
             Re-date
           </button>
+          <label [for]="'claim-due-by-new-' + c.id">New due-by</label>
+          <input
+            [id]="'claim-due-by-new-' + c.id"
+            type="date"
+            data-testid="claim-due-by-new"
+            [value]="newDueBys()[c.id] ?? ''"
+            (input)="setNewDueBy(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-set-due-by"
+            [attr.aria-label]="'Set due-by of claim of ' + c.amount + ' on ' + c.date"
+            (click)="setDueBy(c)"
+          >
+            Set due-by
+          </button>
           <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -535,6 +551,7 @@ export class Claims {
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The new date entered on each claim's row to re-date it to, by claim id. */
   protected readonly newDates = signal<Record<number, string>>({});
+  protected readonly newDueBys = signal<Record<number, string>>({});
   /** The user typed on each claim's row to assign its review to, by claim id. */
   protected readonly reviewUsers = signal<Record<number, string>>({});
   /** The amount typed on each claim's row to split off it, by claim id. */
@@ -610,7 +627,7 @@ export class Claims {
     return figure === null ? NO_RATE : money(figure);
   }
 
-  /** A claim's due-by, fixed when it was added. */
+  /** A claim's due-by: fixed when it was added, or as a steward set it. */
   protected dueByOf(claim: ClaimView): string {
     return dueBy(claim);
   }
@@ -874,6 +891,41 @@ export class Claims {
             : closed?.closed
               ? `Period ${closed.name} is closed, so its claims cannot be re-dated.`
               : 'The claim could not be re-dated to that date.',
+      });
+    }
+  }
+
+  /** Enter the due-by to set a claim's to; it clears any error left on the claim's row. */
+  protected setNewDueBy(id: number, date: string): void {
+    this.newDueBys.update((dates) => ({ ...dates, [id]: date }));
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /**
+   * Set a claim's due-by directly to the date entered on its row; refused with an error on its row when
+   * no date is entered, when the user is not a steward, when the claim is not DRAFT, OPEN or PENDING,
+   * or when its due-by or the new one is in a closed period.
+   */
+  protected async setDueBy(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const date = (this.newDueBys()[claim.id] ?? '').trim();
+    if (date === '') {
+      this.claimError.set({ id: claim.id, message: 'Enter a due-by for the claim.' });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.setDueBy(sheet, claim.id, date));
+      this.newDueBys.update((dates) => ({ ...dates, [claim.id]: '' }));
+    } catch (e) {
+      this.claimError.set({
+        id: claim.id,
+        message: e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can set a claim\'s due-by.'
+          : claim.status !== 'DRAFT' && claim.status !== 'OPEN' && claim.status !== 'PENDING'
+            ? `A ${claim.status} claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can.`
+            : 'The claim\'s due-by could not be set to that date.',
       });
     }
   }
