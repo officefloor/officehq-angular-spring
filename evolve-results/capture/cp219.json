@@ -1,0 +1,64 @@
+{
+  "checkpoint": 219,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp219_rollover-undo",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can undo the last rollover on the same sheet-today it was made (a button;\nROLLOVER_UNDONE fy=<old FY>): the periods it generated are removed and the opening balances it set\nare taken back. A later day, anyone else, or a generated period that a claim now belongs to is\nrefused with an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can undo the last rollover on the same sheet-today it was made (a button;\nROLLOVER_UNDONE fy=<old FY>): the periods it generated are removed and the opening balances it set\nare taken back. A later day, anyone else, or a generated period that a claim now belongs to is\nrefused with an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3c5ba2fc76a6a6eae97391d14b19b5d947044657",
+  "reset_sha": "",
+  "preagent_sha": "3938d7c4633c333794df6382d3dcf0e2d8a198f1",
+  "prev_sha": "3938d7c4633c333794df6382d3dcf0e2d8a198f1",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4135577999999998,
+    "input_tokens": 72,
+    "output_tokens": 17430,
+    "cache_read_tokens": 2066549,
+    "cache_creation_tokens": 81420,
+    "num_turns": 37,
+    "duration_ms": 597207,
+    "duration_api_ms": 179615,
+    "model": "claude-opus-5-5",
+    "session_id": "2914ded4-e8d1-478d-bf84-68135e03400a",
+    "stop_reason": "success",
+    "result_text": "I added rollover undo, and the main **\"rollover undo\"** test now passes, including its full audit check. The three **\"rollover undo scenario 1/2/3\"** tests still fail, each at a step that never reaches the undo.\n\n**What I built**\n- **Stored data:** a new migration, `V118__rollover.sql`, and a `Rollover` entity with its repository. Each rollover now records who made it, the sheet's date when it was made, the fiscal year, the periods it generated and the opening balances it set.\n- **Server:** `PeriodService.undoRollover` behind `POST \u2026/periods/rollover/undo`. It removes the generated periods, takes back the opening balances, marks the rollover undone and writes `ROLLOVER_UNDONE sheet=\u2026 by=\u2026 fy=FY2026`. It refuses with an error, and changes nothing, when:\n  - there's no rollover left to undo (including a second undo in a row);\n  - the user isn't the steward who made the rollover;\n  - the sheet's date is no longer the day it was made;\n  - a claim's date or due-by falls in one of the generated periods. This includes voided claims, which the test requires.\n- **Screen:** an \"Undo the last rollover\" button (`rollover-undo`) next to the rollover form. A refusal shows in `rollover-error`, and on success the period list reloads.\n\n**Change to existing rollover behaviour:** a rollover that generates no periods (because the year was already rolled over) no longer adds the opening balances a second time. The test's expected audit has no OPENING_SET for that rollover, and the person's carried figure came out 3.00 instead of 2.00 until I changed it.\n\n**The three failing scenario tests**\n- **Scenario 1 (line 610):** a viewer's \"generate periods\" is expected to succeed with 0 made. The app's existing `ViewerGuard` refuses every change a viewer makes, so it shows an error instead.\n- **Scenario 2 (line 1084):** a person flag with an end date of 2026-03-12, when the sheet's date is 2026-03-20. The flag is saved and audited, but the screen doesn't display it because it has already expired, so the step times out.\n- **Scenario 3 (line 1430):** expects `[\"Cam  \", \"Ben  \"]` with trailing spaces, but the test helper trims each line it reads. That step cannot pass whatever the app does.\n\nFixing these would mean changing how viewers and person flags already work, which this change doesn't ask for, so I left them alone.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4135577999999998,
+        "num_turns": 37,
+        "duration_ms": 597207,
+        "duration_api_ms": 179615,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp219.agent.jsonl",
+  "agent_diff_file": "cp219.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
