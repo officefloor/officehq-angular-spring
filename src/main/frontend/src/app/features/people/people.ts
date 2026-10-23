@@ -582,6 +582,8 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
               <td>
                 <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
                 <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
+                <span>open claims <span data-testid="person-claims-OPEN-count">{{ statusCountOf(p.id, 'OPEN') }}</span></span>
+                <span>settled claims <span data-testid="person-claims-SETTLED-count">{{ statusCountOf(p.id, 'SETTLED') }}</span></span>
                 <span>score <span data-testid="person-score">{{ scoreOf(p) }}</span></span>
                 <span>band <span data-testid="person-band">{{ bandOf(p) }}</span></span>
               </td>
@@ -1539,6 +1541,11 @@ export class People {
 
   protected claimsOf(personId: number): ClaimView[] {
     return this.byPerson().get(personId) ?? [];
+  }
+
+  /** How many of a person's claims have a status now. */
+  protected statusCountOf(personId: number, status: ClaimView['status']): number {
+    return this.claimsOf(personId).filter((c) => c.status === status).length;
   }
 
   /** A person's claims that count in the live totals (see countsLive). */
