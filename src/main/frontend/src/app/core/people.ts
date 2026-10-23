@@ -264,6 +264,14 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/approver`, { user }));
   }
 
+  /**
+   * Hold the selected people from a date (null: the sheet's today) to a date (null: no end) together,
+   * each as the row's hold would, in list order: the people held.
+   */
+  holdAll(sheet: string, personIds: number[], from: string | null, to: string | null): Promise<PersonView[]> {
+    return firstValueFrom(this.http.post<PersonView[]>(`${this.url(sheet)}/hold`, { personIds, from, to }));
+  }
+
   /** Put a person on hold from a date (none: the sheet's today) to a date (none: no end). */
   hold(sheet: string, id: number, from: string | null, to: string | null): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/holds`, { from, to }));

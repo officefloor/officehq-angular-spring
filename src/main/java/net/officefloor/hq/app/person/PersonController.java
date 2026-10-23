@@ -152,6 +152,13 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** The people selected to be held together, and the hold's dates: from (none: the sheet's today) and to (none: no end). */
+    public record BulkHoldForm(
+            @NotNull @Size(min = 1, max = 1000) List<@NotNull Long> personIds,
+            LocalDate from,
+            LocalDate to) {
+    }
+
     /** The import box's text: lines of name,grade,terms,contact. */
     public record ImportForm(@NotNull @Size(max = 200_000) String text) {
     }
@@ -160,18 +167,20 @@ public class PersonController {
     private final ImportService imports;
     private final BulkGradeService bulkGrade;
     private final BulkRetireService bulkRetire;
+    private final BulkHoldService bulkHold;
     private final WatchService watches;
     private final MergeService merges;
     private final TransferService transfers;
     private final SheetHistory history;
 
     public PersonController(PersonService service, ImportService imports, BulkGradeService bulkGrade,
-            BulkRetireService bulkRetire, WatchService watches,
+            BulkRetireService bulkRetire, BulkHoldService bulkHold, WatchService watches,
             MergeService merges, TransferService transfers, SheetHistory history) {
         this.service = service;
         this.imports = imports;
         this.bulkGrade = bulkGrade;
         this.bulkRetire = bulkRetire;
+        this.bulkHold = bulkHold;
         this.watches = watches;
         this.merges = merges;
         this.transfers = transfers;
@@ -261,6 +270,16 @@ public class PersonController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid BulkRetireForm form) {
         return bulkRetire.retire(sheetId, SignedIn.name(user), form.personIds(), form.from()).stream()
+                .map(PersonView::of).toList();
+    }
+
+    /** Hold the selected people over a span of dates together, each as the row's hold would: the people held. */
+    @PostMapping("/hold")
+    public List<PersonView> holdAll(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkHoldForm form) {
+        return bulkHold.hold(sheetId, SignedIn.name(user), form.personIds(), form.from(), form.to()).stream()
                 .map(PersonView::of).toList();
     }
 

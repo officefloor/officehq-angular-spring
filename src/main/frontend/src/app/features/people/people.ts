@@ -412,6 +412,31 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
           <span role="alert" data-testid="person-error">{{ message }}</span>
         }
       </form>
+      <form (submit)="holdSelected($event)" aria-label="Hold the selected people">
+        <label for="bulk-hold-from">Hold the selected people from</label>
+        <input
+          type="date"
+          id="bulk-hold-from"
+          data-testid="bulk-hold-from"
+          [value]="bulkHoldFrom()"
+          (input)="bulkHoldFrom.set(value($event)); bulkHoldError.set(null)"
+        />
+        <label for="bulk-hold-to">to</label>
+        <input
+          type="date"
+          id="bulk-hold-to"
+          data-testid="bulk-hold-to"
+          [value]="bulkHoldTo()"
+          (input)="bulkHoldTo.set(value($event)); bulkHoldError.set(null)"
+        />
+        <button type="submit" data-testid="bulk-hold">Hold selected people</button>
+        @if (bulkHeld() !== null) {
+          <span role="status">Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong></span>
+        }
+        @if (bulkHoldError(); as message) {
+          <span role="alert" data-testid="person-error">{{ message }}</span>
+        }
+      </form>
       <fieldset>
         <legend>Columns shown</legend>
         @for (c of peopleColumns; track c) {
@@ -1365,6 +1390,13 @@ export class People {
   /** How many people the last bulk retire retired; null until one is done. */
   protected readonly bulkRetired = signal<number | null>(null);
   protected readonly bulkRetireError = signal<string | null>(null);
+  /** The date the selected people are held from; the sheet's today unless another is typed. */
+  protected readonly bulkHoldFrom = linkedSignal(() => this.sheetToday());
+  /** The last date the selected people are held to; none (no end) unless one is typed. */
+  protected readonly bulkHoldTo = signal('');
+  /** How many people the last bulk hold held; null until one is done. */
+  protected readonly bulkHeld = signal<number | null>(null);
+  protected readonly bulkHoldError = signal<string | null>(null);
 
   constructor() {
     // A new parent changes the rates a grade with none in force on the sheet falls back to.
@@ -1421,6 +1453,10 @@ export class People {
         this.bulkRetired.set(null);
         this.bulkRetireError.set(null);
         this.bulkRetireDate.set(this.sheetToday());
+        this.bulkHeld.set(null);
+        this.bulkHoldError.set(null);
+        this.bulkHoldFrom.set(this.sheetToday());
+        this.bulkHoldTo.set('');
         if (sheet) void this.reload(sheet);
       });
     });
@@ -2290,6 +2326,8 @@ export class People {
     this.bulkGradeError.set(null);
     this.bulkRetired.set(null);
     this.bulkRetireError.set(null);
+    this.bulkHeld.set(null);
+    this.bulkHoldError.set(null);
   }
 
   /**
@@ -2349,6 +2387,38 @@ export class People {
       this.bulkRetired.set(retired.length);
     } catch {
       this.bulkRetireError.set('The people could not be retired.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Hold the selected people over the dates together: each is held as the row's hold would, in list
+   * order; how many were held is shown, and the selection cleared.
+   */
+  protected async holdSelected(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy) return;
+    this.bulkHeld.set(null);
+    this.bulkHoldError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const ids = [...this.selectedPeople()];
+    if (ids.length === 0) {
+      this.bulkHoldError.set('Select the people to hold.');
+      return;
+    }
+    this.busy = true;
+    try {
+      const held = await this.api.holdAll(sheet, ids, this.bulkHoldFrom() || null, this.bulkHoldTo() || null);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => held.find((h) => h.id === p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkHoldFrom.set(this.sheetToday());
+      this.bulkHoldTo.set('');
+      this.bulkHeld.set(held.length);
+    } catch {
+      this.bulkHoldError.set('The people could not be held.');
     } finally {
       this.busy = false;
     }
