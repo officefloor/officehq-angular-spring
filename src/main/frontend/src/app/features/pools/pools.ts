@@ -1,6 +1,7 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FigurePipe } from '../../core/locale';
 import { cents, money } from '../../core/claims';
+import { CrewView } from '../../core/crews';
 import { downloadCsv } from '../../core/csv';
 import { PersonView, heldOn, retiredOn } from '../../core/people';
 import { PoolMemberView, PoolView, PoolsApi, memberOn } from '../../core/pools';
@@ -84,7 +85,8 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
 // members with a cut in proportion to their shares; a pool whose every member is retired shows no cuts.
 // A membership may carry a from-date and a to-date: on a sheet's today outside them the member is left
 // out entirely, from the total share and the cuts. Each member of a balanced pool shows their cut of the pool's pot: the sheet's
-// pot for a pool that is a member of none, its cut in the pool above for one that is.
+// pot for a pool that is a member of none, its cut in the pool above for one that is. A crew is also a pool,
+// listed after the pools of their own: its members are the crew's, so it has no form to add one.
 @Component({
   selector: 'app-pools',
   imports: [FigurePipe],
@@ -124,6 +126,7 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
                 </li>
               }
             </ul>
+            @if (line.pool.crewId === null) {
             <form (submit)="addMember($event, line.pool)" [attr.aria-label]="'Add a member to ' + line.pool.name">
               <label [for]="'pool-member-select-' + line.pool.id">Member</label>
               <select
@@ -168,6 +171,9 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
                 <p role="alert" data-testid="pool-error">{{ message }}</p>
               }
             </form>
+            } @else {
+              <p>The crew {{ line.pool.name }}'s lead and members, at equal shares.</p>
+            }
           </li>
         }
       </ul>
@@ -182,6 +188,8 @@ export class Pools {
   readonly people = input.required<PersonView[]>();
   /** The sheet's today (yyyy-mm-dd). */
   readonly today = input.required<string>();
+  /** The sheet's crews: each is also a pool, re-read from the store whenever they change. */
+  readonly crews = input.required<CrewView[]>();
 
   protected readonly pools = signal<PoolView[]>([]);
   protected readonly name = signal('');
@@ -260,6 +268,8 @@ export class Pools {
   private busy = false;
   /** The sheet load whose pools are on screen. */
   private readonly poolsLoaded = signal(0);
+  /** The latest read of the pools: an earlier one answering later is not shown. */
+  private reads = 0;
 
   constructor() {
     // Every sheet load re-reads the sheet's pools from the store.
@@ -272,6 +282,16 @@ export class Pools {
         this.drafts.set(new Map());
         this.errors.set(new Map());
         if (sheet) void this.reload(sheet, loads);
+      });
+    });
+    // A crew added or given a member changes its pool: the pools are re-read from the store.
+    let first = true;
+    effect(() => {
+      this.crews();
+      untracked(() => {
+        const sheet = this.session.sheet();
+        if (!first && sheet) void this.reload(sheet, this.session.loads());
+        first = false;
       });
     });
   }
@@ -324,8 +344,8 @@ export class Pools {
       this.error.set('Type a name for the pool.');
       return;
     }
-    if (this.pools().some((p) => p.name === name)) {
-      this.error.set(`There is already a pool named ${name}.`);
+    if (this.pools().some((p) => p.name === name) || this.crews().some((c) => c.name === name)) {
+      this.error.set(`There is already a pool or a crew named ${name}.`);
       return;
     }
     this.busy = true;
@@ -427,12 +447,13 @@ export class Pools {
   }
 
   private async reload(sheet: string, loads: number): Promise<void> {
+    const read = ++this.reads;
     try {
       const pools = await this.api.list(sheet);
-      // A later load may have started while this one was in flight: only the latest is shown.
-      if (this.session.sheet() === sheet && this.session.loads() === loads) this.pools.set(pools);
+      // A later load or read may have started while this one was in flight: only the latest is shown.
+      if (this.session.sheet() === sheet && this.session.loads() === loads && this.reads === read) this.pools.set(pools);
     } finally {
-      if (this.session.loads() === loads) this.poolsLoaded.set(loads);
+      if (this.session.loads() === loads && this.reads === read) this.poolsLoaded.set(loads);
     }
   }
 }

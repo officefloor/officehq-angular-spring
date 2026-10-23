@@ -35,7 +35,7 @@ export class CrewsApi {
     return firstValueFrom(this.http.get<CrewView[]>(this.url(sheet)));
   }
 
-  /** Add a crew led by a person; refused when its name, trimmed, is blank or already a crew's. */
+  /** Add a crew led by a person, and its pool; refused when its name, trimmed, is blank or already a crew's or a pool's. */
   add(sheet: string, name: string, leadId: number): Promise<CrewView> {
     return firstValueFrom(this.http.post<CrewView>(this.url(sheet), { name, leadId }));
   }

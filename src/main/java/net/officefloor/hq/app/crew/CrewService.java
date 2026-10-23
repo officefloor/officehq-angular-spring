@@ -6,13 +6,19 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.Pool;
+import net.officefloor.hq.app.pool.PoolMemberRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The crews on a sheet: listed with their lead and members, added, and given members. */
+/**
+ * The crews on a sheet: listed with their lead and members, added, and given members. Each crew is also a
+ * pool under its name, added with it and gone with it.
+ */
 @Service
 public class CrewService {
 
@@ -27,14 +33,18 @@ public class CrewService {
     private final CrewRepository crews;
     private final CrewMemberRepository members;
     private final PersonRepository people;
+    private final PoolRepository pools;
+    private final PoolMemberRepository poolMembers;
     private final SheetService sheets;
     private final Audit audit;
 
     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            PoolRepository pools, PoolMemberRepository poolMembers, SheetService sheets, Audit audit) {
         this.crews = crews;
         this.members = members;
         this.people = people;
+        this.pools = pools;
+        this.poolMembers = poolMembers;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -53,8 +63,8 @@ public class CrewService {
     }
 
     /**
-     * Add a crew led by a person on the sheet; refused when its name, trimmed, is blank or already a crew's
-     * on the sheet.
+     * Add a crew led by a person on the sheet, and its pool under its name; refused when its name, trimmed, is
+     * blank or already a crew's or a pool's on the sheet.
      */
     @Transactional
     public CrewWithMembers add(String sheetId, String user, String name, long leadId) {
@@ -68,7 +78,11 @@ public class CrewService {
         if (crews.existsBySheetIdAndName(sheetId, trimmed)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "There is already a crew by that name.");
         }
+        if (pools.existsBySheetIdAndName(sheetId, trimmed)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "There is already a pool by that name.");
+        }
         Crew saved = crews.saveAndFlush(new Crew(sheetId, trimmed, lead.getId()));
+        pools.saveAndFlush(Pool.ofCrew(sheetId, trimmed, saved.getId()));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + trimmed
                 + " lead=" + lead.getName());
         return new CrewWithMembers(saved, lead.getName(), List.of());
@@ -120,11 +134,19 @@ public class CrewService {
         }
     }
 
-    /** A person leaving the sheet: their memberships go, and so do the crews they lead with their members. */
+    /**
+     * A person leaving the sheet: their memberships go, and so do the crews they lead with their members and
+     * their pools, each with its place in another pool.
+     */
     @Transactional
     public void leave(Person person) {
         members.deleteAll(members.findByPersonIdOrderByIdAsc(person.getId()));
         List<Crew> led = crews.findByLeadIdOrderByIdAsc(person.getId());
+        List<Pool> ledPools = pools.findByCrewIdInOrderByIdAsc(led.stream().map(Crew::getId).toList());
+        ledPools.forEach(p -> poolMembers.deleteAll(poolMembers.findByMemberPoolId(p.getId())));
+        poolMembers.flush();
+        pools.deleteAll(ledPools);
+        pools.flush();
         members.deleteAll(members.findByCrewIdInOrderByIdAsc(led.stream().map(Crew::getId).toList()));
         crews.deleteAll(led);
         members.flush();

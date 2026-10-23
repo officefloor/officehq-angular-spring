@@ -3,12 +3,17 @@ package net.officefloor.hq.app.pool;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewMemberRepository;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -17,7 +22,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The pools on a sheet: listed with their members, added, and given members. */
+/**
+ * The pools on a sheet: listed with their members, added, and given members. A crew is also a pool, under
+ * its name, its members the crew's lead and members at equal shares: 100.00 split equally, each rounded
+ * half to even, the remainder on the lead.
+ */
 @Service
 public class PoolService {
 
@@ -37,22 +46,31 @@ public class PoolService {
     private final PoolRepository pools;
     private final PoolMemberRepository members;
     private final PersonRepository people;
+    private final CrewRepository crews;
+    private final CrewMemberRepository crewMembers;
     private final SheetService sheets;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, Audit audit) {
         this.pools = pools;
         this.members = members;
         this.people = people;
+        this.crews = crews;
+        this.crewMembers = crewMembers;
         this.sheets = sheets;
         this.audit = audit;
     }
 
-    /** The sheet's pools in the order they were added, with their members. */
+    /**
+     * The sheet's pools in the order they were added, with their members, then the crews' pools in the order
+     * the crews were added.
+     */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId) {
-        List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+        List<Pool> stored = pools.findBySheetIdOrderByIdAsc(sheetId);
+        List<Pool> all = new ArrayList<>(stored.stream().filter(p -> p.getCrewId() == null).toList());
+        all.addAll(stored.stream().filter(p -> p.getCrewId() != null).toList());
         Map<Long, String> names = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Person::getName));
         Map<Long, String> poolNames = all.stream().collect(Collectors.toMap(Pool::getId, Pool::getName));
@@ -60,10 +78,47 @@ public class PoolService {
                 .stream().map(m -> new Member(m, m.getMemberPoolId() != null ? poolNames.get(m.getMemberPoolId())
                         : names.get(m.getPersonId())))
                 .collect(Collectors.groupingBy(m -> m.member().getPoolId()));
-        return all.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()))).toList();
+        Map<Long, List<Member>> byCrew = crewPoolMembers(sheetId, all, names);
+        return all.stream().map(p -> new PoolWithMembers(p, p.getCrewId() != null
+                ? byCrew.getOrDefault(p.getId(), List.of()) : byPool.getOrDefault(p.getId(), List.of()))).toList();
     }
 
-    /** Add a pool; refused when its name, trimmed, is blank or already a pool's on the sheet. */
+    /**
+     * Each crew's pool's members by pool id: the lead, then the members in the order they were added, at
+     * 100.00 split equally, each rounded half to even, the remainder on the lead. Not stored.
+     */
+    private Map<Long, List<Member>> crewPoolMembers(String sheetId, List<Pool> all, Map<Long, String> names) {
+        Map<Long, Crew> byId = crews.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Crew::getId, Function.identity()));
+        Map<Long, List<CrewMember>> crewMembersOf = crewMembers.findByCrewIdInOrderByIdAsc(byId.keySet()).stream()
+                .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        Map<Long, List<Member>> result = new HashMap<>();
+        for (Pool pool : all) {
+            Crew crew = pool.getCrewId() == null ? null : byId.get(pool.getCrewId());
+            if (crew == null) continue;
+            List<Long> ids = new ArrayList<>(List.of(crew.getLeadId()));
+            crewMembersOf.getOrDefault(crew.getId(), List.of()).forEach(m -> ids.add(m.getPersonId()));
+            BigDecimal each = MAX_SHARE.divide(BigDecimal.valueOf(ids.size()), 2, RoundingMode.HALF_EVEN);
+            BigDecimal lead = MAX_SHARE.subtract(each.multiply(BigDecimal.valueOf(ids.size() - 1)));
+            List<Member> shares = new ArrayList<>();
+            for (int i = 0; i < ids.size(); i++) {
+                shares.add(new Member(new PoolMember(pool.getId(), ids.get(i), i == 0 ? lead : each),
+                        names.get(ids.get(i))));
+            }
+            result.put(pool.getId(), shares);
+        }
+        return result;
+    }
+
+    /** Refused when the pool is a crew's: its members are the crew's. */
+    private static void refuseCrewPool(Pool pool) {
+        if (pool.getCrewId() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A crew's pool has the crew's lead and members as its members.");
+        }
+    }
+
+    /** Add a pool; refused when its name, trimmed, is blank or already a pool's or a crew's on the sheet. */
     @Transactional
     public PoolWithMembers add(String sheetId, String user, String name) {
         String trimmed = name.strip();
@@ -74,6 +129,9 @@ public class PoolService {
         if (pools.existsBySheetIdAndName(sheetId, trimmed)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "There is already a pool by that name.");
         }
+        if (crews.existsBySheetIdAndName(sheetId, trimmed)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "There is already a crew by that name.");
+        }
         Pool saved = pools.saveAndFlush(new Pool(sheetId, trimmed));
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + trimmed);
         return new PoolWithMembers(saved, List.of());
@@ -81,8 +139,8 @@ public class PoolService {
 
     /**
      * Add a person on the sheet to a pool with a share percent; refused when the share is not more than
-     * 0.00 and at most 100.00 with two decimals, the to-date is before the from-date, or the person is
-     * already in the pool.
+     * 0.00 and at most 100.00 with two decimals, the to-date is before the from-date, the person is
+     * already in the pool, or the pool is a crew's.
      */
     @Transactional
     public PoolWithMembers addMember(String sheetId, String user, long poolId, long personId, BigDecimal share,
@@ -95,6 +153,7 @@ public class PoolService {
         sheets.lock(sheetId);
         Pool pool = pools.findBySheetIdAndId(sheetId, poolId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool."));
+        refuseCrewPool(pool);
         Person person = people.findById(personId).filter(p -> p.getSheetId().equals(sheetId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person."));
         if (members.existsByPoolIdAndPersonId(poolId, personId)) {
@@ -110,7 +169,8 @@ public class PoolService {
     /**
      * Add another pool on the sheet to a pool with a share percent; refused when the share is bad, the pool
      * would contain itself through any chain, the member pool is already a member of a pool, or the chain of
-     * pools would be more than three deep; or the to-date is before the from-date.
+     * pools would be more than three deep; or the to-date is before the from-date; or the pool is a crew's.
+     * A crew's pool may be a member of another pool.
      */
     @Transactional
     public PoolWithMembers addPoolMember(String sheetId, String user, long poolId, long memberPoolId,
@@ -123,6 +183,7 @@ public class PoolService {
         sheets.lock(sheetId);
         Pool pool = pools.findBySheetIdAndId(sheetId, poolId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool."));
+        refuseCrewPool(pool);
         Pool member = pools.findBySheetIdAndId(sheetId, memberPoolId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool."));
         // Each member pool's parent, and each pool's member pools, across the sheet.

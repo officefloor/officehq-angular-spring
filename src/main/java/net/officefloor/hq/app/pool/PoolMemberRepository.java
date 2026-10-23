@@ -14,6 +14,9 @@ public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
 
     java.util.Optional<PoolMember> findByPoolIdAndPersonId(Long poolId, Long personId);
 
+    /** Where a pool is a member of another: at most once. */
+    List<PoolMember> findByMemberPoolId(Long memberPoolId);
+
     boolean existsByMemberPoolId(Long memberPoolId);
 
     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);

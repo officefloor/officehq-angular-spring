@@ -761,7 +761,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
         </tbody>
       </table>
     </section>
-    <app-pools [people]="people()" [today]="today()" />
+    <app-pools [people]="people()" [today]="today()" [crews]="crews()" />
     <app-crews [people]="people()" [dueTotals]="crewDueTotals()" [(crews)]="crews" />
   `,
 })

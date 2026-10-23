@@ -23,10 +23,15 @@ export function memberOn(m: PoolMemberView, day: string): boolean {
   return day === '' || ((m.from === null || m.from <= day) && (m.to === null || day <= m.to));
 }
 
-/** A pool on the sheet: a name, once per sheet, and its members in the order they were added. */
+/**
+ * A pool on the sheet: a name, once per sheet and never a crew's but its own crew's, the crew it is (null
+ * for a pool of its own), and its members in the order they were added. A crew's pool's members are the
+ * crew's lead and members at equal shares, the remainder on the lead.
+ */
 export interface PoolView {
   id: number;
   name: string;
+  crewId: number | null;
   members: PoolMemberView[];
 }
 
@@ -40,7 +45,7 @@ export class PoolsApi {
     return firstValueFrom(this.http.get<PoolView[]>(this.url(sheet)));
   }
 
-  /** Add a pool; refused when its name, trimmed, is blank or already a pool's. */
+  /** Add a pool; refused when its name, trimmed, is blank or already a pool's or a crew's. */
   add(sheet: string, name: string): Promise<PoolView> {
     return firstValueFrom(this.http.post<PoolView>(this.url(sheet), { name }));
   }

@@ -28,11 +28,14 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class PoolController {
 
-    /** What the screen is told about a pool: its name and its members in the order they were added. */
-    public record PoolView(long id, String name, List<MemberView> members) {
+    /**
+     * What the screen is told about a pool: its name, the crew it is (null for a pool of its own), and its
+     * members in the order they were added, a crew's pool's being the crew's lead and members.
+     */
+    public record PoolView(long id, String name, Long crewId, List<MemberView> members) {
 
         static PoolView of(PoolService.PoolWithMembers pool) {
-            return new PoolView(pool.pool().getId(), pool.pool().getName(),
+            return new PoolView(pool.pool().getId(), pool.pool().getName(), pool.pool().getCrewId(),
                     pool.members().stream().map(MemberView::of).toList());
         }
     }

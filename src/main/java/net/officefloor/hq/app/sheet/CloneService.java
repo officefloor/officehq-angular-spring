@@ -102,24 +102,6 @@ public class CloneService {
             }, from);
         });
 
-        Map<Long, Long> pools = new HashMap<>();
-        for (Long id : jdbc.queryForList("SELECT id FROM pool WHERE sheet_id = ? ORDER BY id", Long.class, sheetId)) {
-            pools.put(id, insert("INSERT INTO pool (sheet_id, name) SELECT ?, name FROM pool WHERE id = ?",
-                    toSheetId, id));
-        }
-        jdbc.query("""
-                SELECT m.pool_id, m.person_id, m.member_pool_id, m.share, m.from_date, m.to_date
-                FROM pool_member m JOIN pool p ON p.id = m.pool_id WHERE p.sheet_id = ? ORDER BY m.id""", row -> {
-            long person = row.getLong(2);
-            Long personId = row.wasNull() ? null : people.get(person);
-            long pool = row.getLong(3);
-            Long memberPoolId = row.wasNull() ? null : pools.get(pool);
-            jdbc.update("""
-                    INSERT INTO pool_member (pool_id, person_id, member_pool_id, share, from_date, to_date)
-                    VALUES (?, ?, ?, ?, ?, ?)""", pools.get(row.getLong(1)), personId, memberPoolId,
-                    row.getBigDecimal(4), row.getDate(5), row.getDate(6));
-        }, sheetId);
-
         Map<Long, Long> crews = new HashMap<>();
         jdbc.query("SELECT id, lead_id FROM crew WHERE sheet_id = ? ORDER BY id", row -> {
             long id = row.getLong(1);
@@ -131,6 +113,28 @@ public class CloneService {
                 FROM crew_member m JOIN crew c ON c.id = m.crew_id WHERE c.sheet_id = ? ORDER BY m.id""", row -> {
             jdbc.update("INSERT INTO crew_member (crew_id, person_id) VALUES (?, ?)", crews.get(row.getLong(1)),
                     people.get(row.getLong(2)));
+        }, sheetId);
+
+        Map<Long, Long> pools = new HashMap<>();
+        // A crew's pool names the crew's clone.
+        jdbc.query("SELECT id, crew_id FROM pool WHERE sheet_id = ? ORDER BY id", row -> {
+            long id = row.getLong(1);
+            long crew = row.getLong(2);
+            Long crewId = row.wasNull() ? null : crews.get(crew);
+            pools.put(id, insert("INSERT INTO pool (sheet_id, name, crew_id) SELECT ?, name, ? FROM pool WHERE id = ?",
+                    toSheetId, crewId, id));
+        }, sheetId);
+        jdbc.query("""
+                SELECT m.pool_id, m.person_id, m.member_pool_id, m.share, m.from_date, m.to_date
+                FROM pool_member m JOIN pool p ON p.id = m.pool_id WHERE p.sheet_id = ? ORDER BY m.id""", row -> {
+            long person = row.getLong(2);
+            Long personId = row.wasNull() ? null : people.get(person);
+            long pool = row.getLong(3);
+            Long memberPoolId = row.wasNull() ? null : pools.get(pool);
+            jdbc.update("""
+                    INSERT INTO pool_member (pool_id, person_id, member_pool_id, share, from_date, to_date)
+                    VALUES (?, ?, ?, ?, ?, ?)""", pools.get(row.getLong(1)), personId, memberPoolId,
+                    row.getBigDecimal(4), row.getDate(5), row.getDate(6));
         }, sheetId);
 
         // Claims are added in the order they are listed, so the clone lists them the same; none is

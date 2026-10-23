@@ -11,5 +11,8 @@ public interface PoolRepository extends JpaRepository<Pool, Long> {
 
     Optional<Pool> findBySheetIdAndId(String sheetId, Long id);
 
+    /** The pools the crews are, in the order they were added. */
+    List<Pool> findByCrewIdInOrderByIdAsc(java.util.Collection<Long> crewIds);
+
     boolean existsBySheetIdAndName(String sheetId, String name);
 }
