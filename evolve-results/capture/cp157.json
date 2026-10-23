@@ -1,0 +1,64 @@
+{
+  "checkpoint": 157,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp157_user-locale",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ec3f769a3da839962333cf815ada1877d5fb98e0",
+  "reset_sha": "",
+  "preagent_sha": "08b631f62adc70ec708766dc610b1353cf1741b8",
+  "prev_sha": "08b631f62adc70ec708766dc610b1353cf1741b8",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9398596,
+    "input_tokens": 96,
+    "output_tokens": 22761,
+    "cache_read_tokens": 3554398,
+    "cache_creation_tokens": 96672,
+    "num_turns": 48,
+    "duration_ms": 881820,
+    "duration_api_ms": 328199,
+    "model": "claude-opus-5-5",
+    "session_id": "bcbd6108-e5df-43d8-b16e-15ada0c3a097",
+    "stop_reason": "success",
+    "result_text": "The locale change is in. On the last `bin/e2e` run, 3 of the 4 tests pass. The fourth, scenario 3, fails because of a mistake in the spec itself, not the app.\n\n**The failing test:** at `e2e/specs/acceptance.spec.ts:1124` (and again at 1204) the spec expects `sheet-parent` to read the literal text `\"__SHEET__-p\"`. But the test sets the parent to `` `${sheet}-p` `` at line 1036, and its own audit check expects `value=${sheet}-p`. So the screen correctly shows the real id, like `smvkbzng2tyo4-p`. It looks like a placeholder that was never filled in. I'm not allowed to edit the spec, so I ran a throwaway copy with only that string corrected, and the whole of scenario 3 passed. I then deleted the copy. The spec needs that fix before the suite can fully pass.\n\n**What I built:**\n- **Saving the locale:** a new `user_pref` table (migration `V87`) with `GET`/`PUT /api/user/locale`. It is keyed by the signed-in name and is the same on every sheet. It defaults to `en`, only accepts `en` or `de`, and writes no audit line.\n- **The screen:** a locale select with a save button and an error message (`user-locale`, `user-locale-save`, `user-locale-current`, `user-locale-error`). The locale is re-read from the store at sign-in and on every sheet load.\n- **Showing figures:** a `figure` pipe in `core/locale.ts`. Under `de` it turns any text that is exactly a number with two decimals (e.g. `1234565.77`) into `1.234.565,77`; anything else, and everything under `en`, is shown unchanged. I applied it to every cell that shows a figure: amounts, dues, totals, rates, shares, cuts and the current values on the settings panel. Cells that mix a figure into a sentence, like plan lines, search lines and claim log lines, are left alone because their whole text isn't a number. Typed entries, CSV exports and audit lines are unchanged.\n\n**Two changes outside the request**, both needed for the tests to pass:\n1. **Rates up to five digits:** the test sets a rate of `12345.67`, but rates were capped at three digits before the decimal point. I widened the checks on the front end, in the controller and in the rate import, and widened the stored column to `DECIMAL(7,2)` (migration `V88`).\n2. **Plan generate for viewers:** scenario 2 expects a viewer's \"generate plans\" to show a count of 0, but the app refused the request outright. A viewer's generate now goes through and makes nothing, the same way viewers' bulk open, settle, grade and retire already get through and are refused item by item. This changes how the app treats viewers, so worth a look if you didn't intend it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9398596,
+        "num_turns": 48,
+        "duration_ms": 881820,
+        "duration_api_ms": 328199,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp157.agent.jsonl",
+  "agent_diff_file": "cp157.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
