@@ -1,0 +1,64 @@
+{
+  "checkpoint": 217,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp217_shared-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be shared with other people on the sheet: a person select, a share percent (two\ndecimals, more than 0.00) and a button on the claim (CLAIM_SHARED naming the claim, ending\nwith=<person> share=<share>; the claim's own person, a person already holding a share, or shares\ntotalling more than 100.00 are refused; a SETTLED, VOID or DELETED claim cannot be shared). Each\nholder's due-total includes their part: the claim's due times their share divided by 100, rounded\nhalf to even; the claim's own person's due-total counts the claim's due less the holders' parts.\nShow the holders on the claim as <name> <share>, comma and space separated.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be shared with other people on the sheet: a person select, a share percent (two\ndecimals, more than 0.00) and a button on the claim (CLAIM_SHARED naming the claim, ending\nwith=<person> share=<share>; the claim's own person, a person already holding a share, or shares\ntotalling more than 100.00 are refused; a SETTLED, VOID or DELETED claim cannot be shared). Each\nholder's due-total includes their part: the claim's due times their share divided by 100, rounded\nhalf to even; the claim's own person's due-total counts the claim's due less the holders' parts.\nShow the holders on the claim as <name> <share>, comma and space separated.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "99449e8e8b5b2b36bc18f2e682f5332efc86280c",
+  "reset_sha": "",
+  "preagent_sha": "d13d7bd6d213c73d26ad8028dab6357ec0b15089",
+  "prev_sha": "d13d7bd6d213c73d26ad8028dab6357ec0b15089",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.465610800000001,
+    "input_tokens": 92,
+    "output_tokens": 24582,
+    "cache_read_tokens": 4485014,
+    "cache_creation_tokens": 134575,
+    "num_turns": 48,
+    "duration_ms": 812299,
+    "duration_api_ms": 342999,
+    "model": "claude-opus-5-5",
+    "session_id": "7a1e9828-b5a3-4155-b61b-0e8ee7cb8f53",
+    "stop_reason": "success",
+    "result_text": "Claim sharing is in, but `bin/e2e` doesn't pass fully: 1 of 4 tests passes. Of the other three, two fail on mistakes in the spec itself and one on a pool feature that has nothing to do with sharing.\n\n**Results**\n- **\"shared claims\"** (the main sharing test) passes in `bin/e2e`.\n- **Scenarios 1 and 2** fail on spec mistakes that no implementation can satisfy:\n  - Line 253 (and 400) expects the text `__SHEET__-p`, a placeholder that was never filled in. The screen correctly shows the real sheet id followed by `-p`.\n  - Line 888 expects `\"Ada 0.00 \"` with a trailing space, but the helper trims every line, so that can never match.\n  \n  Both failures come after the share steps. I ran a temporary copy of the spec with only those two things corrected, and both scenarios then passed end to end. I deleted the copy afterwards and didn't touch the real spec.\n- **Scenario 3** never shares a claim. It fails at line 1398, where it expects pool cuts to leave out a member with a retirement set: Cam is retired from 2026-04-02 while the sheet's date is 2026-03-20. The spec wants 5.18 and the app shows 7.77. That's existing pool behaviour, so I left it as a separate change.\n\n**What I built**\n- **Storage:** a new `claim_share` table (`V116__claim_share.sql`) holding a person and a share percent for each claim. Shares are also saved in the dated history, so viewing the sheet as of an earlier date keeps them.\n- **Server:** a new `POST /claims/{id}/share` endpoint. It refuses:\n  - the claim's own person, or someone who already holds a share;\n  - a share of 0.00 or less, or shares that would total more than 100.00;\n  - a SETTLED, VOID or DELETED claim.\n  \n  Each accepted share writes `CLAIM_SHARED \u2026 with=<name> share=<pct>`, followed by the usual ROLLUP/TOTALS lines.\n- **Due-totals:** each holder gets the claim's due \u00d7 their share \u00f7 100, rounded half to even, and the claim's own person keeps the due less those parts. A holder whose grade has no rate gets a figure rather than n/a. Only the due-total changes; the overdue, open and settled totals and the score still count the whole claim. The server (audit lines, search, consolidation) and the screen both use this rule.\n- **Screen:** each claim row has a person select, a percent box and a Share button. The holders show as `Ben 33.33, Cam 33.33` in the order they were added, and refusals show the claim's error element.\n\n**Port 3000:** while I was working, another app instance (probably another sandbox) started listening on port 3000. It's not mine, so I left it running. Until it stops, run `PORT=3017 bin/e2e`, or the tests will hit that app instead.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.465610800000001,
+        "num_turns": 48,
+        "duration_ms": 812299,
+        "duration_api_ms": 342999,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp217.agent.jsonl",
+  "agent_diff_file": "cp217.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
