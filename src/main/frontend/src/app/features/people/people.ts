@@ -523,6 +523,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
               <td>
                 <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
                 <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
+                <span>score <span data-testid="person-score">{{ scoreOf(p) }}</span></span>
               </td>
               <td>
                 <ul>
@@ -1549,6 +1550,14 @@ export class People {
   /** A person's settled-total: the due of their counting SETTLED claims at their frozen figures. */
   protected settledTotalOf(person: PersonView): string {
     return money(this.settledCents(person));
+  }
+
+  /**
+   * A person's score: their settled-total over 100, less 5 for each overdue claim of theirs that counts,
+   * rounded half to even to a whole number.
+   */
+  protected scoreOf(person: PersonView): string {
+    return String(halfEven(this.settledCents(person) - 50000 * this.overdueOf(person.id).length, 10000));
   }
 
   /** A person's open-total: the due of their counting OPEN and PENDING claims (see countsLive). */
