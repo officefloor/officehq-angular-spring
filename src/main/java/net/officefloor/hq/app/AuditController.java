@@ -64,4 +64,11 @@ public class AuditController {
         shown.addAll(audit.linesAbout(person.get().getOriginSheetId(), keys));
         return shown;
     }
+
+    /** The sheet's activity: one line &lt;user&gt; &lt;EVENT&gt; &lt;count&gt; per user and event, sorted by user then event. */
+    @GetMapping("/activity")
+    public List<String> activity(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+        return audit.activityOf(sheetId);
+    }
 }

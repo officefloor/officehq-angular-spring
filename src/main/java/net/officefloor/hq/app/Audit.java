@@ -168,6 +168,38 @@ public class Audit {
         return false;
     }
 
+    /**
+     * The sheet's activity: for every user and every event in the sheet's lines, one line
+     * &lt;user&gt; &lt;EVENT&gt; &lt;count&gt;, sorted by user then event.
+     */
+    public List<String> activityOf(String sheetId) {
+        java.util.Map<String, java.util.Map<String, Integer>> counts = new java.util.TreeMap<>();
+        for (String line : linesAbout(sheetId, null)) {
+            int space = line.indexOf(' ');
+            String event = space < 0 ? line : line.substring(0, space);
+            String user = fieldValue(line, "by");
+            if (event.isEmpty() || user == null) {
+                continue;
+            }
+            counts.computeIfAbsent(user, (u) -> new java.util.TreeMap<>()).merge(event, 1, Integer::sum);
+        }
+        List<String> activity = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, count) -> activity.add(user + " " + event + " " + count)));
+        return activity;
+    }
+
+    /** The value of the line's first field, as the token after " field=", or null when it has none. */
+    private static String fieldValue(String line, String field) {
+        String token = " " + field + "=";
+        int at = line.indexOf(token);
+        if (at < 0) {
+            return null;
+        }
+        int start = at + token.length();
+        int end = line.indexOf(' ', start);
+        return line.substring(start, end < 0 ? line.length() : end);
+    }
+
     /** Truncate the audit file. */
     public synchronized void clear() {
         try {
