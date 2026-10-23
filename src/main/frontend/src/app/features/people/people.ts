@@ -8,7 +8,8 @@ import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, 
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
-import { Session, graceOn, valueOn } from '../../core/session';
+import { PolicyApi } from '../../core/policy';
+import { Session, graceOn, policyVersionOn, valueOn } from '../../core/session';
 import { RoleName, SettingsApi } from '../../core/settings';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
@@ -234,7 +235,11 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
         <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
+        <button type="button" data-testid="export-policy" (click)="exportPolicy()">Export policy versions as CSV</button>
       </p>
+      @if (exportPolicyError(); as message) {
+        <p role="alert" data-testid="export-policy-error">{{ message }}</p>
+      }
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong> claims,
@@ -981,6 +986,7 @@ export class People {
   private readonly periodsApi = inject(PeriodsApi);
   private readonly settingsApi = inject(SettingsApi);
   private readonly consolidatedApi = inject(ConsolidatedApi);
+  private readonly policyApi = inject(PolicyApi);
   protected readonly voidReasons = inject(VoidReasons);
   protected readonly columns = inject(Columns);
   protected readonly peopleColumns = PEOPLE_COLUMNS;
@@ -2383,6 +2389,42 @@ export class People {
       ),
     ];
     this.download(lines, 'periods');
+  }
+
+  /** Why the policy versions could not be exported; null when they were. */
+  protected readonly exportPolicyError = signal<string | null>(null);
+
+  /**
+   * Download the policy versions as a CSV file: a header line, then one line per version, oldest first,
+   * with its number, from-date (empty when in force always), setting and value, the count of claims whose
+   * policy version it is, and the due of those of them that count in the live totals (see countsLive),
+   * added up (a claim with no figure adds nothing). Each line ends with a line feed.
+   */
+  protected async exportPolicy(): Promise<void> {
+    this.exportPolicyError.set(null);
+    await this.session.settled();
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    let versions;
+    try {
+      versions = await this.policyApi.list(sheet);
+    } catch {
+      this.exportPolicyError.set('The policy versions could not be read.');
+      return;
+    }
+    const versionsFrom = versions.map((v) => v.from);
+    const dues = new Map<number, number>();
+    for (const person of this.people()) {
+      for (const c of this.countingOf(person.id)) {
+        const number = policyVersionOn(versionsFrom, c.date);
+        dues.set(number, (dues.get(number) ?? 0) + (this.dueCents(c, person) ?? 0));
+      }
+    }
+    const lines = [
+      ['version', 'from', 'key', 'value', 'claims', 'due-total'],
+      ...versions.map((v) => [String(v.number), v.from ?? '', v.key, v.value ?? '', String(v.claims), money(dues.get(v.number) ?? 0)]),
+    ];
+    this.download(lines, 'policy');
   }
 
   /**
