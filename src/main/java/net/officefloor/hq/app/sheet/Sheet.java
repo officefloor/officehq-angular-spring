@@ -218,6 +218,20 @@ public class Sheet {
         return decimal(valueOn(CLERK_LIMIT, today, plain(clerkLimit)));
     }
 
+    /** A grade's clerk limit in force on the sheet's today, with two decimals; null when it has none (the sheet's applies). */
+    public BigDecimal getGradeClerkLimit(String grade) {
+        return decimal(valueOn(gradeClerkLimitKey(grade), today, null));
+    }
+
+    /**
+     * The clerk limit for a grade's claims: the grade's own in force on the sheet's today when it has
+     * one, else the sheet's; null when there is none.
+     */
+    public BigDecimal clerkLimitFor(String grade) {
+        BigDecimal own = grade == null ? null : getGradeClerkLimit(grade);
+        return own != null ? own : getClerkLimit();
+    }
+
     /** The cap in force on the sheet's today, with two decimals; null when there is none. */
     public BigDecimal getCap() {
         return decimal(valueOn(CAP, today, plain(cap)));
@@ -366,6 +380,11 @@ public class Sheet {
     /** The key a grade's grace is recorded under. */
     public static String gradeGraceKey(String grade) {
         return GRACE + "-" + grade;
+    }
+
+    /** The key a grade's clerk limit is recorded under. */
+    public static String gradeClerkLimitKey(String grade) {
+        return CLERK_LIMIT + "-" + grade;
     }
 
     /** The key a grade's proof threshold is recorded under. */

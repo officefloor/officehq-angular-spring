@@ -120,16 +120,22 @@ public class SheetService {
         return saved;
     }
 
-    /** The sheet's clerk limit; null when there is none. */
+    /** The clerk limit for a grade's claims: the grade's own in force when set, else the sheet's; null when there is none. */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimit(String id) {
-        return load(id).getClerkLimit();
+    public BigDecimal clerkLimit(String id, String grade) {
+        return load(id).clerkLimitFor(grade);
     }
 
     /** Record the sheet's clerk limit (null: no limit) from a date (null: the sheet's today), auditing the change. */
     @Transactional
     public Sheet setClerkLimit(String id, String user, BigDecimal limit, LocalDate from) {
         return setDated(id, user, Sheet.CLERK_LIMIT, money(limit), from, false);
+    }
+
+    /** Record a grade's clerk limit (null: none, the sheet's applies) from a date, auditing the change. */
+    @Transactional
+    public Sheet setGradeClerkLimit(String id, String user, String grade, BigDecimal limit, LocalDate from) {
+        return setDated(id, user, Sheet.gradeClerkLimitKey(grade), money(limit), from, false);
     }
 
     /** Record the sheet's cap (null: no cap) from a date, auditing the change and the figures it moves. */

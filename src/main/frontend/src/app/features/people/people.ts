@@ -1166,7 +1166,7 @@ export class People {
   protected readonly terms = signal('');
   /** The date the terms entered are in force from; blank for the beginning of time. */
   protected readonly termsFrom = signal('');
-  /** The terms an edit just saved from the beginning of time, shown on its row until the person is re-read. */
+  /** The terms an edit just saved, shown on its row until the person is re-read. */
   private readonly savedTerms = new WeakMap<PersonView, number | null>();
   /** The person's contact as typed: blank for none. */
   protected readonly contact = signal('');
@@ -1393,7 +1393,7 @@ export class People {
 
   /**
    * The own terms a person's row shows: those in force on the sheet's today, or those an edit just saved
-   * from the beginning of time until the person is re-read.
+   * (from whatever date) until the person is re-read.
    */
   protected termsShown(person: PersonView): number | null {
     return this.savedTerms.has(person) ? (this.savedTerms.get(person) ?? null) : termsOn(person, this.today());
@@ -2355,7 +2355,7 @@ export class People {
         const terms = form.termsGiven || termsFrom !== null
           ? form.terms : (this.people().find((p) => p.id === id)?.terms ?? null);
         const saved = await this.api.edit(sheet, id, { ...form, terms, termsFrom, gradeFrom, version: this.version() });
-        if (form.termsGiven && termsFrom === null) this.savedTerms.set(saved, terms);
+        if (form.termsGiven) this.savedTerms.set(saved, terms);
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();

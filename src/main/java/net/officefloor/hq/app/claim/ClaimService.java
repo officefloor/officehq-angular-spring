@@ -131,6 +131,7 @@ public class ClaimService {
         Sheet sheet = sheets.lock(sheetId);
         int terms = terms(sheet, person, sheet.getToday());
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
+        periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects, null);
         String referred = reference(ref);
@@ -355,7 +356,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), settledDue);
         }
-        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settledDue)) {
+        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, person.gradeOn(today), settledDue)) {
             next = ClaimStatus.PENDING;
             settledDue = null;
         }
@@ -696,8 +697,8 @@ public class ClaimService {
      * next number in the sequence it is numbered in (its old one never used again; a DRAFT gets none), and loses any figure a statement bound it to, its due live again until its new person's
      * next statement. Only a role the sheet's permission matrix allows (a steward by
      * default) reassigns. Refused when the claim is SETTLED or VOID, when it is
-     * due by inside a closed period, when the new person is its own, is retired before its date, or (for
-     * a correction) has no SETTLED claim of the number it corrects.
+     * due by inside a closed period, when the new person is its own or is retired before its date, or (for
+     * a correction, which still corrects the claim it named) when its person has no SETTLED claim of that number.
      */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long personId) {
@@ -728,7 +729,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s.");
         }
         refuseIfRetired(to, claim.getDate());
-        refuseUnlessCorrects(sheetId, personId, claim.getAmount(), claim.getCorrects(), claim.getId());
+        refuseUnlessCorrects(sheetId, from.getId(), claim.getAmount(), claim.getCorrects(), claim.getId());
         claim.reassign(to.getId());
         claim.unbind();
         if (claim.getNumber() != null) {
@@ -819,6 +820,19 @@ public class ClaimService {
         audited("CLAIM_OPENED", sheetId, user, person, split);
         rollups.audit(sheetId, user, before);
         return new Split(original, split);
+    }
+
+    /**
+     * Part-settle an OPEN claim in one transaction: refused when settling it would be refused (see
+     * {@link #refuseSettling}); else the amount is split off it and the new claim settled. A refusal
+     * at any step writes nothing: the split is rolled back with it.
+     */
+    @Transactional
+    public Split settlePart(String sheetId, String user, long claimId, BigDecimal amount) {
+        refuseSettling(sheetId, user, claimId);
+        Split split = split(sheetId, user, claimId, amount);
+        Claim settled = move(sheetId, user, split.split().getId(), ClaimStatus.SETTLED);
+        return new Split(split.original(), settled);
     }
 
     /**
@@ -930,9 +944,12 @@ public class ClaimService {
         return threshold != null && due != null && due.compareTo(threshold) > 0;
     }
 
-    /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit. */
-    private boolean overClerkLimit(String sheetId, String user, BigDecimal due) {
-        BigDecimal limit = sheets.clerkLimit(sheetId);
+    /**
+     * Whether a clerk is settling a claim whose due is above the clerk limit in force on the sheet's
+     * today: its person's grade's when one is set, else the sheet's.
+     */
+    private boolean overClerkLimit(String sheetId, String user, String grade, BigDecimal due) {
+        BigDecimal limit = sheets.clerkLimit(sheetId, grade);
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }

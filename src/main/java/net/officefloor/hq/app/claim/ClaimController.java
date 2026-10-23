@@ -512,11 +512,8 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid SplitForm form) {
-        String name = SignedIn.name(user);
-        service.refuseSettling(sheetId, name, claimId);
-        ClaimService.Split split = service.split(sheetId, name, claimId, new BigDecimal(form.amount()));
-        Claim settled = service.move(sheetId, name, split.split().getId(), ClaimStatus.SETTLED);
-        return new SplitView(ClaimView.of(split.original()), ClaimView.of(settled));
+        ClaimService.Split split = service.settlePart(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()));
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
     /** Re-date an OPEN or PENDING claim; only a steward. */

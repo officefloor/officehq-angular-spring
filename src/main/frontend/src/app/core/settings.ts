@@ -13,7 +13,7 @@ export interface RoleView {
 }
 
 /** The settings that carry a figure: each is saved from a from-date and shown as in force on the sheet's today. */
-export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'proof-threshold-A' | 'proof-threshold-B' | 'proof-threshold-C' | 'note-threshold' | 'review-threshold' | 'rounding';
+export type DatedKey = 'clerk-limit' | 'clerk-limit-A' | 'clerk-limit-B' | 'clerk-limit-C' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'proof-threshold-A' | 'proof-threshold-B' | 'proof-threshold-C' | 'note-threshold' | 'review-threshold' | 'rounding';
 
 /** A from-date as a dated setting takes it: yyyy-mm-dd, or blank for the sheet's today. */
 export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
@@ -22,6 +22,8 @@ export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
 export interface SettingsView {
   /** The clerk limit with two decimals, e.g. "1.50"; null when there is no limit. */
   clerkLimit: string | null;
+  /** Each grade's clerk limit with two decimals: its claims use it in place of the sheet's; null when none. */
+  gradeClerkLimits: Record<Grade, string | null>;
   /** The floor with two decimals, e.g. "1.00": a claim's live due is at least it. */
   floor: string;
   /** The terms in days: a claim is due by its date plus them. */
@@ -172,6 +174,11 @@ export class SettingsApi {
   /** Set the cap from a date (blank: the sheet's today); a blank value means no cap. */
   setCap(sheet: string, value: string, from: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/cap`, { value, from }));
+  }
+
+  /** Set a grade's clerk limit from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */
+  setGradeClerkLimit(sheet: string, grade: Grade, value: string, from: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/clerk-limit-${grade}`, { value, from }));
   }
 
   /** Set a grade's proof threshold from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */

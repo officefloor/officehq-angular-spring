@@ -31,6 +31,25 @@ import { Session } from '../../core/session';
           [value]="fromInput()['clerk-limit']"
           (input)="fromTyped('clerk-limit', value($event))"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (empty: the sheet's)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g"
+            [attr.data-testid]="'setting-clerk-limit-' + g"
+            inputmode="decimal"
+            [value]="gradeClerkLimitInput()[g]"
+            (input)="gradeClerkLimitTyped(g, value($event))"
+            (keydown.delete)="gradeClerkLimitCleared($event, g)"
+            (keydown.backspace)="gradeClerkLimitCleared($event, g)"
+          />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} from (yyyy-mm-dd; empty: the sheet's today)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g + '-from'"
+            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+            [value]="fromInput()[limitKey(g)]"
+            (input)="fromTyped(limitKey(g), value($event))"
+          />
+        }
         <label for="setting-cap">Cap (empty: no cap)</label>
         <input
           id="setting-cap"
@@ -337,6 +356,10 @@ import { Session } from '../../core/session';
         }
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</span></p>
+      @for (g of grades; track g) {
+        <p>Clerk limit for grade {{ g }} in force:
+          <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (gradeClerkLimit()[g] ?? '') | figure }}</span></p>
+      }
       <p>Cap in force: <span data-testid="setting-cap-current">{{ session.cap() | figure }}</span></p>
       <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ (proofThreshold() ?? '') | figure }}</span></p>
       @for (g of grades; track g) {
@@ -422,6 +445,9 @@ export class Settings {
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly roles = signal<RoleView[]>([]);
   protected readonly limit = signal('');
+  /** Each grade's clerk limit in force; null when it has none (the sheet's applies). */
+  protected readonly gradeClerkLimit = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
+  protected readonly gradeClerkLimitInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
   protected readonly capInput = signal('');
   protected readonly proofThreshold = signal<string | null>(null);
   protected readonly proofThresholdInput = signal('');
@@ -466,6 +492,7 @@ export class Settings {
   protected readonly fiscalStartMonthInput = signal('');
   /** Which settings were typed into since the last save: a save changes only those. */
   protected limitEdited = false;
+  protected gradeClerkLimitEdited = new Set<Grade>();
   protected capEdited = false;
   protected proofThresholdEdited = false;
   protected noteThresholdEdited = false;
@@ -509,7 +536,7 @@ export class Settings {
   private saving: Promise<void> = Promise.resolve();
 
   private static noFroms(): Record<DatedKey, string> {
-    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '', 'review-threshold': '', rounding: '' };
+    return { 'clerk-limit': '', 'clerk-limit-A': '', 'clerk-limit-B': '', 'clerk-limit-C': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '', 'review-threshold': '', rounding: '' };
   }
 
   private static noPermissions(): Record<PermissionAction, string> {
@@ -523,6 +550,7 @@ export class Settings {
       const loads = this.session.loads();
       untracked(() => {
         this.clerkLimit.set(null);
+        this.gradeClerkLimit.set({ A: null, B: null, C: null });
         this.proofThreshold.set(null);
         this.noteThreshold.set(null);
         this.reviewThreshold.set(null);
@@ -569,6 +597,7 @@ export class Settings {
     else if (key === 'floor') this.floorEdited = true;
     else if (key === 'terms') this.termsEdited = true;
     else if (key === 'late-pct') this.latePctEdited = true;
+    else if (key.startsWith('clerk-limit-')) this.gradeClerkLimitEdited.add(key.slice('clerk-limit-'.length) as Grade);
     else if (key.startsWith('proof-threshold-')) this.gradeProofThresholdEdited.add(key.slice('proof-threshold-'.length) as Grade);
     else if (key.startsWith('grace-')) this.gradeGraceEdited.add(key.slice('grace-'.length) as Grade);
     else this.gradeTermsEdited.add(key.slice('terms-'.length) as Grade);
@@ -581,6 +610,10 @@ export class Settings {
 
   protected graceKey(grade: Grade): DatedKey {
     return `grace-${grade}`;
+  }
+
+  protected limitKey(grade: Grade): DatedKey {
+    return `clerk-limit-${grade}`;
   }
 
   protected proofKey(grade: Grade): DatedKey {
@@ -657,6 +690,17 @@ export class Settings {
     this.settingsError.set(null);
   }
 
+  protected gradeClerkLimitTyped(grade: Grade, value: string): void {
+    this.gradeClerkLimitInput.update((all) => ({ ...all, [grade]: value }));
+    this.gradeClerkLimitEdited.add(grade);
+    this.settingsError.set(null);
+  }
+
+  /** Delete or Backspace in an empty grade clerk limit: clearing it again is still a change, so a save sets it empty. */
+  protected gradeClerkLimitCleared(event: Event, grade: Grade): void {
+    if (this.value(event) === '') this.gradeClerkLimitTyped(grade, '');
+  }
+
   protected gradeProofThresholdTyped(grade: Grade, value: string): void {
     this.gradeProofThresholdInput.update((all) => ({ ...all, [grade]: value }));
     this.gradeProofThresholdEdited.add(grade);
@@ -702,7 +746,7 @@ export class Settings {
     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
     const saveLimit =
       this.limitEdited ||
-      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && this.gradeClerkLimitEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
         !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
@@ -715,6 +759,8 @@ export class Settings {
       .map((g) => ({ grade: g, value: this.gradeTermsInput()[g].trim() }));
     const saveGradeGrace = GRADES.filter((g) => this.gradeGraceEdited.has(g))
       .map((g) => ({ grade: g, value: this.gradeGraceInput()[g].trim() }));
+    const saveGradeClerkLimits = GRADES.filter((g) => this.gradeClerkLimitEdited.has(g))
+      .map((g) => ({ grade: g, value: this.gradeClerkLimitInput()[g].trim() }));
     const saveGradeProofThresholds = GRADES.filter((g) => this.gradeProofThresholdEdited.has(g))
       .map((g) => ({ grade: g, value: this.gradeProofThresholdInput()[g].trim() }));
     const saveLatePct = this.latePctEdited;
@@ -736,6 +782,7 @@ export class Settings {
     const from = (key: DatedKey) => froms[key].trim();
     const savedKeys: DatedKey[] = [
       ...(saveLimit ? (['clerk-limit'] as const) : []),
+      ...saveGradeClerkLimits.map((t) => this.limitKey(t.grade)),
       ...(saveCap ? (['cap'] as const) : []),
       ...(saveProofThreshold ? (['proof-threshold'] as const) : []),
       ...saveGradeProofThresholds.map((t) => this.proofKey(t.grade)),
@@ -754,6 +801,10 @@ export class Settings {
     }
     if (saveLimit && !LIMIT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it empty for no limit.');
+      return;
+    }
+    if (saveGradeClerkLimits.some((t) => !LIMIT.test(t.value))) {
+      this.settingsError.set('Type a grade\'s clerk limit of 0.00 or more, with up to two decimals, or leave it empty for the sheet\'s.');
       return;
     }
     if (saveCap && !CAP.test(cap)) {
@@ -854,6 +905,7 @@ export class Settings {
     }
     // What was typed is taken now: anything typed meanwhile is saved by the next submit.
     if (saveLimit) this.limitEdited = false;
+    for (const t of saveGradeClerkLimits) this.gradeClerkLimitEdited.delete(t.grade);
     if (saveCap) this.capEdited = false;
     if (saveProofThreshold) this.proofThresholdEdited = false;
     for (const t of saveGradeProofThresholds) this.gradeProofThresholdEdited.delete(t.grade);
@@ -887,6 +939,13 @@ export class Settings {
       try {
         if (saveLimit) {
           this.inForce(await this.api.setClerkLimit(sheet, limit, from('clerk-limit')));
+        }
+        for (const t of saveGradeClerkLimits) {
+          const view = await this.api.setGradeClerkLimit(sheet, t.grade, t.value, from(this.limitKey(t.grade)));
+          this.inForce(view);
+          if (!this.gradeClerkLimitEdited.has(t.grade)) {
+            this.gradeClerkLimitInput.update((all) => ({ ...all, [t.grade]: view.gradeClerkLimits[t.grade] ?? '' }));
+          }
         }
         if (saveCap) {
           const view = await this.api.setCap(sheet, cap, from('cap'));
@@ -1040,6 +1099,7 @@ export class Settings {
   /** Show the dated settings as in force on the sheet's today, and the floor's and late percent's values by from-date. */
   private inForce(view: SettingsView): void {
     this.clerkLimit.set(view.clerkLimit);
+    this.gradeClerkLimit.set({ A: view.gradeClerkLimits['A'], B: view.gradeClerkLimits['B'], C: view.gradeClerkLimits['C'] });
     this.session.cap.set(view.cap ?? '');
     this.proofThreshold.set(view.proofThreshold);
     this.gradeProofThreshold.set({ A: view.gradeProofThresholds['A'], B: view.gradeProofThresholds['B'], C: view.gradeProofThresholds['C'] });
@@ -1071,6 +1131,9 @@ export class Settings {
       // The cap's input starts at the cap in force, so clearing it is a change.
       this.capInput.set(settings.cap ?? '');
       this.capEdited = false;
+      // So do each grade's clerk limits.
+      this.gradeClerkLimitInput.set({ A: settings.gradeClerkLimits['A'] ?? '', B: settings.gradeClerkLimits['B'] ?? '', C: settings.gradeClerkLimits['C'] ?? '' });
+      this.gradeClerkLimitEdited.clear();
       // So does the proof threshold's.
       this.proofThresholdInput.set(settings.proofThreshold ?? '');
       this.proofThresholdEdited = false;

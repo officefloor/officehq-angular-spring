@@ -2,94 +2,11 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › bulk void › bulk void (16.8s)
-  ✓  2 [chromium] › acceptance.spec.ts:130:7 › bulk void › bulk void scenario 1 (42.0s)
-  ✘  3 [chromium] › acceptance.spec.ts:916:7 › bulk void › bulk void scenario 2 (32.3s)
-  ✘  4 [chromium] › acceptance.spec.ts:1326:7 › bulk void › bulk void scenario 3 (41.8s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › clerk limit per grade › clerk limit per grade (26.8s)
+  ✓  2 [chromium] › acceptance.spec.ts:107:7 › clerk limit per grade › clerk limit per grade scenario 1 (41.5s)
+  ✓  3 [chromium] › acceptance.spec.ts:648:7 › clerk limit per grade › clerk limit per grade scenario 2 (30.4s)
+  ✓  4 [chromium] › acceptance.spec.ts:1145:7 › clerk limit per grade › clerk limit per grade scenario 3 (26.2s)
 
-
-  1) [chromium] › acceptance.spec.ts:916:7 › bulk void › bulk void scenario 2 ──────────────────────
-
-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
-
-    Locator: getByTestId('sheet-parent')
-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvkmcnr9lryp[27m-p"[39m
-    Call log:
-      [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
-
-
-      1029 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
-      1030 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
-    > 1031 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
-           |                                                      ^
-      1032 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
-      1033 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      1034 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1031:54
-
-  2) [chromium] › acceptance.spec.ts:1326:7 › bulk void › bulk void scenario 3 ─────────────────────
-
-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
-
-    Locator: getByTestId('sheet-parent')
-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvkmdeswbrjr[27m-p"[39m
-    Call log:
-      [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
-
-
-      1450 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
-      1451 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-05");
-    > 1452 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
-           |                                                      ^
-      1453 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
-      1454 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      1455 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1452:54
-
-  2 failed
-    [chromium] › acceptance.spec.ts:916:7 › bulk void › bulk void scenario 2 ───────────────────────
-    [chromium] › acceptance.spec.ts:1326:7 › bulk void › bulk void scenario 3 ──────────────────────
-  2 passed (2.3m)
- 1627437
+  Slow test file: [chromium] › acceptance.spec.ts (2.1m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (2.1m)
