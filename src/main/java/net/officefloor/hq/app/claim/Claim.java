@@ -107,6 +107,13 @@ public class Claim {
     @Column(name = "stated_due", precision = 14, scale = 2)
     private BigDecimal statedDue;
 
+    /**
+     * Whether the bound figure is the claim's whole due as shown, late charge and floor included;
+     * false for a figure bound before statements bound the late charge (the rate figure alone).
+     */
+    @Column(name = "stated_whole", nullable = false)
+    private boolean statedWhole;
+
     /** The number of the claim this one corrects; null unless it is a correction. */
     @Column(name = "corrects")
     private String corrects;
@@ -390,10 +397,20 @@ public class Claim {
         return statedDue;
     }
 
-    /** Bind the claim to its due figure (null when n/a) as a statement is taken. */
+    public boolean isStatedWhole() {
+        return statedWhole;
+    }
+
+    /** Bind the claim to its due as shown, late charge and floor included (null when n/a), as a statement is taken. */
     public void bind(BigDecimal due) {
+        bind(due, true);
+    }
+
+    /** Bind the claim to a figure (null when n/a): its whole due as shown, or its rate figure alone. */
+    public void bind(BigDecimal due, boolean whole) {
         this.stated = true;
         this.statedDue = due;
+        this.statedWhole = whole;
     }
 
     /** Move the claim to a new date; its due-by, number and any bound figure are kept. */
@@ -442,6 +459,7 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+        this.statedWhole = false;
     }
 
     public LocalDate getDeferredUntil() {

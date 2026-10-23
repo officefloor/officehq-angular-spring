@@ -26,7 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * A person's statements: taking one records their due-total on the sheet's today (or a date before it), binds each of
- * their counting claims to the due figure it shows then, and leaves the rest unbound. A steward may
+ * their counting claims to the due it shows then (late charge included), and leaves the rest unbound. A steward may
  * cancel the last one: the claims it bound are live again, and the person shows the one before it.
  */
 @Service
@@ -119,12 +119,12 @@ public class StatementService {
             if (!then.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(day), day)) {
                 continue;
             }
-            // The statement binds the rate figure; the late charge and floor stay live, but count in its total.
-            BigDecimal figure = dues.figure(claim, then.gradeOn(claim.getDate()), basis);
-            figured |= figure != null;
-            bound.put(entry.getKey(), figure);
-            counted++;
+            // The statement binds the due as shown, late charge and floor included: a figure an earlier
+            // statement bound stays as it is.
             BigDecimal due = dues.due(claim, then.gradeOn(claim.getDate()), basis);
+            figured |= due != null;
+            bound.put(entry.getKey(), due);
+            counted++;
             if (due != null) {
                 total = total.add(due);
             }

@@ -138,16 +138,17 @@ export function due(amountCents: number, pct: string | null): string {
 }
 
 /**
- * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or else
+ * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or the
+ * due its person's last statement bound it to as shown then, late charge and floor included, or else
  * the greater of the floor (in whole cents) and its figure with the late charge on top. Its figure is
- * the rate figure its person's last statement bound it to, or else its amount
+ * the rate figure an older statement bound it to (see statedWhole), or else its amount
  * at the rate the grade has in force on the claim's date as the claim sees the rates (a forward-only
  * rate saved after it was added passed over); the late charge is, for every full 30 days
  * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
  * ... days) of the figure plus the charges of the boundaries before it (compounding), each rounded
  * like the claim, added up. The floor is applied last; the one
  * given is the one in force on the claim's date. Live figures round half up when `halfUp` (see
- * roundsHalfUp), else half to even. The charge and floor are never bound by a statement. A correction
+ * roundsHalfUp), else half to even. A correction
  * has no floor and no late charge, and a claim whose late charge was waived no late charge. Null when
  * there is no figure.
  */
@@ -161,6 +162,7 @@ export function claimDueCents(
   inherited: RateView[][] = [],
 ): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
+  if (claim.stated && claim.statedWhole) return claim.statedDue === null ? null : cents(claim.statedDue);
   let figure: number | null;
   if (claim.stated) {
     figure = claim.statedDue === null ? null : cents(claim.statedDue);

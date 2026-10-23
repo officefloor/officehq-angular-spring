@@ -54,6 +54,11 @@ export interface ClaimView {
   stated: boolean;
   /** The figure the statement bound the claim to, with two decimals; null when unbound, or when it was n/a. */
   statedDue: string | null;
+  /**
+   * Whether the figure the statement bound is the claim's whole due as shown, late charge and floor
+   * included; false (or absent, as kept by an old snapshot) when it is the rate figure alone.
+   */
+  statedWhole?: boolean;
   /** The number of the SETTLED claim this one corrects; null unless it is a correction. */
   corrects: string | null;
   /** The claim's external reference; null when it has none. */

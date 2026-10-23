@@ -81,7 +81,7 @@ public class SheetHistory {
 
     record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
-            LocalDate deferredUntil, Long added, Boolean waived) {
+            LocalDate deferredUntil, Long added, Boolean waived, Boolean statedWhole) {
     }
 
     /**
@@ -257,7 +257,7 @@ public class SheetHistory {
             claim.number(c.number());
             claim.settleDue(c.settledDue());
             if (c.stated()) {
-                claim.bind(c.statedDue());
+                claim.bind(c.statedDue(), Boolean.TRUE.equals(c.statedWhole()));
             }
             claim.defer(c.deferredUntil());
             claim.keepAdded(c.added());
@@ -305,6 +305,6 @@ public class SheetHistory {
     private static ClaimState kept(Claim c) {
         return new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getDueBy(), c.getStatus(),
                 c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded(),
-                c.isWaived());
+                c.isWaived(), c.isStatedWhole());
     }
 }

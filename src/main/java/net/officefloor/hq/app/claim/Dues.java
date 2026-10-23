@@ -95,7 +95,8 @@ public class Dues {
 
     /**
      * The due figure a claim shows, before its late charge and floor: the one fixed when it was settled,
-     * else the rate figure its person's last statement bound it to, else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
+     * else the figure its person's last statement bound it to (its whole due as shown then, late charge
+     * included), else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
      */
     public BigDecimal figure(Claim claim, String grade) {
         return figure(claim, grade, live(claim.getSheetId()));
@@ -112,7 +113,8 @@ public class Dues {
     /**
      * The due a claim shows: the greater of the floor in force on its date and its figure (see
      * {@link #figure}) with the late charge on top while it is overdue; a settled claim's figure is
-     * frozen as it was settled. Null (n/a) when it has no figure.
+     * frozen as it was settled, and a claim a statement bound shows the due it bound, its late charge no
+     * longer following the sheet's today. Null (n/a) when it has no figure.
      */
     public BigDecimal due(Claim claim, String grade) {
         return due(claim, grade, live(claim.getSheetId()));
@@ -123,14 +125,28 @@ public class Dues {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
+        if (boundWhole(claim)) {
+            return claim.getStatedDue();
+        }
         return floored(claim, withLate(claim, grade, figure(claim, grade, basis), basis), basis);
     }
 
     /**
-     * The due a claim is settled at: the figure a statement bound it to, else its live figure, with
-     * the late charge it has on the sheet's today on top; null when it has no figure.
+     * Whether a statement bound the claim's whole due as shown, late charge and floor included (a
+     * figure bound before statements bound the late charge is the rate figure alone).
+     */
+    private static boolean boundWhole(Claim claim) {
+        return claim.isStated() && claim.isStatedWhole();
+    }
+
+    /**
+     * The due a claim is settled at: the due a statement bound it to, else its live figure with the
+     * late charge it has on the sheet's today on top; null when it has no figure.
      */
     public BigDecimal settling(Claim claim, String grade) {
+        if (boundWhole(claim)) {
+            return claim.getStatedDue();
+        }
         Basis basis = live(claim.getSheetId());
         return floored(claim, withLate(claim, grade, claim.isStated() ? claim.getStatedDue() : live(claim, grade, basis), basis), basis);
     }
@@ -160,7 +176,7 @@ public class Dues {
     /**
      * A figure with the claim's late charge on top while an OPEN or PENDING claim is past its due-by
      * (fixed when it was added) on the sheet's today (see {@link #lateOn}), rounded by the claim's date
-     * against the policy date. The charge is never bound: it always follows the sheet's today.
+     * against the policy date. The charge follows the sheet's today until a statement binds it with the figure.
      * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue),
      * nor a claim whose late charge was waived.
      */
