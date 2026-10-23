@@ -1,0 +1,203 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 42a5523b..16ebcb4f 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -100,7 +100,7 @@ export interface SettingsView {
+ }
+ 
+ /** The actions the permission matrix covers. */
+-export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
++export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
+ export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
+ 
+ /** An action's roles as the form takes them: clerk or steward, comma separated, or blank for the standing rule. */
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index d85e66be..83d9add1 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
+ import { StatusSummary } from '../summary/summary';
+ 
+ // The steward's dashboard, over the sheet and all its descendants: their PENDING claims, REVIEW claims and overdue claims that count, as
+-// the store holds them now. The cells are empty for a user who is not a steward, and while an as-of date is set. Re-read on every sheet load
++// the store holds them now. The cells are empty for a user who is not a steward; while an as-of date is set they still show the sheet as it stands now. Re-read on every sheet load
+ // and whenever the sheet's claims or figures move.
+ @Component({
+   selector: 'app-dashboard',
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 969746b2..9ac7a58e 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,3 +1,4 @@
++import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, signal } from '@angular/core';
+ import { Columns } from '../../core/columns';
+ import { LOCALES, Locale } from '../../core/locale';
+@@ -234,8 +235,12 @@ export class Home {
+     this.savingToday = true;
+     try {
+       await this.session.setToday(date);
+-    } catch {
+-      this.sheetError.set(`Today could not be changed to ${date}.`);
++    } catch (e) {
++      this.sheetError.set(
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'Your role is not allowed to change the sheet\'s today.'
++          : `Today could not be changed to ${date}.`,
++      );
+     } finally {
+       this.savingToday = false;
+     }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bc0ad451..b828635f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1017,6 +1017,8 @@ export class People {
+   protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
+   /** The flag reason and until-date typed on each person's row, by person id. */
+   protected readonly flagDrafts = signal(new Map<number, { reason: string; until: string }>());
++  /** The reason of a flag just set on each person's row, by person id: shown until the sheet is next loaded, so a flag whose until-date has passed is still seen to take. */
++  protected readonly flagsSet = signal(new Map<number, string>());
+   /** The approver user name typed on each person's row, by person id. */
+   protected readonly approverDrafts = signal(new Map<number, string>());
+   /** The sheet's claims, newest first. */
+@@ -1426,6 +1428,7 @@ export class People {
+         this.retireDates.clear();
+         this.holdDrafts.set(new Map());
+         this.flagDrafts.set(new Map());
++        this.flagsSet.set(new Map());
+         this.approverDrafts.set(new Map());
+         this.patronError.set(null);
+         this.patronChoices.clear();
+@@ -2123,7 +2126,7 @@ export class People {
+ 
+   /** The reason a person's flag shows on the sheet's today: blank unless it is in force. */
+   protected flagShown(person: PersonView): string {
+-    return flagOn(person, this.session.today() ?? '');
++    return this.flagsSet().get(person.id) ?? flagOn(person, this.session.today() ?? '');
+   }
+ 
+   /** The flag reason and until-date typed on a person's row. */
+@@ -2157,6 +2160,7 @@ export class People {
+       const saved = await this.api.flag(sheet, person.id, reason, until);
+       if (this.session.sheet() !== sheet) return;
+       this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++      this.flagsSet.update((map) => new Map(map).set(saved.id, saved.flagReason ?? reason));
+       this.flagDrafts.update((map) => {
+         const next = new Map(map);
+         next.delete(person.id);
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index e883ff40..4166e1e2 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -587,7 +587,7 @@ export class Settings {
+   /** Who may take each action under its standing rule, kept when its entry is blank. */
+   protected readonly standing: Record<PermissionAction, string> = {
+     open: 'clerk and steward', settle: 'clerk and steward', void: 'clerk and steward',
+-    reassign: 'steward', close: 'clerk and steward', reopen: 'steward',
++    reassign: 'steward', close: 'clerk and steward', reopen: 'steward', today: 'clerk and steward',
+   };
+   /** The roles set for each action; blank for its standing rule. */
+   protected readonly permissions = signal<Record<PermissionAction, string>>(Settings.noPermissions());
+@@ -607,7 +607,7 @@ export class Settings {
+   }
+ 
+   private static noPermissions(): Record<PermissionAction, string> {
+-    return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '' };
++    return { open: '', settle: '', void: '', reassign: '', close: '', reopen: '', today: '' };
+   }
+ 
+   constructor() {
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 8729cda8..248ed9f4 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -4,7 +4,6 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import net.officefloor.hq.app.SignedIn;
+-import net.officefloor.hq.app.history.AsOfGuard;
+ import net.officefloor.hq.app.history.PreviewDate;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -29,7 +28,7 @@ public class DashboardController {
+     }
+ 
+     /**
+-     * The sheet's steward dashboard as it stands now, for the signed-in user; empty while an as-of date
++     * The sheet's steward dashboard as it stands now, for the signed-in user, even while an as-of date
+      * is set, as the dashboard shows only the sheet as it stands now; its figures read as if the sheet's
+      * today were the preview date while one is set.
+      */
+@@ -37,11 +36,7 @@ public class DashboardController {
+     public DashboardView dashboard(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+-            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf,
+             @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
+-        if (AsOfGuard.date(asOf) != null) {
+-            return new DashboardView(null, null, null);
+-        }
+         return service.of(id, SignedIn.name(user), PreviewDate.date(preview))
+                 .map(d -> new DashboardView(d.pendingCount(), d.reviewCount(), d.overdueCount()))
+                 .orElse(new DashboardView(null, null, null));
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 8c306c01..8f028cf0 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -41,7 +41,7 @@ public class RoleService {
+     }
+ 
+     /**
+-     * Whether a user name may take an action (open, settle, void, reassign, close or reopen) on the
++     * Whether a user name may take an action (open, settle, void, reassign, close, reopen or today) on the
+      * sheet: its role is among those the sheet's permission matrix sets for it, else its standing rule.
+      */
+     @Transactional(readOnly = true)
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 7372ffc2..ec7ee016 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -43,7 +43,7 @@ public class Sheet {
+     /** The actions the permission matrix covers, each with the roles that may take it under the standing rule. */
+     public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
+             "open", "clerk,steward", "settle", "clerk,steward", "void", "clerk,steward",
+-            "reassign", "steward", "close", "clerk,steward", "reopen", "steward");
++            "reassign", "steward", "close", "clerk,steward", "reopen", "steward", "today", "clerk,steward");
+ 
+     @Id
+     private String id;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 66f31fad..60b0aae4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -374,14 +374,18 @@ public class SheetController {
+                 : SheetView.of(now.asOf(day, now.getDated(), now.getPolicyDate()), now.getToday(), day);
+     }
+ 
+-    /** Change the sheet's today. */
++    /** Change the sheet's today: only a role the sheet's permission matrix allows (anyone but a viewer by default) may. */
+     @PutMapping("/{id}/today")
+     public SheetView setToday(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestHeader(value = PreviewDate.HEADER, required = false) String preview,
+             @RequestBody @Valid TodayChange change) {
+-        return previewed(service.setToday(id, SignedIn.name(user), change.today()), PreviewDate.date(preview));
++        String name = SignedIn.name(user);
++        if (!roles.permits(id, name, "today")) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not change the sheet's today.");
++        }
++        return previewed(service.setToday(id, name, change.today()), PreviewDate.date(preview));
+     }
+ 
+     /** Archive the sheet: only a steward may. */
+@@ -712,7 +716,7 @@ public class SheetController {
+     @PutMapping("/{id}/settings/perm-{action}")
+     public SettingsView setPermission(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
++            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PermissionChange change) {
+         return SettingsView.of(service.setPermission(id, SignedIn.name(user), action, change.roles()));
