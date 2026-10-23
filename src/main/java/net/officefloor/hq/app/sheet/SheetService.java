@@ -284,6 +284,17 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's review SLA in days (null: none), auditing the change. */
+    @Transactional
+    public Sheet setReviewSla(String id, String user, Integer days) {
+        Sheet sheet = lock(id);
+        sheet.setReviewSla(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=review-sla value="
+                + (saved.getReviewSla() == null ? "" : saved.getReviewSla().toString()));
+        return saved;
+    }
+
     /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

@@ -53,6 +53,8 @@ export interface SheetView {
   fiscalStartMonth: number;
   /** The rounding mode's values by from-date (a value null when none), its starting value (none) first. */
   roundingHistory?: DatedValue[];
+  /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
+  reviewSla?: number | null;
 }
 
 /**
@@ -109,6 +111,8 @@ export class Session {
   readonly fiscalStartMonth = signal(1);
   /** Whether the active sheet is archived. */
   readonly archived = signal(false);
+  /** The active sheet's review SLA in days; empty when there is none. */
+  readonly reviewSla = signal('');
   /** The number of the active sheet's last settle batch; null when there has been none. */
   readonly lastSettleBatch = signal<number | null>(null);
   /**
@@ -211,5 +215,6 @@ export class Session {
     this.archived.set(view.archived);
     this.graceHistory.set(view.graceHistory ?? {});
     this.lastSettleBatch.set(view.lastSettleBatch ?? null);
+    this.reviewSla.set(view.reviewSla?.toString() ?? '');
   }
 }

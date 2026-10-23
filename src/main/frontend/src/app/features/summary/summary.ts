@@ -34,7 +34,7 @@ export interface VoidReasonSummary {
   count: number;
 }
 
-// The sheet's summary: per grade, per period, per claim status and per void reason, each figure worked from what the
+// The sheet's summary: per grade, per period, per claim status and per void reason, with the claims late in review, each figure worked from what the
 // lists show.
 @Component({
   selector: 'app-summary',
@@ -99,6 +99,7 @@ export interface VoidReasonSummary {
           }
         </tbody>
       </table>
+      <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
       <table>
         <caption>By void reason</caption>
         <thead>
@@ -124,4 +125,6 @@ export class Summary {
   readonly periods = input.required<PeriodSummary[]>();
   readonly statuses = input.required<StatusSummary[]>();
   readonly voidReasons = input.required<VoidReasonSummary[]>();
+  /** How many REVIEW claims are late in review. */
+  readonly reviewLateCount = input.required<number>();
 }

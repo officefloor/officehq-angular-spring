@@ -3,7 +3,7 @@ import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
-import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
+import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
 import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive, termsOn } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
@@ -110,7 +110,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       (closed)="periodChanged($event)"
       (reopened)="periodChanged($event)"
     />
-    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -978,6 +978,10 @@ export class People {
       status,
       count: this.claims().filter((c) => c.status === status).length,
     })),
+  );
+  /** How many of the sheet's REVIEW claims are late in review by the sheet's review SLA. */
+  protected readonly reviewLateCount = computed(() =>
+    this.claims().filter((c) => reviewLate(c, this.session.reviewSla(), this.session.today() ?? '')).length,
   );
   /** Per reason on the sheet's list: how many of the sheet's VOID claims were voided with it. */
   protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>

@@ -186,6 +186,29 @@ export function overdue(claim: ClaimView, today: string, grace = 0): boolean {
   return isOpen(claim) && today !== '' && lateFrom(claim, grace) < today && !deferred(claim, today);
 }
 
+/**
+ * The day (yyyy-mm-dd) a claim went to REVIEW: the sheet's today on its last REVIEW log line; null
+ * when it is not in REVIEW (or its log does not say).
+ */
+export function reviewDay(claim: ClaimView): string | null {
+  if (claim.status !== 'REVIEW') return null;
+  let day: string | null = null;
+  for (const line of claim.log) {
+    if (line.status === 'REVIEW') day = line.on;
+  }
+  return day;
+}
+
+/**
+ * Whether a claim is late in review: it is REVIEW and its review day plus the sheet's review SLA days
+ * (empty: none, so never late) is before the sheet's today.
+ */
+export function reviewLate(claim: ClaimView, sla: string, today: string): boolean {
+  const day = reviewDay(claim);
+  if (day === null || sla === '' || today === '') return false;
+  return new Date(Date.parse(day) + Number(sla) * 86_400_000).toISOString().slice(0, 10) < today;
+}
+
 /** What a late charge is worked from: the sheet's late percent by from-date and its today. */
 export interface LateTerms {
   /** The late percent's values by from-date (see valueOn). */

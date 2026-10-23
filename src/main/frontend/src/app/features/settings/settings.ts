@@ -257,6 +257,16 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'escalateAfter')"
           (keydown.backspace)="cleared($event, 'escalateAfter')"
         />
+        <label for="setting-review-sla">Review SLA: a claim in review longer than this many days is late (a whole number; empty: none)</label>
+        <input
+          id="setting-review-sla"
+          data-testid="setting-review-sla"
+          inputmode="numeric"
+          [value]="reviewSlaInput()"
+          (input)="reviewSlaInput.set(value($event)); reviewSlaEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'reviewSla')"
+          (keydown.backspace)="cleared($event, 'reviewSla')"
+        />
         <label for="setting-pot">Pot, split among each balanced pool's members (empty: none)</label>
         <input
           id="setting-pot"
@@ -334,6 +344,7 @@ import { Session } from '../../core/session';
       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
+      <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
       <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</span></p>
       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
@@ -424,6 +435,7 @@ export class Settings {
   protected readonly graceDaysInput = signal('');
   protected readonly escalateAfter = signal('');
   protected readonly escalateAfterInput = signal('');
+  protected readonly reviewSlaInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThreshold = signal('');
   protected readonly alertThresholdInput = signal('');
@@ -447,6 +459,7 @@ export class Settings {
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
   protected escalateAfterEdited = false;
+  protected reviewSlaEdited = false;
   protected potEdited = false;
   protected alertThresholdEdited = false;
   protected parentEdited = false;
@@ -552,7 +565,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'pot' | 'alertThreshold' | 'parent'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'pot' | 'alertThreshold' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -587,6 +600,9 @@ export class Settings {
     } else if (setting === 'escalateAfter') {
       this.escalateAfterInput.set('');
       this.escalateAfterEdited = true;
+    } else if (setting === 'reviewSla') {
+      this.reviewSlaInput.set('');
+      this.reviewSlaEdited = true;
     } else if (setting === 'parent') {
       this.parentInput.set('');
       this.parentEdited = true;
@@ -645,6 +661,7 @@ export class Settings {
     const entryDate = this.entryDateInput().trim();
     const graceDays = this.graceDaysInput().trim();
     const escalateAfter = this.escalateAfterInput().trim();
+    const reviewSla = this.reviewSlaInput().trim();
     const pot = this.potInput().trim();
     const alertThreshold = this.alertThresholdInput().trim();
     const parent = this.parentInput().trim();
@@ -652,7 +669,7 @@ export class Settings {
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -672,6 +689,7 @@ export class Settings {
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
     const saveEscalateAfter = this.escalateAfterEdited;
+    const saveReviewSla = this.reviewSlaEdited;
     const savePot = this.potEdited;
     const saveAlertThreshold = this.alertThresholdEdited;
     const saveParent = this.parentEdited;
@@ -766,6 +784,10 @@ export class Settings {
       this.settingsError.set('Type the escalation gap as a whole number of days, or leave it empty for off.');
       return;
     }
+    if (saveReviewSla && !GRACE_DAYS.test(reviewSla)) {
+      this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
+      return;
+    }
     if (savePot && !POT.test(pot)) {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it empty for none.');
       return;
@@ -804,6 +826,7 @@ export class Settings {
     if (saveEntryDate) this.entryDateEdited = false;
     if (saveGraceDays) this.graceDaysEdited = false;
     if (saveEscalateAfter) this.escalateAfterEdited = false;
+    if (saveReviewSla) this.reviewSlaEdited = false;
     if (savePot) this.potEdited = false;
     if (saveAlertThreshold) this.alertThresholdEdited = false;
     if (saveParent) this.parentEdited = false;
@@ -886,6 +909,11 @@ export class Settings {
           const view = await this.api.setEscalateAfter(sheet, escalateAfter);
           this.escalateAfter.set(view.escalateAfter?.toString() ?? '');
           if (!this.escalateAfterEdited) this.escalateAfterInput.set(view.escalateAfter?.toString() ?? '');
+        }
+        if (saveReviewSla) {
+          const view = await this.api.setReviewSla(sheet, reviewSla);
+          this.session.reviewSla.set(view.reviewSla?.toString() ?? '');
+          if (!this.reviewSlaEdited) this.reviewSlaInput.set(view.reviewSla?.toString() ?? '');
         }
         if (savePot) {
           const view = await this.api.setPot(sheet, pot);
@@ -1019,6 +1047,10 @@ export class Settings {
       this.escalateAfter.set(settings.escalateAfter?.toString() ?? '');
       this.escalateAfterInput.set(settings.escalateAfter?.toString() ?? '');
       this.escalateAfterEdited = false;
+      // The review SLA starts at the one set, so clearing it is a change.
+      this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
+      this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');
+      this.reviewSlaEdited = false;
       // The pot starts at the one in force, so clearing it is a change.
       this.session.pot.set(settings.pot ?? '');
       this.potInput.set(settings.pot ?? '');

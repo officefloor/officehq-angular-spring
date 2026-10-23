@@ -70,6 +70,8 @@ export interface SettingsView {
   alertThreshold: string | null;
   /** The escalation gap in days: a reminder at least this long after the previous one escalates the claim; null when off. */
   escalateAfter: number | null;
+  /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
+  reviewSla: number | null;
   /** The rounding mode in force (half-up or half-even): claims dated while it is in force round by it; null when none. */
   rounding: string | null;
   /** The rounding mode's values by from-date (a value null when none), its starting value (none) first. */
@@ -250,6 +252,11 @@ export class SettingsApi {
   /** Set the escalation gap in days; a blank value turns escalating reminders off. */
   setEscalateAfter(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/escalate-after`, { value }));
+  }
+
+  /** Set the review SLA in days; a blank value means none. */
+  setReviewSla(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/review-sla`, { value }));
   }
 
   /** Set the grace days; a blank value turns closing periods by themselves off. */
