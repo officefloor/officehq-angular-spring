@@ -1,0 +1,668 @@
+diff --git a/.e2e.out b/.e2e.out
+index 2a9b4258..6b6c8dcc 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,116 +2,110 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › rate calendar › rate calendar (7.0s)
+-  ✘  2 [chromium] › acceptance.spec.ts:108:7 › rate calendar › rate calendar scenario 1 (29.4s)
+-  ✘  3 [chromium] › acceptance.spec.ts:421:7 › rate calendar › rate calendar scenario 2 (28.2s)
+-  ✘  4 [chromium] › acceptance.spec.ts:879:7 › rate calendar › rate calendar scenario 3 (23.8s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › review sla › review sla (20.6s)
++  ✘  2 [chromium] › acceptance.spec.ts:126:7 › review sla › review sla scenario 1 (20.3s)
++  ✘  3 [chromium] › acceptance.spec.ts:516:7 › review sla › review sla scenario 2 (33.2s)
++  ✘  4 [chromium] › acceptance.spec.ts:907:7 › review sla › review sla scenario 3 (35.0s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:108:7 › rate calendar › rate calendar scenario 1 ──────────────
++  1) [chromium] › acceptance.spec.ts:126:7 › review sla › review sla scenario 1 ────────────────────
+ 
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkfnur7g50r[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfnur7g50r-p</strong>[22m
+-    [2m  -   unexpected value "smvkfnur7g50r-p"[22m
+-
+-
+-      222 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("yes");
+-      223 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+-    > 224 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      225 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("3");
+-      226 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      227 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++    Received: [31m"5"[39m
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:224:54
++      197 |     await ui.setToday(pg_uma, "2026-04-18");
++      198 |     await ui.setSetting(pg_uma, "entry-date", "2026-03-01");
++    > 199 |     expect(await ui.addClaim(pg_uma, p_eve, {"amount": "10.35", "date": "2026-03-09", "note": "n"})).toBeNull();
++          |                                                                                                      ^
++      200 |     expect(await ui.claimAction(pg_uma, c_eve_0, "delete")).toBe(true);
++      201 |     expect(await ui.claimAction(pg_uma, c_eve_0, "restore")).toBe(true);
++      202 |     await ui.refresh(pg_uma);
+ 
+-  2) [chromium] › acceptance.spec.ts:421:7 › rate calendar › rate calendar scenario 2 ──────────────
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:199:102
++
++  2) [chromium] › acceptance.spec.ts:516:7 › review sla › review sla scenario 2 ────────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkfoi82vkgc[27m-p"[39m
++    Received string: [31m"[7msmvkfvrh7ddvd[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfoi82vkgc-p</strong>[22m
+-    [2m  -   unexpected value "smvkfoi82vkgc-p"[22m
+-
+-
+-      547 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("yes");
+-      548 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("");
+-    > 549 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
++    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
++
++
++      638 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      639 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
++    > 640 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+-      550 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("1");
+-      551 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      552 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++      641 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
++      642 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      643 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:549:54
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:640:54
+ 
+-  3) [chromium] › acceptance.spec.ts:879:7 › rate calendar › rate calendar scenario 3 ──────────────
++  3) [chromium] › acceptance.spec.ts:907:7 › review sla › review sla scenario 3 ────────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('pool-row-C1').getByTestId('pool-total-share')
+-    Expected string: [32m"100.00"[39m
+-    Received: <element(s) not found>
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvkfwimf5utj[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('pool-row-C1').getByTestId('pool-total-share')[22m
+-
+-
+-      1124 |     await expect(pg_vic.getByTestId("pool-row-P2").getByTestId("pool-total-share")).toHaveText("0.00");
+-      1125 |     await expect(pg_vic.getByTestId("pool-row-P2").getByTestId("pool-balanced")).toHaveText("no");
+-    > 1126 |     await expect(pg_vic.getByTestId("pool-row-C1").getByTestId("pool-total-share")).toHaveText("100.00");
+-           |                                                                                     ^
+-      1127 |     await expect(pg_vic.getByTestId("pool-row-C1").getByTestId("pool-balanced")).toHaveText("yes");
+-      1128 |     await expect(pg_vic.getByTestId("pool-member-C1-" + p_ada).getByTestId("pool-share")).toHaveText("100.00");
+-      1129 |     await expect(pg_vic.getByTestId("pool-member-C1-" + p_ada).getByTestId("pool-cut")).toHaveText("");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1126:85
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
++    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
++
++
++      1057 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      1058 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
++    > 1059 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++           |                                                      ^
++      1060 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
++      1061 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      1062 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1059:54
+ 
+   3 failed
+-    [chromium] › acceptance.spec.ts:108:7 › rate calendar › rate calendar scenario 1 ───────────────
+-    [chromium] › acceptance.spec.ts:421:7 › rate calendar › rate calendar scenario 2 ───────────────
+-    [chromium] › acceptance.spec.ts:879:7 › rate calendar › rate calendar scenario 3 ───────────────
+-  1 passed (1.5m)
++    [chromium] › acceptance.spec.ts:126:7 › review sla › review sla scenario 1 ─────────────────────
++    [chromium] › acceptance.spec.ts:516:7 › review sla › review sla scenario 2 ─────────────────────
++    [chromium] › acceptance.spec.ts:907:7 › review sla › review sla scenario 3 ─────────────────────
++  1 passed (2.0m)
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 60f2ef93..acf2b2ad 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -186,6 +186,29 @@ export function overdue(claim: ClaimView, today: string, grace = 0): boolean {
+   return isOpen(claim) && today !== '' && lateFrom(claim, grace) < today && !deferred(claim, today);
+ }
+ 
++/**
++ * The day (yyyy-mm-dd) a claim went to REVIEW: the sheet's today on its last REVIEW log line; null
++ * when it is not in REVIEW (or its log does not say).
++ */
++export function reviewDay(claim: ClaimView): string | null {
++  if (claim.status !== 'REVIEW') return null;
++  let day: string | null = null;
++  for (const line of claim.log) {
++    if (line.status === 'REVIEW') day = line.on;
++  }
++  return day;
++}
++
++/**
++ * Whether a claim is late in review: it is REVIEW and its review day plus the sheet's review SLA days
++ * (empty: none, so never late) is before the sheet's today.
++ */
++export function reviewLate(claim: ClaimView, sla: string, today: string): boolean {
++  const day = reviewDay(claim);
++  if (day === null || sla === '' || today === '') return false;
++  return new Date(Date.parse(day) + Number(sla) * 86_400_000).toISOString().slice(0, 10) < today;
++}
++
+ /** What a late charge is worked from: the sheet's late percent by from-date and its today. */
+ export interface LateTerms {
+   /** The late percent's values by from-date (see valueOn). */
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 1c251dc4..9151cbf9 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -53,6 +53,8 @@ export interface SheetView {
+   fiscalStartMonth: number;
+   /** The rounding mode's values by from-date (a value null when none), its starting value (none) first. */
+   roundingHistory?: DatedValue[];
++  /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
++  reviewSla?: number | null;
+ }
+ 
+ /**
+@@ -109,6 +111,8 @@ export class Session {
+   readonly fiscalStartMonth = signal(1);
+   /** Whether the active sheet is archived. */
+   readonly archived = signal(false);
++  /** The active sheet's review SLA in days; empty when there is none. */
++  readonly reviewSla = signal('');
+   /** The number of the active sheet's last settle batch; null when there has been none. */
+   readonly lastSettleBatch = signal<number | null>(null);
+   /**
+@@ -211,5 +215,6 @@ export class Session {
+     this.archived.set(view.archived);
+     this.graceHistory.set(view.graceHistory ?? {});
+     this.lastSettleBatch.set(view.lastSettleBatch ?? null);
++    this.reviewSla.set(view.reviewSla?.toString() ?? '');
+   }
+ }
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 12c7dd54..8329e5e7 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -70,6 +70,8 @@ export interface SettingsView {
+   alertThreshold: string | null;
+   /** The escalation gap in days: a reminder at least this long after the previous one escalates the claim; null when off. */
+   escalateAfter: number | null;
++  /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null when none. */
++  reviewSla: number | null;
+   /** The rounding mode in force (half-up or half-even): claims dated while it is in force round by it; null when none. */
+   rounding: string | null;
+   /** The rounding mode's values by from-date (a value null when none), its starting value (none) first. */
+@@ -252,6 +254,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/escalate-after`, { value }));
+   }
+ 
++  /** Set the review SLA in days; a blank value means none. */
++  setReviewSla(sheet: string, value: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/review-sla`, { value }));
++  }
++
+   /** Set the grace days; a blank value turns closing periods by themselves off. */
+   setGraceDays(sheet: string, value: string): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/grace-days`, { value }));
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index efaac15c..d1c58355 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,7 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FigurePipe } from '../../core/locale';
+ import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, cents, tagsText, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
++import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, cents, tagsText, deferred, dueBy, money, overdue, reviewLate, roundsHalfUp } from '../../core/claims';
+ import { GradeView, gradeOn } from '../../core/people';
+ import { PeriodView, periodOn } from '../../core/periods';
+ import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
+@@ -117,6 +117,7 @@ const PAST: Record<ClaimAction, string> = {
+           <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
+           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
++          <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
+           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+           <span data-testid="claim-status">{{ c.status }}</span>
+           <span>Batch <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span></span>
+@@ -500,6 +501,11 @@ export class Claims {
+     return dueBy(claim);
+   }
+ 
++  /** Whether a claim is REVIEW and its review day plus the sheet's review SLA is before the sheet's today. */
++  protected reviewLateOf(claim: ClaimView): boolean {
++    return reviewLate(claim, this.session.reviewSla(), this.session.today() ?? '');
++  }
++
+   /** Whether a claim is OPEN and due by a date (plus its grace days) before the sheet's today. */
+   protected overdueOf(claim: ClaimView): boolean {
+     return overdue(claim, this.session.today() ?? '', this.graceOf(claim));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d6089181..ee3e9253 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { FigurePipe } from '../../core/locale';
+ import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
+ import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
+ import { downloadCsv } from '../../core/csv';
+-import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
++import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
+ import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive, termsOn } from '../../core/people';
+ import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
+ import { QuickAddView } from '../../core/quick-add';
+@@ -110,7 +110,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       (closed)="periodChanged($event)"
+       (reopened)="periodChanged($event)"
+     />
+-    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
++    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
+     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -979,6 +979,10 @@ export class People {
+       count: this.claims().filter((c) => c.status === status).length,
+     })),
+   );
++  /** How many of the sheet's REVIEW claims are late in review by the sheet's review SLA. */
++  protected readonly reviewLateCount = computed(() =>
++    this.claims().filter((c) => reviewLate(c, this.session.reviewSla(), this.session.today() ?? '')).length,
++  );
+   /** Per reason on the sheet's list: how many of the sheet's VOID claims were voided with it. */
+   protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>
+     this.voidReasons.list().map(({ reason }) => ({
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 67e2619d..e71bc1b8 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -257,6 +257,16 @@ import { Session } from '../../core/session';
+           (keydown.delete)="cleared($event, 'escalateAfter')"
+           (keydown.backspace)="cleared($event, 'escalateAfter')"
+         />
++        <label for="setting-review-sla">Review SLA: a claim in review longer than this many days is late (a whole number; empty: none)</label>
++        <input
++          id="setting-review-sla"
++          data-testid="setting-review-sla"
++          inputmode="numeric"
++          [value]="reviewSlaInput()"
++          (input)="reviewSlaInput.set(value($event)); reviewSlaEdited = true; settingsError.set(null)"
++          (keydown.delete)="cleared($event, 'reviewSla')"
++          (keydown.backspace)="cleared($event, 'reviewSla')"
++        />
+         <label for="setting-pot">Pot, split among each balanced pool's members (empty: none)</label>
+         <input
+           id="setting-pot"
+@@ -334,6 +344,7 @@ import { Session } from '../../core/session';
+       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
+       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
+       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
++      <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
+       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
+       <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</span></p>
+       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
+@@ -424,6 +435,7 @@ export class Settings {
+   protected readonly graceDaysInput = signal('');
+   protected readonly escalateAfter = signal('');
+   protected readonly escalateAfterInput = signal('');
++  protected readonly reviewSlaInput = signal('');
+   protected readonly potInput = signal('');
+   protected readonly alertThreshold = signal('');
+   protected readonly alertThresholdInput = signal('');
+@@ -447,6 +459,7 @@ export class Settings {
+   protected entryDateEdited = false;
+   protected graceDaysEdited = false;
+   protected escalateAfterEdited = false;
++  protected reviewSlaEdited = false;
+   protected potEdited = false;
+   protected alertThresholdEdited = false;
+   protected parentEdited = false;
+@@ -552,7 +565,7 @@ export class Settings {
+    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
+    * change, so a save sets it empty.
+    */
+-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'pot' | 'alertThreshold' | 'parent'): void {
++  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'pot' | 'alertThreshold' | 'parent'): void {
+     if (this.value(event) !== '') return;
+     if (setting === 'cap') {
+       this.capInput.set('');
+@@ -587,6 +600,9 @@ export class Settings {
+     } else if (setting === 'escalateAfter') {
+       this.escalateAfterInput.set('');
+       this.escalateAfterEdited = true;
++    } else if (setting === 'reviewSla') {
++      this.reviewSlaInput.set('');
++      this.reviewSlaEdited = true;
+     } else if (setting === 'parent') {
+       this.parentInput.set('');
+       this.parentEdited = true;
+@@ -645,6 +661,7 @@ export class Settings {
+     const entryDate = this.entryDateInput().trim();
+     const graceDays = this.graceDaysInput().trim();
+     const escalateAfter = this.escalateAfterInput().trim();
++    const reviewSla = this.reviewSlaInput().trim();
+     const pot = this.potInput().trim();
+     const alertThreshold = this.alertThresholdInput().trim();
+     const parent = this.parentInput().trim();
+@@ -652,7 +669,7 @@ export class Settings {
+     const saveLimit =
+       this.limitEdited ||
+       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
++        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+     const saveNoteThreshold = this.noteThresholdEdited;
+@@ -672,6 +689,7 @@ export class Settings {
+     const saveEntryDate = this.entryDateEdited;
+     const saveGraceDays = this.graceDaysEdited;
+     const saveEscalateAfter = this.escalateAfterEdited;
++    const saveReviewSla = this.reviewSlaEdited;
+     const savePot = this.potEdited;
+     const saveAlertThreshold = this.alertThresholdEdited;
+     const saveParent = this.parentEdited;
+@@ -766,6 +784,10 @@ export class Settings {
+       this.settingsError.set('Type the escalation gap as a whole number of days, or leave it empty for off.');
+       return;
+     }
++    if (saveReviewSla && !GRACE_DAYS.test(reviewSla)) {
++      this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
++      return;
++    }
+     if (savePot && !POT.test(pot)) {
+       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it empty for none.');
+       return;
+@@ -804,6 +826,7 @@ export class Settings {
+     if (saveEntryDate) this.entryDateEdited = false;
+     if (saveGraceDays) this.graceDaysEdited = false;
+     if (saveEscalateAfter) this.escalateAfterEdited = false;
++    if (saveReviewSla) this.reviewSlaEdited = false;
+     if (savePot) this.potEdited = false;
+     if (saveAlertThreshold) this.alertThresholdEdited = false;
+     if (saveParent) this.parentEdited = false;
+@@ -887,6 +910,11 @@ export class Settings {
+           this.escalateAfter.set(view.escalateAfter?.toString() ?? '');
+           if (!this.escalateAfterEdited) this.escalateAfterInput.set(view.escalateAfter?.toString() ?? '');
+         }
++        if (saveReviewSla) {
++          const view = await this.api.setReviewSla(sheet, reviewSla);
++          this.session.reviewSla.set(view.reviewSla?.toString() ?? '');
++          if (!this.reviewSlaEdited) this.reviewSlaInput.set(view.reviewSla?.toString() ?? '');
++        }
+         if (savePot) {
+           const view = await this.api.setPot(sheet, pot);
+           this.session.pot.set(view.pot ?? '');
+@@ -1019,6 +1047,10 @@ export class Settings {
+       this.escalateAfter.set(settings.escalateAfter?.toString() ?? '');
+       this.escalateAfterInput.set(settings.escalateAfter?.toString() ?? '');
+       this.escalateAfterEdited = false;
++      // The review SLA starts at the one set, so clearing it is a change.
++      this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
++      this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');
++      this.reviewSlaEdited = false;
+       // The pot starts at the one in force, so clearing it is a change.
+       this.session.pot.set(settings.pot ?? '');
+       this.potInput.set(settings.pot ?? '');
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 31073760..afb429c3 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -34,7 +34,7 @@ export interface VoidReasonSummary {
+   count: number;
+ }
+ 
+-// The sheet's summary: per grade, per period, per claim status and per void reason, each figure worked from what the
++// The sheet's summary: per grade, per period, per claim status and per void reason, with the claims late in review, each figure worked from what the
+ // lists show.
+ @Component({
+   selector: 'app-summary',
+@@ -99,6 +99,7 @@ export interface VoidReasonSummary {
+           }
+         </tbody>
+       </table>
++      <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
+       <table>
+         <caption>By void reason</caption>
+         <thead>
+@@ -124,4 +125,6 @@ export class Summary {
+   readonly periods = input.required<PeriodSummary[]>();
+   readonly statuses = input.required<StatusSummary[]>();
+   readonly voidReasons = input.required<VoidReasonSummary[]>();
++  /** How many REVIEW claims are late in review. */
++  readonly reviewLateCount = input.required<number>();
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 0c81d4c3..ff9efd4d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -67,10 +67,10 @@ public class CloneService {
+         jdbc.update("""
+                 INSERT INTO sheet (id, created_at, today, last_claim_number, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, last_unperiod_claim_number, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after)
++                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla)
+                 SELECT ?, CURRENT_TIMESTAMP, today, 0, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, 0, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after
++                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla
+                 FROM sheet WHERE id = ?""", toSheetId, sheetId);
+         copyRows("sheet_setting", "setting_key, from_date, setting_value", toSheetId, sheetId);
+         copyRows("sheet_permission", "action, roles", toSheetId, sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index e855d501..7ef638c3 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -122,6 +122,10 @@ public class Sheet {
+     @Column(name = "escalate_after")
+     private Integer escalateAfter;
+ 
++    /** The review SLA in days: a REVIEW claim whose review day plus them is before the sheet's today is late; null for none. Not dated. */
++    @Column(name = "review_sla")
++    private Integer reviewSla;
++
+     /** The month, 1 to 12, the sheet's fiscal year starts in; 1 (January) unless set. Not dated. */
+     @Column(name = "fiscal_start_month", nullable = false)
+     private int fiscalStartMonth = 1;
+@@ -408,6 +412,7 @@ public class Sheet {
+         then.pot = pot;
+         then.alertThreshold = alertThreshold;
+         then.escalateAfter = escalateAfter;
++        then.reviewSla = reviewSla;
+         then.fiscalStartMonth = fiscalStartMonth;
+         then.parentId = parentId;
+         then.archived = archived;
+@@ -546,6 +551,15 @@ public class Sheet {
+         this.escalateAfter = escalateAfter;
+     }
+ 
++    /** The review SLA in days; null when blank (none). */
++    public Integer getReviewSla() {
++        return reviewSla;
++    }
++
++    public void setReviewSla(Integer reviewSla) {
++        this.reviewSla = reviewSla;
++    }
++
+     /** The month, 1 to 12, the sheet's fiscal year starts in. */
+     public int getFiscalStartMonth() {
+         return fiscalStartMonth;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 42ff7658..7d547cf9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -38,7 +38,7 @@ public class SheetController {
+     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
+             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
+             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
+-            int fiscalStartMonth, List<DatedValue> roundingHistory) {
++            int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
+@@ -47,7 +47,7 @@ public class SheetController {
+                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived(),
+                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
+                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+-                    sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()));
++                    sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla());
+         }
+ 
+         /** Each grade's grace values by from-date, its starting value (none) first. */
+@@ -79,14 +79,14 @@ public class SheetController {
+      * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in, and the alert
+      * threshold with two decimals, null for off, and the rounding mode (half-up or half-even), null for none
+      * (the policy date decides), with its values by from-date, and the review threshold with two decimals,
+-     * null for none. */
++     * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none. */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
+             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
+             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
+             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
+-            List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter) {
++            List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla) {
+ 
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -105,7 +105,7 @@ public class SheetController {
+                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
+                     sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
+                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
+-                    sheet.getEscalateAfter());
++                    sheet.getEscalateAfter(), sheet.getReviewSla());
+         }
+ 
+         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
+@@ -506,6 +506,15 @@ public class SheetController {
+         return SettingsView.of(service.setEscalateAfter(id, SignedIn.name(user), change.days()));
+     }
+ 
++    /** Change the sheet's review SLA; a blank value means none. */
++    @PutMapping("/{id}/settings/review-sla")
++    public SettingsView setReviewSla(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid GraceDaysChange change) {
++        return SettingsView.of(service.setReviewSla(id, SignedIn.name(user), change.days()));
++    }
++
+     /** Change the month the sheet's fiscal year starts in. */
+     @PutMapping("/{id}/settings/fiscal-start-month")
+     public SettingsView setFiscalStartMonth(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 2dcca7c1..35057ef3 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -284,6 +284,17 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** Change the sheet's review SLA in days (null: none), auditing the change. */
++    @Transactional
++    public Sheet setReviewSla(String id, String user, Integer days) {
++        Sheet sheet = lock(id);
++        sheet.setReviewSla(days);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=review-sla value="
++                + (saved.getReviewSla() == null ? "" : saved.getReviewSla().toString()));
++        return saved;
++    }
++
+     /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */
+     @Transactional
+     public Sheet setFiscalStartMonth(String id, String user, int month) {
+diff --git a/src/main/resources/db/migration/V95__review_sla.sql b/src/main/resources/db/migration/V95__review_sla.sql
+new file mode 100644
+index 00000000..eb8c10f1
+--- /dev/null
++++ b/src/main/resources/db/migration/V95__review_sla.sql
+@@ -0,0 +1,3 @@
++-- The review SLA in days: a REVIEW claim whose review day (the sheet's today when it went to REVIEW)
++-- plus them is before the sheet's today is late. Null means none; not dated.
++ALTER TABLE sheet ADD COLUMN review_sla INT;

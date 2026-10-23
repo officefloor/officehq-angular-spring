@@ -1,0 +1,64 @@
+{
+  "checkpoint": 171,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp171_review-sla",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a9caf7bf77900963d86f279f4e5100b6c89c83ae",
+  "reset_sha": "",
+  "preagent_sha": "f411702b94eb0828c6d7c1fa752b012240f899b9",
+  "prev_sha": "f411702b94eb0828c6d7c1fa752b012240f899b9",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3385836,
+    "input_tokens": 62,
+    "output_tokens": 14802,
+    "cache_read_tokens": 1757198,
+    "cache_creation_tokens": 86357,
+    "num_turns": 33,
+    "duration_ms": 388838,
+    "duration_api_ms": 171949,
+    "model": "claude-opus-5-5",
+    "session_id": "0d4c0b92-ac3c-4415-8db2-61069c05ed02",
+    "stop_reason": "success",
+    "result_text": "The review SLA works: the main `review sla` test passes. The three `review sla scenario` tests still fail, and they can't pass as the spec is written.\n\n**Why the scenario tests fail.** Each scenario expects the `sheet-parent` element to show the literal text `\"__SHEET__-p\"` (spec lines 239, 640 and 1059). That looks like a placeholder that was never filled in. The test actually sets the parent to `${sheet}-p`, so the app shows the real id, e.g. `smvkfwimf5utj-p`. Scenarios 2 and 3 fail at that line. Scenario 1 fails earlier, at line 199: it expects adding a DRAFT claim dated 2026-03-09 to be refused, but the server allows adding a DRAFT that is due inside a closed period. That is existing behaviour I didn't change, and even if it were fixed, scenario 1 would then hit the same `__SHEET__` line. I didn't edit the spec, since that isn't allowed; the placeholder needs fixing on the test side.\n\n**What I changed:**\n- **Stored data:** a new migration, `V95__review_sla.sql`, adds a `review_sla` column to the sheet (a whole number of days; empty means none, not dated). Cloning a sheet and viewing it as of an earlier date both carry the setting over.\n- **Server:** a new settings endpoint, `PUT /api/sheets/{id}/settings/review-sla`. It writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=review-sla value=<days>` to the audit file, with nothing after `value=` when cleared. The sheet and settings data sent to the screen now include `reviewSla`.\n- **Front end:**\n  - A `setting-review-sla` input and a `setting-review-sla-current` display in settings. A value that isn't a whole number shows the settings error.\n  - Each claim row shows `claim-review-late` (yes or no).\n  - The summary shows `summary-review-late-count`.\n  - A claim is late when it is in REVIEW and its review day plus the SLA days is before the sheet's today. The review day is taken from the claim's status log, which already records the sheet's today when it went to REVIEW, so claims needed no new column. The logic is in `reviewDay` and `reviewLate` in `core/claims.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3385836,
+        "num_turns": 33,
+        "duration_ms": 388838,
+        "duration_api_ms": 171949,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp171.agent.jsonl",
+  "agent_diff_file": "cp171.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
