@@ -42,7 +42,8 @@ public class PersonController {
      * due-total (null when n/a or none taken) and date (null when none taken), and the date they are
      * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons
      * in the order they were named, and whether their name or an alias is in use on another sheet of the
-     * sheet's tree (clashing), and the sheet they were last transferred from (null when never).
+     * sheet's tree (clashing), and the sheet they were last transferred from (null when never), and their
+     * flag's reason and last day (both null when never flagged).
      * Their grades are listed by the date each is in force from, the first with none (from the
      * beginning of time). Their terms are their own from the beginning of time; the own terms recorded
      * since are listed by the date each is in force from.
@@ -52,7 +53,8 @@ public class PersonController {
             List<String> tagsUsed, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
-            String originSheetId, List<SnapshotView> snapshots, List<StatementLineView> statementLines) {
+            String originSheetId, List<SnapshotView> snapshots, List<StatementLineView> statementLines,
+            String flagReason, LocalDate flagUntil) {
 
         public static PersonView of(Person person) {
             return of(person, false);
@@ -80,7 +82,8 @@ public class PersonController {
                     person.getStatements().stream()
                             .map(statement -> new StatementLineView(statement.getTakenOn(),
                                     Rollups.shown(statement.getTotal())))
-                            .toList());
+                            .toList(),
+                    person.getFlagReason(), person.getFlagUntil());
         }
     }
 
@@ -305,6 +308,20 @@ public class PersonController {
             @RequestBody(required = false) HoldForm form) {
         return view(service.hold(sheetId, SignedIn.name(user), personId,
                 form == null ? null : form.from(), form == null ? null : form.to()));
+    }
+
+    /** A flag's reason and the last day it is in force. */
+    public record FlagForm(@Size(max = 200) String reason, @NotNull LocalDate until) {
+    }
+
+    /** Flag a person with a reason until a date; a steward only. */
+    @PostMapping("/{personId}/flag")
+    public PersonView flag(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid FlagForm form) {
+        return view(service.flag(sheetId, SignedIn.name(user), personId, form.reason(), form.until()));
     }
 
     /** The person named as a patron. */

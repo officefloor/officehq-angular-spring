@@ -80,6 +80,10 @@ export interface PersonView {
   aliases?: string[];
   /** Whether the person's name or an alias is in use on another sheet of the sheet's tree; absent from a view kept before this was. */
   clashing?: boolean;
+  /** Why a steward flagged the person; null when never, absent from a view kept before flags were. */
+  flagReason?: string | null;
+  /** The last day (yyyy-mm-dd) the person's flag is in force; null when never, absent from a view kept before flags were. */
+  flagUntil?: string | null;
   /** The sheet the person was last transferred from; null when never, absent from a view kept before this was. */
   originSheetId?: string | null;
   /** The person's snapshot lines, oldest first; absent from a view kept before snapshot lines were. */
@@ -110,6 +114,11 @@ export interface RetirementView {
 export interface HoldView {
   from: string;
   to: string | null;
+}
+
+/** The reason a person's flag shows on a date (yyyy-mm-dd): '' unless it is in force then. */
+export function flagOn(person: PersonView, date: string): string {
+  return person.flagReason && person.flagUntil && date <= person.flagUntil ? person.flagReason : '';
 }
 
 /** Whether a date (yyyy-mm-dd) falls within any of a person's holds. */
@@ -236,6 +245,11 @@ export class PeopleApi {
   /** Unretire a retired person on the sheet's today. */
   unretire(sheet: string, id: number): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/unretire`, null));
+  }
+
+  /** Flag a person with a reason until a date (yyyy-mm-dd); a steward only. */
+  flag(sheet: string, id: number, reason: string, until: string): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/flag`, { reason, until }));
   }
 
   /** Put a person on hold from a date (none: the sheet's today) to a date (none: no end). */

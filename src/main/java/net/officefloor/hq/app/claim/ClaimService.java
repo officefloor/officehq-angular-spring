@@ -285,7 +285,8 @@ public class ClaimService {
      * (a due of n/a is within any limit) sends it PENDING instead, for a steward to approve or reject;
      * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
      * refused. A claim due by inside a closed period cannot be moved, nor can a claim
-     * deferred on the sheet's today be settled, nor a claim opened whose person already has as many OPEN
+     * deferred on the sheet's today be settled, nor a claim opened by anyone but a steward whose person is
+     * flagged on the sheet's today, nor a claim opened whose person already has as many OPEN
      * or PENDING claims due by in its period as the period's claim cap. A claim opened whose due is above the
      * sheet's review threshold in force on its date (a due of n/a is within any threshold) goes to REVIEW
      * instead, with no number yet, audited as CLAIM_REVIEW (see {@link #review}). A SETTLED claim is voided only by a steward, within
@@ -340,6 +341,11 @@ public class ClaimService {
         BigDecimal settledDue = next == ClaimStatus.SETTLED
                 ? dues.settling(claim, person.gradeOn(claim.getDate()))
                 : null;
+        if (next == ClaimStatus.OPEN && person.flaggedOn(today)
+                && !Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    person.getName() + " is flagged (" + person.getFlagReason() + "): only a steward opens their claims.");
+        }
         if (next == ClaimStatus.OPEN) {
             periods.refuseIfCapped(sheetId, claim);
             BigDecimal due = dues.due(claim, person.gradeOn(claim.getDate()));

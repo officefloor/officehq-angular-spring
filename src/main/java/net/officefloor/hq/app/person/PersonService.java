@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -24,9 +26,11 @@ public class PersonService {
     private final SheetRepository sheetStore;
     private final Rollups rollups;
     private final Audit audit;
+    private final RoleService roles;
 
     public PersonService(PersonRepository people, SheetService sheets, SheetRepository sheetStore, Rollups rollups,
-            Audit audit) {
+            Audit audit, RoleService roles) {
+        this.roles = roles;
         this.people = people;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
@@ -252,6 +256,29 @@ public class PersonService {
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user
                 + " name=" + saved.getName() + " from=" + start);
         rollups.audit(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Flag a person with a reason until a date: while the sheet's today is on or before it, only a
+     * steward opens a claim of theirs. Refused unless the user is a steward, and for a blank reason.
+     */
+    @Transactional
+    public Person flag(String sheetId, String user, long personId, String reason, LocalDate until) {
+        sheets.lock(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward flags a person.");
+        }
+        String trimmed = reason == null ? "" : reason.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A flag needs a reason.");
+        }
+        person.flag(trimmed, until);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " reason=" + trimmed + " until=" + until);
         return saved;
     }
 

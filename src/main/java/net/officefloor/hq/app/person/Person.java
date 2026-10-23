@@ -100,6 +100,14 @@ public class Person {
     @Column(name = "arrived_on")
     private LocalDate arrivedOn;
 
+    /** Why a steward flagged the person; null when never flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day the person's flag is in force; null when never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -347,6 +355,25 @@ public class Person {
 
     public LocalDate getArrivedOn() {
         return arrivedOn;
+    }
+
+    public String getFlagReason() {
+        return flagReason;
+    }
+
+    public LocalDate getFlagUntil() {
+        return flagUntil;
+    }
+
+    /** Whether the person's flag is in force on a day: they were flagged until it or a later day. */
+    public boolean flaggedOn(LocalDate day) {
+        return flagReason != null && flagUntil != null && !day.isAfter(flagUntil);
+    }
+
+    /** Flag the person with a reason until a date, replacing any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
     }
 
     /** Whether the person arrived on their sheet by transfer on this day. */

@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
-import { GRADES, Grade, ImportView, PeopleApi, PersonView, gradeOn, leavesLive, termsOn } from '../../core/people';
+import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -404,6 +404,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
             }
             <th scope="col">Statement lines</th>
             <th scope="col">Snapshots</th>
+            <th scope="col">Flag</th>
             <th scope="col">Active</th>
             @if (columns.shown('hold')) {
               <th scope="col">On hold</th>
@@ -543,6 +544,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                   }
                 </ul>
               </td>
+              <td data-testid="person-flag-shown">{{ flagShown(p) }}</td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               @if (columns.shown('hold')) {
                 <td>
@@ -730,6 +732,30 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 >
                   Hold
                 </button>
+                <label [for]="'person-flag-reason-' + p.id">Flag reason</label>
+                <input
+                  type="text"
+                  [id]="'person-flag-reason-' + p.id"
+                  data-testid="person-flag-reason"
+                  [value]="flagDraft(p.id).reason"
+                  (input)="setFlagDraft(p.id, { reason: value($event) })"
+                />
+                <label [for]="'person-flag-until-' + p.id">Flag until</label>
+                <input
+                  type="date"
+                  [id]="'person-flag-until-' + p.id"
+                  data-testid="person-flag-until"
+                  [value]="flagDraft(p.id).until"
+                  (input)="setFlagDraft(p.id, { until: value($event) })"
+                />
+                <button
+                  type="button"
+                  data-testid="person-flag"
+                  [attr.aria-label]="'Flag ' + p.name"
+                  (click)="flag(p)"
+                >
+                  Flag
+                </button>
                 <label [for]="'person-merge-into-' + p.id">Merge into</label>
                 <select
                   [id]="'person-merge-into-' + p.id"
@@ -833,6 +859,8 @@ export class People {
   protected readonly inlineGrades = new Map<number, Grade>();
   /** The hold dates typed on each person's row, by person id; an empty from means the sheet's today. */
   protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
+  /** The flag reason and until-date typed on each person's row, by person id. */
+  protected readonly flagDrafts = signal(new Map<number, { reason: string; until: string }>());
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<ClaimView[]>([]);
   private readonly byPerson = computed(() => {
@@ -1192,6 +1220,7 @@ export class People {
         this.personError.set(null);
         this.retireDates.clear();
         this.holdDrafts.set(new Map());
+        this.flagDrafts.set(new Map());
         this.patronError.set(null);
         this.patronChoices.clear();
         this.mergeChoices.clear();
@@ -1757,6 +1786,52 @@ export class People {
       });
     } catch {
       this.personError.set({ id: person.id, message: 'The person could not be put on hold.' });
+    }
+  }
+
+  /** The reason a person's flag shows on the sheet's today: blank unless it is in force. */
+  protected flagShown(person: PersonView): string {
+    return flagOn(person, this.session.today() ?? '');
+  }
+
+  /** The flag reason and until-date typed on a person's row. */
+  protected flagDraft(personId: number): { reason: string; until: string } {
+    return this.flagDrafts().get(personId) ?? { reason: '', until: '' };
+  }
+
+  /** Change the flag reason or until-date typed on a person's row. */
+  protected setFlagDraft(personId: number, change: { reason?: string; until?: string }): void {
+    this.flagDrafts.update((map) => new Map(map).set(personId, { ...this.flagDraft(personId), ...change }));
+    this.personError.set(null);
+  }
+
+  /** Flag a person with the reason typed until the date typed; a steward only, and a reason is needed. */
+  protected async flag(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const draft = this.flagDraft(person.id);
+    const reason = draft.reason.trim();
+    const until = draft.until.trim();
+    if (reason === '') {
+      this.personError.set({ id: person.id, message: 'A flag needs a reason.' });
+      return;
+    }
+    if (until === '') {
+      this.personError.set({ id: person.id, message: 'A flag needs an until date.' });
+      return;
+    }
+    try {
+      const saved = await this.api.flag(sheet, person.id, reason, until);
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.flagDrafts.update((map) => {
+        const next = new Map(map);
+        next.delete(person.id);
+        return next;
+      });
+    } catch {
+      this.personError.set({ id: person.id, message: 'The person could not be flagged.' });
     }
   }
 
