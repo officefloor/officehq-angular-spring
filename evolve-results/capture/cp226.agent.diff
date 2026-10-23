@@ -1,0 +1,714 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index fa22d5cf..14f18d13 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Injectable, inject, signal } from '@angular/core';
++import { Injectable, WritableSignal, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
+ /** A setting's value from a date (yyyy-mm-dd); from null for its starting value, before every from-date. */
+@@ -61,6 +61,10 @@ export interface SheetView {
+   scoreHigh?: number | null;
+   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled; null when none. */
+   proofKinds?: string | null;
++  /** The sheet's own today, the one changes use: differs from today while a preview date is set. */
++  sheetToday?: string | null;
++  /** The preview date the figures are read on (today then being it); null when none is set. */
++  preview?: string | null;
+ }
+ 
+ /**
+@@ -80,8 +84,13 @@ export class Session {
+ 
+   readonly user = signal<string | null>(null);
+   readonly sheet = signal<string | null>(null);
+-  /** The active sheet's today; features use it, never the real clock. */
++  /**
++   * The day the active sheet's figures are read on: its today, or the preview date while one is set.
++   * Features use it, never the real clock.
++   */
+   readonly today = signal<string | null>(null);
++  /** The active sheet's own today: every change, and every default date of one, uses it, never the preview date. */
++  readonly sheetToday = signal<string | null>(null);
+   /** The active sheet's floor in force on its today, with two decimals. */
+   readonly floor = signal('1.00');
+   /** The active sheet's floor by from-date: a claim's live due is at least the one in force on its date. */
+@@ -133,11 +142,17 @@ export class Session {
+    * and every change is refused.
+    */
+   readonly asOf = signal('');
++  /**
++   * The date (yyyy-mm-dd) this user's screen shows the sheet's figures as if it were the sheet's today;
++   * empty when none is set. The figures are read over the sheet's current records; changes still use
++   * the sheet's own today.
++   */
++  readonly preview = signal('');
+   /** Counts sheet loads, so features re-read the store even when the same id is loaded again. */
+   readonly loads = signal(0);
+   /** The sheet load whose people and claims are on screen; it equals loads once the latest has arrived. */
+   readonly loaded = signal(0);
+-  /** A change of the as-of date whose sheet load is still in flight; null when none is. */
++  /** A change of the as-of or preview date whose sheet load is still in flight; null when none is. */
+   private asOfLoading: Promise<void> | null = null;
+ 
+   signIn(name: string): void {
+@@ -155,16 +170,26 @@ export class Session {
+ 
+   /** Show the active sheet as of a date (empty: as it stands), re-reading it from the store. */
+   async setAsOf(date: string): Promise<void> {
++    await this.reloadWith(this.asOf, date);
++  }
++
++  /** Show the active sheet's figures as if its today were a date (empty: its own today), re-reading it from the store. */
++  async setPreview(date: string): Promise<void> {
++    await this.reloadWith(this.preview, date);
++  }
++
++  /** Set a date this screen reads the sheet with, re-reading it; put back when the read fails. */
++  private async reloadWith(day: WritableSignal<string>, date: string): Promise<void> {
+     const id = this.sheet();
+     if (!id) throw new Error('No sheet is loaded.');
+-    const was = this.asOf();
+-    this.asOf.set(date);
++    const was = day();
++    day.set(date);
+     const loading = this.loadSheet(id);
+     this.asOfLoading = loading;
+     try {
+       await loading;
+     } catch (e) {
+-      this.asOf.set(was);
++      day.set(was);
+       throw e;
+     } finally {
+       if (this.asOfLoading === loading) this.asOfLoading = null;
+@@ -213,6 +238,7 @@ export class Session {
+   private show(view: SheetView): void {
+     this.sheet.set(view.id);
+     this.today.set(view.today);
++    this.sheetToday.set(view.sheetToday ?? view.today);
+     this.floor.set(view.floor);
+     this.terms.set(view.terms);
+     this.latePct.set(view.latePct);
+diff --git a/src/main/frontend/src/app/core/signed-in.ts b/src/main/frontend/src/app/core/signed-in.ts
+index d65b51ea..27454f2f 100644
+--- a/src/main/frontend/src/app/core/signed-in.ts
++++ b/src/main/frontend/src/app/core/signed-in.ts
+@@ -4,7 +4,7 @@ import { Session } from './session';
+ 
+ /**
+  * Tells the server who is signed in on every request, so changes are recorded against them, and the
+- * date their screen shows the sheet as of, when one is set.
++ * date their screen shows the sheet as of, and the preview date its figures are read on, when set.
+  */
+ export const signedInInterceptor: HttpInterceptorFn = (req, next) => {
+   const session = inject(Session);
+@@ -12,6 +12,8 @@ export const signedInInterceptor: HttpInterceptorFn = (req, next) => {
+   const asOf = session.asOf();
+   const headers: Record<string, string> = {};
+   if (user) headers['X-User'] = encodeURIComponent(user);
++  const preview = session.preview();
+   if (asOf) headers['X-As-Of'] = asOf;
++  if (preview) headers['X-Preview'] = preview;
+   return next(Object.keys(headers).length > 0 ? req.clone({ setHeaders: headers }) : req);
+ };
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index c5d572c3..d02d0988 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -819,7 +819,7 @@ export class Claims {
+     try {
+       this.saved.emit(await this.api.defer(sheet, claim.id, until));
+     } catch {
+-      const today = this.session.today() ?? '';
++      const today = this.session.sheetToday() ?? '';
+       const period = periodOn(this.periods(), claim.dueBy);
+       this.claimError.set({
+         id: claim.id,
+@@ -976,7 +976,7 @@ export class Claims {
+     const refuse = (): string =>
+       claim.status !== 'OPEN'
+         ? `A ${claim.status} claim cannot be split; only an OPEN one can.`
+-        : deferred(claim, this.session.today() ?? '')
++        : deferred(claim, this.session.sheetToday() ?? '')
+           ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be split.`
+           : period?.closed
+             ? `Period ${period.name} is closed, so its claims cannot be split.`
+@@ -1321,7 +1321,7 @@ export class Claims {
+       if (action === 'settle' && reason !== '' && e instanceof HttpErrorResponse && e.status === 400) {
+         this.claimError.set({
+           id: claim.id,
+-          message: reason > (this.session.today() ?? '')
++          message: reason > (this.session.sheetToday() ?? '')
+             ? 'A claim cannot be settled as of a date after today.'
+             : `The claim did not exist on ${reason}, so it cannot be settled as of then.`,
+         });
+@@ -1353,7 +1353,7 @@ export class Claims {
+         id: claim.id,
+         message: forbidden
+           ? `Your role is not allowed to ${action} a claim.`
+-          : action === 'settle' && deferred(claim, this.session.today() ?? '')
++          : action === 'settle' && deferred(claim, this.session.sheetToday() ?? '')
+           ? `The claim is deferred until ${claim.deferredUntil}, so it cannot be settled before then.`
+           : own
+             ? `You ${edited ? 'last edited' : 'opened'} this claim, so someone else must ${action} it.`
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index b98dce6a..969746b2 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -59,7 +59,7 @@ import { TreeSearch } from '../tree-search/tree-search';
+               <strong data-testid="sheet-current-id">{{ sheet }}</strong>
+             }
+           </p>
+-          <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
++          <p>Today <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
+           <form (submit)="saveToday($event)">
+             <label for="sheet-today-input">Change today</label>
+             <input
+@@ -84,6 +84,19 @@ import { TreeSearch } from '../tree-search/tree-search';
+             <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as-of date</button>
+           </form>
+           <p>As of <strong data-testid="sheet-asof">{{ session.asOf() }}</strong></p>
++          <form (submit)="setPreview($event)">
++            <label for="preview-date">Preview as if today were</label>
++            <input
++              id="preview-date"
++              type="date"
++              data-testid="preview-date"
++              [value]="previewInput()"
++              (input)="previewInput.set(value($event)); sheetError.set(null)"
++            />
++            <button type="submit" data-testid="preview-set">Set preview date</button>
++            <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview date</button>
++          </form>
++          <p>Preview <strong data-testid="sheet-preview">{{ session.preview() }}</strong></p>
+           <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() }}</strong></p>
+           <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+@@ -142,6 +155,7 @@ export class Home {
+   protected readonly sheetInput = signal('');
+   protected readonly todayInput = signal('');
+   protected readonly asOfInput = signal('');
++  protected readonly previewInput = signal('');
+   protected readonly cloneInput = signal('');
+   /** The id the sheet on screen was last cloned to from this screen; empty when none since it was loaded. */
+   protected readonly clonedTo = signal('');
+@@ -252,6 +266,31 @@ export class Home {
+     }
+   }
+ 
++  protected async setPreview(event: Event): Promise<void> {
++    event.preventDefault();
++    this.sheetError.set(null);
++    const date = this.previewInput().trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.sheetError.set('Pick a date to preview the sheet on.');
++      return;
++    }
++    try {
++      await this.session.setPreview(date);
++    } catch {
++      this.sheetError.set(`The sheet could not be previewed on ${date}.`);
++    }
++  }
++
++  protected async clearPreview(): Promise<void> {
++    this.sheetError.set(null);
++    this.previewInput.set('');
++    try {
++      await this.session.setPreview('');
++    } catch {
++      this.sheetError.set('The preview date could not be cleared.');
++    }
++  }
++
+   protected async archive(): Promise<void> {
+     if (this.archiving) return;
+     this.sheetError.set(null);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2a16ff5d..be346416 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1178,6 +1178,8 @@ export class People {
+   /** The number of the sheet's last settle batch; null when there has been none. */
+   protected readonly lastSettleBatch = computed(() => this.session.lastSettleBatch());
+   protected readonly today = computed(() => this.session.today() ?? '');
++  /** The sheet's own today, which changes use (the today above is the preview date while one is set). */
++  protected readonly sheetToday = computed(() => this.session.sheetToday() ?? '');
+   protected readonly claimedTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + this.claimedCents(p.id), 0)),
+   );
+@@ -1346,12 +1348,12 @@ export class People {
+   /** The grade to give the selected people. */
+   protected readonly bulkGrade = signal<Grade>('A');
+   /** The date the selected people's grade is in force from; the sheet's today unless another is typed. */
+-  protected readonly bulkGradeFrom = linkedSignal(() => this.today());
++  protected readonly bulkGradeFrom = linkedSignal(() => this.sheetToday());
+   /** How many people the last bulk grade changed; null until one is done. */
+   protected readonly bulkGraded = signal<number | null>(null);
+   protected readonly bulkGradeError = signal<string | null>(null);
+   /** The date the selected people are retired from; the sheet's today unless another is typed. */
+-  protected readonly bulkRetireDate = linkedSignal(() => this.today());
++  protected readonly bulkRetireDate = linkedSignal(() => this.sheetToday());
+   /** How many people the last bulk retire retired; null until one is done. */
+   protected readonly bulkRetired = signal<number | null>(null);
+   protected readonly bulkRetireError = signal<string | null>(null);
+@@ -1407,17 +1409,17 @@ export class People {
+         this.selectedPeople.set(new Set());
+         this.bulkGraded.set(null);
+         this.bulkGradeError.set(null);
+-        this.bulkGradeFrom.set(this.today());
++        this.bulkGradeFrom.set(this.sheetToday());
+         this.bulkRetired.set(null);
+         this.bulkRetireError.set(null);
+-        this.bulkRetireDate.set(this.today());
++        this.bulkRetireDate.set(this.sheetToday());
+         if (sheet) void this.reload(sheet);
+       });
+     });
+     // A change to the sheet's today may close periods past their grace days: re-read them.
+     let shownToday: string | null = null;
+     effect(() => {
+-      const today = this.session.today();
++      const today = this.session.sheetToday();
+       untracked(() => {
+         const sheet = this.session.sheet();
+         const changed = shownToday !== null && today !== shownToday;
+@@ -2287,7 +2289,7 @@ export class People {
+       if (this.session.sheet() !== sheet) return;
+       this.people.update((list) => list.map((p) => changed.find((c) => c.id === p.id) ?? p));
+       this.selectedPeople.set(new Set());
+-      this.bulkGradeFrom.set(this.today());
++      this.bulkGradeFrom.set(this.sheetToday());
+       this.bulkGraded.set(changed.length);
+     } catch {
+       this.bulkGradeError.set('The people could not be graded.');
+@@ -2318,7 +2320,7 @@ export class People {
+       if (this.session.sheet() !== sheet) return;
+       this.people.update((list) => list.map((p) => retired.find((r) => r.id === p.id) ?? p));
+       this.selectedPeople.set(new Set());
+-      this.bulkRetireDate.set(this.today());
++      this.bulkRetireDate.set(this.sheetToday());
+       this.bulkRetired.set(retired.length);
+     } catch {
+       this.bulkRetireError.set('The people could not be retired.');
+@@ -2577,8 +2579,8 @@ export class People {
+     this.version.set(person.version);
+     this.name.set(person.name);
+     this.grade.set(this.gradeOf(person));
+-    this.gradeFrom.set(this.today());
+-    this.terms.set(this.termsText(termsOn(person, this.today())));
++    this.gradeFrom.set(this.sheetToday());
++    this.terms.set(this.termsText(termsOn(person, this.sheetToday())));
+     this.termsFrom.set('');
+     this.contact.set(person.contact ?? '');
+     this.tags.set((person.tags ?? []).join(', '));
+@@ -2592,7 +2594,7 @@ export class People {
+     this.editing.set(null);
+     this.name.set('');
+     this.grade.set('A');
+-    this.gradeFrom.set(this.today());
++    this.gradeFrom.set(this.sheetToday());
+     this.terms.set('');
+     this.termsFrom.set('');
+     this.contact.set('');
+@@ -2677,7 +2679,7 @@ export class People {
+       this.version.set(current.version);
+       this.name.set(current.name);
+       this.grade.set(this.gradeOf(current));
+-      this.terms.set(this.termsText(termsOn(current, this.today())));
++      this.terms.set(this.termsText(termsOn(current, this.sheetToday())));
+       this.contact.set(current.contact ?? '');
+       this.tags.set((current.tags ?? []).join(', '));
+     } catch {
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 609d9b68..728ec126 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -629,7 +629,7 @@ export class Settings {
+     // A change to the sheet's today changes which dated values are in force.
+     let shownToday: string | null = null;
+     effect(() => {
+-      const today = this.session.today();
++      const today = this.session.sheetToday();
+       untracked(() => {
+         const sheet = this.session.sheet();
+         const changed = shownToday !== null && today !== shownToday;
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 9bdae20a..8729cda8 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import net.officefloor.hq.app.SignedIn;
+ import net.officefloor.hq.app.history.AsOfGuard;
++import net.officefloor.hq.app.history.PreviewDate;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -29,17 +30,19 @@ public class DashboardController {
+ 
+     /**
+      * The sheet's steward dashboard as it stands now, for the signed-in user; empty while an as-of date
+-     * is set, as the dashboard shows only the sheet as it stands now.
++     * is set, as the dashboard shows only the sheet as it stands now; its figures read as if the sheet's
++     * today were the preview date while one is set.
+      */
+     @GetMapping("/{id}/dashboard")
+     public DashboardView dashboard(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+-            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf,
++            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
+         if (AsOfGuard.date(asOf) != null) {
+             return new DashboardView(null, null, null);
+         }
+-        return service.of(id, SignedIn.name(user))
++        return service.of(id, SignedIn.name(user), PreviewDate.date(preview))
+                 .map(d -> new DashboardView(d.pendingCount(), d.reviewCount(), d.overdueCount()))
+                 .orElse(new DashboardView(null, null, null));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index df9231eb..ba81f560 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.dashboard;
+ 
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Optional;
+@@ -41,6 +42,12 @@ public class DashboardService {
+      */
+     @Transactional(readOnly = true)
+     public Optional<Dashboard> of(String sheetId, String userName) {
++        return of(sheetId, userName, null);
++    }
++
++    /** As {@link #of(String, String)}, each sheet's overdue claims read as if its today were a preview day (null: its own). */
++    @Transactional(readOnly = true)
++    public Optional<Dashboard> of(String sheetId, String userName, LocalDate preview) {
+         if (!Role.STEWARD.equals(roles.roleOf(sheetId, userName))) {
+             return Optional.empty();
+         }
+@@ -53,7 +60,7 @@ public class DashboardService {
+         for (String id : tree) {
+             pending += claims.countBySheetIdAndStatus(id, ClaimStatus.PENDING);
+             review += claims.countBySheetIdAndStatus(id, ClaimStatus.REVIEW);
+-            overdue += rollups.take(id).overdueCount();
++            overdue += rollups.take(id, preview).overdueCount();
+         }
+         return Optional.of(new Dashboard(pending, review, overdue));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/history/PreviewDate.java b/src/main/java/net/officefloor/hq/app/history/PreviewDate.java
+new file mode 100644
+index 00000000..f642ab59
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/PreviewDate.java
+@@ -0,0 +1,35 @@
++package net.officefloor.hq.app.history;
++
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * The preview date a user's screen shows the sheet's figures on, sent in the {@link #HEADER} header
++ * (yyyy-mm-dd) on every request while it is set. Reads of figures take it as the sheet's today, over the
++ * sheet's current records; every change ignores it and uses the sheet's real today, and nothing is kept,
++ * scored or closed for it, as the sheet's today in the store does not move.
++ */
++public final class PreviewDate {
++
++    public static final String HEADER = "X-Preview";
++
++    private PreviewDate() {
++    }
++
++    /** The preview date from the header's value; null when none is set. */
++    public static LocalDate date(String header) {
++        String text = header == null ? "" : header.trim();
++        try {
++            return text.isEmpty() ? null : LocalDate.parse(text);
++        } catch (DateTimeParseException e) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a preview date: " + text);
++        }
++    }
++
++    /** The day figures are read on: none while an as-of date is set (it decides), else the preview date. */
++    public static LocalDate date(String asOfHeader, String previewHeader) {
++        return AsOfGuard.date(asOfHeader) != null ? null : date(previewHeader);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+index 7ede9c81..73e5f2cb 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+@@ -78,6 +78,15 @@ public class Consolidation {
+      */
+     @Transactional(readOnly = true)
+     public Consolidated of(String sheetId, LocalDate asOf) {
++        return of(sheetId, asOf, null);
++    }
++
++    /**
++     * As {@link #of(String, LocalDate)}; with no as-of date but a preview day, each sheet's figures over its
++     * records as they stand now, read as if its today were that day.
++     */
++    @Transactional(readOnly = true)
++    public Consolidated of(String sheetId, LocalDate asOf, LocalDate preview) {
+         List<String> all = new ArrayList<>();
+         all.add(sheetId);
+         all.addAll(sheets.descendants(sheetId));
+@@ -87,7 +96,7 @@ public class Consolidation {
+         Map<String, BigDecimal> grades = new TreeMap<>();
+         Map<String, Integer> statuses = new TreeMap<>();
+         for (String id : all) {
+-            Taken taken = asOf == null ? now(id) : asOf(id, asOf);
++            Taken taken = asOf != null ? asOf(id, asOf) : preview != null ? preview(id, preview) : now(id);
+             Rollups.Rollup rollup = taken.rollup();
+             rollup.people().values().forEach(figures -> {
+                 if (figures.dueTotal() != null) {
+@@ -176,6 +185,20 @@ public class Consolidation {
+                 cuts.personCuts(sheet, sheetPeople.values())), sheetPeople, sheetClaims);
+     }
+ 
++    /** A sheet's figures over its records as they stand now, read as if its today were a preview day. */
++    private Taken preview(String sheetId, LocalDate day) {
++        Sheet now = sheets.findById(sheetId).orElse(null);
++        if (now == null) {
++            return now(sheetId);
++        }
++        Sheet then = now.asOf(day, now.getDated(), now.getPolicyDate());
++        LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
++        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
++        return new Taken(then, rollups.take(then, rollups.previewBasis(then), sheetPeople, sheetClaims,
++                cuts.personCuts(then, sheetPeople.values())), sheetPeople, sheetClaims);
++    }
++
+     /**
+      * A sheet's figures as it stood at the end of a date, with that date as its today: before its today,
+      * as kept for that date (none when nothing was kept by then); else as it stands.
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
+index bff22cbf..830b66ab 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
+@@ -6,6 +6,7 @@ import java.util.Map;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import net.officefloor.hq.app.history.AsOfGuard;
++import net.officefloor.hq.app.history.PreviewDate;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -41,13 +42,16 @@ public class ConsolidationController {
+ 
+     /**
+      * The sheet's figures over it and all its descendants, as each stands now, or while an as-of date is
+-     * set, as each stood at the end of that date.
++     * set, as each stood at the end of that date, or while a preview date is set, as each stands now read
++     * as if its today were that date.
+      */
+     @GetMapping("/{id}/consolidated")
+     public ConsolidatedView consolidated(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+-            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+-        Consolidation.Consolidated figures = consolidation.of(id, AsOfGuard.date(asOf));
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf,
++            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
++        Consolidation.Consolidated figures = consolidation.of(id, AsOfGuard.date(asOf),
++                PreviewDate.date(asOf, preview));
+         Map<String, String> grades = new LinkedHashMap<>();
+         figures.gradeDueTotals().forEach((grade, due) -> grades.put(grade, due.toPlainString()));
+         return new ConsolidatedView(figures.peopleCount(), figures.dueTotal().toPlainString(),
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index 58cc3bbe..7549232f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -87,6 +87,28 @@ public class Rollups {
+                 cuts.personCuts(sheet, sheetPeople.values()));
+     }
+ 
++    /**
++     * The sheet's figures over its records as they stand now, read as if its today were a preview day
++     * (null: its own today), held in no store.
++     */
++    public Rollup take(String sheetId, LocalDate preview) {
++        Sheet now = sheets.findById(sheetId).orElse(null);
++        if (preview == null || now == null) {
++            return take(sheetId);
++        }
++        Sheet then = now.asOf(preview, now.getDated(), now.getPolicyDate());
++        Map<Long, Person> sheetPeople = new LinkedHashMap<>();
++        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
++        return take(then, previewBasis(then), sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
++                cuts.personCuts(then, sheetPeople.values()));
++    }
++
++    /** The basis a sheet held in no store, with a preview day as its today, reads its dues against: its live one. */
++    public Dues.Basis previewBasis(Sheet then) {
++        Dues.Basis live = dues.live(then.getId());
++        return new Dues.Basis(then, live.rates(), live.inherited(), live.corrected());
++    }
++
+     /**
+      * A sheet's figures read from what is given, as {@link #take(Sheet, Dues.Basis, Map, Iterable, Map)}
+      * with no one's cuts.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index ab170819..0512312d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
+ 
+ import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.history.AsOfGuard;
++import net.officefloor.hq.app.history.PreviewDate;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+@@ -39,9 +40,17 @@ public class SheetController {
+             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
+             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
+             int fiscalStartMonth, List<DatedValue> roundingHistory, Integer reviewSla, String proofKinds,
+-            Integer scoreMid, Integer scoreHigh) {
++            Integer scoreMid, Integer scoreHigh, LocalDate sheetToday, LocalDate preview) {
+ 
+         static SheetView of(Sheet sheet) {
++            return of(sheet, sheet.getToday(), null);
++        }
++
++        /**
++         * The sheet as shown, its today being the day its figures are read on, with the sheet's own today
++         * (the one changes use) and the preview date, null for none.
++         */
++        static SheetView of(Sheet sheet, LocalDate sheetToday, LocalDate preview) {
+             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
+                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
+                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
+@@ -49,7 +58,7 @@ public class SheetController {
+                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
+                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+                     sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()), sheet.getReviewSla(),
+-                    sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh());
++                    sheet.getProofKinds(), sheet.getScoreMid(), sheet.getScoreHigh(), sheetToday, preview);
+         }
+ 
+         /** Each grade's grace values by from-date, its starting value (none) first. */
+@@ -345,13 +354,23 @@ public class SheetController {
+ 
+     /**
+      * Load a sheet by id, starting an empty one if the id was never used; with an as-of date, the sheet
+-     * as it stood at the end of that date, with that date as its today.
++     * as it stood at the end of that date, with that date as its today; else with a preview date, the
++     * sheet as it stands with that date as the today its figures are read on (its own today still told).
+      */
+     @PostMapping("/{id}/load")
+     public SheetView load(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+-            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+-        return SheetView.of(history.sheet(service.load(id), AsOfGuard.date(asOf)));
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf,
++            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
++        Sheet now = service.load(id);
++        LocalDate day = PreviewDate.date(asOf, preview);
++        return day != null ? previewed(now, day) : SheetView.of(history.sheet(now, AsOfGuard.date(asOf)));
++    }
++
++    /** The sheet as it stands, its figures read on a preview day (null: on its own today). */
++    private static SheetView previewed(Sheet now, LocalDate day) {
++        return day == null ? SheetView.of(now)
++                : SheetView.of(now.asOf(day, now.getDated(), now.getPolicyDate()), now.getToday(), day);
+     }
+ 
+     /** Change the sheet's today. */
+@@ -359,20 +378,22 @@ public class SheetController {
+     public SheetView setToday(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview,
+             @RequestBody @Valid TodayChange change) {
+-        return SheetView.of(service.setToday(id, SignedIn.name(user), change.today()));
++        return previewed(service.setToday(id, SignedIn.name(user), change.today()), PreviewDate.date(preview));
+     }
+ 
+     /** Archive the sheet: only a steward may. */
+     @PostMapping("/{id}/archive")
+     public SheetView archive(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
+         String name = SignedIn.name(user);
+         if (!Role.STEWARD.equals(roles.roleOf(id, name))) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may archive the sheet.");
+         }
+-        return SheetView.of(service.archive(id, name));
++        return previewed(service.archive(id, name), PreviewDate.date(preview));
+     }
+ 
+     /** Clone the sheet to another id, which must never have been used: only a steward may. */
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index e13f5f7c..db7c751b 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -85,11 +85,16 @@ public class StatementService {
+         Person then;
+         // Their claims as they stood then, by id.
+         Map<Long, Claim> theirsThen = new LinkedHashMap<>();
++        // Everyone's claims and people as they stood then, for the parts of others' claims shared with them.
++        Iterable<Claim> allThen;
++        Map<Long, Person> peopleThen = new HashMap<>();
+         Dues.Basis basis;
+         Sheet sheet;
+         if (day.equals(today)) {
+             then = person;
+             claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).forEach(c -> theirsThen.put(c.getId(), c));
++            allThen = claims.findBySheetIdOrderByIdDesc(sheetId);
++            people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> peopleThen.put(p.getId(), p));
+             basis = dues.live(sheetId);
+             sheet = sheets.load(sheetId);
+         } else {
+@@ -103,6 +108,8 @@ public class StatementService {
+                     theirsThen.put(id, c);
+                 }
+             });
++            allThen = kept.claims().values();
++            peopleThen.putAll(kept.people());
+             basis = kept.basis();
+             sheet = kept.sheet();
+         }
+@@ -125,7 +132,27 @@ public class StatementService {
+             bound.put(entry.getKey(), due);
+             counted++;
+             if (due != null) {
+-                total = total.add(due);
++                // As in the live totals: a shared claim counts its figure less its holders' parts.
++                total = total.add(claim.getShares().isEmpty() ? due : due.subtract(claim.sharedPartsOf(due)));
++            }
++        }
++        // As in the live totals: their parts of others' shared claims that count for their own person.
++        for (Claim claim : allThen) {
++            Person owner = peopleThen.get(claim.getPersonId());
++            if (claim.getPersonId() == personId || owner == null || !claim.getStatus().counts()
++                    || claim.getShares().stream().noneMatch(share -> share.getPersonId() == personId)
++                    || !owner.countsLive(claim.getStatus(), claim.isStated(), claim.isDeferredOn(day), day)) {
++                continue;
++            }
++            BigDecimal figure = dues.due(claim, owner.gradeOn(claim.getDate()), basis);
++            if (figure == null) {
++                continue;
++            }
++            figured = true;
++            for (var share : claim.getShares()) {
++                if (share.getPersonId() == personId) {
++                    total = total.add(share.partOf(figure));
++                }
+             }
+         }
+         // As on the screen: n/a when the grade in force on the day has no rate, unless a claim has a figure.

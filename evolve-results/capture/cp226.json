@@ -1,0 +1,64 @@
+{
+  "checkpoint": 226,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp226_preview-date",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A user can set a preview date on their screen (an entry, a set button and a clear button; show\nit, or nothing). While it is set, every figure on the screen for that user is shown as if the\nsheet's today were that date (overdue, late charges, holds, deferrals, retirements, the grade and\nrate in force), over the sheet's current records; every change still uses the sheet's real today,\nand nothing that a change of today does (snapshots, scores, auto-closing) happens. The preview\nbelongs to the signed-in user's screen.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA user can set a preview date on their screen (an entry, a set button and a clear button; show\nit, or nothing). While it is set, every figure on the screen for that user is shown as if the\nsheet's today were that date (overdue, late charges, holds, deferrals, retirements, the grade and\nrate in force), over the sheet's current records; every change still uses the sheet's real today,\nand nothing that a change of today does (snapshots, scores, auto-closing) happens. The preview\nbelongs to the signed-in user's screen.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f25cb114701c3edebabfda2f9d3a599687e48615",
+  "reset_sha": "",
+  "preagent_sha": "5c98f79193210cba59bd15398e01b023df66a09f",
+  "prev_sha": "5c98f79193210cba59bd15398e01b023df66a09f",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.7104496000000005,
+    "input_tokens": 96,
+    "output_tokens": 30467,
+    "cache_read_tokens": 4818028,
+    "cache_creation_tokens": 142140,
+    "num_turns": 51,
+    "duration_ms": 779394,
+    "duration_api_ms": 330535,
+    "model": "claude-opus-5-5",
+    "session_id": "8e47e63d-39b4-4e40-875a-bb0ed68c66d0",
+    "stop_reason": "success",
+    "result_text": "I've added the preview date. Three of the four tests pass. The fourth, \"preview date scenario 2\", can't pass as the test is written, and it failed the same way before I changed anything.\n\n**Why scenario 2 can't pass:** at line 749 it expects snapshot lines `\"Cam  \"`, `\"Ben  \"`, `\"Dot  \"` with trailing spaces. But `snapshotCompare` in `e2e/support/ui.ts` calls `.trim()` on every line, so a trailing space can never come back. To check the rest of that scenario, I ran a temporary copy of the spec with only that expectation trimmed, and every other step passed. I deleted the copy afterwards. Either the test's expected strings or the helper needs fixing; I can't edit either.\n\n**How the preview works:**\n- **The control:** next to the as-of control there is now a date entry with set and clear buttons, and the preview date is shown (blank when there is none). It belongs to the signed-in user's screen only: the screen sends it with each request, and nothing about it is stored on the sheet. In the test, a second user on the same sheet sees no preview and the real figures.\n- **Figures:** while it's set, the screen calculates everything as if the sheet's today were that date, over the sheet's current records. That covers overdue, late charges, holds, deferrals, retirements, and the grade and rate in force. The server does the same for the consolidated totals and the steward dashboard's overdue count.\n- **Changes:** these always use the sheet's real today. Default dates in forms, the messages shown when a change is refused, and the \"Today\" display all keep the real date. The stored today never moves, so no snapshots, scores or auto-closing happen.\n- **With an as-of date:** if both are set, the as-of date decides what is shown.\n\n**A fix outside the request:** scenario 1 also needed a change to statements, which ignored shared claims. Ben's share of Cam's claim showed as 0.50 on screen and in the ROLLUP audit line, but his statement recorded 0.00. The statement code is meant to match the screen, so I made it count shared claims the same way the rollup does. That's in `statement/StatementService.java`, and it also changes statement totals for anyone whose claims are shared.\n\nThe main server pieces are a new `history/PreviewDate.java`, `Rollups.take(sheetId, preview)`, and changes to the sheet load, consolidated and dashboard endpoints. On the front end, `core/session.ts` now keeps the sheet's real today separately from the date the figures use.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.7104496000000005,
+        "num_turns": 51,
+        "duration_ms": 779394,
+        "duration_api_ms": 330535,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp226.agent.jsonl",
+  "agent_diff_file": "cp226.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
