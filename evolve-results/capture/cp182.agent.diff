@@ -1,0 +1,573 @@
+diff --git a/.e2e.out b/.e2e.out
+index 13213b85..3b4c966d 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,69 +2,11 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › flags › flags (10.3s)
+-  ✘  2 [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 (16.1s)
+-  ✓  3 [chromium] › acceptance.spec.ts:527:7 › flags › flags scenario 2 (17.4s)
+-  ✘  4 [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 (16.8s)
+-
+-
+-  1) [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 ───────────────────────────────
+-
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+-
+-    Received: [31m"6"[39m
+-
+-      155 |     await ui.sortBy(pg_uma, "due-total");
+-      156 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-04-02", "note": "n", "tags": "b,a,a"})).toBeNull();
+-    > 157 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "10.35", "date": "2026-03-01"})).toBeNull();
+-          |                                                                                         ^
+-      158 |     expect(await ui.addClaim(pg_uma, p_ben, {"amount": "3.33", "date": "2026-03-15", "tags": " c "})).toBeNull();
+-      159 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+-      160 |     expect(await ui.delegate(pg_vic, {"user": "uma", "from": "2026-02-10", "to": "2026-03-01"})).toBe(true);
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:157:89
+-
+-  2) [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 ──────────────────────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkilkrzu3it[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkilkrzu3it-p</strong>[22m
+-    [2m  -   unexpected value "smvkilkrzu3it-p"[22m
+-
+-
+-      1063 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      1064 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-04-02");
+-    > 1065 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1066 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("4");
+-      1067 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1068 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1065:54
+-
+-  2 failed
+-    [chromium] › acceptance.spec.ts:72:7 › flags › flags scenario 1 ────────────────────────────────
+-    [chromium] › acceptance.spec.ts:927:7 › flags › flags scenario 3 ───────────────────────────────
+-  2 passed (1.1m)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › claim hold › claim hold (7.2s)
++  ✓  2 [chromium] › acceptance.spec.ts:123:7 › claim hold › claim hold scenario 1 (20.2s)
++  ✓  3 [chromium] › acceptance.spec.ts:828:7 › claim hold › claim hold scenario 2 (24.2s)
++  ✓  4 [chromium] › acceptance.spec.ts:1316:7 › claim hold › claim hold scenario 3 (26.2s)
++
++  Slow test file: [chromium] › acceptance.spec.ts (1.3m)
++  Consider splitting slow test files to speed up parallel execution
++  4 passed (1.3m)
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index d6c50763..5dc184f1 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -102,6 +102,8 @@ export interface ClaimView {
+   added?: number | null;
+   /** Whether a steward waived the claim's late charge; false (or absent, as kept by an old snapshot) when not. */
+   waived?: boolean;
++  /** Whether the claim is held, leaving the live totals unless bound by a statement; false (or absent, as kept by an old snapshot) when not. */
++  held?: boolean;
+ }
+ 
+ /** A line of a claim: its label, quantity and unit amount (two decimals). */
+@@ -413,6 +415,11 @@ export class ClaimsApi {
+     return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/${id}/timeline`));
+   }
+ 
++  /** Hold an OPEN or PENDING claim, or release it when held; refused for any other status. */
++  hold(sheet: string, id: number): Promise<ClaimView> {
++    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/hold`, {}));
++  }
++
+   /** Waive an OPEN or PENDING claim's late charge; only a steward, and refused when already waived. */
+   waive(sheet: string, id: number): Promise<ClaimView> {
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/waive`, {}));
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 385f36db..cca3ac2d 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -133,10 +133,11 @@ export function retiredOn(person: PersonView, today: string): boolean {
+ 
+ /**
+  * Whether a person's OPEN or PENDING claim dated on a date, unbound by a statement, is left out of the
+- * live totals on the sheet's today: dated within one of their holds, or once their retirement date is reached.
++ * live totals on the sheet's today: when the claim itself is held, dated within one of their holds, or once
++ * their retirement date is reached.
+  */
+-export function leavesLive(person: PersonView, date: string, today: string): boolean {
+-  return heldOn(person, date) || retiredOn(person, today);
++export function leavesLive(person: PersonView, date: string, today: string, claimHeld = false): boolean {
++  return claimHeld || heldOn(person, date) || retiredOn(person, today);
+ }
+ 
+ /** A statement taken: the person as stated and their claims, newest first. */
+@@ -160,6 +161,8 @@ export interface PersonForm {
+   termsGiven?: boolean;
+   /** On an edit, whether the contact was typed on the form: PERSON_EDITED then carries it. */
+   contactGiven?: boolean;
++  /** On an edit, whether the grade was chosen on the form: it is then recorded from its date even when already in force. */
++  gradeGiven?: boolean;
+   /** On an edit, the version of the person the form loaded. */
+   version?: number;
+   /** The person's tags, comma separated; blank for none. */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index b6794035..d754fc28 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -132,6 +132,7 @@ const PAST: Record<ClaimAction, string> = {
+           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
++          <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
+           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+             @for (line of c.log; track $index) {
+@@ -302,6 +303,14 @@ const PAST: Record<ClaimAction, string> = {
+           >
+             Waive late charge
+           </button>
++          <button
++            type="button"
++            data-testid="claim-hold"
++            [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date"
++            (click)="toggleHold(c)"
++          >
++            {{ c.held ? 'Release' : 'Hold' }}
++          </button>
+           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+           <input
+             [id]="'claim-defer-date-' + c.id"
+@@ -1003,6 +1012,23 @@ export class Claims {
+     }
+   }
+ 
++  /** Hold a claim, or release it when held; refused with an error on its row unless it is OPEN or PENDING. */
++  protected async toggleHold(claim: ClaimView): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    try {
++      this.saved.emit(await this.api.hold(sheet, claim.id));
++    } catch {
++      this.claimError.set({
++        id: claim.id,
++        message: claim.status === 'OPEN' || claim.status === 'PENDING'
++          ? `The claim could not be ${claim.held ? 'released' : 'held'}.`
++          : `A ${claim.status} claim cannot be held or released; only an OPEN or PENDING one can.`,
++      });
++    }
++  }
++
+   /** Show the claim's timeline on its row, read afresh from the audit file; an error on its row when it cannot be read. */
+   protected async showTimeline(claim: ClaimView): Promise<void> {
+     this.claimError.set(null);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 26e7531e..f7d02610 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -35,12 +35,12 @@ type SortKey = (typeof SORT_KEYS)[number];
+ 
+ /**
+  * Whether a person's claim counts in the live totals: OPEN, PENDING and SETTLED claims do, but not an
+- * OPEN or PENDING one dated within one of the person's holds or once their retirement date is reached,
++ * OPEN or PENDING one held, or dated within one of the person's holds, or once their retirement date is reached,
+  * unless a statement has bound it, nor
+  * one deferred on the sheet's today.
+  */
+ function countsLive(claim: ClaimView, person: PersonView, today: string): boolean {
+-  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today));
++  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today, claim.held === true));
+ }
+ 
+ /**
+@@ -53,7 +53,7 @@ function countsInPeriod(claim: ClaimView, person: PersonView, today: string, per
+   const then = statusAt(claim, period.to);
+   if (then === null) return false;
+   const countedThen = then === 'OPEN' || then === 'PENDING' || then === 'SETTLED';
+-  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today));
++  return countedThen && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today, claim.held === true));
+ }
+ 
+ /**
+@@ -130,7 +130,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+           id="person-form-grade"
+           data-testid="person-form-grade"
+           [value]="grade()"
+-          (change)="grade.set(gradeChosen($event)); error.set(null)"
++          (change)="grade.set(gradeChosen($event)); gradeGiven.set(true); error.set(null)"
+         >
+           @for (g of grades; track g) {
+             <option [value]="g">{{ g }}</option>
+@@ -1140,6 +1140,8 @@ export class People {
+   protected readonly tags = signal('');
+   /** Whether the terms or the contact were taken up on the form since it was opened. */
+   protected readonly termsGiven = signal(false);
++  /** Whether the grade was chosen on the form since it was filled. */
++  protected readonly gradeGiven = signal(false);
+   protected readonly contactGiven = signal(false);
+   /** The id of the person open in the form, or null when the form adds a new person. */
+   protected readonly editing = signal<number | null>(null);
+@@ -2218,6 +2220,7 @@ export class People {
+     this.contact.set(person.contact ?? '');
+     this.tags.set((person.tags ?? []).join(', '));
+     this.termsGiven.set(false);
++    this.gradeGiven.set(false);
+     this.contactGiven.set(false);
+     this.error.set(null);
+   }
+@@ -2232,6 +2235,7 @@ export class People {
+     this.contact.set('');
+     this.tags.set('');
+     this.termsGiven.set(false);
++    this.gradeGiven.set(false);
+     this.contactGiven.set(false);
+     this.error.set(null);
+   }
+@@ -2250,7 +2254,7 @@ export class People {
+       return;
+     }
+     const form = { name: this.name(), grade: this.grade(), terms: typedTerms === '' ? null : Number(typedTerms),
+-      contact: this.contact(), tags: this.tags(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven() };
++      contact: this.contact(), tags: this.tags(), termsGiven: this.termsGiven(), contactGiven: this.contactGiven(), gradeGiven: this.gradeGiven() };
+     if (!form.name.trim()) {
+       this.error.set('Type a name for the person.');
+       return;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index dfbd3723..b624b7fc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -142,6 +142,10 @@ public class Claim {
+     @Column(name = "waived", nullable = false)
+     private boolean waived;
+ 
++    /** Whether the claim is held: held, an OPEN or PENDING one leaves the live totals unless bound by a statement; false when added. */
++    @Column(name = "held", nullable = false)
++    private boolean held;
++
+     /** The number of the claim this one was split from; null unless it was split off another. */
+     @Column(name = "split_from")
+     private String splitFrom;
+@@ -496,6 +500,15 @@ public class Claim {
+         this.waived = true;
+     }
+ 
++    public boolean isHeld() {
++        return held;
++    }
++
++    /** Hold or release the claim; the caller checks the claim may be. */
++    public void hold(boolean held) {
++        this.held = held;
++    }
++
+     public String getSplitFrom() {
+         return splitFrom;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 0df7bd8d..dce6c1c2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -38,14 +38,14 @@ public class ClaimController {
+      * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
+      * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never), and the number of the bulk settle batch that settled
+      * it (null when none did), and its lines, in the order they were added, and whether its late charge was waived, and whether the
+-     * figure it was bound to is its whole due as shown (late charge and floor included), and its proofs count of each kind.
++     * figure it was bound to is its whole due as shown (late charge and floor included), and its proofs count of each kind, and whether it is held.
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
+             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
+             String editedBy, Integer settleBatch, List<LineView> lines, Long added, boolean waived,
+-            boolean statedWhole, int proofsReceipt, int proofsPhoto) {
++            boolean statedWhole, int proofsReceipt, int proofsPhoto, boolean held) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -58,7 +58,8 @@ public class ClaimController {
+                     claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason(),
+                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
+                     claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
+-                    claim.isWaived(), claim.isStatedWhole(), claim.getProofs("receipt"), claim.getProofs("photo"));
++                    claim.isWaived(), claim.isStatedWhole(), claim.getProofs("receipt"), claim.getProofs("photo"),
++                    claim.isHeld());
+         }
+     }
+ 
+@@ -442,6 +443,15 @@ public class ClaimController {
+         return ClaimView.of(service.waive(sheetId, SignedIn.name(user), claimId));
+     }
+ 
++    /** Hold an OPEN or PENDING claim, or release it when held. */
++    @PostMapping("/claims/{claimId}/hold")
++    public ClaimView hold(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        return ClaimView.of(service.toggleHold(sheetId, SignedIn.name(user), claimId));
++    }
++
+     /** Defer an OPEN claim until a date after the sheet's today. */
+     @PostMapping("/claims/{claimId}/defer")
+     public ClaimView defer(
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index eacfcbed..1fefd627 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -570,6 +570,26 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Hold an OPEN or PENDING claim, or release it when held: held, it leaves the live totals as a held
++     * person's claims do, unless bound by a statement. Refused when the claim is not OPEN or PENDING.
++     */
++    @Transactional
++    public Claim toggleHold(String sheetId, String user, long claimId) {
++        sheets.lock(sheetId);
++        Rollups.Rollup before = rollups.take(sheetId);
++        Claim claim = claim(sheetId, claimId);
++        if (!claim.getStatus().isOpen()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be held or released; only an OPEN or PENDING one can.");
++        }
++        claim.hold(!claim.isHeld());
++        Claim saved = claims.saveAndFlush(claim);
++        audited(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
++        rollups.audit(sheetId, user, before);
++        return saved;
++    }
++
+     /**
+      * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
+      * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index 0b1cdd59..28d73461 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -81,7 +81,7 @@ public class SheetHistory {
+ 
+     record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
+             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
+-            LocalDate deferredUntil, Long added, Boolean waived, Boolean statedWhole) {
++            LocalDate deferredUntil, Long added, Boolean waived, Boolean statedWhole, Boolean held) {
+     }
+ 
+     /**
+@@ -264,6 +264,7 @@ public class SheetHistory {
+             if (Boolean.TRUE.equals(c.waived())) {
+                 claim.waive();
+             }
++            claim.hold(Boolean.TRUE.equals(c.held()));
+             claims.put(c.id(), claim);
+         }
+         Dues.Basis basis = new Dues.Basis(sheet, rates, inherited, correction -> claims.values().stream()
+@@ -305,6 +306,6 @@ public class SheetHistory {
+     private static ClaimState kept(Claim c) {
+         return new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getDueBy(), c.getStatus(),
+                 c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded(),
+-                c.isWaived(), c.isStatedWhole());
++                c.isWaived(), c.isStatedWhole(), c.isHeld());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index f61c9919..51744203 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -217,7 +217,7 @@ public class PeriodService {
+             }
+             ClaimStatus then = claim.statusAt(period.getToDate());
+             if (then == null || !then.counts() || claim.isDeferredOn(today)
+-                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today))) {
++                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today, claim.isHeld()))) {
+                 continue;
+             }
+             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
+@@ -250,7 +250,7 @@ public class PeriodService {
+             }
+             ClaimStatus then = claim.statusAt(period.getToDate());
+             if (then == null || !then.isOpen() || claim.isDeferredOn(today)
+-                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today))) {
++                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today, claim.isHeld()))) {
+                 continue;
+             }
+             BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 0e3bca98..04b7bb6a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -445,21 +445,22 @@ public class Person {
+ 
+     /**
+      * Whether an OPEN or PENDING claim of the person dated on this date, not bound by a statement, is
+-     * left out of the live totals on the sheet's today: when dated within a hold, or once the
+-     * person's retirement date is reached.
++     * left out of the live totals on the sheet's today: when the claim itself is held, when dated within
++     * a hold, or once the person's retirement date is reached.
+      */
+-    public boolean leavesLive(LocalDate date, LocalDate today) {
+-        return heldOn(date) || retiredOn(today);
++    public boolean leavesLive(LocalDate date, LocalDate today, boolean claimHeld) {
++        return claimHeld || heldOn(date) || retiredOn(today);
+     }
+ 
+     /**
+      * Whether a claim of the person in this status, dated on this date and bound by a statement or
+      * not, counts in a live total on the sheet's today: OPEN, PENDING and SETTLED claims do, but not an
+-     * OPEN or PENDING one dated within a hold or once the person's retirement date is reached, unless a
++     * OPEN or PENDING one held, or dated within a hold, or once the person's retirement date is reached, unless a
+      * statement has bound it, nor one deferred on the sheet's today.
+      */
+-    public boolean countsLive(ClaimStatus status, LocalDate date, boolean stated, boolean deferred, LocalDate today) {
+-        return status.counts() && !deferred && !(status.isOpen() && !stated && leavesLive(date, today));
++    public boolean countsLive(ClaimStatus status, LocalDate date, boolean stated, boolean deferred, LocalDate today,
++            boolean claimHeld) {
++        return status.counts() && !deferred && !(status.isOpen() && !stated && leavesLive(date, today, claimHeld));
+     }
+ 
+     /** Whether a claim may be dated on this date: not after the person's retirement. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 66ea5955..6fe155e4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -117,6 +117,7 @@ public class PersonController {
+      * from the beginning of time. Their own terms are a whole number of days, none for no terms of
+      * their own; on an edit they are recorded from their date (none: from the beginning of time). A contact is kept trimmed and lower-cased, blank for none. Tags are comma separated
+      * (blank: none; none at all keep the person's own). An edit says whether the
++     * grade was chosen on the form (it is then recorded from its date even when already in force there), and whether the
+      * terms and the contact were typed on the form (PERSON_EDITED then carries them), and carries the version of the person the form loaded.
+      */
+     public record PersonForm(
+@@ -129,7 +130,8 @@ public class PersonController {
+             boolean termsGiven,
+             boolean contactGiven,
+             Long version,
+-            @Size(max = 1000) String tags) {
++            @Size(max = 1000) String tags,
++            boolean gradeGiven) {
+     }
+ 
+     /** The people selected to be given a grade together, the grade, and the date it is in force from (none: the sheet's today). */
+@@ -228,7 +230,7 @@ public class PersonController {
+         }
+         return view(service.edit(sheetId, SignedIn.name(user), personId, form.version(), form.name(),
+                 form.grade(), form.gradeFrom(), form.terms(), form.termsFrom(), form.contact(), form.termsGiven(),
+-                form.contactGiven(), form.tags()));
++                form.contactGiven(), form.tags(), form.gradeGiven()));
+     }
+ 
+     /** Give the selected people a grade from a date together, each as the person form would: the people changed. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index d6e005b6..c69b5103 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -113,6 +113,18 @@ public class PersonService {
+     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
+             LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, boolean termsGiven,
+             boolean contactGiven, String tags) {
++        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, termsFrom, contact, termsGiven,
++                contactGiven, tags, false);
++    }
++
++    /**
++     * Edit a person as {@link #edit} does; a grade chosen on the form (gradeGiven) is recorded from its
++     * date even when it is already in force there.
++     */
++    @Transactional
++    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
++            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, boolean termsGiven,
++            boolean contactGiven, String tags, boolean gradeGiven) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+         if (person.getVersion() != version) {
+@@ -142,9 +154,10 @@ public class PersonService {
+             person.tag(Claim.tagsOf(tags));
+         }
+         // A grade already in force from the sheet's today is not recorded again, so it does not hold over a
+-        // grade recorded later from an earlier date; one given from another date is recorded from it.
++        // grade recorded later from an earlier date, unless it was chosen on the form; one given from another
++        // date is recorded from it.
+         LocalDate from = gradeFrom != null ? gradeFrom : today;
+-        boolean dated = !from.equals(today) && !grade.equals(person.getGradesFrom().get(from));
++        boolean dated = (gradeGiven || !from.equals(today)) && !grade.equals(person.getGradesFrom().get(from));
+         if (dated || !grade.equals(person.gradeOn(from))) {
+             person.gradeFrom(grade, from);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index a4765d60..051228f2 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -91,7 +91,7 @@ public class Rollups {
+         for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
+             Person person = entry.getValue();
+             List<Claim> counting = byPerson.getOrDefault(entry.getKey(), List.of()).stream()
+-                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today))
++                    .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today, claim.isHeld()))
+                     .toList();
+             BigDecimal claimed = zero();
+             BigDecimal due = zero();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 56f86319..408aee18 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -146,10 +146,10 @@ public class CloneService {
+             long to = insert("""
+                     INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status, settled_due, opened_by,
+                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, proofs_receipt, proofs_photo, split_from,
+-                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived)
++                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived, held)
+                     SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,
+                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, proofs_receipt, proofs_photo, split_from,
+-                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived
++                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived, held
+                     FROM claim WHERE id = ?""", toSheetId, people.get(row.getLong(2)), from);
+             copyChildren("claim_log", "claim_id", "status, by_user, on_date, due", to, from);
+             copyChildren("claim_comment", "claim_id", "by_user, on_date, text", to, from);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index d8c64fa2..464f5fac 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -113,10 +113,10 @@ public class StatementService {
+         int counted = 0;
+         for (Map.Entry<Long, Claim> entry : theirsThen.entrySet()) {
+             Claim claim = entry.getValue();
+-            // As in the live totals: an OPEN or PENDING claim dated within a hold, or of a person whose
++            // As in the live totals: an OPEN or PENDING claim held or dated within a hold, or of a person whose
+             // retirement date is reached, and not bound, is left
+             // out, as is a claim deferred on the day.
+-            if (!then.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(day), day)) {
++            if (!then.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(day), day, claim.isHeld())) {
+                 continue;
+             }
+             // The statement binds the due as shown, late charge and floor included: a figure an earlier
+diff --git a/src/main/resources/db/migration/V103__claim_held.sql b/src/main/resources/db/migration/V103__claim_held.sql
+new file mode 100644
+index 00000000..641c1f4c
+--- /dev/null
++++ b/src/main/resources/db/migration/V103__claim_held.sql
+@@ -0,0 +1,2 @@
++-- Whether an OPEN or PENDING claim is held: a held claim leaves the live totals as a held person's claims do.
++ALTER TABLE claim ADD COLUMN held BOOLEAN NOT NULL DEFAULT FALSE;
