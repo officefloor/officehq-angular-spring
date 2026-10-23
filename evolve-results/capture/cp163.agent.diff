@@ -1,0 +1,321 @@
+diff --git a/.e2e.out b/.e2e.out
+index b732f88c..913f5606 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,52 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › frozen carried and as of tree › frozen carried and as of tree (40.9s)
+-  ✓  2 [chromium] › acceptance.spec.ts:156:7 › frozen carried and as of tree › frozen carried and as of tree scenario 1 (20.5s)
+-  ✘  3 [chromium] › acceptance.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 (27.6s)
+-  ✓  4 [chromium] › acceptance.spec.ts:965:7 › frozen carried and as of tree › frozen carried and as of tree scenario 3 (19.3s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › statement lines › statement lines (6.8s)
++  ✓  2 [chromium] › acceptance.spec.ts:67:7 › statement lines › statement lines scenario 1 (19.7s)
++  ✘  3 [chromium] › acceptance.spec.ts:632:7 › statement lines › statement lines scenario 2 (28.1s)
++  ✓  4 [chromium] › acceptance.spec.ts:1312:7 › statement lines › statement lines scenario 3 (17.0s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 
++  1) [chromium] › acceptance.spec.ts:632:7 › statement lines › statement lines scenario 2 ──────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkcvhgy052x[27m-p"[39m
++    Received string: [31m"[7msmvkdr0xueosh[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+-    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+-
+-
+-      728 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      729 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-05");
+-    > 730 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkdr0xueosh-p</strong>[22m
++    [2m  -   unexpected value "smvkdr0xueosh-p"[22m
++
++
++      753 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++      754 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-20");
++    > 755 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+-      731 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+-      732 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      733 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++      756 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
++      757 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("5.00");
++      758 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:730:54
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:755:54
+ 
+   1 failed
+-    [chromium] › acceptance.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 
+-  3 passed (1.8m)
++    [chromium] › acceptance.spec.ts:632:7 › statement lines › statement lines scenario 2 ───────────
++  3 passed (1.3m)
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 2b1a1771..a3023d28 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -64,6 +64,14 @@ export interface PersonView {
+   originSheetId?: string | null;
+   /** The person's snapshot lines, oldest first; absent from a view kept before snapshot lines were. */
+   snapshots?: SnapshotView[];
++  /** The statements still standing for the person, oldest first; absent from a view kept before statement lines were. */
++  statementLines?: StatementLineView[];
++}
++
++/** A statement line of a person: the date (yyyy-mm-dd) it was taken as of and its due-total ('n/a' when no rate applied). */
++export interface StatementLineView {
++  date: string;
++  dueTotal: string;
+ }
+ 
+ /** A snapshot line of a person: the day being left (yyyy-mm-dd) and their due-total on it ('n/a' when no rate applied). */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b66c7071..3c8848ca 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -387,6 +387,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+             @if (columns.shown('retired')) {
+               <th scope="col">Retired</th>
+             }
++            <th scope="col">Statement lines</th>
+             <th scope="col">Snapshots</th>
+             <th scope="col">Active</th>
+             @if (columns.shown('hold')) {
+@@ -513,6 +514,13 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                   </ul>
+                 </td>
+               }
++              <td>
++                <ul aria-label="Statement lines">
++                  @for (s of p.statementLines ?? []; track $index) {
++                    <li data-testid="person-statement-line-line">{{ s.date }} {{ s.dueTotal }}</li>
++                  }
++                </ul>
++              </td>
+               <td>
+                 <ul aria-label="Snapshots">
+                   @for (s of p.snapshots ?? []; track $index) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/MergeService.java b/src/main/java/net/officefloor/hq/app/person/MergeService.java
+index 62872372..01746dae 100644
+--- a/src/main/java/net/officefloor/hq/app/person/MergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/MergeService.java
+@@ -135,6 +135,7 @@ public class MergeService {
+         people.delete(from);
+         people.flush();
+         Person saved = people.saveAndFlush(into);
++        statements.reread(saved);
+ 
+         // The moved claims are listed after the other's own, in the order they were added.
+         moved.forEach(claim -> claims.relist(claim.getId()));
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 0ae78869..2ba95cb5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -10,9 +10,11 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.MapKeyColumn;
++import org.hibernate.annotations.SQLOrder;
+ import jakarta.persistence.OrderColumn;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
++import org.hibernate.annotations.Immutable;
+ import org.hibernate.annotations.OptimisticLock;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+@@ -120,6 +122,17 @@ public class Person {
+     @OptimisticLock(excluded = true)
+     private List<Snapshot> snapshots = new ArrayList<>();
+ 
++    /**
++     * The statements still standing for the person, oldest first. Read only: they are taken, cancelled
++     * and moved through the statement repository, so this is never an edit of the person.
++     */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_statement", joinColumns = @JoinColumn(name = "person_id"))
++    @SQLOrder("seq")
++    @Immutable
++    @OptimisticLock(excluded = true)
++    private List<StatementLine> statements = new ArrayList<>();
++
+     /**
+      * The person's holds, in the order they were added: their OPEN and PENDING claims dated within
+      * one, unless bound by a statement, count in no live total.
+@@ -313,6 +326,11 @@ public class Person {
+         snapshots.add(new Snapshot(asOf, dueTotal));
+     }
+ 
++    /** The statements still standing for the person, oldest first. */
++    public List<StatementLine> getStatements() {
++        return Collections.unmodifiableList(statements);
++    }
++
+     /** The person's snapshot lines, oldest first. */
+     public List<Snapshot> getSnapshots() {
+         return Collections.unmodifiableList(snapshots);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index e666fc81..bfa84900 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -50,7 +50,7 @@ public class PersonController {
+             List<String> tagsUsed, long version, int statementCount,
+             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
+             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
+-            String originSheetId, List<SnapshotView> snapshots) {
++            String originSheetId, List<SnapshotView> snapshots, List<StatementLineView> statementLines) {
+ 
+         public static PersonView of(Person person) {
+             return of(person, false);
+@@ -71,6 +71,10 @@ public class PersonController {
+                     person.getPatronIds(), person.getAliases(), clashing, person.getOriginSheetId(),
+                     person.getSnapshots().stream()
+                             .map(snapshot -> new SnapshotView(snapshot.getAsOf(), Rollups.shown(snapshot.getDueTotal())))
++                            .toList(),
++                    person.getStatements().stream()
++                            .map(statement -> new StatementLineView(statement.getTakenOn(),
++                                    Rollups.shown(statement.getTotal())))
+                             .toList());
+         }
+     }
+@@ -83,6 +87,10 @@ public class PersonController {
+     public record SnapshotView(LocalDate asOf, String dueTotal) {
+     }
+ 
++    /** A statement line of a person: the date it was taken as of and its due-total (n/a when no rate applied). */
++    public record StatementLineView(LocalDate date, String dueTotal) {
++    }
++
+     /** A hold on a person, from a date to a date (null: no end). */
+     public record HoldView(LocalDate from, LocalDate to) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/StatementLine.java b/src/main/java/net/officefloor/hq/app/person/StatementLine.java
+new file mode 100644
+index 00000000..dba9059c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/StatementLine.java
+@@ -0,0 +1,30 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A statement still standing for a person, as read from their statements: its date and due-total (null: n/a). */
++@Embeddable
++public class StatementLine {
++
++    @Column(name = "taken_on", nullable = false, insertable = false, updatable = false)
++    private LocalDate takenOn;
++
++    @Column(name = "total", precision = 14, scale = 2, insertable = false, updatable = false)
++    private BigDecimal total;
++
++    protected StatementLine() {
++    }
++
++    /** The date the statement was taken as of. */
++    public LocalDate getTakenOn() {
++        return takenOn;
++    }
++
++    /** Its due-total; null when n/a. */
++    public BigDecimal getTotal() {
++        return total;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 623dae95..e87c3302 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.statement;
+ 
++import jakarta.persistence.EntityManager;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.HashMap;
+@@ -47,9 +48,12 @@ public class StatementService {
+     private final StatementRepository statements;
+     private final RoleService roles;
+     private final Audit audit;
++    private final EntityManager entities;
+ 
+     public StatementService(PersonRepository people, ClaimRepository claims, Dues dues, SheetHistory history,
+-            SheetService sheets, Rollups rollups, StatementRepository statements, RoleService roles, Audit audit) {
++            SheetService sheets, Rollups rollups, StatementRepository statements, RoleService roles, Audit audit,
++            EntityManager entities) {
++        this.entities = entities;
+         this.rollups = rollups;
+         this.statements = statements;
+         this.roles = roles;
+@@ -142,6 +146,8 @@ public class StatementService {
+         person.stated(total, day);
+         Person saved = people.saveAndFlush(person);
+         statements.saveAndFlush(new Statement(sheetId, saved.getId(), saved.getStatementCount(), total, day));
++        // The person shows the statement just taken among their lines.
++        entities.refresh(saved);
+         List<Claim> stated = claims.saveAllAndFlush(theirs);
+         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                 + " due-total=" + (total != null ? total.toPlainString() : NO_RATE) + " claims=" + counted
+@@ -170,6 +176,11 @@ public class StatementService {
+         into.absorbStatements(from);
+     }
+ 
++    /** Read a saved person again from the store, so they show the statements they now hold. */
++    public void reread(Person person) {
++        entities.refresh(person);
++    }
++
+     /** Move a person's statements with them to the sheet they are now on. */
+     public void follow(String fromSheetId, Person person) {
+         for (Statement statement : statements.findBySheetIdAndPersonIdOrderBySeqDesc(fromSheetId, person.getId())) {
+@@ -213,6 +224,8 @@ public class StatementService {
+         theirs.forEach(Claim::unbind);
+         Person saved = people.saveAndFlush(person);
+         List<Claim> live = claims.saveAllAndFlush(theirs);
++        // The person no longer shows the cancelled statement among their lines.
++        entities.refresh(saved);
+         audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                 + " due-total=" + (cancelled != null ? cancelled.toPlainString() : NO_RATE));
+         rollups.audit(sheetId, user, before);
