@@ -63,7 +63,7 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
-    /** The terms, in business days, fixed when the claim was added from its person's own terms, else their grade's. */
+    /** The terms, in business days, fixed when the claim was added: those in force on the sheet's today then, from its person's own terms, else their grade's. */
     @Column(name = "terms", nullable = false)
     private int terms;
 

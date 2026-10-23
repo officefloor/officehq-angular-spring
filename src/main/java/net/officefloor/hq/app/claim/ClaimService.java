@@ -96,8 +96,7 @@ public class ClaimService {
     /**
      * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
      * while one is set, else the sheet's today. One given a date in a soft-closed period (with no date given, the
-     * sheet's today in one), or due by in one, or that would be
-     * with the terms in force on the sheet's today, is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. A DRAFT may be added
+     * sheet's today in one), or due by in one, is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. A DRAFT may be added
      * due by inside a closed period (it cannot be opened or changed there). Refused when it is a correction that does not name a SETTLED claim
      * of the same person (see {@link #refuseUnlessCorrects}).
      */
@@ -130,7 +129,7 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         LocalDate dated = date != null ? date : sheets.load(sheetId).defaultClaimDate();
         Sheet sheet = sheets.lock(sheetId);
-        int terms = terms(sheet, person, dated);
+        int terms = terms(sheet, person, sheet.getToday());
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects, null);
@@ -142,8 +141,7 @@ public class ClaimService {
         added.tag(tagged);
         // A claim dated by the sheet's entry date is meant to be dated there: it is late by the sheet's today.
         LocalDate entered = date != null ? date : sheet.getToday();
-        if (periods.softClosedOn(sheetId, entered) || periods.softClosedOn(sheetId, dueBy)
-                || periods.softClosedOn(sheetId, holidays.dueBy(sheetId, dated, terms(sheet, person, sheet.getToday())))) {
+        if (periods.softClosedOn(sheetId, entered) || periods.softClosedOn(sheetId, dueBy)) {
             added.markLateEntry();
         }
         Claim claim = claims.saveAndFlush(added);
@@ -760,7 +758,7 @@ public class ClaimService {
      * Split an amount (above 0.00 and below the claim's amount) off an OPEN claim: it keeps the rest
      * of its amount and loses any figure a statement bound it to; a new OPEN claim with the split-off
      * amount, the same date and note, the next number, opened by the user and due by a date fixed now
-     * from the terms in force on its date, names the original's number as the one it was split from;
+     * from the terms in force on the sheet's today (the day it is created), names the original's number as the one it was split from;
      * it is a late entry when that due-by is inside a soft-closed period. Refused when the claim is not
      * OPEN, is deferred on the sheet's today, or when its due-by or the new claim's is inside a closed
      * period.
@@ -786,7 +784,7 @@ public class ClaimService {
                     "The amount split off must be above 0.00 and below the claim's " + claim.getAmount().toPlainString() + ".");
         }
         Person person = person(sheetId, claim.getPersonId());
-        int terms = terms(sheet, person, claim.getDate());
+        int terms = terms(sheet, person, today);
         LocalDate dueBy = holidays.dueBy(sheetId, claim.getDate(), terms);
         periods.refuseIfClosed(sheetId, dueBy);
         Claim split = claim.split(off, terms, dueBy);
@@ -956,8 +954,9 @@ public class ClaimService {
     }
 
     /**
-     * The terms, in business days, a claim of the person dated on a date is fixed with: the first of the
-     * person's own terms, their grade's terms and the sheet's terms in force on it.
+     * The terms, in business days, a claim of the person created on a day (the sheet's today then) is fixed
+     * with, whatever its date: the first of the person's own terms, their grade's terms and the sheet's terms
+     * in force on that day.
      */
     private static int terms(Sheet sheet, Person person, LocalDate date) {
         Integer own = person.termsOn(date);

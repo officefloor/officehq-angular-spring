@@ -141,10 +141,11 @@ public class PersonService {
         if (tags != null) {
             person.tag(Claim.tagsOf(tags));
         }
-        // A grade already in force from the date is not recorded again, so it does not hold over a grade
-        // recorded later from an earlier date.
+        // A grade already in force from the sheet's today is not recorded again, so it does not hold over a
+        // grade recorded later from an earlier date; one given from another date is recorded from it.
         LocalDate from = gradeFrom != null ? gradeFrom : today;
-        if (!grade.equals(person.gradeOn(from))) {
+        boolean dated = !from.equals(today) && !grade.equals(person.getGradesFrom().get(from));
+        if (dated || !grade.equals(person.gradeOn(from))) {
             person.gradeFrom(grade, from);
         }
         Person saved = people.saveAndFlush(person);
