@@ -18,7 +18,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Moving the selected claims together: opening, settling, reassigning or re-dating them. Each is moved on its own, as its
+ * Moving the selected claims together: opening, settling, reassigning, re-dating or voiding them. Each is moved on its own, as its
  * own button would, in list order: the people by their position, each person's claims
  * newest first as they are listed, so numbers follow that order. A claim that cannot be moved (or is not on the sheet)
  * is refused and left as it is, writing nothing; the others are still moved (except in a bulk settle,
@@ -97,6 +97,14 @@ public class BulkMoveService {
      */
     public Result redate(String sheetId, String user, Collection<Long> claimIds, LocalDate date) {
         return each(sheetId, user, claimIds, id -> claims.redate(sheetId, user, id, date));
+    }
+
+    /**
+     * Void the selected claims, each as its row's void would (with its CLAIM_VOIDED and rollup records),
+     * in list order, all with the one reason chosen (null or blank for none).
+     */
+    public Result voidAll(String sheetId, String user, Collection<Long> claimIds, String reason) {
+        return each(sheetId, user, claimIds, id -> claims.move(sheetId, user, id, ClaimStatus.VOID, reason));
     }
 
     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {

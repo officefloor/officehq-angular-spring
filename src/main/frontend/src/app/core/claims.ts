@@ -299,6 +299,12 @@ export interface BulkRedateView {
   refused: number;
 }
 
+/** What a bulk void did: the claims voided, as they are now, and how many were refused. */
+export interface BulkVoidView {
+  voided: ClaimView[];
+  refused: number;
+}
+
 export interface ClaimForm {
   amount: string;
   /** Empty means the sheet's today (or, on an edit, the claim's own date). */
@@ -513,6 +519,16 @@ export class ClaimsApi {
    */
   redateAll(sheet: string, claimIds: number[], date: string): Promise<BulkRedateView> {
     return firstValueFrom(this.http.post<BulkRedateView>(`${this.url(sheet)}/claims/redate`, { claimIds, date }));
+  }
+
+  /**
+   * Void the selected claims together, in list order, each as its row's void would, with the one
+   * reason chosen (empty for none); those that cannot be voided are refused and left as they are.
+   */
+  voidAll(sheet: string, claimIds: number[], reason: string): Promise<BulkVoidView> {
+    return firstValueFrom(
+      this.http.post<BulkVoidView>(`${this.url(sheet)}/claims/void`, { claimIds, reason: reason || null }),
+    );
   }
 
   private url(sheet: string): string {

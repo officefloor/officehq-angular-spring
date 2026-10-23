@@ -187,6 +187,14 @@ public class ClaimController {
     public record BulkRedateView(List<ClaimView> redated, int refused) {
     }
 
+    /** The claims selected to be voided together, and the reason chosen for them (null or blank for none). */
+    public record BulkVoidForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @Size(max = 100) String reason) {
+    }
+
+    /** What a bulk void did: the claims voided, as they are now, and how many were refused. */
+    public record BulkVoidView(List<ClaimView> voided, int refused) {
+    }
+
     /** The paste box's text: lines of name,amount,date,note. */
     public record PasteForm(@NotNull @Size(max = 200_000) String text) {
     }
@@ -332,6 +340,16 @@ public class ClaimController {
             @RequestBody @Valid BulkRedateForm form) {
         BulkMoveService.Result result = bulk.redate(sheetId, SignedIn.name(user), form.claimIds(), form.date());
         return new BulkRedateView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
+    }
+
+    /** Void the selected claims together, in list order, each as its row's void would; those that cannot be voided are refused. */
+    @PostMapping("/claims/void")
+    public BulkVoidView voidAll(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkVoidForm form) {
+        BulkMoveService.Result result = bulk.voidAll(sheetId, SignedIn.name(user), form.claimIds(), form.reason());
+        return new BulkVoidView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
     }
 
     /** Approve a PENDING claim, settling it; only a steward, and not the user who opened or last edited it. */
