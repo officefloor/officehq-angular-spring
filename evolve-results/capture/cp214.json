@@ -1,0 +1,64 @@
+{
+  "checkpoint": 214,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp214_max-open-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "161410886fe13a93a544aba6c79051ba9a16a565",
+  "reset_sha": "",
+  "preagent_sha": "5fa66ec77f031514bfd402d91783bcd48647a793",
+  "prev_sha": "5fa66ec77f031514bfd402d91783bcd48647a793",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0737950000000003,
+    "input_tokens": 56,
+    "output_tokens": 12152,
+    "cache_read_tokens": 1449535,
+    "cache_creation_tokens": 67578,
+    "num_turns": 30,
+    "duration_ms": 260997,
+    "duration_api_ms": 128152,
+    "model": "claude-opus-5-5",
+    "session_id": "74412b5b-c116-4691-bef3-133640f946d2",
+    "stop_reason": "success",
+    "result_text": "I've added the max-open setting and the refusal. The main \"max open claims\" test and scenario 1 pass. Scenarios 2 and 3 fail, and neither can pass as the spec is written.\n\n**What I changed**\n- **Stored data:** new migration `V114__sheet_max_open.sql` adds a nullable `max_open` column to the sheet. It's also carried into the sheet's as-of-date view and into sheet clones.\n- **Server:** a new endpoint saves the setting and writes `SETTING_CHANGED \u2026 key=max-open value=<n>` to the audit file, with nothing after `value=` when cleared. It accepts the same input as the review-SLA setting: a whole number or blank. The settings view now includes `maxOpen`.\n- **The refusal:** `ClaimService.java` checks the limit inside `move`, the one path that every open goes through: single, bulk and paste. When the person already has that many OPEN or PENDING claims, the open is refused with an error and nothing is written. A bulk open skips just that claim and counts it as refused; a paste is refused as a whole.\n- **Front end:** a settings field `setting-max-open` and the value in force, `setting-max-open-current`, wired the same way as the review-SLA setting.\n\nTwo behaviours you might not assume: an open that would go to REVIEW (claim over the review threshold) also counts as opening, so it's refused too. Bringing a claim back to OPEN by reviewing or rejecting it, or splitting one, isn't blocked; the request only covers opening.\n\n**The failing tests**\n- **Scenarios 2 and 3:** both expect `sheet-parent` to show the literal text `__SHEET__-p` (spec lines 829 and 1239). That's a placeholder that was never filled in. The app correctly shows the real id, e.g. `smvku7fch93x5-p`, so these checks can't pass. Neither scenario touches max-open.\n- **Scenario 2 also fails earlier, at line 825:** an `addClaim` gets neither a new row nor an error. The audit file shows a `CLAIM_EDITED` instead of a `CLAIM_ADDED`. My guess is that the claim form stays in edit mode after the refused `editClaim` just before it, so the add is saved as an edit. That's existing claim-form behaviour, max-open isn't set in that test, and I left it alone. If you want it fixed, that's a separate change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0737950000000003,
+        "num_turns": 30,
+        "duration_ms": 260997,
+        "duration_api_ms": 128152,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp214.agent.jsonl",
+  "agent_diff_file": "cp214.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
