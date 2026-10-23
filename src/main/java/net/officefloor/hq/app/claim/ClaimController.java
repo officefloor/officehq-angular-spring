@@ -208,7 +208,7 @@ public class ClaimController {
         return ClaimView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects(), form.ref(), form.tags()));
     }
 
-    /** Add a DRAFT claim per pasted line, in order; nothing is added when any line is refused. */
+    /** Add and open a claim per pasted line, in order, or edit and open the DRAFT it matches; nothing changes when any line is refused. */
     @PostMapping("/claims/paste")
     public List<ClaimView> paste(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

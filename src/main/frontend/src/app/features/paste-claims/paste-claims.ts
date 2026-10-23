@@ -3,8 +3,8 @@ import { Component, effect, inject, output, signal, untracked } from '@angular/c
 import { ClaimsApi, ClaimView } from '../../core/claims';
 import { Session } from '../../core/session';
 
-// The paste box: lines of name,amount,date,note each add a DRAFT claim for the named person, all or
-// none; how many were added is shown.
+// The paste box: lines of name,amount,date,note each add and open a claim for the named person (or
+// edit and open the DRAFT they match), all or none; how many lines went through is shown.
 @Component({
   selector: 'app-paste-claims',
   template: `
@@ -17,9 +17,9 @@ import { Session } from '../../core/session';
         [value]="text()"
         (input)="text.set(value($event)); error.set(null)"
       ></textarea>
-      <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+      <button type="submit" data-testid="paste-submit">Open pasted claims</button>
       @if (added() !== null) {
-        <p role="status">Added <strong data-testid="paste-added">{{ added() }}</strong> claims.</p>
+        <p role="status"><strong data-testid="paste-added">{{ added() }}</strong> lines went through.</p>
       }
       @if (error(); as message) {
         <p role="alert" data-testid="paste-error">{{ message }}</p>
@@ -31,7 +31,7 @@ export class PasteClaims {
   private readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
 
-  /** The claims pasted, in the order they were added. */
+  /** The claims pasted, opened, one per line in paste order. */
   readonly pasted = output<ClaimView[]>({ alias: 'added' });
 
   protected readonly text = signal('');
@@ -77,8 +77,8 @@ export class PasteClaims {
       this.added.set(claims.length);
       this.text.set('');
     } catch (e) {
-      const reason = e instanceof HttpErrorResponse && e.status === 400 && typeof e.error?.detail === 'string' ? e.error.detail : null;
-      this.error.set(reason ?? 'The pasted claims could not be added; nothing was added.');
+      const reason = e instanceof HttpErrorResponse && e.status >= 400 && e.status < 500 && typeof e.error?.detail === 'string' ? e.error.detail : null;
+      this.error.set(reason ?? 'The pasted claims could not be opened; nothing was changed.');
     } finally {
       this.busy = false;
     }

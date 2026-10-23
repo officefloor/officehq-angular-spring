@@ -8,17 +8,20 @@ import java.util.List;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The paste box: lines of name,amount,date,note each add a DRAFT claim, in order, for the named
- * person on the sheet. The date may be blank (the sheet's entry date while set, else its today) and the note, which may hold commas,
+ * The paste box: lines of name,amount,date,note each add a claim, in order, for the named person on
+ * the sheet, and open it for the signed-in user exactly as the open button would. A line whose person,
+ * date and note match one of that person's claims updates it instead: a DRAFT is edited to the line's
+ * amount (when that changes it) and opened; a claim in any other status is an error for the paste. The date may be blank (the sheet's entry date while set, else its today) and the note, which may hold commas,
  * may be absent. A note ending in " #<reference>" gives the claim that external reference, which is not
- * part of the note. Every line is held to the claim form's rules; it is one change, so when any line is
- * refused nothing is added and nothing is recorded.
+ * part of the note. Every line is held to the claim form's and the open button's rules; it is one change,
+ * so when any line is refused nothing is added, edited or opened and nothing is recorded.
  */
 @Service
 public class PasteService {
@@ -41,13 +44,20 @@ public class PasteService {
 
     private final PersonRepository people;
     private final ClaimService claims;
+    private final ClaimRepository stored;
+    private final SheetService sheets;
 
-    public PasteService(PersonRepository people, ClaimService claims) {
+    public PasteService(PersonRepository people, ClaimService claims, ClaimRepository stored, SheetService sheets) {
         this.people = people;
         this.claims = claims;
+        this.stored = stored;
+        this.sheets = sheets;
     }
 
-    /** Add a DRAFT claim per line of the text, in order; refused as a whole when any line is refused. */
+    /**
+     * Add and open a claim per line of the text, in order, or edit and open the DRAFT the line matches;
+     * the claims that went through, one per line. Refused as a whole when any line is refused.
+     */
     @Transactional
     public List<Claim> paste(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
@@ -63,11 +73,50 @@ public class PasteService {
         if (lines.size() > LINES_MAX) {
             throw refused("Paste at most " + LINES_MAX + " lines at once.");
         }
-        List<Claim> added = new ArrayList<>();
-        for (Line line : lines) {
-            added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null, line.ref()));
+        List<Claim> pasted = new ArrayList<>();
+        List<Long> added = new ArrayList<>();
+        for (int i = 0; i < lines.size(); i++) {
+            Line line = lines.get(i);
+            Claim matched = matching(sheetId, line, added);
+            Claim claim;
+            if (matched == null) {
+                claim = claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null, line.ref());
+                added.add(claim.getId());
+            } else if (matched.getStatus() != ClaimStatus.DRAFT) {
+                throw refused("Line " + (i + 1) + ": " + line.person().getName() + "'s claim of " + matched.getDate()
+                        + " with that note is " + matched.getStatus() + ", not a DRAFT.");
+            } else {
+                claim = matched;
+                if (line.amount().compareTo(matched.getAmount()) != 0) {
+                    claim = claims.edit(sheetId, user, matched.getId(), line.amount(), null, matched.getNote(),
+                            matched.getCorrects(), null, null);
+                }
+            }
+            pasted.add(claims.move(sheetId, user, claim.getId(), ClaimStatus.OPEN));
         }
-        return added;
+        return pasted;
+    }
+
+    /**
+     * The person's claim, from before this paste, dated and noted as the line is (a line with no date is
+     * dated as a new claim would be): a DRAFT before any other; null when there is none.
+     */
+    private Claim matching(String sheetId, Line line, List<Long> added) {
+        LocalDate date = line.date() != null ? line.date() : sheets.load(sheetId).defaultClaimDate();
+        Claim found = null;
+        for (Claim claim : stored.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, line.person().getId())) {
+            if (added.contains(claim.getId()) || !date.equals(claim.getDate())
+                    || !line.note().equals(claim.getNote() == null ? "" : claim.getNote().trim())) {
+                continue;
+            }
+            if (claim.getStatus() == ClaimStatus.DRAFT) {
+                return claim;
+            }
+            if (found == null) {
+                found = claim;
+            }
+        }
+        return found;
     }
 
     private Line line(String sheetId, int number, String text) {
