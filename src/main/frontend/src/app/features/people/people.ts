@@ -699,6 +699,14 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 </button>
                 <button
                   type="button"
+                  data-testid="person-export-statement"
+                  [attr.aria-label]="'Export the statement for ' + p.name + ' as CSV'"
+                  (click)="exportStatement(p)"
+                >
+                  Export statement
+                </button>
+                <button
+                  type="button"
                   data-testid="person-unstate"
                   [attr.aria-label]="'Cancel the last statement for ' + p.name"
                   (click)="unstate(p)"
@@ -1966,6 +1974,27 @@ export class People {
       ),
     ];
     this.download(lines, 'claims');
+  }
+
+  /**
+   * Download a person's statement as a CSV file: a header line, then one line per claim of theirs bound
+   * by their last statement, oldest first, with the number, the bound figure as the claim shows it (n/a
+   * as it is) and the status. Each line ends with a line feed.
+   */
+  protected async exportStatement(person: PersonView): Promise<void> {
+    await this.session.settled();
+    this.personError.set(null);
+    const lines = [
+      ['number', 'date', 'amount', 'figure', 'status'],
+      ...[...this.claimsOf(person.id)]
+        .reverse()
+        .filter((c) => c.stated)
+        .map((c) => {
+          const due = this.dueCents(c, person);
+          return [c.number ?? '', c.date, c.amount, due === null ? NO_RATE : money(due), c.status];
+        }),
+    ];
+    this.download(lines, 'statement');
   }
 
   private download(lines: string[][], name: string): void {
