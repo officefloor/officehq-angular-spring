@@ -32,8 +32,18 @@ public class TreeSearchController {
     public List<FoundView> search(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestParam(defaultValue = "") @Size(max = 200) String text) {
-        return search.search(id, text).stream()
-                .map(found -> new FoundView(found.sheetId(), found.name(), found.grade(), Rollups.shown(found.dueTotal())))
+        return shown(search.search(id, text));
+    }
+
+    /** All the people over the sheet's whole tree: this sheet's first in list order, then the other sheets' by sheet id. */
+    @GetMapping("/{id}/tree-people")
+    public List<FoundView> treePeople(@PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id) {
+        return shown(search.everyone(id));
+    }
+
+    private static List<FoundView> shown(List<TreeSearch.Found> found) {
+        return found.stream()
+                .map(f -> new FoundView(f.sheetId(), f.name(), f.grade(), Rollups.shown(f.dueTotal())))
                 .toList();
     }
 }

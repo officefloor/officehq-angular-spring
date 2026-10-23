@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -36,6 +37,16 @@ public class TreeSearch {
     @Transactional(readOnly = true)
     public List<Found> search(String sheetId, String text) {
         String key = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        return walk(sheetId, person -> matches(person, key));
+    }
+
+    /** All the people of the tree: this sheet's first in list order, then the other sheets' by sheet id. */
+    @Transactional(readOnly = true)
+    public List<Found> everyone(String sheetId) {
+        return walk(sheetId, person -> true);
+    }
+
+    private List<Found> walk(String sheetId, Predicate<Person> wanted) {
         List<String> others = new ArrayList<>(sheets.tree(sheetId));
         others.remove(sheetId);
         others.sort(null);
@@ -47,7 +58,7 @@ public class TreeSearch {
             Rollups.Rollup rollup = rollups.take(id);
             LocalDate today = sheets.today(id);
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
-                if (matches(person, key)) {
+                if (wanted.test(person)) {
                     Rollups.Figures figures = rollup.people().get(person.getId());
                     found.add(new Found(id, person.getName(), person.gradeOn(today), figures == null ? null : figures.dueTotal()));
                 }
