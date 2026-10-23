@@ -192,6 +192,12 @@ public class SheetService {
         return setDated(id, user, Sheet.LATE_PCT, money(latePct), from, true);
     }
 
+    /** Record the sheet's rounding mode (half-up or half-even; null: none) from a date, auditing the change and the figures it moves. */
+    @Transactional
+    public Sheet setRounding(String id, String user, String mode, LocalDate from) {
+        return setDated(id, user, Sheet.ROUNDING, mode, from, true);
+    }
+
     /**
      * Record a dated setting's value (null: none) from a date, the sheet's today when none is given,
      * replacing any value recorded from that date. The change is audited, with the from-date when one

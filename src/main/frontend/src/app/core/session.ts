@@ -51,6 +51,8 @@ export interface SheetView {
   parent?: string | null;
   /** The month, 1 to 12, the sheet's fiscal year starts in. */
   fiscalStartMonth: number;
+  /** The rounding mode's values by from-date (a value null when none), its starting value (none) first. */
+  roundingHistory?: DatedValue[];
 }
 
 /**
@@ -90,6 +92,11 @@ export class Session {
    * grace in force on that date is overdue, and late, only from its due-by plus those days.
    */
   readonly graceHistory = signal<Record<string, DatedValue[]>>({});
+  /**
+   * The rounding mode's values by from-date (half-up, half-even, or null for none): a claim whose date
+   * has one in force rounds by it, else by the policy date.
+   */
+  readonly roundingHistory = signal<DatedValue[]>([]);
   /** The active sheet's policy date (yyyy-mm-dd); empty when blank (the sheet's today is then the policy date). */
   readonly policyDate = signal('');
   /** The active sheet's cap in force on its today, with two decimals: a person's due-total is at most it; empty when there is none. */
@@ -181,6 +188,7 @@ export class Session {
     this.floorHistory.set(view.floorHistory);
     this.latePctHistory.set(view.latePctHistory);
     this.policyDate.set(view.policyDate ?? '');
+    this.roundingHistory.set(view.roundingHistory ?? []);
     this.cap.set(view.cap ?? '');
     this.pot.set(view.pot ?? '');
     this.parent.set(view.parent ?? '');

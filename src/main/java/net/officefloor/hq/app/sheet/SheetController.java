@@ -38,7 +38,7 @@ public class SheetController {
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
             String cap, List<DatedValue> floorHistory, List<DatedValue> latePctHistory, boolean archived,
             Map<String, List<DatedValue>> graceHistory, Integer lastSettleBatch, String pot, String parent,
-            int fiscalStartMonth) {
+            int fiscalStartMonth, List<DatedValue> roundingHistory) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
@@ -47,7 +47,7 @@ public class SheetController {
                     DatedValue.of(sheet.floorHistory()), DatedValue.of(sheet.latePctHistory()), sheet.isArchived(),
                     graceHistory(sheet), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
-                    sheet.getFiscalStartMonth());
+                    sheet.getFiscalStartMonth(), DatedValue.of(sheet.roundingHistory()));
         }
 
         /** Each grade's grace values by from-date, its starting value (none) first. */
@@ -77,13 +77,15 @@ public class SheetController {
      * null for none, with each grade's grace values by from-date, and each grade's proof threshold with two
      * decimals, null for none (the sheet's applies), and the pot with two decimals, null for none, and the
      * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in, and the alert
-     * threshold with two decimals, null for off. */
+     * threshold with two decimals, null for off, and the rounding mode (half-up or half-even), null for none
+     * (the policy date decides), with its values by from-date. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
-            String pot, String parent, int fiscalStartMonth, String alertThreshold) {
+            String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
+            List<DatedValue> roundingHistory) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -99,7 +101,8 @@ public class SheetController {
                     SheetView.graceHistory(sheet), gradeProofThresholds(sheet),
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
                     sheet.getFiscalStartMonth(),
-                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString());
+                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
+                    sheet.getRounding(), DatedValue.of(sheet.roundingHistory()));
         }
 
         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
@@ -191,6 +194,11 @@ public class SheetController {
 
     /** A floor as entered: up to two decimals; it cannot be blank. */
     public record FloorChange(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String value,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
+    }
+
+    /** A rounding mode as entered: half-up or half-even, or blank (or null) for none. */
+    public record RoundingChange(@Pattern(regexp = "\\s*(half-up|half-even)?\\s*") String value,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) implements Dated {
     }
 
@@ -385,6 +393,16 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid FloorChange change) {
         return SettingsView.of(service.setFloor(id, SignedIn.name(user), new BigDecimal(change.value().trim()), change.fromDate()));
+    }
+
+    /** Record the sheet's rounding mode from a date (blank: the sheet's today); a blank value means none. */
+    @PutMapping("/{id}/settings/rounding")
+    public SettingsView setRounding(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid RoundingChange change) {
+        String value = change.value() == null ? "" : change.value().trim();
+        return SettingsView.of(service.setRounding(id, SignedIn.name(user), value.isEmpty() ? null : value, change.fromDate()));
     }
 
     /** Record the sheet's terms, in days, from a date (blank: the sheet's today). */

@@ -97,8 +97,8 @@ public class ClaimService {
      * Add a claim for a person on the sheet; with no date it is dated the sheet's entry date
      * while one is set, else the sheet's today. One given a date in a soft-closed period (with no date given, the
      * sheet's today in one), or due by in one, or that would be
-     * with the terms in force on the sheet's today, is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. Refused when
-     * the due-by it would get (the terms-th business day after its date) is inside a closed period, or when it is a correction that does not name a SETTLED claim
+     * with the terms in force on the sheet's today, is a late entry, audited as LATE_ENTRY after its CLAIM_ADDED. A DRAFT may be added
+     * due by inside a closed period (it cannot be opened or changed there). Refused when it is a correction that does not name a SETTLED claim
      * of the same person (see {@link #refuseUnlessCorrects}).
      */
     @Transactional
@@ -132,7 +132,6 @@ public class ClaimService {
         Sheet sheet = sheets.lock(sheetId);
         int terms = terms(sheet, person, dated);
         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
-        periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
         String referred = reference(ref);

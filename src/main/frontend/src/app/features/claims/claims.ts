@@ -460,7 +460,7 @@ export class Claims {
   protected dueOf(claim: ClaimView): string {
     const late = { history: this.session.latePctHistory(), today: this.session.today() ?? '', grace: this.graceOf(claim) };
     const floor = cents(valueOn(this.session.floorHistory(), claim.date, '1.00'));
-    const halfUp = roundsHalfUp(claim, this.claims(), this.session.policyDate(), late.today);
+    const halfUp = roundsHalfUp(claim, this.claims(), this.session.policyDate(), late.today, this.session.roundingHistory());
     const figure = claimDueCents(claim, this.rates(), gradeOn(this.grades(), claim.date), floor, late, halfUp, this.inherited());
     return figure === null ? NO_RATE : money(figure);
   }

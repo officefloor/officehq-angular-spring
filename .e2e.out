@@ -2,134 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › tree search › tree search (13.8s)
-  ✘  2 [chromium] › acceptance.spec.ts:57:7 › tree search › tree search scenario 1 (1.1m)
-  ✘  3 [chromium] › acceptance.spec.ts:422:7 › tree search › tree search scenario 2 (20.6s)
-  ✘  4 [chromium] › acceptance.spec.ts:883:7 › tree search › tree search scenario 3 (18.1s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › rounding mode › rounding mode (16.0s)
+  ✓  2 [chromium] › acceptance.spec.ts:110:7 › rounding mode › rounding mode scenario 1 (45.3s)
+  ✘  3 [chromium] › acceptance.spec.ts:589:7 › rounding mode › rounding mode scenario 2 (21.0s)
+  ✓  4 [chromium] › acceptance.spec.ts:944:7 › rounding mode › rounding mode scenario 3 (15.5s)
 
 
-  1) [chromium] › acceptance.spec.ts:57:7 › tree search › tree search scenario 1 ───────────────────
-
-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
-
-    Locator: getByTestId('sheet-parent')
-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvk8qrl30cyl[27m-p"[39m
-    Call log:
-      [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
-    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
-
-
-      185 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
-      186 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-02-10");
-    > 187 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
-          |                                                      ^
-      188 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
-      189 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      190 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:187:54
-
-  2) [chromium] › acceptance.spec.ts:422:7 › tree search › tree search scenario 2 ──────────────────
+  1) [chromium] › acceptance.spec.ts:589:7 › rounding mode › rounding mode scenario 2 ──────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
     Locator: getByTestId('sheet-parent')
     Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvk8s9gu4ufw[27m-p"[39m
+    Received string: [31m"[7msmvk9a2uskj9i[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
     [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
-    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
 
 
-      535 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
-      536 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-15");
-    > 537 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+      707 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      708 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+    > 709 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
           |                                                      ^
-      538 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
-      539 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("3.45");
-      540 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+      710 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      711 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      712 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:537:54
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:709:54
 
-  3) [chromium] › acceptance.spec.ts:883:7 › tree search › tree search scenario 3 ──────────────────
-
-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
-
-    Locator: getByTestId('person-row-13').getByTestId('person-name')
-    Expected string: [32m"Cam"[39m
-    Received string: [31m"Dot"[39m
-    Call log:
-      [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('person-row-13').getByTestId('person-name')[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
-    [2m  -   unexpected value "Dot"[22m
-
-
-      1096 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
-      1097 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
-    > 1098 |     await expect(pg_vic.getByTestId("person-row-" + p_dot).getByTestId("person-name")).toHaveText("Cam");
-           |                                                                                        ^
-      1099 |     await expect(pg_vic.getByTestId("person-row-" + p_dot).getByTestId("person-grade")).toHaveText("C");
-      1100 |     await expect(pg_vic.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
-      1101 |     await expect(pg_vic.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1098:88
-
-  3 failed
-    [chromium] › acceptance.spec.ts:57:7 › tree search › tree search scenario 1 ────────────────────
-    [chromium] › acceptance.spec.ts:422:7 › tree search › tree search scenario 2 ───────────────────
-    [chromium] › acceptance.spec.ts:883:7 › tree search › tree search scenario 3 ───────────────────
-  1 passed (2.2m)
+  1 failed
+    [chromium] › acceptance.spec.ts:589:7 › rounding mode › rounding mode scenario 2 ───────────────
+  3 passed (1.7m)

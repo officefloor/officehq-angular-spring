@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import type { DatedValue } from './session';
+import { valueOn, type DatedValue } from './session';
 
 /**
  * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID (SETTLED → VOID by a
@@ -191,15 +191,19 @@ export interface LateTerms {
 }
 
 /**
- * Whether a claim's live figures round half up (else half to even): when the date it rounds by is
- * before the policy date, or the sheet's today when no policy date is set. A correction rounds by the
- * date of the claim it corrects, found by number among its person's claims (its own when not found).
+ * Whether a claim's live figures round half up (else half to even): by the rounding mode in force on
+ * the date it rounds by when there is one, else when that date is before the policy date, or the
+ * sheet's today when no policy date is set. A correction rounds by the date of the claim it corrects,
+ * found by number among its person's claims (its own when not found).
  */
-export function roundsHalfUp(claim: ClaimView, claims: ClaimView[], policyDate: string, today: string): boolean {
+export function roundsHalfUp(claim: ClaimView, claims: ClaimView[], policyDate: string, today: string, rounding: DatedValue[] = []): boolean {
   const corrected = claim.corrects === null
     ? undefined
     : claims.find((c) => c.personId === claim.personId && c.number === claim.corrects);
   const date = corrected?.date ?? claim.date;
+  const mode: string | null = valueOn(rounding, date, '');
+  if (mode === 'half-up') return true;
+  if (mode === 'half-even') return false;
   const policy = policyDate || today;
   return policy !== '' && date < policy;
 }

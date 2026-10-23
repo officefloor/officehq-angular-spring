@@ -35,6 +35,8 @@ public class Sheet {
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
     public static final String GRACE = "grace";
+    /** The key of the rounding mode: half-up or half-even, dated; none before every from-date. */
+    public static final String ROUNDING = "rounding";
 
     /** The actions the permission matrix covers, each with the roles that may take it under the standing rule. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
@@ -401,6 +403,11 @@ public class Sheet {
         return history(FLOOR, plain(floor));
     }
 
+    /** The rounding mode's values (see {@link #history}), none before every from-date. */
+    public List<DatedSetting> roundingHistory() {
+        return history(ROUNDING, null);
+    }
+
     /** The late percent's values (see {@link #history}). */
     public List<DatedSetting> latePctHistory() {
         return history(LATE_PCT, plain(latePct));
@@ -435,12 +442,35 @@ public class Sheet {
     }
 
     /**
-     * How the live figures of a claim dated on a date round: half up when the date is before the
+     * How the live figures of a claim dated on a date round: by the rounding mode in force on that date
+     * when there is one, else half up when the date is before the
      * policy date (the sheet's today when none is set), else half to even.
      */
     public RoundingMode roundingOn(LocalDate date) {
+        RoundingMode mode = roundingModeOn(date);
+        if (mode != null) {
+            return mode;
+        }
         LocalDate policy = policyDate == null ? today : policyDate;
         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+    }
+
+    /** The rounding mode in force on the sheet's today (half-up or half-even); null when there is none. */
+    public String getRounding() {
+        return valueOn(ROUNDING, today, null);
+    }
+
+    /** The rounding mode in force on a date; null when there is none (the policy date then decides). */
+    public RoundingMode roundingModeOn(LocalDate date) {
+        String value = valueOn(ROUNDING, date, null);
+        if (value == null) {
+            return null;
+        }
+        return switch (value) {
+            case "half-up" -> RoundingMode.HALF_UP;
+            case "half-even" -> RoundingMode.HALF_EVEN;
+            default -> null;
+        };
     }
 
     /** The period-numbering-from date as set; null when blank (off). */
