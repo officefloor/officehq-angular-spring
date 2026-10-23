@@ -437,6 +437,11 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                     <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
                   }
                 </ul>
+                <ul aria-label="Snapshots">
+                  @for (s of p.snapshots ?? []; track $index) {
+                    <li data-testid="person-snapshot-line">{{ s.asOf }} {{ s.dueTotal }}</li>
+                  }
+                </ul>
               </td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               <td>

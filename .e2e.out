@@ -2,52 +2,93 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › over threshold alert › over threshold alert (20.7s)
-  ✓  2 [chromium] › acceptance.spec.ts:103:7 › over threshold alert › over threshold alert scenario 1 (28.4s)
-  ✘  3 [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 (27.8s)
-  ✓  4 [chromium] › acceptance.spec.ts:1278:7 › over threshold alert › over threshold alert scenario 3 (28.1s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › snapshot lines › snapshot lines (11.4s)
+  ✘  2 [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 (37.1s)
+  ✘  3 [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 (26.6s)
+  ✓  4 [chromium] › acceptance.spec.ts:1144:7 › snapshot lines › snapshot lines scenario 3 (27.2s)
 
 
-  1) [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 
+  1) [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 ─────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Locator: getByTestId('person-row-11').getByTestId('person-name')
-    Expected string: [32m"Cam"[39m
-    Received string: [31m"Ada"[39m
+    Locator: getByTestId('person-row-7').getByTestId('person-name')
+    Expected string: [32m"Ben"[39m
+    Received string: [31m"Dot"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('person-row-11').getByTestId('person-name')[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
-    [2m  -   locator resolved to <td data-testid="person-name">Ada</td>[22m
-    [2m  -   unexpected value "Ada"[22m
+    [2m  - waiting for getByTestId('person-row-7').getByTestId('person-name')[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
+    [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+    [2m  -   unexpected value "Dot"[22m
 
 
-      862 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-batch")).toHaveText("");
-      863 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-lines-line")).toHaveText([]);
-    > 864 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-name")).toHaveText("Cam");
+      388 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-batch")).toHaveText("");
+      389 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-lines-line")).toHaveText([]);
+    > 390 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-name")).toHaveText("Ben");
           |                                                                                        ^
-      865 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-grade")).toHaveText("A");
-      866 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
-      867 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
+      391 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-grade")).toHaveText("A");
+      392 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
+      393 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:864:88
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:390:88
 
-  1 failed
-    [chromium] › acceptance.spec.ts:700:7 › over threshold alert › over threshold alert scenario 2 ─
-  3 passed (1.8m)
+  2) [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvk7xa3ue4lu[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+
+
+      724 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      725 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+    > 726 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      727 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+      728 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("1.00");
+      729 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:726:54
+
+  2 failed
+    [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 ──────────────
+    [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ─────────────
+  2 passed (1.8m)

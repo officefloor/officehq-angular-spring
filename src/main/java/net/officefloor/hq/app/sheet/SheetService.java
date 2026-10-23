@@ -7,6 +7,7 @@ import net.officefloor.hq.app.Audit;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollups;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -22,9 +23,12 @@ public class SheetService {
     private final Rollups rollups;
     private final Audit audit;
     private final ApplicationEventPublisher events;
+    private final PersonRepository people;
 
-    public SheetService(SheetRepository sheets, Rollups rollups, Audit audit, ApplicationEventPublisher events) {
+    public SheetService(SheetRepository sheets, Rollups rollups, Audit audit, ApplicationEventPublisher events,
+            PersonRepository people) {
         this.sheets = sheets;
+        this.people = people;
         this.rollups = rollups;
         this.audit = audit;
         this.events = events;
@@ -73,7 +77,7 @@ public class SheetService {
 
     /**
      * Change the sheet's today, auditing the figures that moves. When it moves, each person's due-total
-     * as it stood on the day being left is audited first, in list order, and the sheet as it stood at
+     * as it stood on the day being left is audited first, in list order, and kept as one of their snapshot lines, and the sheet as it stood at
      * the end of that day is kept (see {@link TodayLeaving}). The periods it puts past their grace
      * days are closed (see {@link TodayChanged}) before those figures are audited.
      */
@@ -82,8 +86,12 @@ public class SheetService {
         Sheet sheet = load(id);
         Rollups.Rollup before = rollups.take(id);
         if (!today.equals(sheet.getToday())) {
-            before.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
-                    + " name=" + figures.name() + " due-total=" + Rollups.shown(figures.dueTotal())));
+            LocalDate leaving = sheet.getToday();
+            before.people().forEach((personId, figures) -> {
+                people.findById(personId).ifPresent(person -> person.snapshot(leaving, figures.dueTotal()));
+                audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
+                        + " name=" + figures.name() + " due-total=" + Rollups.shown(figures.dueTotal()));
+            });
             events.publishEvent(new TodayLeaving(id, sheet.getToday()));
         }
         sheet.setToday(today);

@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.SignedIn;
+import net.officefloor.hq.app.rollup.Rollups;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -49,7 +50,7 @@ public class PersonController {
             List<String> tagsUsed, long version, int statementCount,
             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
-            String originSheetId) {
+            String originSheetId, List<SnapshotView> snapshots) {
 
         public static PersonView of(Person person) {
             return of(person, false);
@@ -67,12 +68,19 @@ public class PersonController {
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
                     person.isHeld(),
                     person.getHolds().stream().map(hold -> new HoldView(hold.getFromDate(), hold.getToDate())).toList(),
-                    person.getPatronIds(), person.getAliases(), clashing, person.getOriginSheetId());
+                    person.getPatronIds(), person.getAliases(), clashing, person.getOriginSheetId(),
+                    person.getSnapshots().stream()
+                            .map(snapshot -> new SnapshotView(snapshot.getAsOf(), Rollups.shown(snapshot.getDueTotal())))
+                            .toList());
         }
     }
 
     /** A past retirement of a person, from its date to the day they were unretired. */
     public record RetirementView(LocalDate from, LocalDate to) {
+    }
+
+    /** A snapshot line of a person: the day being left and their due-total on it (n/a when no rate applied). */
+    public record SnapshotView(LocalDate asOf, String dueTotal) {
     }
 
     /** A hold on a person, from a date to a date (null: no end). */

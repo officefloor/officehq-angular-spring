@@ -13,6 +13,7 @@ import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.OptimisticLock;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -108,6 +109,16 @@ public class Person {
     @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
     @OrderColumn(name = "retirement_order")
     private List<Retirement> retirements = new ArrayList<>();
+
+    /**
+     * The person's snapshot lines, oldest first: one kept each time the sheet's today moves on. Keeping
+     * one is not an edit of the person, so it leaves their version alone.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_snapshot", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "snapshot_order")
+    @OptimisticLock(excluded = true)
+    private List<Snapshot> snapshots = new ArrayList<>();
 
     /**
      * The person's holds, in the order they were added: their OPEN and PENDING claims dated within
@@ -295,6 +306,16 @@ public class Person {
     /** The person's past retirements, in the order they were unretired from. */
     public List<Retirement> getRetirements() {
         return Collections.unmodifiableList(retirements);
+    }
+
+    /** Keep the person's due-total (null: n/a) as it stood on a day the sheet's today moves on from. */
+    public void snapshot(LocalDate asOf, BigDecimal dueTotal) {
+        snapshots.add(new Snapshot(asOf, dueTotal));
+    }
+
+    /** The person's snapshot lines, oldest first. */
+    public List<Snapshot> getSnapshots() {
+        return Collections.unmodifiableList(snapshots);
     }
 
     /** Whether the person has any hold, whatever its dates. */

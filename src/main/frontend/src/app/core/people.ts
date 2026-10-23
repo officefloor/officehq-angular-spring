@@ -62,6 +62,14 @@ export interface PersonView {
   clashing?: boolean;
   /** The sheet the person was last transferred from; null when never, absent from a view kept before this was. */
   originSheetId?: string | null;
+  /** The person's snapshot lines, oldest first; absent from a view kept before snapshot lines were. */
+  snapshots?: SnapshotView[];
+}
+
+/** A snapshot line of a person: the day being left (yyyy-mm-dd) and their due-total on it ('n/a' when no rate applied). */
+export interface SnapshotView {
+  asOf: string;
+  dueTotal: string;
 }
 
 /** A past retirement of a person, from its date to the day they were unretired (yyyy-mm-dd). */
