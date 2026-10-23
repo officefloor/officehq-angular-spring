@@ -133,6 +133,7 @@ public class Rollups {
         }
         // The parts of shared claims their holders' due-totals count, by holder, from the claims that
         // count for their own person; each claim's figure as read here.
+        // A holder whose grade has no rate has a part of 0.00, which gives them no figure.
         Map<Claim, BigDecimal> shared = new java.util.IdentityHashMap<>();
         Map<Long, BigDecimal> received = new LinkedHashMap<>();
         for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
@@ -146,10 +147,15 @@ public class Rollups {
                 if (figure == null) {
                     continue;
                 }
-                shared.put(claim, figure);
-                for (var share : claim.getShares()) {
-                    received.merge(share.getPersonId(), share.partOf(figure), BigDecimal::add);
-                }
+                shared.put(claim, claim.sharedParts(share -> {
+                    Person holder = sheetPeople.get(share.getPersonId());
+                    BigDecimal part = dues.part(claim, share,
+                            holder == null ? null : holder.gradeOn(claim.getDate()), figure, basis);
+                    if (part != null) {
+                        received.merge(share.getPersonId(), part, BigDecimal::add);
+                    }
+                    return part;
+                }));
             }
         }
         Map<Long, Figures> figures = new LinkedHashMap<>();
@@ -186,7 +192,7 @@ public class Rollups {
                 BigDecimal figure = dues.due(claim, grade, basis);
                 if (figure != null) {
                     // A shared claim's own person counts its figure less its holders' parts.
-                    due = due.add(shared.containsKey(claim) ? figure.subtract(claim.sharedPartsOf(figure)) : figure);
+                    due = due.add(shared.containsKey(claim) ? figure.subtract(shared.get(claim)) : figure);
                     figured = true;
                     if (late) {
                         overdue = overdue.add(figure);

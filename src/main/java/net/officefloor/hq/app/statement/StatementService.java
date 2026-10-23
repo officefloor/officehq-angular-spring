@@ -133,7 +133,10 @@ public class StatementService {
             counted++;
             if (due != null) {
                 // As in the live totals: a shared claim counts its figure less its holders' parts.
-                total = total.add(claim.getShares().isEmpty() ? due : due.subtract(claim.sharedPartsOf(due)));
+                total = total.add(claim.getShares().isEmpty() ? due : due.subtract(claim.sharedParts(share -> {
+                    Person holder = peopleThen.get(share.getPersonId());
+                    return dues.part(claim, share, holder == null ? null : holder.gradeOn(claim.getDate()), due, basis);
+                })));
             }
         }
         // As in the live totals: their parts of others' shared claims that count for their own person.
@@ -148,10 +151,12 @@ public class StatementService {
             if (figure == null) {
                 continue;
             }
-            figured = true;
             for (var share : claim.getShares()) {
-                if (share.getPersonId() == personId) {
-                    total = total.add(share.partOf(figure));
+                BigDecimal part = share.getPersonId() == personId
+                        ? dues.part(claim, share, then.gradeOn(claim.getDate()), figure, basis) : null;
+                if (part != null) {
+                    figured = true;
+                    total = total.add(part);
                 }
             }
         }

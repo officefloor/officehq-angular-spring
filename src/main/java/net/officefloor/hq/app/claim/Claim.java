@@ -650,9 +650,10 @@ public class Claim {
         shares.add(new ClaimShare(personId, share));
     }
 
-    /** The holders' parts of a due figure, added up (see {@link ClaimShare#partOf}). */
-    public BigDecimal sharedPartsOf(BigDecimal due) {
-        return shares.stream().map(s -> s.partOf(due)).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    /** The holders' parts, each as given (null: 0.00), added up (see {@link Dues#part}). */
+    public BigDecimal sharedParts(java.util.function.Function<ClaimShare, BigDecimal> part) {
+        return shares.stream().map(part).filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** Add a comment to the claim, by the user on the sheet's today. */

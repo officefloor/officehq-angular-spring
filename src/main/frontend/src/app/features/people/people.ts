@@ -3,7 +3,7 @@ import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
-import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, pendingLate, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
+import { ClaimShareView, ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, pendingLate, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
 import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
@@ -77,6 +77,19 @@ function halfEven(numerator: number, denominator: number): number {
 /** Cents times a share in hundredths of a percent, over 100: whole cents rounded half to even. */
 function shareOf(cents: number, share: number): number {
   return halfEven(cents * share, 10000);
+}
+
+/**
+ * Cents times a share and a rate, each in hundredths of a percent, over 100 twice: whole cents rounded
+ * half to even (or half up; a negative amount rounds as its opposite does). Worked in integers so it is exact.
+ */
+function partOf(amountCents: number, share: number, pct: number, halfUp: boolean): number {
+  if (amountCents < 0) return -partOf(-amountCents, share, pct, halfUp);
+  const exact = BigInt(amountCents) * BigInt(share) * BigInt(pct);
+  const quotient = exact / 100_000_000n;
+  const remainder = exact % 100_000_000n;
+  const up = remainder > 50_000_000n || (remainder === 50_000_000n && (halfUp || quotient % 2n === 1n));
+  return Number(up ? quotient + 1n : quotient);
 }
 
 /**
@@ -1767,7 +1780,7 @@ export class People {
   private dueSumCents(person: PersonView): number | null {
     const dues = this.countingOf(person.id).map((c) => {
       const due = this.dueCents(c, person);
-      return due === null ? null : due - (c.shares ?? []).reduce((sum, s) => sum + shareOf(due, cents(s.share)), 0);
+      return due === null ? null : due - (c.shares ?? []).reduce((sum, s) => sum + (this.partCents(c, person, s, due) ?? 0), 0);
     });
     const part = this.sharedPartsCents().get(person.id);
     if (part !== undefined) dues.push(part);
@@ -1776,8 +1789,8 @@ export class People {
   }
 
   /**
-   * Each holder's parts of the shared claims that count for their own person, in whole cents by holder id:
-   * the claim's due times the holder's share over 100, rounded half to even.
+   * Each holder's parts of the shared claims that count for their own person, in whole cents by holder id
+   * (see partCents); a part of a holder whose grade has no rate gives them no figure.
    */
   private readonly sharedPartsCents = computed(() => {
     const parts = new Map<number, number>();
@@ -1786,11 +1799,30 @@ export class People {
         if (!c.shares?.length) continue;
         const due = this.dueCents(c, owner);
         if (due === null) continue;
-        for (const s of c.shares) parts.set(s.personId, (parts.get(s.personId) ?? 0) + shareOf(due, cents(s.share)));
+        for (const s of c.shares) {
+          const part = this.partCents(c, owner, s, due);
+          if (part !== null) parts.set(s.personId, (parts.get(s.personId) ?? 0) + part);
+        }
       }
     }
     return parts;
   });
+
+  /**
+   * A holder's part of a shared claim whose due is given, in whole cents: the claim's amount times their
+   * share over 100, times the rate their own grade (in force for them on the claim's date) has in force on
+   * the claim's date as the claim sees the rates, over 100, rounded like the claim; null (0.00) when their
+   * grade has no rate. A settled claim keeps its parts as frozen: its due times the share over 100.
+   */
+  private partCents(claim: ClaimView, owner: PersonView, share: ClaimShareView, due: number): number | null {
+    if (claim.settledDue !== null) return shareOf(due, cents(share.share));
+    const holder = this.people().find((p) => p.id === share.personId);
+    if (holder === undefined) return null;
+    const pct = rateOn(this.rates(), gradeOn(holder.grades, claim.date), claim.date, this.inherited(), claim.added ?? null);
+    if (pct === null) return null;
+    const halfUp = roundsHalfUp(claim, this.claimsOf(owner.id), this.session.policyDate(), this.today(), this.session.roundingHistory());
+    return partOf(cents(claim.amount), cents(share.share), cents(pct), halfUp);
+  }
 
   /**
    * A claim's due in whole cents at the grade its person has in force on its date, with the floor

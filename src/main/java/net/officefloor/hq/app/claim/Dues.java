@@ -248,6 +248,24 @@ public class Dues {
                 .orElse(null);
     }
 
+    /**
+     * A holder's part of a shared claim whose due figure is given: the claim's amount times their share
+     * over 100, times the rate their own grade (the one in force for them on the claim's date) has in
+     * force on the claim's date as the claim sees the rates, over 100, rounded like the claim; null
+     * (0.00) when their grade has no rate. A settled claim keeps its parts as frozen: its frozen figure
+     * times the share over 100 (see {@link ClaimShare#partOf}).
+     */
+    public BigDecimal part(Claim claim, ClaimShare share, String holderGrade, BigDecimal figure, Basis basis) {
+        if (claim.getSettledDue() != null) {
+            return share.partOf(figure);
+        }
+        RoundingMode rounding = rounding(claim, basis);
+        return basis.rateInForceFor(claim, holderGrade)
+                .map(rate -> claim.getAmount().multiply(share.getShare()).multiply(rate.getPct())
+                        .movePointLeft(4).setScale(2, rounding))
+                .orElse(null);
+    }
+
     /** What is due on an amount at a rate: the amount times the percent over 100, rounded as given. */
     private static BigDecimal due(BigDecimal amount, Rate rate, RoundingMode rounding) {
         return amount.multiply(rate.getPct()).movePointLeft(2).setScale(2, rounding);
