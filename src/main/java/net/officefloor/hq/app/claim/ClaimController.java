@@ -220,6 +220,13 @@ public class ClaimController {
                 .orElseGet(() -> service.list(sheetId).stream().map(ClaimView::of).toList());
     }
 
+    /** The sheet's duplicate claims: one line {@code <name> <date> <amount> x<count>} per person, date and amount claimed twice or more. */
+    @GetMapping("/claims/duplicates")
+    public List<String> duplicates(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+        return service.duplicates(sheetId);
+    }
+
     /** A claim's timeline: the audit lines about it, newest first, as the file holds them. */
     @GetMapping("/claims/{claimId}/timeline")
     public List<String> timeline(

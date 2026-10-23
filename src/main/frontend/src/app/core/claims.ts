@@ -415,6 +415,11 @@ export class ClaimsApi {
    * Defer an OPEN claim until a date; refused (409) when the claim is not OPEN, the date is not after
    * the sheet's today, or the claim is dated inside a closed period.
    */
+  /** The sheet's duplicate claims: one line `<name> <date> <amount> x<count>` per person, date and amount claimed twice or more. */
+  duplicates(sheet: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/duplicates`));
+  }
+
   /**
    * The claim's timeline: the audit lines about it, newest first, as the file holds them — those
    * carrying its number, or for a claim with no number those naming its person, amount and date.

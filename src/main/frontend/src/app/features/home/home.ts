@@ -11,12 +11,13 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
 import { TemplatesList } from '../templates/templates';
 import { AuditViewer } from '../audit/audit';
 import { Activity } from '../audit/activity';
+import { Duplicates } from '../claims/duplicates';
 import { TreeSearch } from '../tree-search/tree-search';
 
 // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [People, Settings, Delegation, Holidays, Notes, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch],
+  imports: [People, Settings, Delegation, Holidays, Notes, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch, Duplicates],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session">
@@ -106,6 +107,7 @@ import { TreeSearch } from '../tree-search/tree-search';
           <app-tree-search />
           <app-audit-viewer />
           <app-activity />
+          <app-duplicates />
         }
         <p data-testid="home-empty">Nothing here yet.</p>
       </section>

@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.holiday.HolidayService;
@@ -94,6 +97,33 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+    }
+
+    /**
+     * The sheet's duplicate claims: for each person, date and amount with two or more claims (VOID and
+     * DELETED claims left out), one line {@code <name> <date> <amount> x<count>}; people in list order,
+     * then by date, then by amount.
+     */
+    @Transactional(readOnly = true)
+    public List<String> duplicates(String sheetId) {
+        Map<Long, Map<LocalDate, Map<BigDecimal, Integer>>> counts = new HashMap<>();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (claim.getStatus() == ClaimStatus.VOID || claim.getStatus() == ClaimStatus.DELETED) {
+                continue;
+            }
+            counts.computeIfAbsent(claim.getPersonId(), id -> new TreeMap<>())
+                    .computeIfAbsent(claim.getDate(), date -> new TreeMap<>())
+                    .merge(claim.getAmount().setScale(2, RoundingMode.HALF_UP), 1, Integer::sum);
+        }
+        List<String> lines = new ArrayList<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            counts.getOrDefault(person.getId(), Map.of()).forEach((date, amounts) -> amounts.forEach((amount, count) -> {
+                if (count >= 2) {
+                    lines.add(person.getName() + " " + date + " " + amount.toPlainString() + " x" + count);
+                }
+            }));
+        }
+        return lines;
     }
 
     /**
