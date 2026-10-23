@@ -1,0 +1,64 @@
+{
+  "checkpoint": 211,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp211_score-lines",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6d05111817d8ef69130558ce359d63d81e54bb37",
+  "reset_sha": "",
+  "preagent_sha": "7b3b9c8d1c557d07c151ba6c133f8295e52c72dd",
+  "prev_sha": "7b3b9c8d1c557d07c151ba6c133f8295e52c72dd",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0329886000000001,
+    "input_tokens": 56,
+    "output_tokens": 12164,
+    "cache_read_tokens": 1350623,
+    "cache_creation_tokens": 64920,
+    "num_turns": 28,
+    "duration_ms": 266877,
+    "duration_api_ms": 159626,
+    "model": "claude-opus-5-5",
+    "session_id": "eb13eb38-87c3-4f49-8232-3e3717955777",
+    "stop_reason": "success",
+    "result_text": "I added the score log switch, and the main `score lines` test now passes. The other three tests in the spec still fail, all at steps that have nothing to do with the switch.\n\n**What changed**\n- **Stored data:** a new migration, `V112__sheet_score_log.sql`, adds a `score_log` column to the sheet, off by default. Cloning a sheet copies it.\n- **Server:** a new endpoint, `PUT /api/sheets/{id}/settings/score-log`, takes `on` or blank and refuses anything else. Each change writes `SETTING_CHANGED \u2026 key=score-log value=on` (or `value=`). The settings response now includes `scoreLog`.\n- **Changing today:** when the sheet's today moves and the log is on, the server writes one `SCORE \u2026 name=<name> score=<score>` line per person, in list order, before the `SNAPSHOT` lines. The scores are taken before the date moves, so they are the ones for the day being left.\n- **Scores on the server:** until now the score was only worked out in the browser. I added each person's settled total and overdue count to the server's rollup figures (`Rollups.java`) and copied the browser's formula: settled total \u00f7 100, minus 5 per overdue claim, rounded half to even. ROLLUP lines are written exactly as before.\n- **Front end:** the settings form has a new `setting-score-log` input and shows the value in force in `setting-score-log-current`. It shows the usual settings error for anything other than `on` or blank.\n\n**The three failing tests** (none of them use the switch):\n- **Scenario 1** (`acceptance.spec.ts:125`): the screen refuses to add a claim dated 2026-03-28 when today is 2026-04-28.\n- **Scenario 2** (`acceptance.spec.ts:880`): the test expects the literal text `\"__SHEET__-p\"`, which looks like a placeholder that was never filled in. The screen correctly shows the real sheet id plus `-p`.\n- **Scenario 3** (`acceptance.spec.ts:1421`): `claimEditOpen` cannot open the editor on an existing claim.\n\nMy change only touches the code above, and the server log shows no errors. I couldn't run the tests without my change to compare, because the folder isn't under version control. The previous run's log (`.e2e.out`) also had two failing scenarios, from an earlier version of this spec. I left these three alone because they belong to other features and the spec can't be edited.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0329886000000001,
+        "num_turns": 28,
+        "duration_ms": 266877,
+        "duration_api_ms": 159626,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp211.agent.jsonl",
+  "agent_diff_file": "cp211.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
