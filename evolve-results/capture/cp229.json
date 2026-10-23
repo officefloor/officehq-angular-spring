@@ -1,0 +1,64 @@
+{
+  "checkpoint": 229,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp229_grades-editable",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Grades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nGrades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "30d68cd1e2a10d7fc1a06ecd7becd29767ed0c9d",
+  "reset_sha": "",
+  "preagent_sha": "7833ae8acec17a64aa392221f799f33705eddbdf",
+  "prev_sha": "7833ae8acec17a64aa392221f799f33705eddbdf",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.0964746,
+    "input_tokens": 88,
+    "output_tokens": 25239,
+    "cache_read_tokens": 3545553,
+    "cache_creation_tokens": 110279,
+    "num_turns": 45,
+    "duration_ms": 524458,
+    "duration_api_ms": 240697,
+    "model": "claude-opus-5-5",
+    "session_id": "1d2e8dcc-15fc-4983-b9e5-e83a12e4e27a",
+    "stop_reason": "success",
+    "result_text": "Grades can now be added from the Grades panel, and a new grade appears in every grade select, the summary, the rates and the rate calendar. **`bin/e2e`: 2 of 4 tests pass.** The main \"grades editable\" test and scenario 3 pass. Scenarios 1 and 2 each fail on one assertion that has nothing to do with grades, and I don't think either can be fixed by this change:\n\n- **Scenario 1 (spec line 283)** expects `sheet-parent` to show the literal text `__SHEET__-p`. That looks like a placeholder the spec never filled in. The real parent id (`<sheet>-p`) is what the app shows, so no app change can satisfy it.\n- **Scenario 2 (spec line 837)** expects notes added after the as-of date to be hidden while an as-of date is set. The notes feature has never filtered by as-of. Adding that would be a separate change, so I left it alone; I can add it if you want.\n\nTo check the rest, I ran a temporary copy of the spec with just those two assertions corrected. All three scenarios passed, including the audit lines. I deleted the copy afterwards, and the real spec is unchanged.\n\n**What changed:**\n- **Stored data:** a new migration, `V120__grade_added.java`, adds a per-sheet `grade_added` table. It also lets every grade column hold up to three letters and removes the old A/B/C-only checks. Cloning a sheet now copies its added grades.\n- **Server:** `GradeService.add` trims the code and refuses anything that isn't one to three capital letters, or is already a grade. It writes `GRADE_ADDED sheet=\u2026 by=\u2026 grade=\u2026` to the audit file, and a new `POST` endpoint exposes it. The sheet's grade list is now A, B, C followed by added grades in the order they were added.\n- **Grades now accepted everywhere a grade is set:** setting rates and rate previews, adding and editing people, both import screens, merging and retiring grades, and the default grade.\n- **Front end:** the Grades panel has the new `grade-add-code` box and `grade-add` button. Grade codes now come from the sheet's own list, so the people, rates, summary, consolidated and grades screens all pick up new grades. I moved `grade-error` out of the retire form so it serves all three grade forms.\n\n**Not extended:** the per-grade settings (terms, grace, clerk limit, proof threshold) still cover only A, B and C. An added grade uses the sheet-wide values for these.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.0964746,
+        "num_turns": 45,
+        "duration_ms": 524458,
+        "duration_api_ms": 240697,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp229.agent.jsonl",
+  "agent_diff_file": "cp229.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
