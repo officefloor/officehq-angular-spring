@@ -83,7 +83,10 @@ public class Rollups {
             BigDecimal overdue = zero();
             boolean figured = false;
             for (Claim claim : counting) {
-                claimed = claimed.add(claim.getAmount());
+                // What is claimed leaves out claims that correct another.
+                if (claim.getCorrects() == null || claim.getCorrects().isBlank()) {
+                    claimed = claimed.add(claim.getAmount());
+                }
                 String grade = person.gradeOn(claim.getDate());
                 BigDecimal figure = dues.due(claim, grade, basis);
                 if (figure != null) {

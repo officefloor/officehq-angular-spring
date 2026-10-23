@@ -1048,13 +1048,18 @@ export class People {
     return person ? this.claimsOf(personId).filter((c) => countsLive(c, person, this.today())) : [];
   }
 
-  /** What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsLive). */
+  /**
+   * What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsLive),
+   * leaving out claims that correct another.
+   */
   protected claimed(personId: number): string {
     return money(this.claimedCents(personId));
   }
 
   private claimedCents(personId: number): number {
-    return this.countingOf(personId).reduce((sum, c) => sum + cents(c.amount), 0);
+    return this.countingOf(personId)
+      .filter((c) => !c.corrects)
+      .reduce((sum, c) => sum + cents(c.amount), 0);
   }
 
   /** Whether a person is active on the sheet's today (see activeOn). */
