@@ -1,0 +1,212 @@
+diff --git a/.e2e.out b/.e2e.out
+index 0db6f7a3..6ebc315e 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,70 +2,111 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › settle as of date › settle as of date (12.2s)
+-  ✘  2 [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 (41.5s)
+-  ✘  3 [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 (17.7s)
+-  ✓  4 [chromium] › acceptance.spec.ts:961:7 › settle as of date › settle as of date scenario 3 (24.9s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › statement export › statement export (5.3s)
++  ✘  2 [chromium] › acceptance.spec.ts:28:7 › statement export › statement export scenario 1 (32.4s)
++  ✘  3 [chromium] › acceptance.spec.ts:662:7 › statement export › statement export scenario 2 (17.2s)
++  ✘  4 [chromium] › acceptance.spec.ts:1138:7 › statement export › statement export scenario 3 (16.8s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 ───────
++  1) [chromium] › acceptance.spec.ts:28:7 › statement export › statement export scenario 1 ─────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvko8p8p84rq[27m-p"[39m
++    Received string: [31m"[7msmvkod1j42cbi[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvko8p8p84rq-p</strong>[22m
+-    [2m  -   unexpected value "smvko8p8p84rq-p"[22m
+-
+-
+-      209 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      210 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+-    > 211 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
++    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
++
++
++      197 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
++      198 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-09");
++    > 199 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+-      212 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
+-      213 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      214 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++      200 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
++      201 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      202 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:199:54
++
++  2) [chromium] › acceptance.spec.ts:662:7 › statement export › statement export scenario 2 ────────
++
++    Error: flag: neither a result nor an error appeared within 8000ms
++
++       at ../support/ui.ts:136
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:211:54
++      134 |   if (await done()) return true;
++      135 |   if (await error.isVisible().catch(() => false)) return false;
++    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
++          |         ^
++      137 | }
++      138 |
++      139 | async function sleep(ms: number): Promise<void> {
+ 
+-  2) [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 ──────
++        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:694:12
+ 
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
++  3) [chromium] › acceptance.spec.ts:1138:7 › statement export › statement export scenario 3 ───────
++
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++
++    Locator: getByTestId('person-row-9').getByTestId('person-claimed')
++    Expected string: [32m"[7m4[27m.00"[39m
++    Received string: [31m"[7m0[27m.00"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('person-row-9').getByTestId('person-claimed')[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
++    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
++    [2m  -   unexpected value "0.00"[22m
+ 
+-    Expected: [32mtrue[39m
+-    Received: [31mfalse[39m
+ 
+-      542 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "20.00"})).toBe(true);
+-      543 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "3.33", "tags": "a, B"})).toBeNull();
+-    > 544 |     expect(await ui.claimEditOpen(pg_uma, c_ada_0)).toBe(true);
+-          |                                                     ^
+-      545 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+-      546 |     expect(await ui.claimEditOpen(pg_wes, c_ada_0)).toBe(false);
+-      547 |     await ui.refresh(pg_uma);
++      1221 |     const c_ben_2 = ui.must(await ui.addClaim(pg_vic, p_ben, {"amount": "0.40", "note": "n", "tags": "a, B"}));
++      1222 |     await ui.refresh(pg_vic);
++    > 1223 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("4.00");
++           |                                                                                           ^
++      1224 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("1.00");
++      1225 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-due")).toHaveText("1.00");
++      1226 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-status")).toHaveText("DRAFT");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:544:53
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1223:91
+ 
+-  2 failed
+-    [chromium] › acceptance.spec.ts:78:7 › settle as of date › settle as of date scenario 1 ────────
+-    [chromium] › acceptance.spec.ts:466:7 › settle as of date › settle as of date scenario 2 ───────
+-  2 passed (1.7m)
++  3 failed
++    [chromium] › acceptance.spec.ts:28:7 › statement export › statement export scenario 1 ──────────
++    [chromium] › acceptance.spec.ts:662:7 › statement export › statement export scenario 2 ─────────
++    [chromium] › acceptance.spec.ts:1138:7 › statement export › statement export scenario 3 ────────
++  1 passed (1.3m)
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 494c67bf..246c2f39 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -697,6 +697,14 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 >
+                   Statement
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-export-statement"
++                  [attr.aria-label]="'Export the statement for ' + p.name + ' as CSV'"
++                  (click)="exportStatement(p)"
++                >
++                  Export statement
++                </button>
+                 <button
+                   type="button"
+                   data-testid="person-unstate"
+@@ -1968,6 +1976,27 @@ export class People {
+     this.download(lines, 'claims');
+   }
+ 
++  /**
++   * Download a person's statement as a CSV file: a header line, then one line per claim of theirs bound
++   * by their last statement, oldest first, with the number, the bound figure as the claim shows it (n/a
++   * as it is) and the status. Each line ends with a line feed.
++   */
++  protected async exportStatement(person: PersonView): Promise<void> {
++    await this.session.settled();
++    this.personError.set(null);
++    const lines = [
++      ['number', 'date', 'amount', 'figure', 'status'],
++      ...[...this.claimsOf(person.id)]
++        .reverse()
++        .filter((c) => c.stated)
++        .map((c) => {
++          const due = this.dueCents(c, person);
++          return [c.number ?? '', c.date, c.amount, due === null ? NO_RATE : money(due), c.status];
++        }),
++    ];
++    this.download(lines, 'statement');
++  }
++
+   private download(lines: string[][], name: string): void {
+     downloadCsv(lines, name, this.session.sheet());
+   }

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 195,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp195_statement-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ceef76d8131961e55a721de19793a76a8bdf880c",
+  "reset_sha": "",
+  "preagent_sha": "0af8eeeadb89490941471cbd53012693766b20f1",
+  "prev_sha": "0af8eeeadb89490941471cbd53012693766b20f1",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5698103999999999,
+    "input_tokens": 34,
+    "output_tokens": 5594,
+    "cache_read_tokens": 618332,
+    "cache_creation_tokens": 41766,
+    "num_turns": 18,
+    "duration_ms": 200535,
+    "duration_api_ms": 74386,
+    "model": "claude-opus-5-5",
+    "session_id": "b10cc946-9d82-434a-aa39-82b8117c27b8",
+    "stop_reason": "success",
+    "result_text": "The main `statement export` test passes. I stopped short of the three \"scenario\" tests because each one fails on an unrelated feature before it gets to the export.\n\n**The change** is in `src/main/frontend/src/app/features/people/people.ts`. Each person's row now has an **Export statement** button (`data-testid=\"person-export-statement\"`). It downloads `statement-<sheet>.csv` with:\n- the header `number,date,amount,figure,status`;\n- one line per claim bound by the person's last statement (the claim's `stated` flag, already stored on the server), oldest first;\n- the figure worked out the same way the claim's `claim-due` cell shows it, so a bound figure stays as it was bound, or shows as `n/a`.\n\nNo server or schema change was needed, because the store already records which claims the last statement bound and their figures. No audit record is written; the spec doesn't expect one.\n\n**Result of `bin/e2e`: 1 passed, 3 failed.**\n- **`statement export`:** passes. It checks an empty export, figures that stay bound after a rate change, the current status after a second user settles a claim, and a second statement adding a claim at the new rate.\n- **Scenario 1:** fails at line 199 because the spec expects the literal text `\"__SHEET__-p\"` rather than the real sheet id. That looks like a placeholder left in the spec, which no app can show.\n- **Scenario 2:** fails at line 694, where it sets a flag on Cam ending 2026-03-12 while today is 2026-03-20. The app deliberately hides a flag once its end date has passed (`flagOn` in `core/people.ts`), so neither the flag nor an error appears.\n- **Scenario 3:** fails at line 1223, checking Ben's `person-claimed` total (expected 4.00, shown 0.00). This test never calls the export.\n\nI didn't change those other features to make the scenarios pass: that falls outside this one change, and I'm not allowed to edit the spec. If you want, I can look into the scenario 2 and 3 behaviour as separate changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5698103999999999,
+        "num_turns": 18,
+        "duration_ms": 200535,
+        "duration_api_ms": 74386,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp195.agent.jsonl",
+  "agent_diff_file": "cp195.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
