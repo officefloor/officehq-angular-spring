@@ -201,6 +201,16 @@ export class RatesApi {
     return firstValueFrom(this.http.put<RateView>(`${this.url(sheet)}/${grade}`, form));
   }
 
+  /**
+   * Withdraw the newest version of a grade's rate from a date (null: from the start); the version
+   * before it applies again, or the rate is gone. Answers the sheet's rates after.
+   */
+  withdraw(sheet: string, grade: Grade, from: string | null): Promise<RateView[]> {
+    return firstValueFrom(
+      this.http.delete<RateView[]>(`${this.url(sheet)}/${grade}`, { params: from === null ? {} : { from } }),
+    );
+  }
+
   /** Set a rate per line of grade,rate,from,to, in order; all or none. */
   importRates(sheet: string, text: string): Promise<RateImportView> {
     return firstValueFrom(this.http.post<RateImportView>(`${this.url(sheet)}/import`, { text }));

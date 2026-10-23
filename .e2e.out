@@ -2,112 +2,69 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › person timeline › person timeline (6.7s)
-  ✘  2 [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 (25.1s)
-  ✘  3 [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 (31.3s)
-  ✘  4 [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 (31.7s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › rate withdraw › rate withdraw (15.0s)
+  ✓  2 [chromium] › acceptance.spec.ts:98:7 › rate withdraw › rate withdraw scenario 1 (31.1s)
+  ✘  3 [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 (20.7s)
+  ✘  4 [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 (26.1s)
 
 
-  1) [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 ───────────
-
-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
-
-    Locator: getByTestId('sheet-parent')
-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
-    Received string: [31m"[7msmvl3mrh31as5[27m-p"[39m
-    Call log:
-      [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('sheet-parent')[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl3mrh31as5-p</strong>[22m
-    [2m  -   unexpected value "smvl3mrh31as5-p"[22m
-
-
-      178 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
-      179 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
-    > 180 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
-          |                                                      ^
-      181 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
-      182 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("2.00");
-      183 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
-
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:180:54
-
-  2) [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 ──────────
-
-    Error: save dated setting: neither a result nor an error appeared within 8000ms
-
-       at ../support/ui.ts:136
-
-      134 |   if (await done()) return true;
-      135 |   if (await error.isVisible().catch(() => false)) return false;
-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
-          |         ^
-      137 | }
-      138 |
-      139 | async function sleep(ms: number): Promise<void> {
-
-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
-        at Object.setSettingDated (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1149:14)
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:624:12
-
-  3) [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 ─────────
+  1) [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ──────────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Locator: getByTestId('dash-pending-count')
-    Expected string: [32m""[39m
-    Received string: [31m"0"[39m
+    Locator: getByTestId('claim-row-6').getByTestId('claim-status')
+    Expected string: [32m"DRAFT"[39m
+    Received string: [31m"OPEN"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('dash-pending-count')[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
-    [2m  -   locator resolved to <strong data-testid="dash-pending-count">0</strong>[22m
-    [2m  -   unexpected value "0"[22m
+    [2m  - waiting for getByTestId('claim-row-6').getByTestId('claim-status')[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+    [2m  -   unexpected value "OPEN"[22m
 
 
-      1566 |     await expect(pg_wes.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
-      1567 |     await expect(pg_wes.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
-    > 1568 |     await expect(pg_wes.getByTestId("dash-pending-count")).toHaveText("");
+      669 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_3).getByTestId("claim-stated")).toHaveText("no");
+      670 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-due")).toHaveText("1.00");
+    > 671 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-status")).toHaveText("DRAFT");
+          |                                                                                          ^
+      672 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-stated")).toHaveText("no");
+      673 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_1).getByTestId("claim-due")).toHaveText("1.00");
+      674 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_1).getByTestId("claim-status")).toHaveText("DRAFT");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:671:90
+
+  2) [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ─────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"14"[39m
+
+      1300 |     await expect(pg_vic.getByTestId("watched-due-total")).toHaveText("0.00");
+      1301 |     expect(await ui.setRate(pg_vic, {"grade": "C", "pct": "7.50"})).toBe(true);
+    > 1302 |     expect(await ui.split(pg_vic, p_ben, c_ben_0, "0.01")).toBeNull();
            |                                                            ^
-      1569 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
-      1570 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
-      1571 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
+      1303 |     expect(await ui.importOpenings(pg_vic, "Cam,P1,1.00")).toBe(1);
+      1304 |     expect(await ui.claimAction(pg_vic, c_ben_1, "open")).toBe(false);
+      1305 |     await ui.setAsOf(pg_vic, "2026-03-01");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1568:60
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1302:60
 
-  3 failed
-    [chromium] › acceptance.spec.ts:47:7 › person timeline › person timeline scenario 1 ────────────
-    [chromium] › acceptance.spec.ts:534:7 › person timeline › person timeline scenario 2 ───────────
-    [chromium] › acceptance.spec.ts:1322:7 › person timeline › person timeline scenario 3 ──────────
-  1 passed (1.7m)
+  2 failed
+    [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ───────────────
+    [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ──────────────
+  2 passed (1.7m)

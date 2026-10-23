@@ -126,6 +126,22 @@ public class Rate {
         return replaced;
     }
 
+    /**
+     * Withdraw the newest version: the newest older version, when there is one, is held again as the
+     * newest and returned (to be dropped from the older versions kept); empty when there is none.
+     */
+    public Optional<RateVersion> withdraw() {
+        if (older.isEmpty()) {
+            return Optional.empty();
+        }
+        RateVersion restored = older.remove(0);
+        this.pct = restored.getPct();
+        this.toDate = restored.getToDate();
+        this.forwardAfter = restored.getForwardAfter();
+        this.version = restored.getVersion();
+        return Optional.of(restored);
+    }
+
     /** Where the newest version was saved in the order claims are added when forward-only; else null. */
     public Long getForwardAfter() {
         return forwardAfter;

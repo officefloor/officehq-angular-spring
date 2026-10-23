@@ -13,6 +13,8 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedIn;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -117,6 +119,19 @@ public class RateController {
             @RequestBody @Valid RateForm form) {
         return RateView.of(service.set(sheetId, SignedIn.name(user), grade, form.from(),
                 form.to(), new BigDecimal(form.pct())));
+    }
+
+    /**
+     * Withdraw the newest version of a grade's rate from a date (none: from the beginning of time); the
+     * version before it applies again, or with none the rate is gone. Answers the sheet's rates after.
+     */
+    @DeleteMapping("/{grade}")
+    public List<RateView> withdraw(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = GradeService.CODE) String grade,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
+        return service.withdraw(sheetId, SignedIn.name(user), grade, from).stream().map(RateView::of).toList();
     }
 
     /**

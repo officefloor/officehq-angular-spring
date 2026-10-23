@@ -123,7 +123,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
       [settledTotal]="settledTotal()" [openTotal]="openTotal()" [cutTotal]="cutTotal()" />
     <app-dashboard [statuses]="statusSummary()" [overdueTotal]="overdueTotal()" />
-    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
+    <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" (withdrawn)="rates.set($event)" />
     <app-periods
       [periods]="periods()"
       [dueTotals]="periodDueTotals()"

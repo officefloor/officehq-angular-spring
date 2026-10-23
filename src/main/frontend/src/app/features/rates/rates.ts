@@ -153,6 +153,7 @@ import { Session } from '../../core/session';
             <th scope="col">To</th>
             <th scope="col">Rate (%)</th>
             <th scope="col">Versions</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -163,6 +164,16 @@ import { Session } from '../../core/session';
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.versions ?? 1 }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="rate-withdraw"
+                  [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' from ' + (r.from ?? 'the start')"
+                  (click)="withdraw(r)"
+                >
+                  Withdraw
+                </button>
+              </td>
             </tr>
           }
         </tbody>
@@ -184,6 +195,8 @@ export class Rates {
   readonly saved = output<RateView>();
   /** The sheet's rates after an import. */
   readonly imported = output<RateView[]>();
+  /** The sheet's rates after a rate's newest version is withdrawn. */
+  readonly withdrawn = output<RateView[]>();
 
   protected readonly grades = inject(GradesStore).codes;
   protected readonly noRate = NO_RATE;
@@ -348,6 +361,24 @@ export class Rates {
       this.to.set('');
     } catch {
       this.error.set(`The rate for grade ${this.grade()} could not be set.`);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Withdraw the newest version of a rate; refused for anyone but a steward. */
+  protected async withdraw(rate: RateView): Promise<void> {
+    if (this.busy) return;
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.busy = true;
+    try {
+      const rates = await this.api.withdraw(sheet, rate.grade, rate.from);
+      if (this.session.sheet() !== sheet) return;
+      this.withdrawn.emit(rates);
+    } catch {
+      this.error.set(`The rate for grade ${rate.grade} from ${rate.from ?? 'the start'} could not be withdrawn.`);
     } finally {
       this.busy = false;
     }
