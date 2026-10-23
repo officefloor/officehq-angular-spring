@@ -1,0 +1,71 @@
+{
+  "checkpoint": 168,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp168_crews-are-pools",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    166,
+    167
+  ],
+  "replaced_tests": [
+    "cp166_crews.spec.ts::crews",
+    "cp166_crews.spec.ts::crews scenario 1",
+    "cp167_crew-lead-total.spec.ts::crew lead total scenario 1"
+  ],
+  "request": {
+    "spec": "A crew is now also a pool: it appears among the pools under its name, with the lead and the\nmembers as its members at equal shares (100.00 split as patrons' shares are, the remainder on the\nlead), and receives cuts like any pool. A pool cannot be added with a crew's name nor a crew with a\npool's name. Crew totals stay as they are.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA crew is now also a pool: it appears among the pools under its name, with the lead and the\nmembers as its members at equal shares (100.00 split as patrons' shares are, the remainder on the\nlead), and receives cuts like any pool. A pool cannot be added with a crew's name nor a crew with a\npool's name. Crew totals stay as they are.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d330d0f88afe017d9db51782aa869ea50e0bba49",
+  "reset_sha": "",
+  "preagent_sha": "d258535ca9133fbe13cf9781ad9bf763c028fb20",
+  "prev_sha": "d258535ca9133fbe13cf9781ad9bf763c028fb20",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3435478000000003,
+    "input_tokens": 50,
+    "output_tokens": 19353,
+    "cache_read_tokens": 1454679,
+    "cache_creation_tokens": 83169,
+    "num_turns": 26,
+    "duration_ms": 493020,
+    "duration_api_ms": 207626,
+    "model": "claude-opus-5-5",
+    "session_id": "04ee8fb1-9960-4292-a0fc-1ffe7761e808",
+    "stop_reason": "success",
+    "result_text": "I've made crews into pools. The main \"crews are pools\" test and scenario 2 pass under `bin/e2e`. Scenarios 1 and 3 still fail, and both failures look like problems in the spec rather than in this change.\n\n**What changed**\n- **Stored data:** a new migration, `V93__crew_pool.sql`, links a pool to a crew (`pool.crew_id`) and creates a pool for every existing crew. One exception: if a pool already has an old crew's name, that crew gets no pool, because two pools can't share a name.\n- **Server:**\n  - Adding a crew now also creates its pool, and refuses a name a pool already has. Adding a pool refuses a crew's name.\n  - The crew pool's members aren't stored. Each time pools are listed they're worked out from the crew: the lead first, then the members, at 100.00 split equally and rounded half to even, with the remainder on the lead (so three people get 33.34 / 33.33 / 33.33).\n  - Crew pools are listed after the ordinary pools, which is the order the test's CSV export expects. They get cuts the normal way, and an ordinary pool can take one as a member.\n  - Adding a member to a crew pool directly is refused, since its members come from the crew.\n  - When a crew is removed (its lead leaves the sheet), its pool goes too. Cloning a sheet keeps the link between a crew and its pool.\n  - Crew totals are unchanged.\n- **Front end:** the pools list reloads whenever a crew is added or gains a member. A crew pool shows a short note instead of the \"add member\" form. The \"add pool\" form also refuses a crew's name.\n\n**The two failing scenarios**\n- **Scenario 3** expects `sheet-parent` to show the literal text `__SHEET__-p` (spec line 1430, and again at 1505). That looks like a placeholder that was never filled in, so no app can pass it. There are no crew or pool checks after that point except two empty `my-crew-due-total` values.\n- **Scenario 1** passes every on-screen check and fails only on one audit line. It expects `ALERT \u2026 due-total=2.00 for=vic`, but the app writes ALERT without `for=`. The audit service and `Rollups.java` both say this is deliberate: figures records like ALERT never name the steward someone is acting for. That has nothing to do with crews, so I left it alone. Adding `for=` would be a one-line change in `Rollups.java`, but it would contradict that rule and could break other tests that rely on it. Do you want me to make it?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3435478000000003,
+        "num_turns": 26,
+        "duration_ms": 493020,
+        "duration_api_ms": 207626,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp168.agent.jsonl",
+  "agent_diff_file": "cp168.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
