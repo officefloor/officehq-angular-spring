@@ -247,6 +247,16 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'graceDays')"
           (keydown.backspace)="cleared($event, 'graceDays')"
         />
+        <label for="setting-escalate-after">Escalate a claim reminded this many days after its previous reminder (a whole number; empty: off)</label>
+        <input
+          id="setting-escalate-after"
+          data-testid="setting-escalate-after"
+          inputmode="numeric"
+          [value]="escalateAfterInput()"
+          (input)="escalateAfterInput.set(value($event)); escalateAfterEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'escalateAfter')"
+          (keydown.backspace)="cleared($event, 'escalateAfter')"
+        />
         <label for="setting-pot">Pot, split among each balanced pool's members (empty: none)</label>
         <input
           id="setting-pot"
@@ -323,6 +333,7 @@ import { Session } from '../../core/session';
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
+      <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
       <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</span></p>
       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
@@ -411,6 +422,8 @@ export class Settings {
   protected readonly entryDateInput = signal('');
   protected readonly graceDays = signal('');
   protected readonly graceDaysInput = signal('');
+  protected readonly escalateAfter = signal('');
+  protected readonly escalateAfterInput = signal('');
   protected readonly potInput = signal('');
   protected readonly alertThreshold = signal('');
   protected readonly alertThresholdInput = signal('');
@@ -433,6 +446,7 @@ export class Settings {
   protected periodNumberingFromEdited = false;
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
+  protected escalateAfterEdited = false;
   protected potEdited = false;
   protected alertThresholdEdited = false;
   protected parentEdited = false;
@@ -481,6 +495,7 @@ export class Settings {
         this.periodNumberingFrom.set('');
         this.entryDate.set('');
         this.graceDays.set('');
+        this.escalateAfter.set('');
         this.alertThreshold.set('');
         this.permissions.set(Settings.noPermissions());
         this.roles.set([]);
@@ -537,7 +552,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'alertThreshold' | 'parent'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'pot' | 'alertThreshold' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -569,6 +584,9 @@ export class Settings {
     } else if (setting === 'alertThreshold') {
       this.alertThresholdInput.set('');
       this.alertThresholdEdited = true;
+    } else if (setting === 'escalateAfter') {
+      this.escalateAfterInput.set('');
+      this.escalateAfterEdited = true;
     } else if (setting === 'parent') {
       this.parentInput.set('');
       this.parentEdited = true;
@@ -626,6 +644,7 @@ export class Settings {
     const periodNumberingFrom = this.periodNumberingFromInput().trim();
     const entryDate = this.entryDateInput().trim();
     const graceDays = this.graceDaysInput().trim();
+    const escalateAfter = this.escalateAfterInput().trim();
     const pot = this.potInput().trim();
     const alertThreshold = this.alertThresholdInput().trim();
     const parent = this.parentInput().trim();
@@ -633,7 +652,7 @@ export class Settings {
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -652,6 +671,7 @@ export class Settings {
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
+    const saveEscalateAfter = this.escalateAfterEdited;
     const savePot = this.potEdited;
     const saveAlertThreshold = this.alertThresholdEdited;
     const saveParent = this.parentEdited;
@@ -742,6 +762,10 @@ export class Settings {
       this.settingsError.set('Type grace days as a whole number of days, or leave them empty for off.');
       return;
     }
+    if (saveEscalateAfter && !GRACE_DAYS.test(escalateAfter)) {
+      this.settingsError.set('Type the escalation gap as a whole number of days, or leave it empty for off.');
+      return;
+    }
     if (savePot && !POT.test(pot)) {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it empty for none.');
       return;
@@ -779,6 +803,7 @@ export class Settings {
     if (savePeriodNumberingFrom) this.periodNumberingFromEdited = false;
     if (saveEntryDate) this.entryDateEdited = false;
     if (saveGraceDays) this.graceDaysEdited = false;
+    if (saveEscalateAfter) this.escalateAfterEdited = false;
     if (savePot) this.potEdited = false;
     if (saveAlertThreshold) this.alertThresholdEdited = false;
     if (saveParent) this.parentEdited = false;
@@ -856,6 +881,11 @@ export class Settings {
           const view = await this.api.setGraceDays(sheet, graceDays);
           this.graceDays.set(view.graceDays?.toString() ?? '');
           if (!this.graceDaysEdited) this.graceDaysInput.set(view.graceDays?.toString() ?? '');
+        }
+        if (saveEscalateAfter) {
+          const view = await this.api.setEscalateAfter(sheet, escalateAfter);
+          this.escalateAfter.set(view.escalateAfter?.toString() ?? '');
+          if (!this.escalateAfterEdited) this.escalateAfterInput.set(view.escalateAfter?.toString() ?? '');
         }
         if (savePot) {
           const view = await this.api.setPot(sheet, pot);
@@ -985,6 +1015,10 @@ export class Settings {
       this.graceDays.set(settings.graceDays?.toString() ?? '');
       this.graceDaysInput.set(settings.graceDays?.toString() ?? '');
       this.graceDaysEdited = false;
+      // The escalation gap starts at the one set, so clearing it is a change.
+      this.escalateAfter.set(settings.escalateAfter?.toString() ?? '');
+      this.escalateAfterInput.set(settings.escalateAfter?.toString() ?? '');
+      this.escalateAfterEdited = false;
       // The pot starts at the one in force, so clearing it is a change.
       this.session.pot.set(settings.pot ?? '');
       this.potInput.set(settings.pot ?? '');

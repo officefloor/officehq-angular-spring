@@ -68,6 +68,8 @@ export interface SettingsView {
   fiscalStartMonth: number;
   /** The alert threshold with two decimals: a person whose due-total crosses above it is alerted; null when off. */
   alertThreshold: string | null;
+  /** The escalation gap in days: a reminder at least this long after the previous one escalates the claim; null when off. */
+  escalateAfter: number | null;
   /** The rounding mode in force (half-up or half-even): claims dated while it is in force round by it; null when none. */
   rounding: string | null;
   /** The rounding mode's values by from-date (a value null when none), its starting value (none) first. */
@@ -243,6 +245,11 @@ export class SettingsApi {
   /** Set the month, 1 to 12, the fiscal year starts in. */
   setFiscalStartMonth(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/fiscal-start-month`, { value }));
+  }
+
+  /** Set the escalation gap in days; a blank value turns escalating reminders off. */
+  setEscalateAfter(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/escalate-after`, { value }));
   }
 
   /** Set the grace days; a blank value turns closing periods by themselves off. */

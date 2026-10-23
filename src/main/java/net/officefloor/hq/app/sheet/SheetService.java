@@ -273,6 +273,17 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's escalation gap in days (null: off), auditing the change. */
+    @Transactional
+    public Sheet setEscalateAfter(String id, String user, Integer days) {
+        Sheet sheet = lock(id);
+        sheet.setEscalateAfter(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=escalate-after value="
+                + (saved.getEscalateAfter() == null ? "" : saved.getEscalateAfter().toString()));
+        return saved;
+    }
+
     /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

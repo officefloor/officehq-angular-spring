@@ -482,7 +482,8 @@ public class ClaimService {
      */
     @Transactional
     public Claim remind(String sheetId, String user, long claimId) {
-        LocalDate today = sheets.lock(sheetId).getToday();
+        Sheet sheet = sheets.lock(sheetId);
+        LocalDate today = sheet.getToday();
         Claim claim = claim(sheetId, claimId);
         if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -491,9 +492,20 @@ public class ClaimService {
         if (today.equals(claim.getRemindedOn())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim was already reminded on " + today + ".");
         }
+        LocalDate previous = claim.getRemindedOn();
+        Integer gap = sheet.getEscalateAfter();
+        boolean escalates = gap != null && previous != null && !claim.isEscalated()
+                && !previous.plusDays(gap).isAfter(today);
         claim.remind(today);
+        if (escalates) {
+            claim.escalate();
+        }
         Claim saved = claims.saveAndFlush(claim);
-        audited("REMIND", sheetId, user, person(sheetId, saved.getPersonId()), saved);
+        Person person = person(sheetId, saved.getPersonId());
+        audited("REMIND", sheetId, user, person, saved);
+        if (escalates) {
+            audited("ESCALATE", sheetId, user, person, saved);
+        }
         return saved;
     }
 

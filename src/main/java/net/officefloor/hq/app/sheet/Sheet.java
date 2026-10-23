@@ -118,6 +118,10 @@ public class Sheet {
     @Column(name = "alert_threshold")
     private BigDecimal alertThreshold;
 
+    /** The escalation gap in days: a reminder at least this long after the previous one escalates the claim; null for off. Not dated. */
+    @Column(name = "escalate_after")
+    private Integer escalateAfter;
+
     /** The month, 1 to 12, the sheet's fiscal year starts in; 1 (January) unless set. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -403,6 +407,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
+        then.escalateAfter = escalateAfter;
         then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
         then.archived = archived;
@@ -530,6 +535,15 @@ public class Sheet {
 
     public void setAlertThreshold(BigDecimal alertThreshold) {
         this.alertThreshold = alertThreshold;
+    }
+
+    /** The escalation gap in days; null when blank (off). */
+    public Integer getEscalateAfter() {
+        return escalateAfter;
+    }
+
+    public void setEscalateAfter(Integer escalateAfter) {
+        this.escalateAfter = escalateAfter;
     }
 
     /** The month, 1 to 12, the sheet's fiscal year starts in. */

@@ -86,7 +86,7 @@ public class SheetController {
             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
-            List<DatedValue> roundingHistory, String reviewThreshold) {
+            List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -104,7 +104,8 @@ public class SheetController {
                     sheet.getFiscalStartMonth(),
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
-                    sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString());
+                    sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
+                    sheet.getEscalateAfter());
         }
 
         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
@@ -494,6 +495,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GraceDaysChange change) {
         return SettingsView.of(service.setGraceDays(id, SignedIn.name(user), change.days()));
+    }
+
+    /** Change the sheet's escalation gap; a blank value turns escalating reminders off. */
+    @PutMapping("/{id}/settings/escalate-after")
+    public SettingsView setEscalateAfter(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GraceDaysChange change) {
+        return SettingsView.of(service.setEscalateAfter(id, SignedIn.name(user), change.days()));
     }
 
     /** Change the month the sheet's fiscal year starts in. */
