@@ -1,0 +1,482 @@
+diff --git a/.e2e.out b/.e2e.out
+index 6ebc315e..23f8274e 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,111 +2,89 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › statement export › statement export (5.3s)
+-  ✘  2 [chromium] › acceptance.spec.ts:28:7 › statement export › statement export scenario 1 (32.4s)
+-  ✘  3 [chromium] › acceptance.spec.ts:662:7 › statement export › statement export scenario 2 (17.2s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1138:7 › statement export › statement export scenario 3 (16.8s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › approvers › approvers (15.0s)
++  ✓  2 [chromium] › acceptance.spec.ts:74:7 › approvers › approvers scenario 1 (31.8s)
++  ✘  3 [chromium] › acceptance.spec.ts:757:7 › approvers › approvers scenario 2 (25.6s)
++  ✘  4 [chromium] › acceptance.spec.ts:1081:7 › approvers › approvers scenario 3 (22.9s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:28:7 › statement export › statement export scenario 1 ─────────
++  1) [chromium] › acceptance.spec.ts:757:7 › approvers › approvers scenario 2 ──────────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkod1j42cbi[27m-p"[39m
++    Received string: [31m"[7msmvkpfk0mzzll[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkod1j42cbi-p</strong>[22m
+-    [2m  -   unexpected value "smvkod1j42cbi-p"[22m
+-
+-
+-      197 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+-      198 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+-    > 199 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkpfk0mzzll-p</strong>[22m
++    [2m  -   unexpected value "smvkpfk0mzzll-p"[22m
++
++
++      868 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      869 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
++    > 870 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+-      200 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+-      201 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      202 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++      871 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
++      872 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      873 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:199:54
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:870:54
+ 
+-  2) [chromium] › acceptance.spec.ts:662:7 › statement export › statement export scenario 2 ────────
+-
+-    Error: flag: neither a result nor an error appeared within 8000ms
+-
+-       at ../support/ui.ts:136
+-
+-      134 |   if (await done()) return true;
+-      135 |   if (await error.isVisible().catch(() => false)) return false;
+-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+-          |         ^
+-      137 | }
+-      138 |
+-      139 | async function sleep(ms: number): Promise<void> {
+-
+-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:694:12
+-
+-  3) [chromium] › acceptance.spec.ts:1138:7 › statement export › statement export scenario 3 ───────
++  2) [chromium] › acceptance.spec.ts:1081:7 › approvers › approvers scenario 3 ─────────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('person-row-9').getByTestId('person-claimed')
+-    Expected string: [32m"[7m4[27m.00"[39m
+-    Received string: [31m"[7m0[27m.00"[39m
++    Locator: getByTestId('person-row-9').getByTestId('person-statement-line-line')
++    [32m- Expected  - 0[39m
++    [31m+ Received  + 1[39m
++
++    [2m  Array [[22m
++    [31m+   "2026-04-05 n/a",[39m
++    [2m    "2026-04-05 0.00",[22m
++    [2m  ][22m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-9').getByTestId('person-claimed')[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-    [2m  -   locator resolved to <td data-testid="person-claimed">0.00</td>[22m
+-    [2m  -   unexpected value "0.00"[22m
+-
+-
+-      1221 |     const c_ben_2 = ui.must(await ui.addClaim(pg_vic, p_ben, {"amount": "0.40", "note": "n", "tags": "a, B"}));
+-      1222 |     await ui.refresh(pg_vic);
+-    > 1223 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("4.00");
+-           |                                                                                           ^
+-      1224 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("1.00");
+-      1225 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-due")).toHaveText("1.00");
+-      1226 |     await expect(pg_vic.getByTestId("claim-row-" + c_ben_2).getByTestId("claim-status")).toHaveText("DRAFT");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1223:91
+-
+-  3 failed
+-    [chromium] › acceptance.spec.ts:28:7 › statement export › statement export scenario 1 ──────────
+-    [chromium] › acceptance.spec.ts:662:7 › statement export › statement export scenario 2 ─────────
+-    [chromium] › acceptance.spec.ts:1138:7 › statement export › statement export scenario 3 ────────
+-  1 passed (1.3m)
++    [2m  - waiting for getByTestId('person-row-9').getByTestId('person-statement-line-line')[22m
++    [2m  -   locator resolved to 2 elements[22m
++    [2m  -   locator resolved to 2 elements[22m
++    [2m  -   locator resolved to 2 elements[22m
++    [2m  -   locator resolved to 2 elements[22m
++    [2m  -   locator resolved to 2 elements[22m
++    [2m  -   locator resolved to 2 elements[22m
++    [2m  -   locator resolved to 2 elements[22m
++    [2m  -   locator resolved to 2 elements[22m
++    [2m  -   locator resolved to 2 elements[22m
++
++
++      1267 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-tags")).toHaveText("a, b");
++      1268 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-snapshot-line")).toHaveText([]);
++    > 1269 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-statement-line-line")).toHaveText(["2026-04-05 0.00"]);
++           |                                                                                                       ^
++      1270 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-flag-shown")).toHaveText("");
++      1271 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-approver")).toHaveText("");
++      1272 |     await expect(pg_vic.getByTestId("person-row-" + p_ada).getByTestId("person-period-P1-due-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1269:103
++
++  2 failed
++    [chromium] › acceptance.spec.ts:757:7 › approvers › approvers scenario 2 ───────────────────────
++    [chromium] › acceptance.spec.ts:1081:7 › approvers › approvers scenario 3 ──────────────────────
++  2 passed (1.7m)
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index cca3ac2d..895b0fd1 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -84,6 +84,8 @@ export interface PersonView {
+   flagReason?: string | null;
+   /** The last day (yyyy-mm-dd) the person's flag is in force; null when never, absent from a view kept before flags were. */
+   flagUntil?: string | null;
++  /** The user name that may approve or reject the person's PENDING claims; null when none, absent from a view kept before approvers were. */
++  approver?: string | null;
+   /** The sheet the person was last transferred from; null when never, absent from a view kept before this was. */
+   originSheetId?: string | null;
+   /** The person's snapshot lines, oldest first; absent from a view kept before snapshot lines were. */
+@@ -255,6 +257,11 @@ export class PeopleApi {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/flag`, { reason, until }));
+   }
+ 
++  /** Set the user name that may approve or reject a person's PENDING claims; blank for none. */
++  setApprover(sheet: string, id: number, user: string): Promise<PersonView> {
++    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/approver`, { user }));
++  }
++
+   /** Put a person on hold from a date (none: the sheet's today) to a date (none: no end). */
+   hold(sheet: string, id: number, from: string | null, to: string | null): Promise<PersonView> {
+     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/holds`, { from, to }));
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 66b617b7..ffe09a9f 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1229,7 +1229,9 @@ export class Claims {
+             : unnoted
+               ? "The claim's due is above the note threshold, so it needs a note before it can be opened."
+             : steward
+-              ? `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
++              ? action === 'approve' || action === 'reject'
++                ? `Only a steward or the person's approver can ${action} a ${claim.status} claim.`
++                : `Only a steward can ${action === 'resettle' ? 're-settle' : action} a ${claim.status} claim.`
+             : lateVoid
+               ? 'A SETTLED claim can only be voided within 7 days of its settlement, outside a closed period.'
+             : action === 'delete' && claim.status === 'DRAFT'
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 246c2f39..be18d1f4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -443,6 +443,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+             <th scope="col">Statement lines</th>
+             <th scope="col">Snapshots</th>
+             <th scope="col">Flag</th>
++            <th scope="col">Approver</th>
+             <th scope="col">Active</th>
+             @if (columns.shown('hold')) {
+               <th scope="col">On hold</th>
+@@ -583,6 +584,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 </ul>
+               </td>
+               <td data-testid="person-flag-shown">{{ flagShown(p) }}</td>
++              <td data-testid="person-approver">{{ p.approver ?? '' }}</td>
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+               @if (columns.shown('hold')) {
+                 <td>
+@@ -802,6 +804,22 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 >
+                   Flag
+                 </button>
++                <label [for]="'person-approver-input-' + p.id">Approver</label>
++                <input
++                  type="text"
++                  [id]="'person-approver-input-' + p.id"
++                  data-testid="person-approver-input"
++                  [value]="approverDrafts().get(p.id) ?? ''"
++                  (input)="setApproverDraft(p.id, value($event))"
++                />
++                <button
++                  type="button"
++                  data-testid="person-approver-save"
++                  [attr.aria-label]="'Set approver of ' + p.name"
++                  (click)="setApprover(p)"
++                >
++                  Set approver
++                </button>
+                 <label [for]="'person-merge-into-' + p.id">Merge into</label>
+                 <select
+                   [id]="'person-merge-into-' + p.id"
+@@ -907,6 +925,8 @@ export class People {
+   protected readonly holdDrafts = signal(new Map<number, { from: string; to: string }>());
+   /** The flag reason and until-date typed on each person's row, by person id. */
+   protected readonly flagDrafts = signal(new Map<number, { reason: string; until: string }>());
++  /** The approver user name typed on each person's row, by person id. */
++  protected readonly approverDrafts = signal(new Map<number, string>());
+   /** The sheet's claims, newest first. */
+   protected readonly claims = signal<ClaimView[]>([]);
+   private readonly byPerson = computed(() => {
+@@ -1282,6 +1302,7 @@ export class People {
+         this.retireDates.clear();
+         this.holdDrafts.set(new Map());
+         this.flagDrafts.set(new Map());
++        this.approverDrafts.set(new Map());
+         this.patronError.set(null);
+         this.patronChoices.clear();
+         this.mergeChoices.clear();
+@@ -1912,6 +1933,32 @@ export class People {
+     }
+   }
+ 
++  /** Change the approver user name typed on a person's row. */
++  protected setApproverDraft(personId: number, user: string): void {
++    this.approverDrafts.update((map) => new Map(map).set(personId, user));
++    this.personError.set(null);
++  }
++
++  /** Set the user name typed as the person's approver: they may approve or reject the person's PENDING claims. */
++  protected async setApprover(person: PersonView): Promise<void> {
++    this.personError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const user = (this.approverDrafts().get(person.id) ?? '').trim();
++    try {
++      const saved = await this.api.setApprover(sheet, person.id, user);
++      if (this.session.sheet() !== sheet) return;
++      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++      this.approverDrafts.update((map) => {
++        const next = new Map(map);
++        next.delete(person.id);
++        return next;
++      });
++    } catch {
++      this.personError.set({ id: person.id, message: "The person's approver could not be set." });
++    }
++  }
++
+   /** Start or stop watching a person as the signed-in user. */
+   protected async toggleWatch(person: PersonView): Promise<void> {
+     this.personError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b57cfaa5..cae3f448 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -670,7 +670,7 @@ public class ClaimService {
+ 
+     /**
+      * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
+-     * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
++     * the late charge it has then. Only a steward or the person's approver approves, and not the user who opened or last edited the claim.
+      */
+     @Transactional
+     public Claim approve(String sheetId, String user, long claimId) {
+@@ -754,7 +754,7 @@ public class ClaimService {
+ 
+     /**
+      * Reject a PENDING claim with a reason: it is OPEN again, bound again by its person's last
+-     * statement when that statement included it. Only a steward rejects.
++     * statement when that statement included it. Only a steward or the person's approver rejects.
+      */
+     @Transactional
+     public Claim reject(String sheetId, String user, long claimId, String reason) {
+@@ -944,8 +944,8 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * The PENDING claim a steward approves or rejects; refused when it is not PENDING, when its date
+-     * is inside a closed period, or when the user is not a steward.
++     * The PENDING claim a steward, or its person's approver, approves or rejects; refused when it is not
++     * PENDING, when its date is inside a closed period, or when the user is neither.
+      */
+     private Claim pending(String sheetId, String user, long claimId) {
+         Claim claim = claim(sheetId, claimId);
+@@ -954,8 +954,10 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim is not pending approval.");
+         }
+-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim.");
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))
++                && !user.equals(person(sheetId, claim.getPersonId()).getApprover())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "Only a steward or the person's approver approves or rejects a claim.");
+         }
+         return claim;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 9ef91f9d..d8ff7777 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -108,6 +108,10 @@ public class Person {
+     @Column(name = "flag_until")
+     private LocalDate flagUntil;
+ 
++    /** The user name that may approve or reject the person's PENDING claims as a steward may; null when none. */
++    @Column(name = "approver")
++    private String approver;
++
+     @Version
+     @Column(name = "version", nullable = false)
+     private long version;
+@@ -365,6 +369,15 @@ public class Person {
+         return flagUntil;
+     }
+ 
++    public String getApprover() {
++        return approver;
++    }
++
++    /** Set the user name that may approve or reject the person's PENDING claims; null for none. */
++    public void setApprover(String approver) {
++        this.approver = approver;
++    }
++
+     /** Whether the person's flag is in force on a day: they were flagged until it or a later day. */
+     public boolean flaggedOn(LocalDate day) {
+         return flagReason != null && flagUntil != null && !day.isAfter(flagUntil);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index ef02996b..d2fbe2aa 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -43,7 +43,7 @@ public class PersonController {
+      * retired from (null when not retired), whether they have any hold, their holds, and the ids of their patrons
+      * in the order they were named, and whether their name or an alias is in use on another sheet of the
+      * sheet's tree (clashing), and the sheet they were last transferred from (null when never), and their
+-     * flag's reason and last day (both null when never flagged).
++     * flag's reason and last day (both null when never flagged), and their approver (null when none).
+      * Their grades are listed by the date each is in force from, the first with none (from the
+      * beginning of time). Their terms are their own from the beginning of time; the own terms recorded
+      * since are listed by the date each is in force from.
+@@ -54,7 +54,7 @@ public class PersonController {
+             String statementTotal, LocalDate statementDate, LocalDate retiredFrom, List<RetirementView> retirements, boolean held,
+             List<HoldView> holds, List<Long> patronIds, List<String> aliases, boolean clashing,
+             String originSheetId, List<SnapshotView> snapshots, List<StatementLineView> statementLines,
+-            String flagReason, LocalDate flagUntil) {
++            String flagReason, LocalDate flagUntil, String approver) {
+ 
+         public static PersonView of(Person person) {
+             return of(person, false);
+@@ -83,7 +83,7 @@ public class PersonController {
+                             .map(statement -> new StatementLineView(statement.getTakenOn(),
+                                     Rollups.shown(statement.getTotal())))
+                             .toList(),
+-                    person.getFlagReason(), person.getFlagUntil());
++                    person.getFlagReason(), person.getFlagUntil(), person.getApprover());
+         }
+     }
+ 
+@@ -326,6 +326,20 @@ public class PersonController {
+         return view(service.flag(sheetId, SignedIn.name(user), personId, form.reason(), form.until()));
+     }
+ 
++    /** The user name set as a person's approver; blank for none. */
++    public record ApproverForm(@Size(max = 200) String user) {
++    }
++
++    /** Set the user name that may approve or reject a person's PENDING claims. */
++    @PostMapping("/{personId}/approver")
++    public PersonView setApprover(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long personId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid ApproverForm form) {
++        return view(service.setApprover(sheetId, SignedIn.name(user), personId, form.user()));
++    }
++
+     /** The person named as a patron. */
+     public record PatronForm(@NotNull Long patronId) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index c69b5103..706b1069 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -296,6 +296,23 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /**
++     * Set the user name that may approve or reject the person's PENDING claims as a steward may; a
++     * blank name sets none.
++     */
++    @Transactional
++    public Person setApprover(String sheetId, String user, long personId, String approver) {
++        sheets.lock(sheetId);
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        String trimmed = approver == null ? "" : approver.trim();
++        person.setApprover(trimmed.isEmpty() ? null : trimmed);
++        Person saved = people.saveAndFlush(person);
++        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user
++                + " name=" + saved.getName() + " user=" + trimmed);
++        return saved;
++    }
++
+     /**
+      * Name another person on the sheet as a patron of this one; refused for the person themselves and
+      * for someone already their patron.
+diff --git a/src/main/resources/db/migration/V107__person_approver.sql b/src/main/resources/db/migration/V107__person_approver.sql
+new file mode 100644
+index 00000000..793a3267
+--- /dev/null
++++ b/src/main/resources/db/migration/V107__person_approver.sql
+@@ -0,0 +1,2 @@
++-- A user name that may approve or reject the person's PENDING claims as a steward may; null when none is set.
++ALTER TABLE person ADD COLUMN approver VARCHAR(200);
