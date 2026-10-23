@@ -1,0 +1,71 @@
+{
+  "checkpoint": 156,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp156_forward-only-rates",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    69,
+    118
+  ],
+  "replaced_tests": [
+    "cp118_import-rates.spec.ts::import rates",
+    "cp118_import-rates.spec.ts::import rates scenario 3",
+    "cp69_claim-lock.spec.ts::claim lock scenario 2"
+  ],
+  "request": {
+    "spec": "A rate saved with a from-date on or after the sheet's today is forward-only: it applies only to\nclaims added after it was saved (by any path), and claims already on the sheet keep using the rates\nthat applied to them. A rate with no from-date, or with a from-date before the sheet's today when it\nis saved, applies to every claim as before. The rates panel, the rate preview and the rate calendar\nshow the rate in force without regard to this.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate saved with a from-date on or after the sheet's today is forward-only: it applies only to\nclaims added after it was saved (by any path), and claims already on the sheet keep using the rates\nthat applied to them. A rate with no from-date, or with a from-date before the sheet's today when it\nis saved, applies to every claim as before. The rates panel, the rate preview and the rate calendar\nshow the rate in force without regard to this.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "eaf3ded38c2533bba0aa07a2a9e33cf8a2137639",
+  "reset_sha": "",
+  "preagent_sha": "ebd6a165a6fe31b8628a339001e83aeda8a20230",
+  "prev_sha": "ebd6a165a6fe31b8628a339001e83aeda8a20230",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 3.8091612000000006,
+    "input_tokens": 140,
+    "output_tokens": 55179,
+    "cache_read_tokens": 7383466,
+    "cache_creation_tokens": 153541,
+    "num_turns": 71,
+    "duration_ms": 1505623,
+    "duration_api_ms": 603063,
+    "model": "claude-opus-5-5",
+    "session_id": "7458f4bf-86c7-426b-bcb8-45a80633a7ad",
+    "stop_reason": "success",
+    "result_text": "Forward-only rates are in. `bin/e2e` does not fully pass, though: 2 of the 4 tests in the spec pass (\"forward only rates\" and \"scenario 3\"), and scenarios 1 and 2 still fail at steps that have nothing to do with rates.\n\n**Why the two scenarios still fail.** To find out whether my change caused these failures, I built a copy of the app with all my edits reversed and ran the same spec against it. It fails at exactly the same steps:\n- **Line 193:** the spec expects wes's save of the draft at amount 10.25 to be refused. Wes holds the editor lock, and nothing in the app refuses that save.\n- **Line 871:** the spec expects adding a 0.04 claim for Ada dated 2026-02-10 to be refused. No rule in the app refuses it.\n- **Line 411:** the spec expects period P1 to show as closed when the sheet is viewed as of 2026-03-20. The unmodified app shows it open too.\n- **Lines 910 and 1000:** the spec expects the literal text `__SHEET__-p`. That placeholder was never filled in with the real sheet id, so no implementation can pass these lines.\n\nI didn't add made-up refusal rules just to force those steps through. To check everything else, I ran a temporary copy of the spec with only those five lines skipped: scenarios 1\u20133 then pass on my build, audit records included. I've deleted that copy; the real spec is untouched.\n\n**How it works**\n- **Order of adding:** each claim gets a number from a database sequence when it is added to a sheet. That covers every path that creates a claim. A claim moved in by a person transfer gets a new number, because it is newly added to that sheet.\n- **Marking a rate forward-only:** if a rate is saved with a from-date on or after the sheet's today, it records the current sequence number. A rate with no from-date, or one before today, records nothing and applies to every claim as before.\n- **Working out a claim's due:** rates saved after the claim was added are skipped, and the claim falls back to whatever rate applied to it before. If a forward-only rate replaced an existing rate with the same from-date, older claims keep the previous version's value.\n- **Panel, preview and calendar:** these still show the rate in force without regard to the new rule.\n- **Where the rule is applied:** the server (dues, rollups, statements) and the front end, which works out dues itself, apply the same rule.\n- **Other features:** saved sheet histories keep the new fields, and older ones still load and treat everything as applying to all claims. Cloning a sheet copies the new fields.\n\nOne limit: cloning a sheet doesn't copy older rate versions (it didn't before either). So on a clone, a claim added before a forward-only replacement falls back to the grade's other rates rather than to the value that was replaced.\n\n**Main files changed**\n- New migration `V86__rate_forward_only.sql`\n- Server: `Rate`, `RateVersion`, `RateRepository`, `RateService`, `RateController`, `Dues`, `Claim`, `ClaimRepository`, `ClaimController`, `TransferService`, `CloneService`, `SheetHistory`\n- Front end: `core/rates.ts`, `core/claims.ts`",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 3.8091612000000006,
+        "num_turns": 71,
+        "duration_ms": 1505623,
+        "duration_api_ms": 603063,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp156.agent.jsonl",
+  "agent_diff_file": "cp156.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
