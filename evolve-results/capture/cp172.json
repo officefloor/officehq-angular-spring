@@ -1,0 +1,68 @@
+{
+  "checkpoint": 172,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp172_pending-bound",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    36
+  ],
+  "replaced_tests": [
+    "cp36_approvals.spec.ts::approvals"
+  ],
+  "request": {
+    "spec": "A PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9695ca579285bd9f22c453e35765243289f1e489",
+  "reset_sha": "",
+  "preagent_sha": "aa6dc4260cc1529a3116004d317dfe46ba2fa031",
+  "prev_sha": "aa6dc4260cc1529a3116004d317dfe46ba2fa031",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0505548,
+    "input_tokens": 60,
+    "output_tokens": 11410,
+    "cache_read_tokens": 1532014,
+    "cache_creation_tokens": 64464,
+    "num_turns": 31,
+    "duration_ms": 748682,
+    "duration_api_ms": 140024,
+    "model": "claude-opus-5-5",
+    "session_id": "38cbc75e-97a2-4800-8776-606af61cc06f",
+    "stop_reason": "success",
+    "result_text": "I'm stopping here on scenario 1. Line 199 can never pass, and the rate-panel mismatch is about rate inheritance, which this change doesn't touch.\n\n## Result\n\n`bin/e2e`: **3 of 4 tests pass.** The main \"pending bound\" test and scenarios 2 and 3 pass; scenario 1 fails, but not because of the binding change.\n\n## What changed\n\n**The change itself.** A PENDING claim was the one counting claim a statement didn't bind: its due was always worked out from today's rates. I removed that exception in both places the due is calculated:\n- **Server**, `src/main/java/net/officefloor/hq/app/claim/Dues.java`: a bound PENDING claim now shows and totals its bound figure. The person totals, rollups and header totals all use this, so they follow automatically.\n- **Approving**, same file: approving a PENDING claim now settles it at the bound figure (plus any late charge), the same way settling an OPEN claim already did. The request didn't spell this out, but it's what \"like any other claim\" means, and otherwise the shown due would jump at approval. I updated the doc comment in `ClaimService.java` to match.\n- **Front end**, `src/main/frontend/src/app/core/rates.ts`: the same rule in the screen's own due calculation.\n\nNo stored data or schema change was needed: claims already keep their binding while PENDING.\n\n**An existing bug the tests ran into** (`features/people/people.ts`): when the screen itself refused a new person because their contact was already in use, the form kept what was typed. So the next person added got the old contact and was refused too. It now clears the form, as it already did when the server refuses.\n\n## Why scenario 1 still fails\n\n1. **The spec has a placeholder that was never filled in.** Lines 199 and 437 expect `sheet-parent` to show the literal text `\"__SHEET__-p\"`. Everywhere else the spec uses `` `${sheet}-p` ``, and the app correctly shows the real parent id. I can't edit the spec, and making the app print `__SHEET__` would be wrong, so this line can't pass as written.\n2. **One more mismatch.** To get past that, I ran a throwaway copy of the spec with only those two lines filled in, then deleted it. It got further and failed at line 322: the rates panel shows `rate-current-C` as `n/a` where the spec expects `5.00`, the parent sheet's C rate. I didn't dig into this, so I can't say whether it's an app bug or another spec slip; scenario 1 would still fail on the placeholder either way.\n\nThe spec needs fixing for scenario 1 to pass. If you want, I can look into the rate-inheritance mismatch next.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0505548,
+        "num_turns": 31,
+        "duration_ms": 748682,
+        "duration_api_ms": 140024,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp172.agent.jsonl",
+  "agent_diff_file": "cp172.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

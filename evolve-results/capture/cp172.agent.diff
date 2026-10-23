@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index bb9aa31d..1c3e245c 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -140,7 +140,7 @@ export function due(amountCents: number, pct: string | null): string {
+ /**
+  * A claim's due in whole cents: the due fixed when it was settled (frozen as it was settled), or else
+  * the greater of the floor (in whole cents) and its figure with the late charge on top. Its figure is
+- * the rate figure its person's last statement bound it to (unless it is PENDING), or else its amount
++ * the rate figure its person's last statement bound it to, or else its amount
+  * at the rate the grade has in force on the claim's date as the claim sees the rates (a forward-only
+  * rate saved after it was added passed over); the late charge is, for every full 30 days
+  * the claim is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90
+@@ -161,7 +161,7 @@ export function claimDueCents(
+ ): number | null {
+   if (claim.settledDue !== null) return cents(claim.settledDue);
+   let figure: number | null;
+-  if (claim.stated && claim.status !== 'PENDING') {
++  if (claim.stated) {
+     figure = claim.statedDue === null ? null : cents(claim.statedDue);
+   } else {
+     const pct = rateOn(rates, grade, claim.date, inherited, claim.added ?? null);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ee3e9253..9fb99713 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2137,6 +2137,8 @@ export class People {
+     const id = this.editing();
+     const contactKey = form.contact.trim().toLowerCase();
+     if (contactKey !== '' && this.people().some((p) => p.id !== id && p.contact === contactKey)) {
++      // As when the store refuses it: a refused add leaves nothing typed behind.
++      if (id === null) this.reset();
+       this.error.set('That contact is already in use on this sheet.');
+       return;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 582257b6..5880f700 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -538,7 +538,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at its live figure with
++     * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
+      * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
+      */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index bf2ab074..a6b5b9b3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -95,8 +95,7 @@ public class Dues {
+ 
+     /**
+      * The due figure a claim shows, before its late charge and floor: the one fixed when it was settled,
+-     * else (unless it is PENDING, which is not bound) the rate figure its person's last statement bound it
+-     * to, else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
++     * else the rate figure its person's last statement bound it to, else its amount at the rate the grade has in force on the claim's date; null (n/a) when there is none.
+      */
+     public BigDecimal figure(Claim claim, String grade) {
+         return figure(claim, grade, live(claim.getSheetId()));
+@@ -107,7 +106,7 @@ public class Dues {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue() : live(claim, grade, basis);
++        return claim.isStated() ? claim.getStatedDue() : live(claim, grade, basis);
+     }
+ 
+     /**
+@@ -137,12 +136,11 @@ public class Dues {
+     }
+ 
+     /**
+-     * The due a PENDING claim is approved at: its live figure (a statement does not bind it while
+-     * PENDING) with the late charge it has on the sheet's today on top; null when it has no figure.
++     * The due a PENDING claim is approved at: the figure a statement bound it to, else its live figure,
++     * with the late charge it has on the sheet's today on top; null when it has no figure.
+      */
+     public BigDecimal approving(Claim claim, String grade) {
+-        Basis basis = live(claim.getSheetId());
+-        return floored(claim, withLate(claim, grade, live(claim, grade, basis), basis), basis);
++        return settling(claim, grade);
+     }
+ 
+     /**
