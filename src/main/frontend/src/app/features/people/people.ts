@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
 import { ClaimShareView, ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, pendingLate, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
-import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
+import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn, timelineOf } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
@@ -508,6 +508,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
             }
             <th scope="col">Statement lines</th>
             <th scope="col">Snapshots</th>
+            <th scope="col">Timeline</th>
             <th scope="col">Flag</th>
             <th scope="col">Approver</th>
             <th scope="col">Active</th>
@@ -648,6 +649,13 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 <ul aria-label="Snapshots">
                   @for (s of p.snapshots ?? []; track $index) {
                     <li data-testid="person-snapshot-line">{{ s.asOf }} {{ s.dueTotal }}</li>
+                  }
+                </ul>
+              </td>
+              <td>
+                <ul aria-label="Timeline">
+                  @for (line of timelineOf(p, claimsOf(p.id)); track $index) {
+                    <li data-testid="person-timeline-line">{{ line }}</li>
                   }
                 </ul>
               </td>
@@ -1521,6 +1529,8 @@ export class People {
     const periods = await this.periodsApi.list(sheet);
     if (this.session.sheet() === sheet && this.session.loads() === loads) this.periods.set(periods);
   }
+
+  protected readonly timelineOf = timelineOf;
 
   protected claimsOf(personId: number): ClaimView[] {
     return this.byPerson().get(personId) ?? [];

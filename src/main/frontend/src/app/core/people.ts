@@ -328,3 +328,33 @@ export class PeopleApi {
     return `/api/sheets/${encodeURIComponent(sheet)}/people`;
   }
 }
+
+/** A claim as the timeline needs it: its date, amount and status. */
+export interface TimelineClaim {
+  date: string;
+  amount: string;
+  status: string;
+}
+
+/**
+ * A person's timeline: one line per dated thing about them, in date order, and on one date their
+ * grade changes, then claims, then holds, then retirements, then unretirements (each kind by its line):
+ * "<date> grade <grade>", "<date> claim <amount> <status>", "<date> hold[ to <date>]", "<date> retired",
+ * "<date> unretired". The first grade, in force from the beginning of time, has no date and no line.
+ */
+export function timelineOf(person: PersonView, claims: TimelineClaim[]): string[] {
+  const entries: { date: string; kind: number; line: string }[] = [];
+  for (const g of person.grades) {
+    if (g.from !== null) entries.push({ date: g.from, kind: 0, line: `${g.from} grade ${g.grade}` });
+  }
+  for (const c of claims) entries.push({ date: c.date, kind: 1, line: `${c.date} claim ${c.amount} ${c.status}` });
+  for (const h of person.holds) {
+    entries.push({ date: h.from, kind: 2, line: `${h.from} hold${h.to ? ' to ' + h.to : ''}` });
+  }
+  const retired = [...(person.retirements ?? []).map((r) => r.from), ...(person.retiredFrom ? [person.retiredFrom] : [])];
+  for (const from of retired) entries.push({ date: from, kind: 3, line: `${from} retired` });
+  for (const r of person.retirements ?? []) entries.push({ date: r.to, kind: 4, line: `${r.to} unretired` });
+  return entries
+    .sort((a, b) => a.date.localeCompare(b.date) || a.kind - b.kind || (a.line < b.line ? -1 : a.line > b.line ? 1 : 0))
+    .map((e) => e.line);
+}
