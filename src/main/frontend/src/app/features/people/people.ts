@@ -465,6 +465,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                     <li>
                       {{ period.name }}
                       <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ periodTotalOf(period, p) | figure }}</span>
+                      <span>carried <span [attr.data-testid]="'person-period-' + period.name + '-carried'">{{ carriedOf(period, p) | figure }}</span></span>
                     </li>
                   }
                 </ul>
@@ -836,6 +837,32 @@ export class People {
       if (!period || fixed(period) || !person || !countsInPeriod(c, person, this.today(), period)) continue;
       const row = figures.get(period.id)!;
       row.set(person.id, row.get(person.id)! + (this.dueCents(c, person) ?? 0));
+    }
+    return figures;
+  });
+  /**
+   * Each person's carried figure for each period, in whole cents, by period id then person id: the sum
+   * of the due figures, as shown now, of the person's claims that count which belong (by due-by) to a
+   * period ending before this one starts and were still OPEN or PENDING at the end of its last day,
+   * by the status log (see countsInPeriod).
+   */
+  private readonly personCarriedCents = computed(() => {
+    const periods = this.periods();
+    const figures = new Map<number, Map<number, number>>(
+      periods.map((period) => [period.id, new Map(this.people().map((p) => [p.id, 0]))]),
+    );
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    for (const c of this.claims()) {
+      const own = periodOn(periods, c.dueBy);
+      const person = byId.get(c.personId);
+      if (!own || !person) continue;
+      for (const period of periods) {
+        if (own.to >= period.from) continue;
+        const then = statusAt(c, period.to);
+        if ((then !== 'OPEN' && then !== 'PENDING') || !countsInPeriod(c, person, this.today(), period)) continue;
+        const row = figures.get(period.id)!;
+        row.set(person.id, row.get(person.id)! + (this.dueCents(c, person) ?? 0));
+      }
     }
     return figures;
   });
@@ -1277,6 +1304,11 @@ export class People {
   /** A person's due-total for a period (see personPeriodCents). */
   protected periodTotalOf(period: PeriodView, person: PersonView): string {
     return money(this.personPeriodCents().get(period.id)?.get(person.id) ?? 0);
+  }
+
+  /** A person's carried figure for a period (see personCarriedCents). */
+  protected carriedOf(period: PeriodView, person: PersonView): string {
+    return money(this.personCarriedCents().get(period.id)?.get(person.id) ?? 0);
   }
 
   /** A person's excess: by how much the sum of their figures is above the cap, else 0.00 (n/a is not capped). */
