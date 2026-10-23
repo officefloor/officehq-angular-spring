@@ -1,0 +1,405 @@
+diff --git a/src/main/frontend/src/app/core/consolidated.ts b/src/main/frontend/src/app/core/consolidated.ts
+index 813318a8..62a15244 100644
+--- a/src/main/frontend/src/app/core/consolidated.ts
++++ b/src/main/frontend/src/app/core/consolidated.ts
+@@ -13,6 +13,12 @@ export interface ConsolidatedView {
+   dueTotal: string;
+   /** The sheets' overdue-totals added up, with two decimals. */
+   overdueTotal: string;
++  /** The people's settled-totals over the tree added up, trimmed once, with two decimals. */
++  settledTotal: string;
++  /** The people's open-totals over the tree added up, trimmed once, with two decimals. */
++  openTotal: string;
++  /** The people's cut totals over the tree added up, trimmed once, with two decimals. */
++  cutTotal: string;
+   /**
+    * Per grade, the due-totals of the people not retired who have it in force on their sheet's today
+    * added up, with two decimals; a grade nobody has is left out.
+diff --git a/src/main/frontend/src/app/features/consolidated/consolidated.ts b/src/main/frontend/src/app/features/consolidated/consolidated.ts
+index d255241b..dfb54adc 100644
+--- a/src/main/frontend/src/app/features/consolidated/consolidated.ts
++++ b/src/main/frontend/src/app/features/consolidated/consolidated.ts
+@@ -8,8 +8,8 @@ import { Session } from '../../core/session';
+ const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
+ 
+ // The sheet's figures consolidated over it and all its descendants: the number of people, and each
+-// sheet's due-total and overdue-total, as that sheet shows them (as of the as-of date while one is set),
+-// added up; per grade the due-totals of the people on it (retired people left out) added up, and per
++// person's due-total, overdue-total, settled-total, open-total and cut total, as their sheet shows them (as of the as-of date while one is set),
++// added up once over the tree (the single highest and lowest left out when three or more have one); per grade the due-totals of the people on it (retired people left out) added up, and per
+ // status the count of claims in it, over the tree. Re-read on every sheet load
+ // and whenever the sheet's own figures move.
+ @Component({
+@@ -20,6 +20,9 @@ const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as co
+       <p>Consolidated people <strong data-testid="consolidated-people-count">{{ figures()?.peopleCount }}</strong></p>
+       <p>Consolidated due <strong data-testid="consolidated-due-total">{{ (figures()?.dueTotal) | figure }}</strong></p>
+       <p>Consolidated overdue <strong data-testid="consolidated-overdue-total">{{ (figures()?.overdueTotal) | figure }}</strong></p>
++      <p>Consolidated settled <strong data-testid="consolidated-settled-total">{{ (figures()?.settledTotal) | figure }}</strong>,
++        open <strong data-testid="consolidated-open-total">{{ (figures()?.openTotal) | figure }}</strong></p>
++      <p>Consolidated cut <strong data-testid="consolidated-cut-total">{{ (figures()?.cutTotal) | figure }}</strong></p>
+       <table>
+         <caption>Consolidated by grade</caption>
+         <thead>
+@@ -66,6 +69,9 @@ export class Consolidated {
+   readonly peopleCount = input.required<number>();
+   readonly dueTotal = input.required<string>();
+   readonly overdueTotal = input.required<string>();
++  readonly settledTotal = input.required<string>();
++  readonly openTotal = input.required<string>();
++  readonly cutTotal = input.required<string>();
+ 
+   protected readonly figures = signal<ConsolidatedView | null>(null);
+   /** Per grade, its consolidated due-total; empty until the figures are read. */
+@@ -109,6 +115,9 @@ export class Consolidated {
+       this.peopleCount();
+       this.dueTotal();
+       this.overdueTotal();
++      this.settledTotal();
++      this.openTotal();
++      this.cutTotal();
+       untracked(() => {
+         const sheet = this.session.sheet();
+         if (sheet) void this.reload(sheet);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6144563a..a7162784 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -120,7 +120,8 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       [myReviewsCount]="myReviewsCount()"
+       [watchedDueTotal]="watchedDueTotal()"
+     />
+-    <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
++    <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
++      [settledTotal]="settledTotal()" [openTotal]="openTotal()" [cutTotal]="cutTotal()" />
+     <app-dashboard [statuses]="statusSummary()" [overdueTotal]="overdueTotal()" />
+     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
+     <app-periods
+@@ -1280,17 +1281,15 @@ export class People {
+       ),
+     ),
+   );
+-  /** Everyone's settled-total added up (not trimmed). */
+-  protected readonly settledTotal = computed(() =>
+-    money(this.people().reduce((sum, p) => sum + this.settledCents(p), 0)),
+-  );
++  /** Everyone's settled-total added up, leaving out the highest and lowest when there are three or more. */
++  protected readonly settledTotal = computed(() => money(trimmedCents(this.people().map((p) => this.settledCents(p)))));
+   /** The sheet's pools, which work out each person's cuts. */
+   private readonly pools = viewChild.required(Pools);
+   /** Each person's cut total in cents, by person id. */
+   private readonly cutCents = computed(() => this.pools().personCuts());
+-  /** Everyone's cut total added up. */
++  /** Everyone's cut total added up, leaving out the highest and lowest when there are three or more. */
+   protected readonly cutTotal = computed(() =>
+-    money(this.people().reduce((sum, p) => sum + (this.cutCents().get(p.id) ?? 0), 0)),
++    money(trimmedCents(this.people().map((p) => this.cutCents().get(p.id) ?? 0))),
+   );
+   /** Everyone's age buckets added up, bucket by bucket (not trimmed). */
+   protected readonly agedTotal = computed(() => {
+@@ -1300,10 +1299,8 @@ export class People {
+     }
+     return [money(totals[0]), money(totals[1]), money(totals[2])] as const;
+   });
+-  /** Everyone's open-total added up (not trimmed). */
+-  protected readonly openTotal = computed(() =>
+-    money(this.people().reduce((sum, p) => sum + this.openCents(p), 0)),
+-  );
++  /** Everyone's open-total added up, leaving out the highest and lowest when there are three or more. */
++  protected readonly openTotal = computed(() => money(trimmedCents(this.people().map((p) => this.openCents(p)))));
+   /**
+    * For every tag ever used on the sheet, sorted: the due of the claims that count in the live totals
+    * (see countsLive) which carry it, or whose person carries it; a claim with two tags counts in both, and a
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 5d16ab4e..776b4911 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -266,6 +266,9 @@ export class Rates {
+   protected async runPreview(event: Event): Promise<void> {
+     event.preventDefault();
+     this.clearPreview();
++    // The last import's result is the answer to the last action on rates; a preview moves on from it.
++    this.importSet.set(null);
++    this.importError.set(null);
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+     const grade = this.previewGrade();
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+index 248ed9f4..48495ba1 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardController.java
+@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import net.officefloor.hq.app.SignedIn;
++import net.officefloor.hq.app.history.AsOfGuard;
+ import net.officefloor.hq.app.history.PreviewDate;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -30,14 +31,16 @@ public class DashboardController {
+     /**
+      * The sheet's steward dashboard as it stands now, for the signed-in user, even while an as-of date
+      * is set, as the dashboard shows only the sheet as it stands now; its figures read as if the sheet's
+-     * today were the preview date while one is set.
++     * today were the preview date while one is set. While an as-of date is set, it is shown only to a
++     * user who was a steward on the sheet at the end of that date.
+      */
+     @GetMapping("/{id}/dashboard")
+     public DashboardView dashboard(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf,
+             @RequestHeader(value = PreviewDate.HEADER, required = false) String preview) {
+-        return service.of(id, SignedIn.name(user), PreviewDate.date(preview))
++        return service.of(id, SignedIn.name(user), AsOfGuard.date(asOf), PreviewDate.date(preview))
+                 .map(d -> new DashboardView(d.pendingCount(), d.reviewCount(), d.overdueCount()))
+                 .orElse(new DashboardView(null, null, null));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+index ba81f560..24540a8f 100644
+--- a/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
++++ b/src/main/java/net/officefloor/hq/app/dashboard/DashboardService.java
+@@ -48,7 +48,17 @@ public class DashboardService {
+     /** As {@link #of(String, String)}, each sheet's overdue claims read as if its today were a preview day (null: its own). */
+     @Transactional(readOnly = true)
+     public Optional<Dashboard> of(String sheetId, String userName, LocalDate preview) {
+-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, userName))) {
++        return of(sheetId, userName, null, preview);
++    }
++
++    /**
++     * As {@link #of(String, String, LocalDate)}, for a user who was a steward on the sheet at the end of an
++     * as-of date (null: who acts as one now); the counts are still the sheet's as it stands now.
++     */
++    @Transactional(readOnly = true)
++    public Optional<Dashboard> of(String sheetId, String userName, LocalDate asOf, LocalDate preview) {
++        String role = asOf == null ? roles.roleOf(sheetId, userName) : roles.roleAsOf(sheetId, userName, asOf);
++        if (!Role.STEWARD.equals(role)) {
+             return Optional.empty();
+         }
+         List<String> tree = new ArrayList<>();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9eecb659..e5760f84 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -190,13 +190,16 @@ public class PersonService {
+         }
+     }
+ 
+-    /** Record a person's grade from the sheet's today, keeping the rest of them, as the person form would. */
++    /**
++     * Record a person's grade from the sheet's today, keeping the rest of them, as the person form would
++     * with the grade chosen on it: recorded even when it is already in force.
++     */
+     @Transactional
+     public Person grade(String sheetId, String user, long personId, long version, String grade) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+-        return edit(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(),
+-                person.getContact(), false, false);
++        return edit(sheetId, user, personId, version, person.getName(), grade, null, person.getTerms(), null,
++                person.getContact(), false, false, null, true);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 1ef38676..c783c7c4 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -50,6 +50,13 @@ public class RoleService {
+         return inForce.values().stream().sorted(Comparator.comparing(Role::getUserName)).toList();
+     }
+ 
++    /** The role set for a user name on the sheet in force at the end of a date (see {@link #listAsOf}), else clerk. */
++    @Transactional(readOnly = true)
++    public String roleAsOf(String sheetId, String userName, LocalDate asOf) {
++        return listAsOf(sheetId, asOf).stream().filter(role -> role.getUserName().equals(userName))
++                .map(Role::getRole).findFirst().orElse(Role.CLERK);
++    }
++
+     /**
+      * The role a user name acts in on the sheet: steward while a delegation to it is in force on the
+      * sheet's today, else the one set for it, else clerk.
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+index 73e5f2cb..dfa852ea 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Consolidation.java
+@@ -37,14 +37,17 @@ public class Consolidation {
+      * overdue-totals over the whole tree added up, leaving out the single highest and single lowest when
+      * there are three or more, per grade the due-totals of the
+      * people not retired who have it in force on their sheet's today (those shown as n/a skipped) added
+-     * up, and per status how many claims have it.
++     * up, per status how many claims have it, and the people's settled-totals, open-totals and cut totals
++     * over the whole tree added up, trimmed once as the due-totals are.
+      */
+     public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
+-            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {
++            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts, BigDecimal settledTotal,
++            BigDecimal openTotal, BigDecimal cutTotal) {
+     }
+ 
+-    /** A sheet's figures with the people and claims they were read from. */
+-    private record Taken(Sheet sheet, Rollups.Rollup rollup, Map<Long, Person> people, Iterable<Claim> claims) {
++    /** A sheet's figures with the people and claims they were read from, and each person's cut total by id. */
++    private record Taken(Sheet sheet, Rollups.Rollup rollup, Map<Long, Person> people, Iterable<Claim> claims,
++            Map<Long, BigDecimal> cuts) {
+     }
+ 
+     private final SheetRepository sheets;
+@@ -92,17 +95,23 @@ public class Consolidation {
+         all.addAll(sheets.descendants(sheetId));
+         List<BigDecimal> dueFigures = new ArrayList<>();
+         List<BigDecimal> overdueFigures = new ArrayList<>();
++        List<BigDecimal> settledFigures = new ArrayList<>();
++        List<BigDecimal> openFigures = new ArrayList<>();
++        List<BigDecimal> cutFigures = new ArrayList<>();
+         List<Set<String>> persons = new ArrayList<>();
+         Map<String, BigDecimal> grades = new TreeMap<>();
+         Map<String, Integer> statuses = new TreeMap<>();
+         for (String id : all) {
+             Taken taken = asOf != null ? asOf(id, asOf) : preview != null ? preview(id, preview) : now(id);
+             Rollups.Rollup rollup = taken.rollup();
+-            rollup.people().values().forEach(figures -> {
++            rollup.people().forEach((personId, figures) -> {
+                 if (figures.dueTotal() != null) {
+                     dueFigures.add(figures.dueTotal());
+                 }
+                 overdueFigures.add(figures.overdueTotal());
++                settledFigures.add(figures.settledShown());
++                openFigures.add(figures.openShown());
++                cutFigures.add(taken.cuts().getOrDefault(personId, BigDecimal.ZERO.setScale(2)));
+             });
+             rollup.people().keySet().forEach(personId -> {
+                 Person person = taken.people().get(personId);
+@@ -116,7 +125,8 @@ public class Consolidation {
+             }
+         }
+         return new Consolidated(distinct(persons), Rollups.trimmed(dueFigures), Rollups.trimmed(overdueFigures),
+-                grades, statuses);
++                grades, statuses, Rollups.trimmed(settledFigures), Rollups.trimmed(openFigures),
++                Rollups.trimmed(cutFigures));
+     }
+ 
+     /**
+@@ -181,8 +191,9 @@ public class Consolidation {
+         LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
+         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
+         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+-        return new Taken(sheet, rollups.take(sheet, dues.live(sheetId), sheetPeople, sheetClaims,
+-                cuts.personCuts(sheet, sheetPeople.values())), sheetPeople, sheetClaims);
++        Map<Long, BigDecimal> personCuts = cuts.personCuts(sheet, sheetPeople.values());
++        return new Taken(sheet, rollups.take(sheet, dues.live(sheetId), sheetPeople, sheetClaims, personCuts),
++                sheetPeople, sheetClaims, personCuts);
+     }
+ 
+     /** A sheet's figures over its records as they stand now, read as if its today were a preview day. */
+@@ -195,8 +206,9 @@ public class Consolidation {
+         LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
+         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
+         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+-        return new Taken(then, rollups.take(then, rollups.previewBasis(then), sheetPeople, sheetClaims,
+-                cuts.personCuts(then, sheetPeople.values())), sheetPeople, sheetClaims);
++        Map<Long, BigDecimal> personCuts = cuts.personCuts(then, sheetPeople.values());
++        return new Taken(then, rollups.take(then, rollups.previewBasis(then), sheetPeople, sheetClaims, personCuts),
++                sheetPeople, sheetClaims, personCuts);
+     }
+ 
+     /**
+@@ -212,11 +224,12 @@ public class Consolidation {
+             return history.at(sheetId, day)
+                     .map(then -> new Taken(then.sheet(),
+                             rollups.take(then.sheet(), then.basis(), then.people(), then.claims().values()),
+-                            then.people(), then.claims().values()))
++                            then.people(), then.claims().values(),
++                            cuts.personCuts(then.sheet(), then.people().values())))
+                     .orElseGet(() -> {
+                         Sheet empty = now.asOf(day, List.of(), null);
+                         return new Taken(empty, rollups.take(empty, dues.live(sheetId), new LinkedHashMap<>(),
+-                                List.of()), Map.of(), List.of());
++                                List.of()), Map.of(), List.of(), Map.of());
+                     });
+         }
+         Sheet then = now.asOf(day, now.getDated(), now.getPolicyDate());
+@@ -225,6 +238,7 @@ public class Consolidation {
+         LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
+         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
+         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+-        return new Taken(then, rollups.take(then, basis, sheetPeople, sheetClaims), sheetPeople, sheetClaims);
++        return new Taken(then, rollups.take(then, basis, sheetPeople, sheetClaims), sheetPeople, sheetClaims,
++                cuts.personCuts(then, sheetPeople.values()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
+index 830b66ab..686b1286 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidationController.java
+@@ -24,7 +24,8 @@ public class ConsolidationController {
+      * found the due-totals, and per status found the count of claims.
+      */
+     public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal,
+-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
++            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, String settledTotal,
++            String openTotal, String cutTotal) {
+     }
+ 
+     /**
+@@ -55,7 +56,9 @@ public class ConsolidationController {
+         Map<String, String> grades = new LinkedHashMap<>();
+         figures.gradeDueTotals().forEach((grade, due) -> grades.put(grade, due.toPlainString()));
+         return new ConsolidatedView(figures.peopleCount(), figures.dueTotal().toPlainString(),
+-                figures.overdueTotal().toPlainString(), grades, figures.statusCounts());
++                figures.overdueTotal().toPlainString(), grades, figures.statusCounts(),
++                figures.settledTotal().toPlainString(), figures.openTotal().toPlainString(),
++                figures.cutTotal().toPlainString());
+     }
+ 
+     /** A sheet's own summary due-totals per grade as it stands now, to compare another sheet with it. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index c75ca037..f86fd364 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -33,10 +33,12 @@ public class Rollups {
+     /**
+      * A person's figures: what they have claimed, their due-total (null when n/a) and their
+      * overdue-total (the due of their counting overdue claims), with their settled-total (the due of
+-     * their counting SETTLED claims that correct nothing) and how many of their counting claims are overdue, which make their score.
++     * their counting SETTLED claims that correct nothing) and how many of their counting claims are overdue, which make their score,
++     * and the due of all their counting SETTLED claims and of their counting OPEN and PENDING claims as the
++     * screen shows them.
+      */
+     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+-            BigDecimal settledTotal, int overdueCount) {
++            BigDecimal settledTotal, int overdueCount, BigDecimal settledShown, BigDecimal openShown) {
+ 
+         /**
+          * Their score as the screen shows it: their settled-total over 100, less 5 for each overdue
+@@ -180,6 +182,8 @@ public class Rollups {
+             BigDecimal due = zero();
+             BigDecimal overdue = zero();
+             BigDecimal settled = zero();
++            BigDecimal settledShown = zero();
++            BigDecimal openShown = zero();
+             int personOverdue = 0;
+             boolean figured = false;
+             for (Claim claim : counting) {
+@@ -197,6 +201,11 @@ public class Rollups {
+                     if (late) {
+                         overdue = overdue.add(figure);
+                     }
++                    if (claim.getStatus() == ClaimStatus.SETTLED) {
++                        settledShown = settledShown.add(figure);
++                    } else if (claim.getStatus().isOpen()) {
++                        openShown = openShown.add(figure);
++                    }
+                     // The score's settled figures leave out claims that correct another.
+                     if (claim.getStatus() == ClaimStatus.SETTLED
+                             && (claim.getCorrects() == null || claim.getCorrects().isBlank())) {
+@@ -219,7 +228,8 @@ public class Rollups {
+             if (sheet != null) {
+                 due = sheet.capped(due, personCuts.getOrDefault(entry.getKey(), zero()));
+             }
+-            figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue, settled, personOverdue));
++            figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue, settled, personOverdue,
++                    settledShown, openShown));
+             claimedTotal = claimedTotal.add(claimed);
+             if (due != null) {
+                 dueFigures.add(due);
