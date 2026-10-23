@@ -1,0 +1,441 @@
+diff --git a/.e2e.out b/.e2e.out
+index 891e3ac8..19317e20 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,78 +2,71 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › score bands › score bands (12.5s)
+-  ✘  2 [chromium] › acceptance.spec.ts:88:7 › score bands › score bands scenario 1 (1.4m)
+-  ✘  3 [chromium] › acceptance.spec.ts:764:7 › score bands › score bands scenario 2 (19.7s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1329:7 › score bands › score bands scenario 3 (26.6s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › parent plans › parent plans (9.3s)
++  ✘  2 [chromium] › acceptance.spec.ts:74:7 › parent plans › parent plans scenario 1 (6.8s)
++  ✓  3 [chromium] › acceptance.spec.ts:518:7 › parent plans › parent plans scenario 2 (20.4s)
++  ✘  4 [chromium] › acceptance.spec.ts:1004:7 › parent plans › parent plans scenario 3 (30.1s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:88:7 › score bands › score bands scenario 1 ───────────────────
++  1) [chromium] › acceptance.spec.ts:74:7 › parent plans › parent plans scenario 1 ─────────────────
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
++
++    Expected: [32m1[39m
++    Received: [31m2[39m
++
++      104 |     expect(await ui.periodAction(pg_uma, "P1", "close")).toBe(true);
++      105 |     expect(await ui.editPerson(pg_uma, p_cam, {"terms": ""})).toBe(true);
++    > 106 |     expect(await ui.generatePlans(pg_uma)).toBe(1);
++          |                                            ^
++      107 |     const c_cam_0 = await ui.claimAt(pg_uma, p_cam, 0);
++      108 |     await ui.refresh(pg_uma);
++      109 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:106:44
++
++  2) [chromium] › acceptance.spec.ts:1004:7 › parent plans › parent plans scenario 3 ───────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkt5bwhw287[27m-p"[39m
++    Received string: [31m"[7msmvku1773s2yb[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkt5bwhw287-p</strong>[22m
+-    [2m  -   unexpected value "smvkt5bwhw287-p"[22m
+-
+-
+-      243 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+-      244 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-03-20");
+-    > 245 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      246 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("2");
+-      247 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      248 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:245:54
+-
+-  2) [chromium] › acceptance.spec.ts:764:7 › score bands › score bands scenario 2 ──────────────────
+-
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoEqual[2m([22m[32mexpected[39m[2m) // deep equality[22m
+-
+-    [32m- Expected  - 2[39m
+-    [31m+ Received  + 2[39m
+-
+-    [2m  Array [[22m
+-    [32m-   "Ben  ",[39m
+-    [32m-   "Ada  ",[39m
+-    [31m+   "Ben",[39m
+-    [31m+   "Ada",[39m
+-    [2m  ][22m
+-
+-      831 |     expect(await ui.importOpenings(pg_uma, "Ada,2026-02,5.50")).toBe(1);
+-      832 |     expect(await ui.editInline(pg_uma, c_ben_0, "10.25")).toBe(true);
+-    > 833 |     expect(await ui.snapshotCompare(pg_uma, "2026-04-05", "2026-04-05")).toEqual(["Ben  ", "Ada  "]);
+-          |                                                                          ^
+-      834 |     expect(await ui.statement(pg_uma, p_ada)).toBe(true);
+-      835 |     expect(await ui.importRates(pg_uma, "C,10.00\nC,33.33,2026-03-05")).toBe(2);
+-      836 |     expect(await ui.editClaim(pg_uma, c_ben_0, {"date": "2026-03-28"})).toBe(true);
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:833:74
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvku1773s2yb-p</strong>[22m
++    [2m  -   unexpected value "smvku1773s2yb-p"[22m
++
++
++      1199 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      1200 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
++    > 1201 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++           |                                                      ^
++      1202 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("4");
++      1203 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("2.00");
++      1204 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1201:54
+ 
+   2 failed
+-    [chromium] › acceptance.spec.ts:88:7 › score bands › score bands scenario 1 ────────────────────
+-    [chromium] › acceptance.spec.ts:764:7 › score bands › score bands scenario 2 ───────────────────
+-  2 passed (2.5m)
+- 1877272
+\ No newline at end of file
++    [chromium] › acceptance.spec.ts:74:7 › parent plans › parent plans scenario 1 ──────────────────
++    [chromium] › acceptance.spec.ts:1004:7 › parent plans › parent plans scenario 3 ────────────────
++  2 passed (1.2m)
++ 1904023
+\ No newline at end of file
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 0924f80f..5c8a5a1a 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -27,6 +27,8 @@ export interface PlanView {
+   paused: boolean;
+   /** The changes of the plan's amount, oldest first. */
+   changes: PlanChangeView[];
++  /** The descendant sheet the plan's claims are made on, or null for its own sheet. */
++  sheet: string | null;
+ }
+ 
+ /** A change of a plan's amount: the sheet's today it was changed on, and the new amount with two decimals. */
+@@ -44,6 +46,8 @@ export interface PlanForm {
+   /** The day of the month, blank for a plan every N days. */
+   day: string;
+   end: string;
++  /** A descendant sheet the claims are made on, blank for this sheet. */
++  sheet: string;
+ }
+ 
+ /** What a generate made: how many claims, those claims in the order made, and the sheet's plans after it. */
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 0dbc83de..1c71e0fd 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -10,7 +10,8 @@ function reasonOf(e: unknown): string | null {
+ }
+ 
+ // A person's plans, each with how many claims it has made so far, and the form adding one: an amount,
+-// a start date, every N days or a day of the month, and an end date.
++// a start date, every N days or a day of the month, an end date, and optionally a descendant sheet the
++// claims are made on.
+ @Component({
+   selector: 'app-person-plans',
+   template: `
+@@ -23,7 +24,9 @@ function reasonOf(e: unknown): string | null {
+           } @else {
+             every {{ plan.every }} days
+           }
+-          to {{ plan.end }};
++          to {{ plan.end }}@if (plan.sheet !== null) {
++            on sheet {{ plan.sheet }}
++          };
+           made <span data-testid="plan-generated">{{ plan.generated }}</span>;
+           next <span data-testid="plan-next-dates">{{ plan.nextDates.join(', ') }}</span>;
+           paused <span data-testid="plan-paused">{{ plan.paused ? 'yes' : 'no' }}</span>
+@@ -90,6 +93,13 @@ function reasonOf(e: unknown): string | null {
+         [value]="end()"
+         (input)="end.set(value($event)); error.set(null)"
+       />
++      <label [for]="'plan-form-sheet-' + personId()">On sheet (optional)</label>
++      <input
++        [id]="'plan-form-sheet-' + personId()"
++        data-testid="plan-form-sheet"
++        [value]="sheet()"
++        (input)="sheet.set(value($event)); error.set(null)"
++      />
+       <button type="submit" data-testid="plan-form-submit">Add plan</button>
+       @if (error(); as message) {
+         <p role="alert" data-testid="plan-error">{{ message }}</p>
+@@ -111,6 +121,7 @@ export class PersonPlans {
+   protected readonly every = signal('');
+   protected readonly day = signal('');
+   protected readonly end = signal('');
++  protected readonly sheet = signal('');
+   protected readonly error = signal<string | null>(null);
+   /** The refusal of the last pause or resume, on the plan it was taken on. */
+   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
+@@ -170,6 +181,7 @@ export class PersonPlans {
+       every: this.every().trim(),
+       day: this.day().trim(),
+       end: this.end(),
++      sheet: this.sheet().trim(),
+     };
+     if (!/^\d{1,12}(\.\d{1,2})?$/.test(form.amount)) {
+       this.error.set('Type an amount of 0.00 or more, with at most two decimals.');
+@@ -203,6 +215,7 @@ export class PersonPlans {
+       this.every.set('');
+       this.day.set('');
+       this.end.set('');
++      this.sheet.set('');
+     } catch (e) {
+       this.error.set(reasonOf(e) ?? 'The plan could not be added.');
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 04d793b5..96d62684 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -55,6 +55,10 @@ public class Plan {
+     @Column(name = "end_on", nullable = false)
+     private LocalDate end;
+ 
++    /** The descendant sheet the plan's claims are made on, for the person there of the same name; null: its own. */
++    @Column(name = "target_sheet_id")
++    private String targetSheetId;
++
+     /** The claims the plan has made, by the plan date each was made for. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
+@@ -78,6 +82,12 @@ public class Plan {
+ 
+     public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, Integer every,
+             Integer day, LocalDate end) {
++        this(sheetId, personId, amount, start, every, day, end, null);
++    }
++
++    public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, Integer every,
++            Integer day, LocalDate end, String targetSheetId) {
++        this.targetSheetId = targetSheetId;
+         this.sheetId = sheetId;
+         this.personId = personId;
+         this.amount = amount;
+@@ -197,6 +207,11 @@ public class Plan {
+         return end;
+     }
+ 
++    /** The descendant sheet the plan's claims are made on, or null for its own sheet. */
++    public String getTargetSheetId() {
++        return targetSheetId;
++    }
++
+     /** How many claims the plan has made so far. */
+     public int getGenerated() {
+         return made.size();
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index ff91de91..9d52b53a 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -27,15 +27,18 @@ public class PlanController {
+     /**
+      * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
+      * the month, the other null), how many claims it has made, its next five dates after the sheet's today, and
+-     * whether it is paused, and the changes of its amount, oldest first.
++     * whether it is paused, and the changes of its amount, oldest first, and the descendant sheet its claims
++     * are made on (null: its own).
+      */
+     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
++            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes,
++            String sheet) {
+ 
+         static PlanView of(Plan plan, LocalDate today) {
+             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
+                     plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5),
+-                    plan.isPaused(), plan.getChanges().stream().map(ChangeView::of).toList());
++                    plan.isPaused(), plan.getChanges().stream().map(ChangeView::of).toList(),
++                    plan.getTargetSheetId());
+         }
+     }
+ 
+@@ -53,14 +56,16 @@ public class PlanController {
+ 
+     /**
+      * A plan as entered on the form: an amount as the claim form takes it, a start, every N days or a day of the
+-     * month (one of the two, the other absent or blank), and an end.
++     * month (one of the two, the other absent or blank), an end, and a descendant sheet its claims are made on
++     * (absent or blank: the plan's own).
+      */
+     public record PlanForm(
+             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
+             @NotNull LocalDate start,
+             @Pattern(regexp = "|\\d{1,5}") String every,
+             @Pattern(regexp = "|\\d{1,2}") String day,
+-            @NotNull LocalDate end) {
++            @NotNull LocalDate end,
++            @Pattern(regexp = "|[A-Za-z0-9._-]{1,64}") String sheet) {
+     }
+ 
+     /** What a generate made: how many claims, the claims in the order made, and the sheet's plans after it. */
+@@ -89,7 +94,7 @@ public class PlanController {
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PlanForm form) {
+         Plan added = service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()),
+-                form.start(), number(form.every()), number(form.day()), form.end());
++                form.start(), number(form.every()), number(form.day()), form.end(), form.sheet());
+         return PlanView.of(added, service.today(sheetId));
+     }
+ 
+@@ -134,7 +139,9 @@ public class PlanController {
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+         PlanService.Generated generated = service.generate(sheetId, SignedIn.name(user));
+         LocalDate today = service.today(sheetId);
+-        return new GeneratedView(generated.claims().size(), generated.claims().stream().map(ClaimView::of).toList(),
++        // The claims made on a descendant sheet count, but are not this sheet's to show.
++        return new GeneratedView(generated.claims().size(), generated.claims().stream()
++                .filter(claim -> claim.getSheetId().equals(sheetId)).map(ClaimView::of).toList(),
+                 generated.plans().stream().map(plan -> PlanView.of(plan, today)).toList());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 406248e3..970f47c0 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -13,6 +13,7 @@ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -31,16 +32,18 @@ public class PlanService {
+     private final PlanRepository plans;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final SheetRepository sheetStore;
+     private final ClaimService claims;
+     private final RoleService roles;
+     private final TransactionTemplate eachClaim;
+     private final Audit audit;
+ 
+-    public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets, ClaimService claims,
+-            RoleService roles, PlatformTransactionManager transactions, Audit audit) {
++    public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets,
++            SheetRepository sheetStore, ClaimService claims, RoleService roles, PlatformTransactionManager transactions, Audit audit) {
+         this.plans = plans;
+         this.people = people;
+         this.sheets = sheets;
++        this.sheetStore = sheetStore;
+         this.claims = claims;
+         this.roles = roles;
+         this.eachClaim = new TransactionTemplate(transactions);
+@@ -65,11 +68,13 @@ public class PlanService {
+     /**
+      * Add a plan on a person: an amount (not below 0.00), claimed every N days (at least 1) or monthly on a
+      * day of the month (1 to 31), exactly one of the two, from a start date to an end date; refused when the
+-     * end is before the start.
++     * end is before the start. A plan may name one of the sheet's descendants (blank or null: none): its claims
++     * are then made on that sheet; one that is not a descendant is refused. PLAN_ADDED then ends with
++     * sheet=&lt;that sheet&gt;.
+      */
+     @Transactional
+     public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
+-            Integer day, LocalDate end) {
++            Integer day, LocalDate end, String target) {
+         if (amount.signum() < 0) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount cannot be below 0.00.");
+         }
+@@ -86,13 +91,19 @@ public class PlanService {
+         if (end.isBefore(start)) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan cannot end before it starts.");
+         }
++        String targetSheet = target == null || target.isBlank() ? null : target.trim();
+         sheets.lock(sheetId);
++        if (targetSheet != null && !sheetStore.descendants(sheetId).contains(targetSheet)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A plan can only name a sheet below this one: " + targetSheet + " is not.");
++        }
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+         BigDecimal money = amount.setScale(2, RoundingMode.UNNECESSARY);
+-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, day, end));
++        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, money, start, every, day, end, targetSheet));
+         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+-                + " amount=" + money.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
++                + " amount=" + money.toPlainString() + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end
++                + (targetSheet != null ? " sheet=" + targetSheet : ""));
+         return saved;
+     }
+ 
+@@ -149,7 +160,8 @@ public class PlanService {
+      * and an empty note for each plan date up to its end and the sheet's today that has none yet, dated
+      * that day. Each claim is added by the claim form's rules, on its own: a date the form refuses is
+      * skipped, and tried again on the next generate. A viewer's generate makes nothing: every claim it
+-     * would make is refused.
++     * would make is refused. A plan naming a descendant sheet makes its claims there, by that sheet's rules,
++     * for the person there of the plan's person's name: none while there is no such person.
+      */
+     public Generated generate(String sheetId, String user) {
+         LocalDate today = sheets.today(sheetId);
+@@ -182,7 +194,18 @@ public class PlanService {
+         if (plan == null || plan.hasMade(date)) {
+             return null;
+         }
+-        Claim claim = claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), date, "", null);
++        Long personId = plan.getPersonId();
++        String claimSheet = sheetId;
++        if (plan.getTargetSheetId() != null) {
++            claimSheet = plan.getTargetSheetId();
++            Person own = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElse(null);
++            Person there = own == null ? null : people.findBySheetIdAndName(claimSheet, own.getName()).orElse(null);
++            if (there == null) {
++                return null;
++            }
++            personId = there.getId();
++        }
++        Claim claim = claims.add(claimSheet, user, personId, plan.getAmount(), date, "", null);
+         plan.made(date, claim.getId());
+         plans.saveAndFlush(plan);
+         return claim;
+diff --git a/src/main/resources/db/migration/V113__plan_target_sheet.sql b/src/main/resources/db/migration/V113__plan_target_sheet.sql
+new file mode 100644
+index 00000000..10bad19f
+--- /dev/null
++++ b/src/main/resources/db/migration/V113__plan_target_sheet.sql
+@@ -0,0 +1,3 @@
++-- A plan may name one of its sheet's descendants: its claims are then made on that sheet, for the person
++-- there of the same name, by that sheet's rules. Null: the plan's own sheet and person.
++ALTER TABLE plan ADD COLUMN target_sheet_id VARCHAR(64);
