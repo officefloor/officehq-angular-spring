@@ -232,14 +232,15 @@ public class PeriodService {
      * Each person's carried figure for the period as of today, by person id: the sum of the due figures,
      * as computed now, of their claims due by in a period ending before this one starts that were OPEN or
      * PENDING at the end of this one's last day by their status log, each at the grade its person has in
-     * force on its date, leaving out the same claims as {@link #totals}.
+     * force on its date, leaving out the same claims as {@link #totals}, plus their opening balance for it.
      */
     private Map<Long, BigDecimal> carried(String sheetId, Period period, LocalDate today) {
         List<Period> all = periods.findBySheetIdOrderByFromDateAsc(sheetId);
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, person -> person));
         Map<Long, BigDecimal> carried = new LinkedHashMap<>();
-        byId.keySet().forEach(id -> carried.put(id, BigDecimal.ZERO.setScale(2)));
+        byId.keySet().forEach(id -> carried.put(id,
+                period.getPersonOpenings().getOrDefault(id, BigDecimal.ZERO).setScale(2)));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
             boolean earlier = all.stream().filter(p -> p.contains(claim.getDueBy())).findFirst()

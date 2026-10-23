@@ -36,11 +36,12 @@ public class PeriodController {
      * What the screen is told about a period: its name, its inclusive from and to dates, whether it
      * is closed, the due-total fixed when it was closed (null while open), and each person's due-total
      * for it fixed then, by person id (empty while open), and whether it is soft-closed (its figures
-     * fixed as on a close, while not closed).
+     * fixed as on a close, while not closed), its claim cap, each person's carried figure fixed when it
+     * was closed, and each person's opening balance for it, by person id (a person with none not listed).
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
             String closedTotal, Map<Long, String> personTotals, boolean softClosed, Integer cap,
-            Map<Long, String> personCarried) {
+            Map<Long, String> personCarried, Map<Long, String> personOpenings) {
 
         public static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
@@ -50,6 +51,8 @@ public class PeriodController {
                             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
                     period.isSoftClosed(), period.getClaimCap(),
                     period.getPersonCarried().entrySet().stream()
+                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
+                    period.getPersonOpenings().entrySet().stream()
                             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())));
         }
     }
@@ -66,10 +69,12 @@ public class PeriodController {
     }
 
     private final PeriodService service;
+    private final OpeningService openings;
     private final SheetHistory history;
 
-    public PeriodController(PeriodService service, SheetHistory history) {
+    public PeriodController(PeriodService service, OpeningService openings, SheetHistory history) {
         this.service = service;
+        this.openings = openings;
         this.history = history;
     }
 
@@ -117,6 +122,23 @@ public class PeriodController {
             @RequestBody @Valid FiscalYearForm form) {
         return service.generateFiscalYear(sheetId, SignedIn.name(user), Integer.parseInt(form.year().trim())).stream()
                 .map(PeriodView::of).toList();
+    }
+
+    /** The opening balances import's text: lines of name,period,amount. */
+    public record OpeningsForm(@NotNull @Size(max = 200_000) String text) {
+    }
+
+    /** How many lines of an opening balances import went through. */
+    public record OpeningsDone(int lines) {
+    }
+
+    /** Add each pasted line's amount to its person's opening balance for its period; nothing changes when any line is refused. */
+    @PostMapping("/openings")
+    public OpeningsDone importOpenings(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid OpeningsForm form) {
+        return new OpeningsDone(openings.importOpenings(sheetId, SignedIn.name(user), form.text()));
     }
 
     /** Close a period, fixing its due-total. */

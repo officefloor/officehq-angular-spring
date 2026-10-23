@@ -31,6 +31,11 @@ export interface PeriodView {
    * decimals; empty while open. A person added since has none: 0.00. Absent as kept by an old snapshot.
    */
   personCarried?: Record<string, string> | null;
+  /**
+   * Each person's opening balance for the period, by person id, with two decimals; it adds to their
+   * carried figure. A person with none is not listed. Absent as kept by an old snapshot.
+   */
+  personOpenings?: Record<string, string> | null;
 }
 
 /** Whether a period's figures are fixed: it is closed or soft-closed. */
@@ -112,6 +117,15 @@ export class PeriodsApi {
   /** Reopen a closed or soft-closed period, making its due-total live again; refused for anyone but a steward. */
   reopen(sheet: string, id: number): Promise<PeriodView> {
     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/reopen`, {}));
+  }
+
+  /**
+   * Add each pasted line of name,period,amount to its person's opening balance for its period; how many
+   * lines went through. Refused as a whole when any line is.
+   */
+  async importOpenings(sheet: string, text: string): Promise<number> {
+    const done = await firstValueFrom(this.http.post<{ lines: number }>(`${this.url(sheet)}/openings`, { text }));
+    return done.lines;
   }
 
   private url(sheet: string): string {

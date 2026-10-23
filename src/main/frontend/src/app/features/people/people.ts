@@ -19,6 +19,7 @@ import { Crews } from '../crews/crews';
 import { CrewView, crewDueCents } from '../../core/crews';
 import { ImportPeople } from '../import-people/import-people';
 import { PasteClaims } from '../paste-claims/paste-claims';
+import { ImportOpenings } from '../import-openings/import-openings';
 import { QuickAdd } from '../quick-add/quick-add';
 import { Rates } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
@@ -90,7 +91,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
+  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, ImportOpenings, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -186,6 +187,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       <app-quick-add (added)="quickAdded($event)" />
       <app-import-people (added)="imported($event)" />
       <app-paste-claims (added)="pasted($event)" />
+      <app-import-openings (imported)="openingsImported()" />
       <app-plan-generate (generated)="pasted($event)" />
       <p>
         <input
@@ -864,8 +866,8 @@ export class People {
    * Each person's carried figure for each period, in whole cents, by period id then person id: the sum
    * of the due figures, as shown now, of the person's claims that count which belong (by due-by) to a
    * period ending before this one starts and were still OPEN or PENDING at the end of its last day,
-   * by the status log (see countsInPeriod). Once closed or soft-closed it is the figure fixed then, 0
-   * for a person added since.
+   * by the status log (see countsInPeriod), plus their opening balance for it. Once closed or
+   * soft-closed it is the figure fixed then, 0 for a person added since.
    */
   private readonly personCarriedCents = computed(() => {
     const periods = this.periods();
@@ -874,7 +876,10 @@ export class People {
       periods.map((period) => [
         period.id,
         new Map(
-          this.people().map((p) => [p.id, frozen(period) ? cents(period.personCarried![p.id] ?? '0.00') : 0]),
+          this.people().map((p) => [
+            p.id,
+            cents((frozen(period) ? period.personCarried![p.id] : period.personOpenings?.[p.id]) ?? '0.00'),
+          ]),
         ),
       ]),
     );
@@ -1214,6 +1219,12 @@ export class People {
         if (sheet && changed) void this.todayChanged(sheet);
       });
     });
+  }
+
+  /** Opening balances were imported: re-read the periods, which hold them. */
+  protected openingsImported(): void {
+    const sheet = this.session.sheet();
+    if (sheet) void this.todayChanged(sheet);
   }
 
   /** The sheet's today changed: re-read its periods, some of which may have closed. */
