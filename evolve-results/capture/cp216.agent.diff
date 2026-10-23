@@ -1,0 +1,227 @@
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index af984b05..197ef691 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -37,9 +37,11 @@ export interface PoolView {
+ }
+ 
+ /**
+- * A period whose to-date is on or before the sheet's today, with what its pools' cuts at the end of it are
+- * worked out from: when its to-date is the sheet's today (current) the sheet as it stands, else the pot
+- * (null for none), people and pools as they stood at the end of its to-date.
++ * A period whose to-date is on or before the sheet's today, or that is closed or soft-closed, with what its
++ * pools' cuts are worked out from, on the day `to` as the sheet's today: for a closed or soft-closed period
++ * the day it was closed and the pot (null for none), people and pools as they stood at that moment; else
++ * when its to-date is the sheet's today (current) the sheet as it stands, else the pot, people and pools as
++ * they stood at the end of its to-date.
+  */
+ export interface PeriodPoolsView {
+   period: string;
+@@ -60,7 +62,7 @@ export class PoolsApi {
+     return firstValueFrom(this.http.get<PoolView[]>(this.url(sheet)));
+   }
+ 
+-  /** Each period whose to-date is on or before the sheet's today, with its pools as they stood at its end. */
++  /** Each period ended by the sheet's today or fixed by a close, with its pools as they stood then. */
+   history(sheet: string): Promise<PeriodPoolsView[]> {
+     return firstValueFrom(this.http.get<PeriodPoolsView[]>(`${this.url(sheet)}/history`));
+   }
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 7c1ad2f6..fb3dec8c 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -279,7 +279,8 @@ export class Pools {
+    * Each period whose to-date is on or before the sheet's today, by name, with each member's cut as it
+    * stood at the end of it as shown, by pool id then member key: worked out from the pools, people and pot
+    * as they were then with its to-date as the sheet's today; a period ending on the sheet's today shows the
+-   * cuts as they stand.
++   * cuts as they stand. A closed or soft-closed period shows the cuts fixed as they stood when it was
++   * closed, whenever that was, until it is reopened.
+    */
+   protected readonly history = computed(() => {
+     const lines = this.lines();
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index 7964079b..510c30cf 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -115,6 +115,13 @@ public class SheetHistory {
+             List<PoolView> pools) {
+     }
+ 
++    /**
++     * What a closed or soft-closed period's pool cuts are worked out from, fixed when it was closed: the
++     * sheet's today then, its pot (null for none), people and pools as they stood.
++     */
++    record FixedCuts(LocalDate today, String pot, List<PersonView> people, List<PoolView> pools) {
++    }
++
+     private final SheetSnapshotRepository snapshots;
+     private final SheetRepository sheets;
+     private final RateRepository rates;
+@@ -196,9 +203,24 @@ public class SheetHistory {
+     }
+ 
+     /**
+-     * Each period whose to-date is on or before the sheet's today, in from-date order, with what its pools'
+-     * cuts at the end of it are worked out from: for a to-date before the sheet's today, the pot, people
+-     * and pools kept for the last snapshot on or before it (none when nothing was kept by then).
++     * What a pool's cuts are worked out from as the sheet stands now, with today as the sheet's today, as
++     * JSON: fixed for a period as it is closed or soft-closed.
++     */
++    @Transactional(readOnly = true)
++    public String cutsNow(String sheetId, LocalDate today) {
++        Sheet sheet = sheets.findById(sheetId).orElseThrow();
++        return json.writeValueAsString(new FixedCuts(today,
++                sheet.getPot() == null ? null : sheet.getPot().toPlainString(),
++                people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream().map(PersonView::of).toList(),
++                pools.list(sheetId).stream().map(PoolView::of).toList()));
++    }
++
++    /**
++     * Each period whose to-date is on or before the sheet's today, or that is closed or soft-closed, in
++     * from-date order, with what its pools' cuts are worked out from: for a closed or soft-closed period,
++     * the today, pot, people and pools fixed when it was closed, its cuts as they stood then; else for a
++     * to-date before the sheet's today, the pot, people and pools kept for the last snapshot on or before
++     * it (none when nothing was kept by then).
+      */
+     @Transactional(readOnly = true)
+     public List<PeriodPools> periodPools(String sheetId) {
+@@ -207,8 +229,13 @@ public class SheetHistory {
+             return List.of();
+         }
+         return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+-                .filter(p -> !p.getToDate().isAfter(today))
++                .filter(p -> !p.getToDate().isAfter(today) || (p.isFixed() && p.getCuts() != null))
+                 .map(p -> {
++                    if (p.isFixed() && p.getCuts() != null) {
++                        FixedCuts fixed = json.readValue(p.getCuts(), FixedCuts.class);
++                        return new PeriodPools(p.getName(), fixed.today(), false, fixed.pot(), fixed.people(),
++                                fixed.pools());
++                    }
+                     if (p.getToDate().equals(today)) {
+                         return new PeriodPools(p.getName(), p.getToDate(), true, null, List.of(), List.of());
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index c8404781..7a6385a4 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -91,6 +91,13 @@ public class Period {
+     @Column(name = "claim_cap")
+     private Integer claimCap;
+ 
++    /**
++     * What the period's pool cuts are worked out from, fixed when it was closed or soft-closed, as JSON
++     * (see {@link net.officefloor.hq.app.history.SheetHistory#cutsNow}); null while open.
++     */
++    @Column(name = "cuts")
++    private String cuts;
++
+     protected Period() {
+     }
+ 
+@@ -210,8 +217,19 @@ public class Period {
+         this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+-    /** Reopen the period: its due-total is live again. */
++    /** What the period's pool cuts were fixed from when it was closed, as JSON; null while it is open. */
++    public String getCuts() {
++        return cuts;
++    }
++
++    /** Fix what the period's pool cuts are worked out from, as JSON. */
++    public void fixCuts(String cuts) {
++        this.cuts = cuts;
++    }
++
++    /** Reopen the period: its due-total and pool cuts are live again. */
+     public void reopen() {
++        this.cuts = null;
+         this.closed = false;
+         this.softClosed = false;
+         this.closedTotal = null;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 37bc4d24..167a96f7 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.Dues;
++import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.role.Role;
+@@ -39,9 +40,11 @@ public class PeriodService {
+     private final SheetService sheets;
+     private final RoleService roles;
+     private final Audit audit;
++    private final SheetHistory history;
+ 
+     public PeriodService(PeriodRepository periods, ClaimRepository claims, PersonRepository people, Dues dues,
+-            SheetService sheets, RoleService roles, Audit audit) {
++            SheetService sheets, RoleService roles, Audit audit, SheetHistory history) {
++        this.history = history;
+         this.periods = periods;
+         this.claims = claims;
+         this.people = people;
+@@ -227,7 +230,8 @@ public class PeriodService {
+      * for it and its own due-total, their sum. A person's is the sum of the due figures,
+      * as computed now, of the claims due by in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
+      * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those still OPEN or PENDING and dated
+-     * within their person's hold or of a person whose retirement date is reached, unless bound by a statement, and those deferred on today. A soft-closed period closes with its figures
++     * within their person's hold or of a person whose retirement date is reached, unless bound by a statement, and those deferred on today. Each pool
++     * member's cut for it is fixed too, as it stands now (see {@link SheetHistory#cutsNow}). A soft-closed period closes with its figures
+      * fixed afresh. Refused when the period is already closed, or for a role the sheet's permission matrix does not allow.
+      */
+     @Transactional
+@@ -263,6 +267,7 @@ public class PeriodService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed or soft-closed.");
+         }
+         period.softClose(totals(sheetId, period, today), carried(sheetId, period, today));
++        period.fixCuts(history.cutsNow(sheetId, today));
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                 + " total=" + saved.getClosedTotal().toPlainString());
+@@ -293,6 +298,7 @@ public class PeriodService {
+     /** Close an open or soft-closed period, fixing its totals as of today, and audit it with the given trailing fields. */
+     private Period fix(String sheetId, String user, Period period, LocalDate today, String trailing) {
+         period.close(totals(sheetId, period, today), carried(sheetId, period, today));
++        period.fixCuts(history.cutsNow(sheetId, today));
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                 + " total=" + saved.getClosedTotal().toPlainString() + trailing);
+@@ -357,7 +363,7 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * Reopen a closed or soft-closed period: its due-total is live again, the claims due by in it counting at their
++     * Reopen a closed or soft-closed period: its due-total and pool cuts are live again, the claims due by in it counting at their
+      * current figures. Refused for a role the sheet's permission matrix
+      * does not allow (anyone but a steward by default), when the period is neither closed nor soft-closed,
+      * and while it is locked.
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index bc3766fa..183b6b0d 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -82,8 +82,9 @@ public class PoolController {
+     }
+ 
+     /**
+-     * Each period whose to-date is on or before the sheet's today, with the pot, people and pools its cuts
+-     * are worked out from as they stood at the end of it.
++     * Each period whose to-date is on or before the sheet's today, or that is closed or soft-closed, with
++     * the pot, people and pools its cuts are worked out from: as fixed at its close, else as they stood at
++     * the end of it.
+      */
+     @GetMapping("/history")
+     public List<SheetHistory.PeriodPools> history(
+diff --git a/src/main/resources/db/migration/V115__period_cuts.sql b/src/main/resources/db/migration/V115__period_cuts.sql
+new file mode 100644
+index 00000000..6ca076d9
+--- /dev/null
++++ b/src/main/resources/db/migration/V115__period_cuts.sql
+@@ -0,0 +1,3 @@
++-- What a closed or soft-closed period's pool cuts are worked out from, fixed when it was closed: the
++-- sheet's today then, its pot, people and pools, as JSON. Null while the period is open.
++ALTER TABLE period ADD COLUMN cuts CLOB;
