@@ -1,0 +1,104 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2d845332..2f4b3202 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { Component, computed, effect, inject, linkedSignal, signal, untracked, v
+ import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
+ import { downloadCsv } from '../../core/csv';
+ import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
+-import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
++import { GRADES, Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, retiredOn, termsOn } from '../../core/people';
+ import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
+ import { QuickAddView } from '../../core/quick-add';
+ import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
+@@ -43,6 +43,14 @@ function countsLive(claim: ClaimView, person: PersonView, today: string): boolea
+   return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && leavesLive(person, claim.date, today, claim.held === true));
+ }
+ 
++/**
++ * Whether a person's claim counts in what they have claimed: as in countsLive, except that a hold (the
++ * person's or the claim's) does not take it out; only its due figures leave the totals while held.
++ */
++function countsClaimed(claim: ClaimView, person: PersonView, today: string): boolean {
++  return counts(claim) && !deferred(claim, today) && !(isOpen(claim) && !claim.stated && retiredOn(person, today));
++}
++
+ /**
+  * Whether a person's claim counts in a period's live figures: it counts by the status it had at the
+  * end of the period's last day (see statusAt), one added after then not counting, and is left out,
+@@ -1287,16 +1295,18 @@ export class People {
+   }
+ 
+   /**
+-   * What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsLive),
+-   * leaving out claims that correct another.
++   * What a person has claimed: the sum of their OPEN and SETTLED claims' amounts (see countsClaimed),
++   * held ones included, leaving out claims that correct another.
+    */
+   protected claimed(personId: number): string {
+     return money(this.claimedCents(personId));
+   }
+ 
+   private claimedCents(personId: number): number {
+-    return this.countingOf(personId)
+-      .filter((c) => !c.corrects)
++    const person = this.people().find((p) => p.id === personId);
++    if (!person) return 0;
++    return this.claimsOf(personId)
++      .filter((c) => countsClaimed(c, person, this.today()) && !c.corrects)
+       .reduce((sum, c) => sum + cents(c.amount), 0);
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 04b7bb6a..9ef91f9d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -463,6 +463,15 @@ public class Person {
+         return status.counts() && !deferred && !(status.isOpen() && !stated && leavesLive(date, today, claimHeld));
+     }
+ 
++    /**
++     * Whether a claim of the person in this status, dated on this date and bound by a statement or not,
++     * counts in what is claimed on the sheet's today: as in {@link #countsLive}, except that a hold (the
++     * person's or the claim's) does not take it out; only its due figures leave the totals while held.
++     */
++    public boolean countsClaimed(ClaimStatus status, boolean stated, boolean deferred, LocalDate today) {
++        return status.counts() && !deferred && !(status.isOpen() && !stated && retiredOn(today));
++    }
++
+     /** Whether a claim may be dated on this date: not after the person's retirement. */
+     public boolean canClaimOn(LocalDate date) {
+         return retiredFrom == null || !date.isAfter(retiredFrom);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+index 051228f2..4971f205 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollups.java
+@@ -90,18 +90,22 @@ public class Rollups {
+         int overdueCount = 0;
+         for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
+             Person person = entry.getValue();
+-            List<Claim> counting = byPerson.getOrDefault(entry.getKey(), List.of()).stream()
++            List<Claim> personClaims = byPerson.getOrDefault(entry.getKey(), List.of());
++            BigDecimal claimed = zero();
++            for (Claim claim : personClaims) {
++                // What is claimed counts a held claim, and leaves out claims that correct another.
++                if (person.countsClaimed(claim.getStatus(), claim.isStated(), claim.isDeferredOn(today), today)
++                        && (claim.getCorrects() == null || claim.getCorrects().isBlank())) {
++                    claimed = claimed.add(claim.getAmount());
++                }
++            }
++            List<Claim> counting = personClaims.stream()
+                     .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today, claim.isHeld()))
+                     .toList();
+-            BigDecimal claimed = zero();
+             BigDecimal due = zero();
+             BigDecimal overdue = zero();
+             boolean figured = false;
+             for (Claim claim : counting) {
+-                // What is claimed leaves out claims that correct another.
+-                if (claim.getCorrects() == null || claim.getCorrects().isBlank()) {
+-                    claimed = claimed.add(claim.getAmount());
+-                }
+                 String grade = person.gradeOn(claim.getDate());
+                 boolean late = overdue(claim, sheet, grade);
+                 if (late) {
