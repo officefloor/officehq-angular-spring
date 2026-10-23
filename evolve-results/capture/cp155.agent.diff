@@ -1,0 +1,552 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 0797a31e..7a641d86 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -7,15 +7,16 @@ import { valueOn, type DatedValue } from './session';
+  * DRAFT when added; DRAFT → OPEN → SETTLED, and DRAFT, OPEN or PENDING → VOID (SETTLED → VOID by a
+  * steward within 7 days of its settlement). A clerk settling a claim
+  * above the clerk limit sends it PENDING; a steward approves it (SETTLED) or rejects it (OPEN again).
+- * A DRAFT may be DELETED, and restored to a DRAFT on the sheet's today it was deleted.
++ * A DRAFT may be DELETED, and restored to a DRAFT on the sheet's today it was deleted. A DRAFT opened
++ * above the review threshold goes to REVIEW, which a steward reviews (OPEN) or anyone voids.
+  */
+-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
++export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
+ 
+ /**
+  * A move of a claim's status: open, settle, approve, reject, void, re-settle a SETTLED one, delete a
+- * DRAFT, or restore a DELETED one.
++ * DRAFT, restore a DELETED one, or review a REVIEW one.
+  */
+-export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle' | 'delete' | 'restore';
++export type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle' | 'delete' | 'restore' | 'review';
+ 
+ /** Whether a claim is open: OPEN, or PENDING a steward's approval. */
+ export function isOpen(claim: ClaimView): boolean {
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 98c9be35..d1b08332 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -13,7 +13,7 @@ export interface RoleView {
+ }
+ 
+ /** The settings that carry a figure: each is saved from a from-date and shown as in force on the sheet's today. */
+-export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'proof-threshold-A' | 'proof-threshold-B' | 'proof-threshold-C' | 'note-threshold' | 'rounding';
++export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'proof-threshold-A' | 'proof-threshold-B' | 'proof-threshold-C' | 'note-threshold' | 'review-threshold' | 'rounding';
+ 
+ /** A from-date as a dated setting takes it: yyyy-mm-dd, or blank for the sheet's today. */
+ export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
+@@ -50,6 +50,8 @@ export interface SettingsView {
+   proofThreshold: string | null;
+   /** The note threshold with two decimals: a claim whose due is above it needs a note to be opened; null when there is none. */
+   noteThreshold: string | null;
++  /** The review threshold with two decimals: a claim whose due is above it goes to REVIEW when opened; null when there is none. */
++  reviewThreshold: string | null;
+   /** Each grade's grace in days: its claims are overdue, and late, only from their due-by plus them; null when none. */
+   graceA: number | null;
+   graceB: number | null;
+@@ -168,6 +170,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/proof-threshold`, { value, from }));
+   }
+ 
++  /** Set the review threshold from a date (blank: the sheet's today); a blank value means none. */
++  setReviewThreshold(sheet: string, value: string, from: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/review-threshold`, { value, from }));
++  }
++
+   /** Set the note threshold from a date (blank: the sheet's today); a blank value means none. */
+   setNoteThreshold(sheet: string, value: string, from: string): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/note-threshold`, { value, from }));
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index f78ab4c9..27792054 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -11,7 +11,7 @@ import { VoidReasons } from '../../core/void-reasons';
+ // A person's claims: listed newest first, added and edited through one form on the person's row (an
+ // open editor locks its claim for other users until it is saved or cancelled, and stays open across
+ // loads of the sheet),
+-// moved through their statuses (open, settle, approve, reject with a reason, void, re-settle) from each
++// moved through their statuses (open, review, settle, approve, reject with a reason, void, re-settle) from each
+ // claim's row, deferred there until a date, split there into two, re-dated there, and reassigned there to another person.
+ const PAST: Record<ClaimAction, string> = {
+   open: 'opened',
+@@ -22,6 +22,7 @@ const PAST: Record<ClaimAction, string> = {
+   resettle: 're-settled',
+   delete: 'deleted',
+   restore: 'restored',
++  review: 'reviewed',
+ };
+ 
+ @Component({
+@@ -395,6 +396,7 @@ export class Claims {
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+   protected readonly actions: { action: ClaimAction; label: string }[] = [
+     { action: 'open', label: 'Open' },
++    { action: 'review', label: 'Review' },
+     { action: 'settle', label: 'Settle' },
+     { action: 'approve', label: 'Approve' },
+     { action: 'reject', label: 'Reject' },
+@@ -987,6 +989,7 @@ export class Claims {
+         && claim.status === 'DRAFT' && (claim.note ?? '').trim() === '';
+       const steward = e instanceof HttpErrorResponse && e.status === 403
+         && (((action === 'approve' || action === 'reject') && claim.status === 'PENDING')
++          || (action === 'review' && claim.status === 'REVIEW')
+           || ((action === 'resettle' || action === 'void') && claim.status === 'SETTLED'));
+       const forbidden = e instanceof HttpErrorResponse && e.status === 403 && !steward
+         && (action === 'open' || action === 'settle' || action === 'void');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 55e55451..147a0002 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -22,7 +22,7 @@ import { VoidReasons } from '../../core/void-reasons';
+ import { ClassicPeriodSummary, ClassicSummary } from '../summary/classic-summary';
+ 
+ /** The statuses the summary counts claims by, in the order it lists them. */
+-const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
++const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
+ /** What the people list can be ordered by on the screen; added is the list order itself. */
+ const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
+ type SortKey = (typeof SORT_KEYS)[number];
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 3b6a461c..c0cacb79 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -97,6 +97,23 @@ import { Session } from '../../core/session';
+           [value]="fromInput()['note-threshold']"
+           (input)="fromTyped('note-threshold', value($event))"
+         />
++        <label for="setting-review-threshold">Review threshold (empty: none)</label>
++        <input
++          id="setting-review-threshold"
++          data-testid="setting-review-threshold"
++          inputmode="decimal"
++          [value]="reviewThresholdInput()"
++          (input)="reviewThresholdInput.set(value($event)); reviewThresholdEdited = true; settingsError.set(null)"
++          (keydown.delete)="cleared($event, 'reviewThreshold')"
++          (keydown.backspace)="cleared($event, 'reviewThreshold')"
++        />
++        <label for="setting-review-threshold-from">Review threshold from (yyyy-mm-dd; empty: the sheet's today)</label>
++        <input
++          id="setting-review-threshold-from"
++          data-testid="setting-review-threshold-from"
++          [value]="fromInput()['review-threshold']"
++          (input)="fromTyped('review-threshold', value($event))"
++        />
+         <label for="setting-rounding">Rounding mode (half-up or half-even; empty: none, the policy date decides)</label>
+         <input
+           id="setting-rounding"
+@@ -287,6 +304,7 @@ import { Session } from '../../core/session';
+           <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThreshold()[g] ?? '' }}</span></p>
+       }
+       <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
++      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span></p>
+       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
+       <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
+       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
+@@ -368,6 +386,8 @@ export class Settings {
+   protected readonly gradeProofThresholdInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
+   protected readonly noteThreshold = signal<string | null>(null);
+   protected readonly noteThresholdInput = signal('');
++  protected readonly reviewThreshold = signal<string | null>(null);
++  protected readonly reviewThresholdInput = signal('');
+   protected readonly rounding = signal<string | null>(null);
+   protected readonly roundingInput = signal('');
+   protected readonly floorInput = signal('');
+@@ -399,6 +419,7 @@ export class Settings {
+   protected capEdited = false;
+   protected proofThresholdEdited = false;
+   protected noteThresholdEdited = false;
++  protected reviewThresholdEdited = false;
+   protected roundingEdited = false;
+   protected floorEdited = false;
+   protected termsEdited = false;
+@@ -434,7 +455,7 @@ export class Settings {
+   private saving: Promise<void> = Promise.resolve();
+ 
+   private static noFroms(): Record<DatedKey, string> {
+-    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '', rounding: '' };
++    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '', 'review-threshold': '', rounding: '' };
+   }
+ 
+   private static noPermissions(): Record<PermissionAction, string> {
+@@ -450,6 +471,7 @@ export class Settings {
+         this.clerkLimit.set(null);
+         this.proofThreshold.set(null);
+         this.noteThreshold.set(null);
++        this.reviewThreshold.set(null);
+         this.rounding.set(null);
+         this.gradeTerms.set({ A: null, B: null, C: null });
+         this.gradeGrace.set({ A: null, B: null, C: null });
+@@ -486,6 +508,7 @@ export class Settings {
+     else if (key === 'cap') this.capEdited = true;
+     else if (key === 'proof-threshold') this.proofThresholdEdited = true;
+     else if (key === 'note-threshold') this.noteThresholdEdited = true;
++    else if (key === 'review-threshold') this.reviewThresholdEdited = true;
+     else if (key === 'rounding') this.roundingEdited = true;
+     else if (key === 'floor') this.floorEdited = true;
+     else if (key === 'terms') this.termsEdited = true;
+@@ -512,7 +535,7 @@ export class Settings {
+    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
+    * change, so a save sets it empty.
+    */
+-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'alertThreshold' | 'parent'): void {
++  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'alertThreshold' | 'parent'): void {
+     if (this.value(event) !== '') return;
+     if (setting === 'cap') {
+       this.capInput.set('');
+@@ -523,6 +546,9 @@ export class Settings {
+     } else if (setting === 'noteThreshold') {
+       this.noteThresholdInput.set('');
+       this.noteThresholdEdited = true;
++    } else if (setting === 'reviewThreshold') {
++      this.reviewThresholdInput.set('');
++      this.reviewThresholdEdited = true;
+     } else if (setting === 'rounding') {
+       this.roundingInput.set('');
+       this.roundingEdited = true;
+@@ -590,6 +616,7 @@ export class Settings {
+     const rounding = this.roundingInput().trim();
+     const proofThreshold = this.proofThresholdInput().trim();
+     const noteThreshold = this.noteThresholdInput().trim();
++    const reviewThreshold = this.reviewThresholdInput().trim();
+     // With nothing typed since the last save, saving sets the clerk limit again as it stands.
+     const terms = this.termsInput().trim();
+     const latePct = this.latePctInput().trim();
+@@ -603,11 +630,12 @@ export class Settings {
+     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
+     const saveLimit =
+       this.limitEdited ||
+-      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
++      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+         !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+     const saveNoteThreshold = this.noteThresholdEdited;
++    const saveReviewThreshold = this.reviewThresholdEdited;
+     const saveRounding = this.roundingEdited;
+     const saveFloor = this.floorEdited;
+     const saveTerms = this.termsEdited;
+@@ -636,6 +664,7 @@ export class Settings {
+       ...(saveProofThreshold ? (['proof-threshold'] as const) : []),
+       ...saveGradeProofThresholds.map((t) => this.proofKey(t.grade)),
+       ...(saveNoteThreshold ? (['note-threshold'] as const) : []),
++      ...(saveReviewThreshold ? (['review-threshold'] as const) : []),
+       ...(saveRounding ? (['rounding'] as const) : []),
+       ...(saveFloor ? (['floor'] as const) : []),
+       ...(saveTerms ? (['terms'] as const) : []),
+@@ -667,6 +696,10 @@ export class Settings {
+       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it empty for none.');
+       return;
+     }
++    if (saveReviewThreshold && !NOTE_THRESHOLD.test(reviewThreshold)) {
++      this.settingsError.set('Type a review threshold of 0.00 or more, with up to two decimals, or leave it empty for none.');
++      return;
++    }
+     if (saveRounding && !ROUNDING.test(rounding)) {
+       this.settingsError.set('Type a rounding mode of half-up or half-even, or leave it empty for none.');
+       return;
+@@ -733,6 +766,7 @@ export class Settings {
+     if (saveProofThreshold) this.proofThresholdEdited = false;
+     for (const t of saveGradeProofThresholds) this.gradeProofThresholdEdited.delete(t.grade);
+     if (saveNoteThreshold) this.noteThresholdEdited = false;
++    if (saveReviewThreshold) this.reviewThresholdEdited = false;
+     if (saveRounding) this.roundingEdited = false;
+     if (saveFloor) this.floorEdited = false;
+     if (saveTerms) this.termsEdited = false;
+@@ -776,6 +810,11 @@ export class Settings {
+           this.inForce(view);
+           if (!this.noteThresholdEdited) this.noteThresholdInput.set(view.noteThreshold ?? '');
+         }
++        if (saveReviewThreshold) {
++          const view = await this.api.setReviewThreshold(sheet, reviewThreshold, from('review-threshold'));
++          this.inForce(view);
++          if (!this.reviewThresholdEdited) this.reviewThresholdInput.set(view.reviewThreshold ?? '');
++        }
+         if (saveRounding) {
+           const view = await this.api.setRounding(sheet, rounding, from('rounding'));
+           this.inForce(view);
+@@ -889,6 +928,7 @@ export class Settings {
+     this.proofThreshold.set(view.proofThreshold);
+     this.gradeProofThreshold.set({ A: view.gradeProofThresholds['A'], B: view.gradeProofThresholds['B'], C: view.gradeProofThresholds['C'] });
+     this.noteThreshold.set(view.noteThreshold);
++    this.reviewThreshold.set(view.reviewThreshold);
+     this.rounding.set(view.rounding);
+     this.session.roundingHistory.set(view.roundingHistory);
+     this.session.floor.set(view.floor);
+@@ -921,6 +961,9 @@ export class Settings {
+       // And the note threshold's.
+       this.noteThresholdInput.set(settings.noteThreshold ?? '');
+       this.noteThresholdEdited = false;
++      // And the review threshold's.
++      this.reviewThresholdInput.set(settings.reviewThreshold ?? '');
++      this.reviewThresholdEdited = false;
+       // And the rounding mode's.
+       this.roundingInput.set(settings.rounding ?? '');
+       this.roundingEdited = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 96dc4ba2..2748720d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -254,6 +254,15 @@ public class ClaimController {
+         return ClaimView.of(service.move(sheetId, SignedIn.name(user), claimId, ClaimStatus.OPEN));
+     }
+ 
++    /** Review a REVIEW claim, making it OPEN; only a steward reviews. */
++    @PostMapping("/claims/{claimId}/review")
++    public ClaimView review(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        return ClaimView.of(service.review(sheetId, SignedIn.name(user), claimId));
++    }
++
+     /** Open the selected claims together, in list order; those that cannot be opened are refused. */
+     @PostMapping("/claims/open")
+     public BulkOpenView openAll(
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 1280019d..58db6586 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -286,7 +286,9 @@ public class ClaimService {
+      * a steward settles any. A move the sheet's permission matrix does not allow the user's role is
+      * refused. A claim due by inside a closed period cannot be moved, nor can a claim
+      * deferred on the sheet's today be settled, nor a claim opened whose person already has as many OPEN
+-     * or PENDING claims due by in its period as the period's claim cap. A SETTLED claim is voided only by a steward, within
++     * or PENDING claims due by in its period as the period's claim cap. A claim opened whose due is above the
++     * sheet's review threshold in force on its date (a due of n/a is within any threshold) goes to REVIEW
++     * instead, with no number yet, audited as CLAIM_REVIEW (see {@link #review}). A SETTLED claim is voided only by a steward, within
+      * {@link ClaimStatus#VOID_SETTLED_DAYS} days of its settlement; its frozen figure leaves every
+      * total and the audit records it as reversed.
+      */
+@@ -312,7 +314,7 @@ public class ClaimService {
+             case OPEN -> "open";
+             case SETTLED -> "settle";
+             case VOID -> "void";
+-            case PENDING, DRAFT, DELETED -> throw new IllegalArgumentException("No move to " + next + ".");
++            case PENDING, DRAFT, DELETED, REVIEW -> throw new IllegalArgumentException("No move to " + next + ".");
+         };
+         if (!roles.permits(sheetId, user, action)) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim.");
+@@ -340,7 +342,11 @@ public class ClaimService {
+                 : null;
+         if (next == ClaimStatus.OPEN) {
+             periods.refuseIfCapped(sheetId, claim);
+-            refuseUnnoted(sheetId, claim, dues.due(claim, person.gradeOn(claim.getDate())));
++            BigDecimal due = dues.due(claim, person.gradeOn(claim.getDate()));
++            refuseUnnoted(sheetId, claim, due);
++            if (overReviewThreshold(sheetId, claim, due)) {
++                next = ClaimStatus.REVIEW;
++            }
+         }
+         if (next == ClaimStatus.SETTLED) {
+             refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), settledDue);
+@@ -352,6 +358,8 @@ public class ClaimService {
+         claim.become(next);
+         if (next == ClaimStatus.OPEN) {
+             claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
++        }
++        if (next == ClaimStatus.OPEN || next == ClaimStatus.REVIEW) {
+             claim.openedBy(user);
+         }
+         if (next == ClaimStatus.SETTLED) {
+@@ -365,6 +373,7 @@ public class ClaimService {
+             case OPEN -> "CLAIM_OPENED";
+             case SETTLED -> "CLAIM_SETTLED";
+             case PENDING -> "CLAIM_PENDING";
++            case REVIEW -> "CLAIM_REVIEW";
+             case VOID -> "CLAIM_VOIDED";
+             case DRAFT, DELETED -> throw new IllegalStateException();
+         };
+@@ -539,6 +548,34 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Review a REVIEW claim: it becomes OPEN, numbered now, keeping who opened it; audited as
++     * CLAIM_REVIEWED, then CLAIM_OPENED with its number. Only a steward reviews; refused when the claim
++     * is not REVIEW, or is due by inside a closed period.
++     */
++    @Transactional
++    public Claim review(String sheetId, String user, long claimId) {
++        sheets.lock(sheetId);
++        Rollups.Rollup before = rollups.take(sheetId);
++        Claim claim = claim(sheetId, claimId);
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reviews a claim.");
++        }
++        if (claim.getStatus() != ClaimStatus.REVIEW) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim is not awaiting review.");
++        }
++        periods.refuseIfClosed(sheetId, claim.getDueBy());
++        Person person = person(sheetId, claim.getPersonId());
++        claim.become(ClaimStatus.OPEN);
++        claim.number(periods.nextClaimNumber(sheetId, claim.getDueBy()));
++        Claim saved = logged(claims.saveAndFlush(claim), user, person);
++        audited("CLAIM_REVIEWED", sheetId, user, person, saved, null, "");
++        audited("CLAIM_OPENED", sheetId, user, person, saved);
++        rollups.audit(sheetId, user, before);
++        return saved;
++    }
++
+     /**
+      * Re-settle a SETTLED claim: its due is fixed again at the figure it would have today as an OPEN
+      * claim bound by no statement (today's rates, grades, floor and late charge). Only a steward
+@@ -776,6 +813,12 @@ public class ClaimService {
+         }
+     }
+ 
++    /** Whether a claim's due is above the sheet's review threshold in force on the claim's date. */
++    private boolean overReviewThreshold(String sheetId, Claim claim, BigDecimal due) {
++        BigDecimal threshold = sheets.load(sheetId).reviewThresholdOn(claim.getDate());
++        return threshold != null && due != null && due.compareTo(threshold) > 0;
++    }
++
+     /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit. */
+     private boolean overClerkLimit(String sheetId, String user, BigDecimal due) {
+         BigDecimal limit = sheets.clerkLimit(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index 4b788f54..d463a555 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -5,10 +5,12 @@ package net.officefloor.hq.app.claim;
+  * OPEN or PENDING one voided. An OPEN claim a clerk settles above the clerk limit goes PENDING, which
+  * a steward approves (SETTLED) or rejects (back to OPEN). A steward may void a SETTLED claim within
+  * {@link #VOID_SETTLED_DAYS} days of its settlement; VOID is final. A DRAFT claim may be DELETED, and
+- * restored to a DRAFT on the sheet's today it was deleted. Only OPEN, PENDING and SETTLED claims count.
++ * restored to a DRAFT on the sheet's today it was deleted. A DRAFT opened while its due is above the
++ * sheet's review threshold goes to REVIEW instead, which a steward reviews (OPEN) and anyone may void.
++ * Only OPEN, PENDING and SETTLED claims count.
+  */
+ public enum ClaimStatus {
+-    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
++    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED, REVIEW;
+ 
+     /** The days after its settlement (by the sheet's today) a SETTLED claim may still be voided. */
+     public static final int VOID_SETTLED_DAYS = 7;
+@@ -16,9 +18,9 @@ public enum ClaimStatus {
+     /** Whether a claim may move from this status to {@code next}. */
+     public boolean canBecome(ClaimStatus next) {
+         return switch (next) {
+-            case OPEN -> this == DRAFT;
++            case OPEN, REVIEW -> this == DRAFT;
+             case SETTLED, PENDING -> this == OPEN;
+-            case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == SETTLED;
++            case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == SETTLED || this == REVIEW;
+             case DELETED -> this == DRAFT;
+             case DRAFT -> this == DELETED;
+         };
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 4c8fb3c8..4b1e7503 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -34,6 +34,7 @@ public class Sheet {
+     public static final String LATE_PCT = "late-pct";
+     public static final String PROOF_THRESHOLD = "proof-threshold";
+     public static final String NOTE_THRESHOLD = "note-threshold";
++    public static final String REVIEW_THRESHOLD = "review-threshold";
+     public static final String GRACE = "grace";
+     /** The key of the rounding mode: half-up or half-even, dated; none before every from-date. */
+     public static final String ROUNDING = "rounding";
+@@ -247,6 +248,19 @@ public class Sheet {
+         return decimal(valueOn(NOTE_THRESHOLD, date, null));
+     }
+ 
++    /** The review threshold in force on the sheet's today, with two decimals; null when there is none. */
++    public BigDecimal getReviewThreshold() {
++        return reviewThresholdOn(today);
++    }
++
++    /**
++     * The review threshold in force on a date, with two decimals: a claim dated then whose due is above
++     * it goes to REVIEW when opened; null when there is none (as before every from-date).
++     */
++    public BigDecimal reviewThresholdOn(LocalDate date) {
++        return decimal(valueOn(REVIEW_THRESHOLD, date, null));
++    }
++
+     /** The floor in force on the sheet's today, with two decimals. */
+     public BigDecimal getFloor() {
+         return floorOn(today);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 7904c1ca..85dfd49f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -78,14 +78,15 @@ public class SheetController {
+      * decimals, null for none (the sheet's applies), and the pot with two decimals, null for none, and the
+      * parent sheet's id, null for none, and the month, 1 to 12, the fiscal year starts in, and the alert
+      * threshold with two decimals, null for off, and the rounding mode (half-up or half-even), null for none
+-     * (the policy date decides), with its values by from-date. */
++     * (the policy date decides), with its values by from-date, and the review threshold with two decimals,
++     * null for none. */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
+             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+             Map<String, String> permissions, String noteThreshold, LocalDate entryDate, Integer graceA, Integer graceB,
+             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
+             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
+-            List<DatedValue> roundingHistory) {
++            List<DatedValue> roundingHistory, String reviewThreshold) {
+ 
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -102,7 +103,8 @@ public class SheetController {
+                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParentId(),
+                     sheet.getFiscalStartMonth(),
+                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
+-                    sheet.getRounding(), DatedValue.of(sheet.roundingHistory()));
++                    sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
++                    sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString());
+         }
+ 
+         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
+@@ -386,6 +388,17 @@ public class SheetController {
+                 value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
+     }
+ 
++    /** Record the sheet's review threshold from a date (blank: the sheet's today); a blank value means none. */
++    @PutMapping("/{id}/settings/review-threshold")
++    public SettingsView setReviewThreshold(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid SettingChange change) {
++        String value = change.value() == null ? "" : change.value().trim();
++        return SettingsView.of(service.setReviewThreshold(id, SignedIn.name(user),
++                value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
++    }
++
+     /** Record the sheet's floor from a date (blank: the sheet's today). */
+     @PutMapping("/{id}/settings/floor")
+     public SettingsView setFloor(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index c6c84f75..21de4f47 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -156,6 +156,12 @@ public class SheetService {
+         return setDated(id, user, Sheet.NOTE_THRESHOLD, money(threshold), from, false);
+     }
+ 
++    /** Record the sheet's review threshold (null: none) from a date, auditing the change. */
++    @Transactional
++    public Sheet setReviewThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
++        return setDated(id, user, Sheet.REVIEW_THRESHOLD, money(threshold), from, false);
++    }
++
+     /** Record the sheet's floor from a date, auditing the change and the figures it moves. */
+     @Transactional
+     public Sheet setFloor(String id, String user, BigDecimal floor, LocalDate from) {
+diff --git a/src/main/resources/db/migration/V85__claim_review.sql b/src/main/resources/db/migration/V85__claim_review.sql
+new file mode 100644
+index 00000000..f9ee0c2b
+--- /dev/null
++++ b/src/main/resources/db/migration/V85__claim_review.sql
+@@ -0,0 +1,9 @@
++-- A claim may now be REVIEW: opened while its due is above the sheet's review threshold in force on
++-- its date, awaiting a steward's review to become OPEN. It counts nowhere and carries no number yet.
++-- The review threshold is a dated setting (sheet_setting, key review-threshold); none before every
++-- from-date.
++ALTER TABLE claim ADD COLUMN next_status VARCHAR(16) DEFAULT 'DRAFT' NOT NULL
++    CHECK (next_status IN ('DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'DELETED', 'REVIEW'));
++UPDATE claim SET next_status = status;
++ALTER TABLE claim DROP COLUMN status;
++ALTER TABLE claim ALTER COLUMN next_status RENAME TO status;
