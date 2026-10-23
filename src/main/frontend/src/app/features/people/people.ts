@@ -1554,11 +1554,11 @@ export class People {
   }
 
   /**
-   * A person's score: their settled-total over 100, less 5 for each overdue claim of theirs that counts,
-   * rounded half to even to a whole number.
+   * A person's score: the due of their counting SETTLED claims that correct nothing over 100, less 5
+   * for each overdue claim of theirs that counts, rounded half to even to a whole number.
    */
   protected scoreOf(person: PersonView): string {
-    return String(halfEven(this.settledCents(person) - 50000 * this.overdueOf(person.id).length, 10000));
+    return String(halfEven(this.scoreSettledCents(person) - 50000 * this.overdueOf(person.id).length, 10000));
   }
 
   /**
@@ -1587,6 +1587,13 @@ export class People {
   private settledCents(person: PersonView): number {
     return this.countingOf(person.id)
       .filter((c) => c.status === 'SETTLED')
+      .reduce((sum, c) => sum + (this.dueCents(c, person) ?? 0), 0);
+  }
+
+  /** The due of a person's counting SETTLED claims that correct nothing, which makes their score. */
+  private scoreSettledCents(person: PersonView): number {
+    return this.countingOf(person.id)
+      .filter((c) => c.status === 'SETTLED' && !c.corrects)
       .reduce((sum, c) => sum + (this.dueCents(c, person) ?? 0), 0);
   }
 

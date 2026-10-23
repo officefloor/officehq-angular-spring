@@ -32,7 +32,7 @@ public class Rollups {
     /**
      * A person's figures: what they have claimed, their due-total (null when n/a) and their
      * overdue-total (the due of their counting overdue claims), with their settled-total (the due of
-     * their counting SETTLED claims) and how many of their counting claims are overdue, which make their score.
+     * their counting SETTLED claims that correct nothing) and how many of their counting claims are overdue, which make their score.
      */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
             BigDecimal settledTotal, int overdueCount) {
@@ -134,7 +134,9 @@ public class Rollups {
                     if (late) {
                         overdue = overdue.add(figure);
                     }
-                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                    // The score's settled figures leave out claims that correct another.
+                    if (claim.getStatus() == ClaimStatus.SETTLED
+                            && (claim.getCorrects() == null || claim.getCorrects().isBlank())) {
                         settled = settled.add(figure);
                     }
                 }
