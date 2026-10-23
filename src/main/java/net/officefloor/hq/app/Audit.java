@@ -128,6 +128,36 @@ public class Audit {
         return shown;
     }
 
+    /**
+     * A claim's timeline: the sheet's lines exactly as the file holds them, newest first. With a number
+     * (not null), the lines carrying number=&lt;it&gt;; without, the lines carrying no number that name
+     * the person (compared as names are compared), the amount and the date together.
+     */
+    public List<String> linesOfClaim(String sheetId, String number, String person, String amount, String date) {
+        if (number != null) {
+            return linesAbout(sheetId, null).stream().filter((line) -> hasField(line, "number", number)).toList();
+        }
+        Set<String> keys = Set.of(Person.keyOf(person));
+        return linesAbout(sheetId, keys).stream()
+                .filter((line) -> !line.contains(" number=") && hasField(line, "amount", amount)
+                        && hasField(line, "date", date))
+                .toList();
+    }
+
+    /** Whether the line carries the field with exactly the value, as a whole space-separated token. */
+    private static boolean hasField(String line, String field, String value) {
+        String token = " " + field + "=" + value;
+        int at = line.indexOf(token);
+        while (at >= 0) {
+            int end = at + token.length();
+            if (end == line.length() || line.charAt(end) == ' ') {
+                return true;
+            }
+            at = line.indexOf(token, at + 1);
+        }
+        return false;
+    }
+
     private static boolean isAbout(String line, Set<String> keys) {
         Matcher field = PERSON_FIELD.matcher(line);
         while (field.find()) {

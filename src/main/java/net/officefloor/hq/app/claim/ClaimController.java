@@ -198,6 +198,14 @@ public class ClaimController {
                 .orElseGet(() -> service.list(sheetId).stream().map(ClaimView::of).toList());
     }
 
+    /** A claim's timeline: the audit lines about it, newest first, as the file holds them. */
+    @GetMapping("/claims/{claimId}/timeline")
+    public List<String> timeline(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long claimId) {
+        return service.timeline(sheetId, claimId);
+    }
+
     /** Add a claim for a person. */
     @PostMapping("/people/{personId}/claims")
     public ClaimView add(

@@ -862,6 +862,18 @@ public class ClaimService {
         }
     }
 
+    /**
+     * The claim's timeline: the audit lines about it, newest first, as the file holds them — those
+     * carrying its number, or for a claim with no number those naming its person, amount and date.
+     */
+    @Transactional(readOnly = true)
+    public List<String> timeline(String sheetId, long claimId) {
+        Claim claim = claim(sheetId, claimId);
+        Person person = person(sheetId, claim.getPersonId());
+        return audit.linesOfClaim(sheetId, claim.getNumber(), person.getName(),
+                claim.getAmount().toPlainString(), claim.getDate().toString());
+    }
+
     private Claim claim(String sheetId, long claimId) {
         return claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));

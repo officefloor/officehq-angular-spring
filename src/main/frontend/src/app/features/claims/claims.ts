@@ -134,6 +134,19 @@ const PAST: Record<ClaimAction, string> = {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
             }
           </ol>
+          <button
+            type="button"
+            data-testid="claim-timeline"
+            [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date"
+            (click)="showTimeline(c)"
+          >
+            Timeline
+          </button>
+          <ol [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of timelines()[c.id] ?? []; track $index) {
+              <li data-testid="claim-timeline-line">{{ line }}</li>
+            }
+          </ol>
           <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
             @for (comment of c.comments ?? []; track $index) {
               <li data-testid="claim-comments-line">{{ comment.by }} on {{ comment.on }}: {{ comment.text }}</li>
@@ -425,10 +438,23 @@ export class Claims {
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The reason typed on each claim's row for rejecting it, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The timeline shown on each claim's row, newest first, by claim id; cleared by every sheet load. */
+  protected readonly timelines = signal<Record<number, string[]>>({});
+  /** Counts the timelines asked for, so only the latest one's answer is shown. */
+  private timelineShows = 0;
   /** The reason chosen from the sheet's list on each claim's row for voiding it, by claim id. */
   protected readonly voidReasonsChosen = signal<Record<number, string>>({});
 
   constructor() {
+    // A sheet load clears the timelines shown for the sheet before.
+    effect(() => {
+      this.session.sheet();
+      this.session.loads();
+      untracked(() => {
+        this.timelineShows++;
+        this.timelines.set({});
+      });
+    });
     // Put back the editor left open on this person's form (or, failing that, the one whose lock this
     // user holds) once their claims are shown.
     effect(() => {
@@ -917,6 +943,25 @@ export class Claims {
           ? 'The claim could not be reminded; it may already have been reminded today.'
           : `A ${claim.status} claim cannot be reminded; only an OPEN or PENDING one can.`,
       });
+    }
+  }
+
+  /** Show the claim's timeline on its row, read afresh from the audit file; an error on its row when it cannot be read. */
+  protected async showTimeline(claim: ClaimView): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const show = ++this.timelineShows;
+    this.timelines.update((shown) => {
+      const rest = { ...shown };
+      delete rest[claim.id];
+      return rest;
+    });
+    try {
+      const lines = await this.api.timeline(sheet, claim.id);
+      if (show === this.timelineShows) this.timelines.update((shown) => ({ ...shown, [claim.id]: lines }));
+    } catch {
+      if (show === this.timelineShows) this.claimError.set({ id: claim.id, message: 'The timeline of the claim could not be read.' });
     }
   }
 

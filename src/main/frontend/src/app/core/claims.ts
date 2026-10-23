@@ -367,6 +367,14 @@ export class ClaimsApi {
    * Defer an OPEN claim until a date; refused (409) when the claim is not OPEN, the date is not after
    * the sheet's today, or the claim is dated inside a closed period.
    */
+  /**
+   * The claim's timeline: the audit lines about it, newest first, as the file holds them — those
+   * carrying its number, or for a claim with no number those naming its person, amount and date.
+   */
+  timeline(sheet: string, id: number): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/${id}/timeline`));
+  }
+
   /** Remind an OPEN or PENDING claim; refused when it was already reminded on the sheet's today. */
   remind(sheet: string, id: number): Promise<ClaimView> {
     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/remind`, {}));
