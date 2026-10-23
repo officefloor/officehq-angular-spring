@@ -1,8 +1,8 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -18,10 +18,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Moving the selected claims together: opening, settling or reassigning them. Each is moved on its own, as its
+ * Moving the selected claims together: opening, settling, reassigning or re-dating them. Each is moved on its own, as its
  * own button would, in list order: the people by their position, each person's claims
- * newest first (the latest dated first, and of those dated alike the last added), so numbers follow
- * that order. A claim that cannot be moved (or is not on the sheet)
+ * newest first as they are listed, so numbers follow that order. A claim that cannot be moved (or is not on the sheet)
  * is refused and left as it is, writing nothing; the others are still moved (except in a bulk settle,
  * which is all or nothing). On an archived sheet, or
  * for a viewer, every claim is refused.
@@ -39,10 +38,6 @@ public class BulkMoveService {
             this(moved, refused, null);
         }
     }
-
-    /** A person's claims newest first: the latest dated first, and of those dated alike the last added. */
-    private static final Comparator<Claim> NEWEST_FIRST = Comparator.comparing(Claim::getDate)
-            .thenComparing(Claim::getId).reversed();
 
     private final ClaimService claims;
     private final PersonRepository people;
@@ -96,6 +91,14 @@ public class BulkMoveService {
         return each(sheetId, user, claimIds, id -> claims.reassign(sheetId, user, id, personId, true));
     }
 
+    /**
+     * Re-date the selected claims to a date, each as its row's re-date would, in list order (the order
+     * taken before any is re-dated).
+     */
+    public Result redate(String sheetId, String user, Collection<Long> claimIds, LocalDate date) {
+        return each(sheetId, user, claimIds, id -> claims.redate(sheetId, user, id, date));
+    }
+
     private Result move(String sheetId, String user, Collection<Long> claimIds, ClaimStatus next) {
         return each(sheetId, user, claimIds, id -> claims.move(sheetId, user, id, next));
     }
@@ -105,14 +108,13 @@ public class BulkMoveService {
         return each(sheetId, user, selected, listOrder(sheetId, selected), action);
     }
 
-    /** The selected claims in list order. */
+    /** The selected claims in list order: each person's as the sheet lists them, newest first. */
     private List<Long> listOrder(String sheetId, Set<Long> selected) {
         List<Long> ordered = new ArrayList<>();
         List<Claim> sheetClaims = claims.list(sheetId);
         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             sheetClaims.stream()
                     .filter(claim -> claim.getPersonId().equals(person.getId()) && selected.contains(claim.getId()))
-                    .sorted(NEWEST_FIRST)
                     .forEach(claim -> ordered.add(claim.getId()));
         }
         return ordered;

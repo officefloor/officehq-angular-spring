@@ -244,6 +244,11 @@ export interface BulkReassignView {
   refused: number;
 }
 
+export interface BulkRedateView {
+  redated: ClaimView[];
+  refused: number;
+}
+
 export interface ClaimForm {
   amount: string;
   /** Empty means the sheet's today (or, on an edit, the claim's own date). */
@@ -421,6 +426,14 @@ export class ClaimsApi {
     return firstValueFrom(
       this.http.post<BulkReassignView>(`${this.url(sheet)}/claims/reassign`, { claimIds, personId }),
     );
+  }
+
+  /**
+   * Re-date the selected claims to a date together, in list order, each as its row's re-date would;
+   * those that cannot be re-dated are refused and left as they are.
+   */
+  redateAll(sheet: string, claimIds: number[], date: string): Promise<BulkRedateView> {
+    return firstValueFrom(this.http.post<BulkRedateView>(`${this.url(sheet)}/claims/redate`, { claimIds, date }));
   }
 
   private url(sheet: string): string {

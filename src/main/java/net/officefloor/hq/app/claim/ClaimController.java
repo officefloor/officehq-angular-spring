@@ -165,6 +165,14 @@ public class ClaimController {
     public record BulkReassignView(List<ClaimView> reassigned, int refused) {
     }
 
+    /** The claims selected to be re-dated together, and the date they are moved to. */
+    public record BulkRedateForm(@NotNull @Size(max = 1000) List<@NotNull Long> claimIds, @NotNull LocalDate date) {
+    }
+
+    /** What a bulk re-date did: the claims re-dated, as they are now, and how many were refused. */
+    public record BulkRedateView(List<ClaimView> redated, int refused) {
+    }
+
     /** The paste box's text: lines of name,amount,date,note. */
     public record PasteForm(@NotNull @Size(max = 200_000) String text) {
     }
@@ -283,6 +291,16 @@ public class ClaimController {
             @RequestBody @Valid BulkReassignForm form) {
         BulkMoveService.Result result = bulk.reassign(sheetId, SignedIn.name(user), form.claimIds(), form.personId());
         return new BulkReassignView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
+    }
+
+    /** Re-date the selected claims together, in list order; those that cannot be re-dated are refused. */
+    @PostMapping("/claims/redate")
+    public BulkRedateView redateAll(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkRedateForm form) {
+        BulkMoveService.Result result = bulk.redate(sheetId, SignedIn.name(user), form.claimIds(), form.date());
+        return new BulkRedateView(result.moved().stream().map(ClaimView::of).toList(), result.refused());
     }
 
     /** Approve a PENDING claim, settling it; only a steward, and not the user who opened or last edited it. */
