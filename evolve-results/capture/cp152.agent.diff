@@ -1,0 +1,339 @@
+diff --git a/.e2e.out b/.e2e.out
+index dfa5189d..1322ab68 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,52 +2,109 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › rounding mode › rounding mode (16.0s)
+-  ✓  2 [chromium] › acceptance.spec.ts:110:7 › rounding mode › rounding mode scenario 1 (45.3s)
+-  ✘  3 [chromium] › acceptance.spec.ts:589:7 › rounding mode › rounding mode scenario 2 (21.0s)
+-  ✓  4 [chromium] › acceptance.spec.ts:944:7 › rounding mode › rounding mode scenario 3 (15.5s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › imported claims open › imported claims open (6.5s)
++  ✘  2 [chromium] › acceptance.spec.ts:120:7 › imported claims open › imported claims open scenario 1 (16.0s)
++  ✘  3 [chromium] › acceptance.spec.ts:642:7 › imported claims open › imported claims open scenario 2 (18.9s)
++  ✘  4 [chromium] › acceptance.spec.ts:1151:7 › imported claims open › imported claims open scenario 3 (17.8s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:589:7 › rounding mode › rounding mode scenario 2 ──────────────
++  1) [chromium] › acceptance.spec.ts:120:7 › imported claims open › imported claims open scenario 1 
++
++    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
++
++    Received: [31m"9"[39m
++
++      216 |     expect(await ui.statementAsOf(pg_vic, p_cam, "2026-02-10")).toBe(false);
++      217 |     expect(await ui.claimAction(pg_vic, c_ada_0, "settle")).toBe(false);
++    > 218 |     expect(await ui.addClaim(pg_vic, p_cam, {"amount": "12.50", "date": "2026-03-15"})).toBeNull();
++          |                                                                                         ^
++      219 |     await ui.setAsOf(pg_vic, "2026-03-20");
++      220 |     await ui.refresh(pg_vic);
++      221 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:218:89
++
++  2) [chromium] › acceptance.spec.ts:642:7 › imported claims open › imported claims open scenario 2 
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvk9a2uskj9i[27m-p"[39m
++    Locator: getByTestId('plan-row-1').getByTestId('plan-generated')
++    Expected string: [32m"0"[39m
++    Received: <element(s) not found>
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk9a2uskj9i-p</strong>[22m
+-    [2m  -   unexpected value "smvk9a2uskj9i-p"[22m
+-
+-
+-      707 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      708 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+-    > 709 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      710 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+-      711 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      712 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:709:54
+-
+-  1 failed
+-    [chromium] › acceptance.spec.ts:589:7 › rounding mode › rounding mode scenario 2 ───────────────
+-  3 passed (1.7m)
++    [2m  - waiting for getByTestId('plan-row-1').getByTestId('plan-generated')[22m
++
++
++      1093 |     await expect(pg_vic.getByTestId("month-2026-02-due-total")).toHaveText("1.00");
++      1094 |     await expect(pg_vic.getByTestId("month-2026-03-due-total")).toHaveText("2.50");
++    > 1095 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-generated")).toHaveText("0");
++           |                                                                                            ^
++      1096 |     await expect(pg_vic.getByTestId("plan-row-" + pl_cam_1).getByTestId("plan-next-dates")).toHaveText("2026-04-01");
++      1097 |     await ui.expectAudit(sheet, [
++      1098 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1095:92
++
++  3) [chromium] › acceptance.spec.ts:1151:7 › imported claims open › imported claims open scenario 3 
++
++    Error: audit lines for smvk9fw6s5gdz:
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=clerk-limit value=3.00
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=late-pct value=5.00
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=terms-B value=3
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=cap value=2.00
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=perm-open value=steward
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=grace-days value=0
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=entry-date value=2026-03-01
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=grace-B value=5
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=proof-threshold-A value=0.50
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=pot value=33.33
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=rounding value=half-even from=2026-03-01
++    RATE_SET sheet=smvk9fw6s5gdz by=uma grade=A rate=5.00
++    RATE_SET sheet=smvk9fw6s5gdz by=uma grade=B rate=12.50
++    PERIOD_ADDED sheet=smvk9fw6s5gdz by=uma period=P1 from=2026-03-01 to=2026-03-15
++    PERIOD_ADDED sheet=smvk9fw6s5gdz by=uma period=P2 from=2026-03-16 to=2026-03-31
++    PERSON_ADDED sheet=smvk9fw6s5gdz by=uma name=Ada grade=A terms=20 contact=ben@x
++    ROLLUP sheet=smvk9fw6s5gdz by=uma person=Ada claimed=0.00 due-total=0.00 overdue-total=0.00
++    PERSON_ADDED sheet=smvk9fw6s5gdz by=uma name=Ben grade=C contact=ada@x
++    ROLLUP sheet=smvk9fw6s5gdz by=uma person=Ben claimed=0.00 due-total=n/a overdue-total=0.00
++    PERIOD_SOFT_CLOSED sheet=smvk9fw6s5gdz by=uma period=P1 total=0.00
++    CLAIM_ADDED sheet=smvk9fw6s5gdz by=uma person=Ben amount=0.40 date=2026-02-25 tags=a,b
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=floor value=3.00 from=2026-03-09
++    CLAIM_ADDED sheet=smvk9fw6s5gdz by=uma person=Ben amount=0.40 date=2026-03-28
++    PERSON_EDITED sheet=smvk9fw6s5gdz by=uma name=Ada grade=A terms=
++    SETTING_CHANGED sheet=smvk9fw6s5gdz by=uma key=note-threshold value=1.00 from=2026-03-28
++    STATEMENT sheet=smvk9fw6s5gdz by=uma name=Ada due-total=0.00 claims=0
++    PERSON_EDITED sheet=smvk9fw6s5gdz by=uma name=Ada grade=A
++    PERSON_EDITED sheet=smvk9fw6s5gdz by=uma name=Ben grade=B
++    ROLLUP sheet=smvk9fw6s5gdz by=uma person=Ben claimed=0.00 due-total=0.00 overdue-total=0.00
++    PERSON_WATCHED sheet=smvk9fw6s5gdz by=uma name=Ben
++    STATEMENT sheet=smvk9fw6s5gdz by=uma name=Ada due-total=0.00 claims=0
++    PERSON_EDITED sheet=smvk9fw6s5gdz by=uma name=Ben grade=C
++    ROLLUP sheet=smvk9fw6s5gdz by=uma person=Ben claimed=0.00 due-total=n/a overdue-total=0.00
++    PERSON_HELD sheet=smvk9fw6s5gdz by=uma name=Ben from=2026-03-20
++    RATE_SET sheet=smvk9fw6s5gdz by=uma grade=B rate=33.33
++
++    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
++
++    Expected: [32m36[39m
++    Received: [31m35[39m
++
++       at ../support/ui.ts:1556
++
++      1554 |     lines = auditFor(sheet);
++      1555 |   }
++    > 1556 |   expect(lines.length, `audit lines for ${sheet}:\n${lines.join('\n')}`).toBe(expected.length);
++           |                                                                          ^
++      1557 |   lines.forEach((line, i) => {
++      1558 |     const e = expected[i];
++      1559 |     const ok = line === e || line.startsWith(e + ' ');
++
++        at Object.expectAudit (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1556:74)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1292:5
++
++  3 failed
++    [chromium] › acceptance.spec.ts:120:7 › imported claims open › imported claims open scenario 1 ─
++    [chromium] › acceptance.spec.ts:642:7 › imported claims open › imported claims open scenario 2 ─
++    [chromium] › acceptance.spec.ts:1151:7 › imported claims open › imported claims open scenario 3 
++  1 passed (1.0m)
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 9e321748..0797a31e 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -319,7 +319,10 @@ export class ClaimsApi {
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/people/${personId}/claims`, form));
+   }
+ 
+-  /** Add a DRAFT claim per pasted line of name,amount,date,note, in order; refused (400) as a whole. */
++  /**
++   * Add and open a claim per pasted line of name,amount,date,note, in order, or edit and open the DRAFT
++   * the line matches by person, date and note; refused as a whole. One claim per line that went through.
++   */
+   paste(sheet: string, text: string): Promise<ClaimView[]> {
+     return firstValueFrom(this.http.post<ClaimView[]>(`${this.url(sheet)}/claims/paste`, { text }));
+   }
+diff --git a/src/main/frontend/src/app/features/paste-claims/paste-claims.ts b/src/main/frontend/src/app/features/paste-claims/paste-claims.ts
+index 76b803a6..e767df34 100644
+--- a/src/main/frontend/src/app/features/paste-claims/paste-claims.ts
++++ b/src/main/frontend/src/app/features/paste-claims/paste-claims.ts
+@@ -3,8 +3,8 @@ import { Component, effect, inject, output, signal, untracked } from '@angular/c
+ import { ClaimsApi, ClaimView } from '../../core/claims';
+ import { Session } from '../../core/session';
+ 
+-// The paste box: lines of name,amount,date,note each add a DRAFT claim for the named person, all or
+-// none; how many were added is shown.
++// The paste box: lines of name,amount,date,note each add and open a claim for the named person (or
++// edit and open the DRAFT they match), all or none; how many lines went through is shown.
+ @Component({
+   selector: 'app-paste-claims',
+   template: `
+@@ -17,9 +17,9 @@ import { Session } from '../../core/session';
+         [value]="text()"
+         (input)="text.set(value($event)); error.set(null)"
+       ></textarea>
+-      <button type="submit" data-testid="paste-submit">Add pasted claims</button>
++      <button type="submit" data-testid="paste-submit">Open pasted claims</button>
+       @if (added() !== null) {
+-        <p role="status">Added <strong data-testid="paste-added">{{ added() }}</strong> claims.</p>
++        <p role="status"><strong data-testid="paste-added">{{ added() }}</strong> lines went through.</p>
+       }
+       @if (error(); as message) {
+         <p role="alert" data-testid="paste-error">{{ message }}</p>
+@@ -31,7 +31,7 @@ export class PasteClaims {
+   private readonly session = inject(Session);
+   private readonly api = inject(ClaimsApi);
+ 
+-  /** The claims pasted, in the order they were added. */
++  /** The claims pasted, opened, one per line in paste order. */
+   readonly pasted = output<ClaimView[]>({ alias: 'added' });
+ 
+   protected readonly text = signal('');
+@@ -77,8 +77,8 @@ export class PasteClaims {
+       this.added.set(claims.length);
+       this.text.set('');
+     } catch (e) {
+-      const reason = e instanceof HttpErrorResponse && e.status === 400 && typeof e.error?.detail === 'string' ? e.error.detail : null;
+-      this.error.set(reason ?? 'The pasted claims could not be added; nothing was added.');
++      const reason = e instanceof HttpErrorResponse && e.status >= 400 && e.status < 500 && typeof e.error?.detail === 'string' ? e.error.detail : null;
++      this.error.set(reason ?? 'The pasted claims could not be opened; nothing was changed.');
+     } finally {
+       this.busy = false;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 8463b8de..96dc4ba2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -208,7 +208,7 @@ public class ClaimController {
+         return ClaimView.of(service.add(sheetId, SignedIn.name(user), personId, new BigDecimal(form.amount()), form.date(), form.note(), form.corrects(), form.ref(), form.tags()));
+     }
+ 
+-    /** Add a DRAFT claim per pasted line, in order; nothing is added when any line is refused. */
++    /** Add and open a claim per pasted line, in order, or edit and open the DRAFT it matches; nothing changes when any line is refused. */
+     @PostMapping("/claims/paste")
+     public List<ClaimView> paste(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/PasteService.java b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+index 98b93473..9d3903b4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/PasteService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+@@ -8,17 +8,20 @@ import java.util.List;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+- * The paste box: lines of name,amount,date,note each add a DRAFT claim, in order, for the named
+- * person on the sheet. The date may be blank (the sheet's entry date while set, else its today) and the note, which may hold commas,
++ * The paste box: lines of name,amount,date,note each add a claim, in order, for the named person on
++ * the sheet, and open it for the signed-in user exactly as the open button would. A line whose person,
++ * date and note match one of that person's claims updates it instead: a DRAFT is edited to the line's
++ * amount (when that changes it) and opened; a claim in any other status is an error for the paste. The date may be blank (the sheet's entry date while set, else its today) and the note, which may hold commas,
+  * may be absent. A note ending in " #<reference>" gives the claim that external reference, which is not
+- * part of the note. Every line is held to the claim form's rules; it is one change, so when any line is
+- * refused nothing is added and nothing is recorded.
++ * part of the note. Every line is held to the claim form's and the open button's rules; it is one change,
++ * so when any line is refused nothing is added, edited or opened and nothing is recorded.
+  */
+ @Service
+ public class PasteService {
+@@ -41,13 +44,20 @@ public class PasteService {
+ 
+     private final PersonRepository people;
+     private final ClaimService claims;
++    private final ClaimRepository stored;
++    private final SheetService sheets;
+ 
+-    public PasteService(PersonRepository people, ClaimService claims) {
++    public PasteService(PersonRepository people, ClaimService claims, ClaimRepository stored, SheetService sheets) {
+         this.people = people;
+         this.claims = claims;
++        this.stored = stored;
++        this.sheets = sheets;
+     }
+ 
+-    /** Add a DRAFT claim per line of the text, in order; refused as a whole when any line is refused. */
++    /**
++     * Add and open a claim per line of the text, in order, or edit and open the DRAFT the line matches;
++     * the claims that went through, one per line. Refused as a whole when any line is refused.
++     */
+     @Transactional
+     public List<Claim> paste(String sheetId, String user, String text) {
+         List<Line> lines = new ArrayList<>();
+@@ -63,11 +73,50 @@ public class PasteService {
+         if (lines.size() > LINES_MAX) {
+             throw refused("Paste at most " + LINES_MAX + " lines at once.");
+         }
+-        List<Claim> added = new ArrayList<>();
+-        for (Line line : lines) {
+-            added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null, line.ref()));
++        List<Claim> pasted = new ArrayList<>();
++        List<Long> added = new ArrayList<>();
++        for (int i = 0; i < lines.size(); i++) {
++            Line line = lines.get(i);
++            Claim matched = matching(sheetId, line, added);
++            Claim claim;
++            if (matched == null) {
++                claim = claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(), null, line.ref());
++                added.add(claim.getId());
++            } else if (matched.getStatus() != ClaimStatus.DRAFT) {
++                throw refused("Line " + (i + 1) + ": " + line.person().getName() + "'s claim of " + matched.getDate()
++                        + " with that note is " + matched.getStatus() + ", not a DRAFT.");
++            } else {
++                claim = matched;
++                if (line.amount().compareTo(matched.getAmount()) != 0) {
++                    claim = claims.edit(sheetId, user, matched.getId(), line.amount(), null, matched.getNote(),
++                            matched.getCorrects(), null, null);
++                }
++            }
++            pasted.add(claims.move(sheetId, user, claim.getId(), ClaimStatus.OPEN));
++        }
++        return pasted;
++    }
++
++    /**
++     * The person's claim, from before this paste, dated and noted as the line is (a line with no date is
++     * dated as a new claim would be): a DRAFT before any other; null when there is none.
++     */
++    private Claim matching(String sheetId, Line line, List<Long> added) {
++        LocalDate date = line.date() != null ? line.date() : sheets.load(sheetId).defaultClaimDate();
++        Claim found = null;
++        for (Claim claim : stored.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, line.person().getId())) {
++            if (added.contains(claim.getId()) || !date.equals(claim.getDate())
++                    || !line.note().equals(claim.getNote() == null ? "" : claim.getNote().trim())) {
++                continue;
++            }
++            if (claim.getStatus() == ClaimStatus.DRAFT) {
++                return claim;
++            }
++            if (found == null) {
++                found = claim;
++            }
+         }
+-        return added;
++        return found;
+     }
+ 
+     private Line line(String sheetId, int number, String text) {
