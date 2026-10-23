@@ -231,6 +231,22 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
           }
         </ul>
       }
+      <form (submit)="compareSnapshots($event)" aria-label="Compare snapshots">
+        <label for="snapshot-from">Compare the snapshot of</label>
+        <input type="date" id="snapshot-from" data-testid="snapshot-from" [value]="snapshotFrom()"
+          (input)="snapshotFrom.set(value($event))" />
+        <label for="snapshot-to">with the snapshot of (blank: now)</label>
+        <input type="date" id="snapshot-to" data-testid="snapshot-to" [value]="snapshotTo()"
+          (input)="snapshotTo.set(value($event))" />
+        <button type="submit" data-testid="snapshot-compare">Compare snapshots</button>
+      </form>
+      @if (snapshotLines().length > 0) {
+        <ul aria-label="Snapshot comparison">
+          @for (line of snapshotLines(); track $index) {
+            <li data-testid="snapshot-line">{{ line }}</li>
+          }
+        </ul>
+      }
       @if (monthTotals().length > 0) {
         <ul aria-label="Due by month">
           @for (m of monthTotals(); track m.month) {
@@ -908,6 +924,11 @@ export class People {
       })
       .map((k) => k.p);
   });
+  /** The from-date and to-date typed to compare snapshots (yyyy-mm-dd; a blank to-date means now). */
+  protected readonly snapshotFrom = signal('');
+  protected readonly snapshotTo = signal('');
+  /** The last comparison made, one line per person in list order: name, then and now due-totals. */
+  protected readonly snapshotLines = signal<string[]>([]);
   /** The retire-from date typed on each person's row, by person id; none means the sheet's today. */
   protected readonly retireDates = new Map<number, string>();
   /** The grade chosen on each person's row. */
@@ -1283,6 +1304,7 @@ export class People {
       this.session.loads();
       untracked(() => {
         this.people.set([]);
+        this.snapshotLines.set([]);
         this.watched.set(new Set());
         this.claims.set([]);
         this.rates.set([]);
@@ -1458,6 +1480,27 @@ export class People {
   }
 
   /** A person's due-total: the sum of their counting claims' due figures, or n/a (see dueTotalCents). */
+  /**
+   * Compare two snapshot dates: per person in list order, their due-total kept by the snapshot taken as
+   * the sheet's today moved on from the from-date, and from the to-date (their due-total now when the
+   * to-date is blank); empty where no snapshot was kept for that date.
+   */
+  protected async compareSnapshots(event: Event): Promise<void> {
+    event.preventDefault();
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const from = this.snapshotFrom();
+    const to = this.snapshotTo();
+    // Snapshot lines are kept as the sheet's today moves on: re-read them from the store.
+    const kept = new Map((await this.api.list(sheet)).map((p) => [p.id, p.snapshots ?? []]));
+    if (this.session.sheet() !== sheet) return;
+    const keptOn = (p: PersonView, day: string) =>
+      (kept.get(p.id) ?? []).filter((s) => s.asOf === day).at(-1)?.dueTotal ?? '';
+    this.snapshotLines.set(
+      this.people().map((p) => `${p.name} ${keptOn(p, from)} ${to === '' ? this.dueTotalOf(p) : keptOn(p, to)}`),
+    );
+  }
+
   protected dueTotalOf(person: PersonView): string {
     const total = this.dueTotalCents(person);
     return total === null ? NO_RATE : money(total);
