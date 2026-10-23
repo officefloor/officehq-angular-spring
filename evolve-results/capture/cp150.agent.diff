@@ -1,0 +1,430 @@
+diff --git a/.e2e.out b/.e2e.out
+index bb851fa1..930530a8 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,22 +2,102 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › snapshot lines › snapshot lines (11.4s)
+-  ✘  2 [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 (37.1s)
+-  ✘  3 [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 (26.6s)
+-  ✓  4 [chromium] › acceptance.spec.ts:1144:7 › snapshot lines › snapshot lines scenario 3 (27.2s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › tree search › tree search (13.8s)
++  ✘  2 [chromium] › acceptance.spec.ts:57:7 › tree search › tree search scenario 1 (1.1m)
++  ✘  3 [chromium] › acceptance.spec.ts:422:7 › tree search › tree search scenario 2 (20.6s)
++  ✘  4 [chromium] › acceptance.spec.ts:883:7 › tree search › tree search scenario 3 (18.1s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 ─────────────
++  1) [chromium] › acceptance.spec.ts:57:7 › tree search › tree search scenario 1 ───────────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('person-row-7').getByTestId('person-name')
+-    Expected string: [32m"Ben"[39m
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvk8qrl30cyl[27m-p"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8qrl30cyl-p</strong>[22m
++    [2m  -   unexpected value "smvk8qrl30cyl-p"[22m
++
++
++      185 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++      186 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-02-10");
++    > 187 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      188 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
++      189 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      190 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:187:54
++
++  2) [chromium] › acceptance.spec.ts:422:7 › tree search › tree search scenario 2 ──────────────────
++
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvk8s9gu4ufw[27m-p"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk8s9gu4ufw-p</strong>[22m
++    [2m  -   unexpected value "smvk8s9gu4ufw-p"[22m
++
++
++      535 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      536 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-03-15");
++    > 537 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      538 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
++      539 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("3.45");
++      540 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:537:54
++
++  3) [chromium] › acceptance.spec.ts:883:7 › tree search › tree search scenario 3 ──────────────────
++
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++
++    Locator: getByTestId('person-row-13').getByTestId('person-name')
++    Expected string: [32m"Cam"[39m
+     Received string: [31m"Dot"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('person-row-7').getByTestId('person-name')[22m
++    [2m  - waiting for getByTestId('person-row-13').getByTestId('person-name')[22m
+     [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+     [2m  -   unexpected value "Dot"[22m
+     [2m  -   locator resolved to <td data-testid="person-name">Dot</td>[22m
+@@ -38,57 +118,18 @@ Running 4 tests using 1 worker
+     [2m  -   unexpected value "Dot"[22m
+ 
+ 
+-      388 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-batch")).toHaveText("");
+-      389 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-lines-line")).toHaveText([]);
+-    > 390 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-name")).toHaveText("Ben");
+-          |                                                                                        ^
+-      391 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-grade")).toHaveText("A");
+-      392 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
+-      393 |     await expect(pg_wes.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:390:88
+-
+-  2) [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvk7xa3ue4lu[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvk7xa3ue4lu-p</strong>[22m
+-    [2m  -   unexpected value "smvk7xa3ue4lu-p"[22m
+-
+-
+-      724 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      725 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-09");
+-    > 726 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-          |                                                      ^
+-      727 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+-      728 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("1.00");
+-      729 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++      1096 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      1097 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++    > 1098 |     await expect(pg_vic.getByTestId("person-row-" + p_dot).getByTestId("person-name")).toHaveText("Cam");
++           |                                                                                        ^
++      1099 |     await expect(pg_vic.getByTestId("person-row-" + p_dot).getByTestId("person-grade")).toHaveText("C");
++      1100 |     await expect(pg_vic.getByTestId("person-row-" + p_dot).getByTestId("person-claimed")).toHaveText("0.00");
++      1101 |     await expect(pg_vic.getByTestId("person-row-" + p_dot).getByTestId("person-due-total")).toHaveText("0.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:726:54
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1098:88
+ 
+-  2 failed
+-    [chromium] › acceptance.spec.ts:65:7 › snapshot lines › snapshot lines scenario 1 ──────────────
+-    [chromium] › acceptance.spec.ts:608:7 › snapshot lines › snapshot lines scenario 2 ─────────────
+-  2 passed (1.8m)
++  3 failed
++    [chromium] › acceptance.spec.ts:57:7 › tree search › tree search scenario 1 ────────────────────
++    [chromium] › acceptance.spec.ts:422:7 › tree search › tree search scenario 2 ───────────────────
++    [chromium] › acceptance.spec.ts:883:7 › tree search › tree search scenario 3 ───────────────────
++  1 passed (2.2m)
+diff --git a/src/main/frontend/src/app/core/tree-search.ts b/src/main/frontend/src/app/core/tree-search.ts
+new file mode 100644
+index 00000000..a2a6149a
+--- /dev/null
++++ b/src/main/frontend/src/app/core/tree-search.ts
+@@ -0,0 +1,22 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++/** A person found over a sheet's tree: their sheet, name and due-total (two decimals, or n/a). */
++export interface FoundView {
++  sheetId: string;
++  name: string;
++  dueTotal: string;
++}
++
++// The people of a sheet's whole tree whose name or an alias contains a text, read from the store.
++@Injectable({ providedIn: 'root' })
++export class TreeSearchApi {
++  private readonly http = inject(HttpClient);
++
++  search(sheet: string, text: string): Promise<FoundView[]> {
++    return firstValueFrom(
++      this.http.get<FoundView[]>(`/api/sheets/${encodeURIComponent(sheet)}/search`, { params: { text } }),
++    );
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index ea05fcf5..a3a12183 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -7,11 +7,12 @@ import { Holidays } from '../holidays/holidays';
+ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ import { TemplatesList } from '../templates/templates';
+ import { AuditViewer } from '../audit/audit';
++import { TreeSearch } from '../tree-search/tree-search';
+ 
+ // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
+ @Component({
+   selector: 'app-home',
+-  imports: [People, Settings, Delegation, Holidays, VoidReasonsList, TemplatesList, AuditViewer],
++  imports: [People, Settings, Delegation, Holidays, VoidReasonsList, TemplatesList, AuditViewer, TreeSearch],
+   template: `
+     @if (session.user(); as user) {
+       <section aria-label="Session">
+@@ -80,6 +81,7 @@ import { AuditViewer } from '../audit/audit';
+           <app-void-reasons />
+           <app-templates />
+           <app-people />
++          <app-tree-search />
+           <app-audit-viewer />
+         }
+         <p data-testid="home-empty">Nothing here yet.</p>
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+new file mode 100644
+index 00000000..81a977c2
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -0,0 +1,71 @@
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { FoundView, TreeSearchApi } from '../../core/tree-search';
++import { Session } from '../../core/session';
++
++// Search the sheet's whole tree for people whose name or an alias contains the typed text, case
++// ignored: this sheet's people first in list order, then the other sheets' by sheet id.
++@Component({
++  selector: 'app-tree-search',
++  template: `
++    <section aria-label="Search the sheet's tree">
++      <form (submit)="search($event)">
++        <label for="search-name">Name or alias contains</label>
++        <input id="search-name" data-testid="search-name" [value]="text()" (input)="text.set(value($event)); error.set(null)" />
++        <button type="submit" data-testid="search">Search</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="search-error">{{ message }}</p>
++        }
++      </form>
++      @if (found(); as lines) {
++        <p>Found <strong data-testid="search-count">{{ lines.length }}</strong></p>
++        <ul>
++          @for (line of lines; track $index) {
++            <li data-testid="search-line">{{ line.sheetId }} {{ line.name }} {{ line.dueTotal }}</li>
++          }
++        </ul>
++      }
++    </section>
++  `,
++})
++export class TreeSearch {
++  private readonly session = inject(Session);
++  private readonly api = inject(TreeSearchApi);
++
++  protected readonly text = signal('');
++  protected readonly found = signal<FoundView[] | null>(null);
++  protected readonly error = signal<string | null>(null);
++  /** Counts searches, so only the answer to the latest one is shown. */
++  private searches = 0;
++
++  constructor() {
++    // Every sheet load clears what was found.
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      untracked(() => {
++        this.searches++;
++        this.found.set(null);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected async search(event: Event): Promise<void> {
++    event.preventDefault();
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const read = ++this.searches;
++    this.found.set(null);
++    this.error.set(null);
++    try {
++      const found = await this.api.search(sheet, this.text());
++      if (read === this.searches) this.found.set(found);
++    } catch {
++      if (read === this.searches) this.error.set('The search could not be made.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java
+new file mode 100644
+index 00000000..dd0eb4ce
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java
+@@ -0,0 +1,63 @@
++package net.officefloor.hq.app.rollup;
++
++import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Locale;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The people of a sheet's whole tree (its root and all the root's descendants) whose name or an alias
++ * contains a text, case ignored, each with their due-total as their own sheet shows it now.
++ */
++@Service
++public class TreeSearch {
++
++    /** A person found: their sheet, name and due-total (null when n/a). */
++    public record Found(String sheetId, String name, BigDecimal dueTotal) {
++    }
++
++    private final SheetService sheets;
++    private final PersonRepository people;
++    private final Rollups rollups;
++
++    public TreeSearch(SheetService sheets, PersonRepository people, Rollups rollups) {
++        this.sheets = sheets;
++        this.people = people;
++        this.rollups = rollups;
++    }
++
++    /** The people found: this sheet's first in list order, then the other sheets' by sheet id. */
++    @Transactional(readOnly = true)
++    public List<Found> search(String sheetId, String text) {
++        String key = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
++        List<String> others = new ArrayList<>(sheets.tree(sheetId));
++        others.remove(sheetId);
++        others.sort(null);
++        List<String> order = new ArrayList<>();
++        order.add(sheetId);
++        order.addAll(others);
++        List<Found> found = new ArrayList<>();
++        for (String id : order) {
++            Rollups.Rollup rollup = rollups.take(id);
++            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
++                if (matches(person, key)) {
++                    Rollups.Figures figures = rollup.people().get(person.getId());
++                    found.add(new Found(id, person.getName(), figures == null ? null : figures.dueTotal()));
++                }
++            }
++        }
++        return found;
++    }
++
++    private static boolean matches(Person person, String key) {
++        if (person.getName().toLowerCase(Locale.ROOT).contains(key)) {
++            return true;
++        }
++        return person.getAliases().stream().anyMatch(alias -> alias.toLowerCase(Locale.ROOT).contains(key));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+new file mode 100644
+index 00000000..40b3d3fc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets")
++@Validated
++public class TreeSearchController {
++
++    /** A person found as the screen shows them: their sheet, name and due-total (two decimals, or n/a). */
++    public record FoundView(String sheetId, String name, String dueTotal) {
++    }
++
++    private final TreeSearch search;
++
++    public TreeSearchController(TreeSearch search) {
++        this.search = search;
++    }
++
++    /** The people over the sheet's whole tree whose name or an alias contains the text, case ignored. */
++    @GetMapping("/{id}/search")
++    public List<FoundView> search(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestParam(defaultValue = "") @Size(max = 200) String text) {
++        return search.search(id, text).stream()
++                .map(found -> new FoundView(found.sheetId(), found.name(), Rollups.shown(found.dueTotal())))
++                .toList();
++    }
++}
