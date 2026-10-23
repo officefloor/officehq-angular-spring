@@ -189,11 +189,13 @@ export function dueBy(claim: ClaimView): string {
 }
 
 /**
- * Whether a claim is deferred on the sheet's today: it is OPEN and today has not yet reached the date
- * it is deferred until. Until then it counts in no total, is not overdue and cannot be settled.
+ * Whether a claim is deferred on the sheet's today: today has not yet reached the date it is deferred
+ * until, and no statement binds it. Until then it counts in no total, is not overdue and cannot be
+ * settled. A bound claim stays counted, and may be settled, while bound: its deferral takes effect only
+ * once the binding ends.
  */
 export function deferred(claim: ClaimView, today: string): boolean {
-  return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== '' && today < claim.deferredUntil;
+  return !claim.stated && claim.deferredUntil !== null && today !== '' && today < claim.deferredUntil;
 }
 
 /**

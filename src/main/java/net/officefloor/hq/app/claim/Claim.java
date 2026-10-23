@@ -508,11 +508,12 @@ public class Claim {
     }
 
     /**
-     * Whether the claim is deferred on a date (the sheet's today): it is OPEN and the date has not yet
-     * reached the date it is deferred until.
+     * Whether the claim is deferred on a date (the sheet's today): the date has not yet reached the date
+     * it is deferred until, and no statement binds it. A bound claim stays counted, and may be settled,
+     * while bound: its deferral takes effect only once the binding ends.
      */
     public boolean isDeferredOn(LocalDate today) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+        return !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     public boolean isWaived() {
