@@ -9,6 +9,7 @@ import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
 import { NO_RATE, RateView, RatesApi, claimDueCents, rateOn, sameSlot } from '../../core/rates';
 import { Session, graceOn, valueOn } from '../../core/session';
+import { RoleName, SettingsApi } from '../../core/settings';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
@@ -888,6 +889,7 @@ export class People {
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
   private readonly periodsApi = inject(PeriodsApi);
+  private readonly settingsApi = inject(SettingsApi);
   protected readonly voidReasons = inject(VoidReasons);
   protected readonly columns = inject(Columns);
   protected readonly peopleColumns = PEOPLE_COLUMNS;
@@ -896,10 +898,34 @@ export class People {
   protected readonly people = signal<PersonView[]>([]);
   /** Whether retired people are listed; off when the screen opens, and kept across sheet loads. */
   protected readonly showRetired = signal(false);
-  /** The people listed: everyone, or only those not retired unless retired people are shown. */
-  protected readonly shownPeople = computed(() =>
-    this.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null),
-  );
+  /** The role the signed-in user acts in on the sheet, as read with its people; null until read. */
+  protected readonly myRole = signal<RoleName | null>(null);
+  /**
+   * The ids of the people a restricted user may see listed: their own person and the leads and members
+   * of the crews that person leads or belongs to; null when the user is not restricted.
+   */
+  private readonly visibleIds = computed(() => {
+    if (this.myRole() !== 'restricted') return null;
+    const me = this.me();
+    if (!me) return new Set<number>();
+    const ids = new Set<number>([me.id]);
+    for (const c of this.crews()) {
+      const members = c.members.map((m) => m.personId);
+      if (c.leadId !== me.id && !members.includes(me.id)) continue;
+      ids.add(c.leadId);
+      for (const id of members) ids.add(id);
+    }
+    return ids;
+  });
+  /**
+   * The people listed: everyone, or only those not retired unless retired people are shown; for a
+   * restricted user, only those they may see.
+   */
+  protected readonly shownPeople = computed(() => {
+    const visible = this.visibleIds();
+    const listed = visible === null ? this.people() : this.people().filter((p) => visible.has(p.id));
+    return this.showRetired() ? listed : listed.filter((p) => p.retiredFrom === null);
+  });
   protected readonly sortKeys = SORT_KEYS;
   /** What this screen orders the listed people by; added (list order) when it opens, and kept across sheet loads. */
   protected readonly sortKey = signal<SortKey>('added');
@@ -1304,6 +1330,7 @@ export class People {
       this.session.loads();
       untracked(() => {
         this.people.set([]);
+        this.myRole.set(null);
         this.snapshotLines.set([]);
         this.watched.set(new Set());
         this.claims.set([]);
@@ -2535,13 +2562,14 @@ export class People {
   private async reload(sheet: string): Promise<void> {
     const loads = this.session.loads();
     try {
-      const [people, watched, claims, rates, inherited, periods] = await Promise.all([
+      const [people, watched, claims, rates, inherited, periods, mine] = await Promise.all([
         this.api.list(sheet),
         this.api.watched(sheet),
         this.claimsApi.list(sheet),
         this.ratesApi.list(sheet),
         this.ratesApi.inherited(sheet),
         this.periodsApi.list(sheet),
+        this.settingsApi.myRole(sheet),
       ]);
       // A later load may have started while this one was in flight: only the latest is shown.
       if (this.session.sheet() === sheet && this.session.loads() === loads) {
@@ -2550,6 +2578,7 @@ export class People {
         this.inherited.set(inherited);
         this.periods.set(periods);
         this.watched.set(new Set(watched));
+        this.myRole.set(mine.role);
         this.people.set(people);
       }
     } finally {

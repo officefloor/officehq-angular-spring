@@ -2,66 +2,93 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › plan history › plan history (13.3s)
-  ✘  2 [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 (39.6s)
-  ✘  3 [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 (29.0s)
-  ✓  4 [chromium] › acceptance.spec.ts:1288:7 › plan history › plan history scenario 3 (24.8s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › restricted role › restricted role (18.4s)
+  ✓  2 [chromium] › acceptance.spec.ts:143:7 › restricted role › restricted role scenario 1 (32.0s)
+  ✘  3 [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 (32.5s)
+  ✘  4 [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 (38.1s)
 
 
-  1) [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 ─────────────────
+  1) [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 ──────────
 
     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Locator: getByTestId('note-line')
-    [32m- Expected  - 1[39m
-    [31m+ Received  + 3[39m
-
-    [32m- Array [][39m
-    [31m+ Array [[39m
-    [31m+   "2026-03-10 wes: hi",[39m
-    [31m+ ][39m
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkrr06mirp8[27m-p"[39m
     Call log:
       [2m- expect.toHaveText with timeout 5000ms[22m
-    [2m  - waiting for getByTestId('note-line')[22m
-    [2m  -   locator resolved to 1 element[22m
-    [2m  -   locator resolved to 1 element[22m
-    [2m  -   locator resolved to 1 element[22m
-    [2m  -   locator resolved to 1 element[22m
-    [2m  -   locator resolved to 1 element[22m
-    [2m  -   locator resolved to 1 element[22m
-    [2m  -   locator resolved to 1 element[22m
-    [2m  -   locator resolved to 1 element[22m
-    [2m  -   locator resolved to 1 element[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkrr06mirp8-p</strong>[22m
+    [2m  -   unexpected value "smvkrr06mirp8-p"[22m
 
 
-      354 |     await expect(pg_wes.getByTestId("dash-review-count")).toHaveText("");
-      355 |     await expect(pg_wes.getByTestId("dash-overdue-count")).toHaveText("");
-    > 356 |     await expect(pg_wes.getByTestId("note-line")).toHaveText([]);
-          |                                                   ^
-      357 |     await ui.expectAudit(sheet, [
-      358 |       `ROLE_SET sheet=${sheet} by=uma user=vic role=steward`,
-      359 |       `SETTING_CHANGED sheet=${sheet} by=uma key=clerk-limit value=3.00`,
+      924 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+      925 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+    > 926 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      927 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+      928 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      929 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:356:51
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:926:54
 
-  2) [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 ────────────────
+  2) [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 ─────────
 
-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
 
-    Received: [31m"16"[39m
+    Locator: getByTestId('claim-row-11').getByTestId('claim-status')
+    Expected string: [32m"SETTLED"[39m
+    Received string: [31m"DRAFT"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('claim-row-11').getByTestId('claim-status')[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
+    [2m  -   locator resolved to <span data-testid="claim-status">DRAFT</span>[22m
+    [2m  -   unexpected value "DRAFT"[22m
 
-      1027 |     expect(await ui.statementAsOf(pg_uma, p_ada, "2026-03-05")).toBe(false);
-      1028 |     expect(await ui.quickAdd(pg_uma, {"name": "Dot", "amount": "10.35"})).toBeNull();
-    > 1029 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "99.95", "date": "2026-02-25", "note": "n", "ref": "R-1"})).toBeNull();
-           |                                                                                                                    ^
-      1030 |     await ui.refresh(pg_uma);
-      1031 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-claimed")).toHaveText("0.00");
-      1032 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-due-total")).toHaveText("0.00");
 
-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1029:116
+      1238 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-stated")).toHaveText("no");
+      1239 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-due")).toHaveText("n/a");
+    > 1240 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-status")).toHaveText("SETTLED");
+           |                                                                                          ^
+      1241 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_3).getByTestId("claim-stated")).toHaveText("no");
+      1242 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-due")).toHaveText("n/a");
+      1243 |     await expect(pg_uma.getByTestId("claim-row-" + c_ada_1).getByTestId("claim-status")).toHaveText("VOID");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1240:90
 
   2 failed
-    [chromium] › acceptance.spec.ts:70:7 › plan history › plan history scenario 1 ──────────────────
-    [chromium] › acceptance.spec.ts:948:7 › plan history › plan history scenario 2 ─────────────────
-  2 passed (1.9m)
- 1816197
+    [chromium] › acceptance.spec.ts:819:7 › restricted role › restricted role scenario 2 ───────────
+    [chromium] › acceptance.spec.ts:1107:7 › restricted role › restricted role scenario 3 ──────────
+  2 passed (2.1m)

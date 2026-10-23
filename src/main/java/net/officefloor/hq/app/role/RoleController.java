@@ -32,7 +32,7 @@ public class RoleController {
     /** A role as entered on the form: a user name and one of the roles. */
     public record RoleForm(
             @NotBlank @Size(max = 200) String user,
-            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
+            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER + "|" + Role.RESTRICTED) String role) {
     }
 
     private final RoleService service;
@@ -46,6 +46,15 @@ public class RoleController {
     public List<RoleView> list(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
         return service.list(sheetId).stream().map(RoleView::of).toList();
+    }
+
+    /** The role the signed-in user acts in on the sheet. */
+    @GetMapping("/mine")
+    public RoleView mine(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        String name = SignedIn.name(user);
+        return new RoleView(name, service.roleOf(sheetId, name));
     }
 
     /** Set a user name's role on the sheet. */

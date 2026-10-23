@@ -1033,7 +1033,8 @@ public class ClaimService {
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }
-        return Role.CLERK.equals(roles.roleOf(sheetId, user));
+        String role = roles.roleOf(sheetId, user);
+        return Role.CLERK.equals(role) || Role.RESTRICTED.equals(role);
     }
 
     /**

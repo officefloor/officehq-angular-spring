@@ -3,8 +3,11 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DatedValue } from './session';
 
-/** The roles a user name can have on a sheet; a name with none set is a clerk, and a viewer can change nothing. */
-export const ROLES = ['clerk', 'steward', 'viewer'] as const;
+/**
+ * The roles a user name can have on a sheet; a name with none set is a clerk, a viewer can change
+ * nothing, and a restricted one sees on the people list only its own person and its crews' people.
+ */
+export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
 export type RoleName = (typeof ROLES)[number];
 
 export interface RoleView {
@@ -299,6 +302,11 @@ export class SettingsApi {
   /** The roles set on the sheet, by user name. */
   roles(sheet: string): Promise<RoleView[]> {
     return firstValueFrom(this.http.get<RoleView[]>(`${this.url(sheet)}/roles`));
+  }
+
+  /** The role the signed-in user acts in on the sheet. */
+  myRole(sheet: string): Promise<RoleView> {
+    return firstValueFrom(this.http.get<RoleView>(`${this.url(sheet)}/roles/mine`));
   }
 
   /** Set a user name's role on the sheet. */

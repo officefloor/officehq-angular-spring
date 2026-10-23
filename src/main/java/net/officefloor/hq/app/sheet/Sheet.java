@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import net.officefloor.hq.app.role.Role;
 
 /** A sheet: everything else in the app is kept per sheet. It starts empty when first loaded. */
 @Entity
@@ -717,6 +718,8 @@ public class Sheet {
     /** Whether a role may take an action: the roles set for it, else its standing rule. */
     public boolean permits(String action, String role) {
         String roles = permissions.getOrDefault(action, STANDING_PERMISSIONS.get(action));
-        return Arrays.asList(roles.split(",")).contains(role);
+        // A restricted user name sees less of the people list, but acts as a clerk.
+        String as = Role.RESTRICTED.equals(role) ? Role.CLERK : role;
+        return Arrays.asList(roles.split(",")).contains(as);
     }
 }

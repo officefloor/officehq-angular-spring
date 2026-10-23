@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** The role a user name has on a sheet: clerk, steward or viewer. A name with no role set is a clerk. */
+/** The role a user name has on a sheet: clerk, steward, viewer or restricted. A name with no role set is a clerk. */
 @Entity
 @Table(name = "sheet_role")
 public class Role {
@@ -20,6 +20,12 @@ public class Role {
 
     /** The role that sees every screen and figure of the sheet but may change nothing on it. */
     public static final String VIEWER = "viewer";
+
+    /**
+     * The role that acts as a clerk but sees on the people list only its own person and the people of
+     * the crews that person leads or belongs to; every other figure is still over the whole sheet.
+     */
+    public static final String RESTRICTED = "restricted";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
