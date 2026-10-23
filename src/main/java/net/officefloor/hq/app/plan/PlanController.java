@@ -27,16 +27,28 @@ public class PlanController {
     /**
      * What the screen is told about a plan: its amount with two decimals, its dates (every N days, or a day of
      * the month, the other null), how many claims it has made, its next five dates after the sheet's today, and
-     * whether it is paused.
+     * whether it is paused, and the changes of its amount, oldest first.
      */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
+            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
 
         static PlanView of(Plan plan, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
                     plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(), plan.nextDates(today, 5),
-                    plan.isPaused());
+                    plan.isPaused(), plan.getChanges().stream().map(ChangeView::of).toList());
         }
+    }
+
+    /** A change of a plan's amount: the day it was changed on, and the new amount with two decimals. */
+    public record ChangeView(LocalDate on, String amount) {
+
+        static ChangeView of(PlanChange change) {
+            return new ChangeView(change.getChangedOn(), change.getAmount().toPlainString());
+        }
+    }
+
+    /** A plan's new amount as typed, as the claim form takes it. */
+    public record AmountForm(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
     }
 
     /**
@@ -97,6 +109,17 @@ public class PlanController {
             @PathVariable long planId,
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
         return PlanView.of(service.pause(sheetId, SignedIn.name(user), planId, false), service.today(sheetId));
+    }
+
+    /** Change a plan's amount on the sheet's today; refused for a bad amount. */
+    @PostMapping("/plans/{planId}/amount")
+    public PlanView amount(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long planId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid AmountForm form) {
+        return PlanView.of(service.changeAmount(sheetId, SignedIn.name(user), planId, new BigDecimal(form.amount())),
+                service.today(sheetId));
     }
 
     /** A whole number typed on the form, or null when left out. */

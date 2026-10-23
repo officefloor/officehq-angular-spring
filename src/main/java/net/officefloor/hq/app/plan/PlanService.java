@@ -123,6 +123,28 @@ public class PlanService {
     }
 
     /**
+     * Change a plan's amount (not below 0.00) on the sheet's today: the claims generated from then on take it,
+     * those already made keep theirs.
+     */
+    @Transactional
+    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        if (amount.signum() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount cannot be below 0.00.");
+        }
+        Sheet sheet = sheets.lock(sheetId);
+        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        BigDecimal money = amount.setScale(2, RoundingMode.UNNECESSARY);
+        plan.changeAmount(sheet.getToday(), money);
+        Plan saved = plans.saveAndFlush(plan);
+        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " start=" + plan.getStart() + " amount=" + money.toPlainString());
+        return saved;
+    }
+
+    /**
      * For every plan on the sheet, in the order they were added, make a DRAFT claim with the plan's amount
      * and an empty note for each plan date up to its end and the sheet's today that has none yet, dated
      * that day. Each claim is added by the claim form's rules, on its own: a date the form refuses is

@@ -29,6 +29,20 @@ function reasonOf(e: unknown): string | null {
           paused <span data-testid="plan-paused">{{ plan.paused ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="plan-pause" (click)="pause(plan.id, true)">Pause plan</button>
           <button type="button" data-testid="plan-resume" (click)="pause(plan.id, false)">Resume plan</button>
+          <label [for]="'plan-amount-' + plan.id">New amount</label>
+          <input
+            [id]="'plan-amount-' + plan.id"
+            data-testid="plan-amount"
+            inputmode="decimal"
+            [value]="newAmounts()[plan.id] ?? ''"
+            (input)="typeAmount(plan.id, value($event))"
+          />
+          <button type="button" data-testid="plan-amount-save" (click)="changeAmount(plan.id)">Save amount</button>
+          <ol aria-label="Amount changes">
+            @for (change of plan.changes; track $index) {
+              <li data-testid="plan-change-line">{{ change.on }} amount={{ change.amount }}</li>
+            }
+          </ol>
           @if (rowError()?.planId === plan.id) {
             <p role="alert" data-testid="plan-error">{{ rowError()?.message }}</p>
           }
@@ -100,6 +114,8 @@ export class PersonPlans {
   protected readonly error = signal<string | null>(null);
   /** The refusal of the last pause or resume, on the plan it was taken on. */
   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
+  /** The new amount typed on each plan, by plan id. */
+  protected readonly newAmounts = signal<Record<number, string>>({});
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
   private busy = false;
 
@@ -116,6 +132,29 @@ export class PersonPlans {
       await this.store.pause(sheet, planId, on);
     } catch (e) {
       this.rowError.set({ planId, message: reasonOf(e) ?? (on ? 'The plan could not be paused.' : 'The plan could not be resumed.') });
+    }
+  }
+
+  protected typeAmount(planId: number, amount: string): void {
+    this.newAmounts.update((all) => ({ ...all, [planId]: amount }));
+    if (this.rowError()?.planId === planId) this.rowError.set(null);
+  }
+
+  /** Change a plan's amount to the one typed on its row; a refusal is shown on its row. */
+  protected async changeAmount(planId: number): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.newAmounts()[planId] ?? '').trim();
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) {
+      this.rowError.set({ planId, message: 'Type an amount of 0.00 or more, with at most two decimals.' });
+      return;
+    }
+    try {
+      await this.store.amount(sheet, planId, amount);
+      this.newAmounts.update((all) => ({ ...all, [planId]: '' }));
+    } catch (e) {
+      this.rowError.set({ planId, message: reasonOf(e) ?? 'The amount could not be changed.' });
     }
   }
 

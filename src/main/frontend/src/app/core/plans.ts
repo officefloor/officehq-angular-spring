@@ -25,6 +25,14 @@ export interface PlanView {
   nextDates: string[];
   /** Whether the plan is paused: its dates from the day paused until it is resumed are skipped. */
   paused: boolean;
+  /** The changes of the plan's amount, oldest first. */
+  changes: PlanChangeView[];
+}
+
+/** A change of a plan's amount: the sheet's today it was changed on, and the new amount with two decimals. */
+export interface PlanChangeView {
+  on: string;
+  amount: string;
 }
 
 /** A plan as typed on the form. */
@@ -68,6 +76,11 @@ export class PlansApi {
   /** Resume a paused plan on the sheet's today; refused (400) when it is running. */
   resume(sheet: string, planId: number): Promise<PlanView> {
     return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/plans/${planId}/resume`, null));
+  }
+
+  /** Change a plan's amount on the sheet's today; refused (400) for a bad amount. */
+  amount(sheet: string, planId: number, amount: string): Promise<PlanView> {
+    return firstValueFrom(this.http.post<PlanView>(`${this.url(sheet)}/plans/${planId}/amount`, { amount }));
   }
 
   /** Make a DRAFT claim for every plan date up to the sheet's today that has none yet. */
@@ -116,6 +129,12 @@ export class Plans {
   /** Pause (true) or resume (false) a plan on the active sheet: shown as it is after it. */
   async pause(sheet: string, planId: number, on: boolean): Promise<void> {
     const changed = on ? await this.api.pause(sheet, planId) : await this.api.resume(sheet, planId);
+    if (this.session.sheet() === sheet) this.list.update((all) => all.map((p) => (p.id === changed.id ? changed : p)));
+  }
+
+  /** Change a plan's amount on the active sheet: shown as it is after it. */
+  async amount(sheet: string, planId: number, amount: string): Promise<void> {
+    const changed = await this.api.amount(sheet, planId, amount);
     if (this.session.sheet() === sheet) this.list.update((all) => all.map((p) => (p.id === changed.id ? changed : p)));
   }
 
