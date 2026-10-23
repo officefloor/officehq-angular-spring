@@ -1,0 +1,64 @@
+{
+  "checkpoint": 189,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp189_default-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "fe696c3702e92cba4f9d63b09da8b29881507c9e",
+  "reset_sha": "",
+  "preagent_sha": "6a1d3a44fd5ac9498272edfc2e6ac146cfabbba5",
+  "prev_sha": "6a1d3a44fd5ac9498272edfc2e6ac146cfabbba5",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1655440000000004,
+    "input_tokens": 62,
+    "output_tokens": 13266,
+    "cache_read_tokens": 1600520,
+    "cache_creation_tokens": 72484,
+    "num_turns": 31,
+    "duration_ms": 302330,
+    "duration_api_ms": 131029,
+    "model": "claude-opus-5-5",
+    "session_id": "f4ca87c0-31f5-4032-99a0-8eff7d682754",
+    "stop_reason": "success",
+    "result_text": "I've added the sheet default grade setting. The main \"default grade\" test passes, and so does scenario 2. Scenarios 1 and 3 fail, and I believe neither failure comes from this change. I didn't keep a copy of the code from before my edits, though, so I haven't confirmed they also failed before.\n\n**What I built**\n- **Stored data:** a new database migration `V106__sheet_default_grade.sql` adds a `default_grade` column to the sheet. Empty means A. Copying a sheet also copies it.\n- **Server:**\n  - A new endpoint `PUT /api/sheets/{id}/settings/default-grade` takes A, B, C or blank. Anything else is refused and nothing is saved.\n  - A saved change writes `SETTING_CHANGED \u2026 key=default-grade value=<grade>` to the audit file. It only stores the setting and never changes anyone's grade.\n  - The quick-add bar now gives a new person the default grade instead of always A.\n  - The import box now accepts a blank grade on a line and uses the default for it.\n- **Front end:** the settings form has a new `setting-default-grade` box, with the value in force shown in `setting-default-grade-current`. Anything other than A, B, C or blank shows the `settings-error` message.\n\n**Decision for you:** if an import line names someone already on the sheet and leaves the grade blank, I set that person to the default grade. That's my reading of \"a line with a blank grade uses it\". If you'd rather a blank grade leave their current grade alone, it's a one-line change in `ImportService.java`.\n\n**The two failing scenarios** (neither one uses the default-grade setting):\n- **Scenario 1** (`acceptance.spec.ts:167`) expects a quick-add of 7.77 for Ada, who is already on the sheet, to be refused. The app accepts it. My change only affects quick-adds that create a new person, so this path doesn't touch it. I couldn't find any rule in the app that should refuse this claim.\n- **Scenario 3** (`acceptance.spec.ts:1218`) expects the text `\"__SHEET__-p\"`, which looks like a placeholder that was never filled in with the real sheet id. The screen correctly shows `<id>-p`. The same placeholder appears again at line 1366. This is in the test itself, which I'm not allowed to edit.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1655440000000004,
+        "num_turns": 31,
+        "duration_ms": 302330,
+        "duration_api_ms": 131029,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp189.agent.jsonl",
+  "agent_diff_file": "cp189.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

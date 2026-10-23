@@ -1,0 +1,638 @@
+diff --git a/.e2e.out b/.e2e.out
+index 0485a380..3ee4fdb9 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,87 +2,69 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › clone source rates › clone source rates (14.0s)
+-  ✘  2 [chromium] › acceptance.spec.ts:88:7 › clone source rates › clone source rates scenario 1 (12.2s)
+-  ✘  3 [chromium] › acceptance.spec.ts:591:7 › clone source rates › clone source rates scenario 2 (18.1s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1095:7 › clone source rates › clone source rates scenario 3 (27.7s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › default grade › default grade (13.1s)
++  ✘  2 [chromium] › acceptance.spec.ts:101:7 › default grade › default grade scenario 1 (14.6s)
++  ✓  3 [chromium] › acceptance.spec.ts:472:7 › default grade › default grade scenario 2 (27.9s)
++  ✘  4 [chromium] › acceptance.spec.ts:1056:7 › default grade › default grade scenario 3 (35.2s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:88:7 › clone source rates › clone source rates scenario 1 ─────
++  1) [chromium] › acceptance.spec.ts:101:7 › default grade › default grade scenario 1 ──────────────
+ 
+     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+ 
+-    Received: [31m"8"[39m
++    Received: [31m"4"[39m
+ 
+-      153 |     await expect(pg_vic.getByTestId("my-crew-due-total")).toHaveText("");
+-      154 |     expect(await ui.addAlias(pg_vic, p_ben, "Bee")).toBe(true);
+-    > 155 |     expect(await ui.addClaim(pg_vic, p_ben, {"amount": "25.00", "ref": " r-1 "})).toBeNull();
+-          |                                                                                   ^
+-      156 |     expect(await ui.addClaim(pg_vic, p_ben, {"amount": "10.25", "date": "2026-03-09", "note": "n"})).toBeNull();
+-      157 |     expect(await ui.quickAdd(pg_vic, {"name": "Dot", "amount": "3.33"})).toBeNull();
+-      158 |     expect(await ui.addAlias(pg_vic, p_ben, " ada ")).toBe(false);
++      165 |     await expect(pg_wes.getByTestId("my-overdue-total")).toHaveText("");
++      166 |     await expect(pg_wes.getByTestId("my-crew-due-total")).toHaveText("");
++    > 167 |     expect(await ui.quickAdd(pg_wes, {"name": "Ada", "amount": "7.77"})).toBeNull();
++          |                                                                          ^
++      168 |     await ui.setToday(pg_wes, "2026-03-31");
++      169 |     expect(await ui.setRate(pg_wes, {"grade": "C", "pct": "33.33"})).toBe(true);
++      170 |     await ui.refresh(pg_uma);
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:155:83
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:167:74
+ 
+-  2) [chromium] › acceptance.spec.ts:591:7 › clone source rates › clone source rates scenario 2 ────
+-
+-    Error: flag: neither a result nor an error appeared within 8000ms
+-
+-       at ../support/ui.ts:136
+-
+-      134 |   if (await done()) return true;
+-      135 |   if (await error.isVisible().catch(() => false)) return false;
+-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+-          |         ^
+-      137 | }
+-      138 |
+-      139 | async function sleep(ms: number): Promise<void> {
+-
+-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:625:12
+-
+-  3) [chromium] › acceptance.spec.ts:1095:7 › clone source rates › clone source rates scenario 3 ───
++  2) [chromium] › acceptance.spec.ts:1056:7 › default grade › default grade scenario 3 ─────────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvklzen0u1ia[27m-p"[39m
++    Received string: [31m"[7msmvkm65xxb8nr[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvklzen0u1ia-p</strong>[22m
+-    [2m  -   unexpected value "smvklzen0u1ia-p"[22m
+-
+-
+-      1210 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
+-      1211 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-25");
+-    > 1212 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkm65xxb8nr-p</strong>[22m
++    [2m  -   unexpected value "smvkm65xxb8nr-p"[22m
++
++
++      1216 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      1217 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("2026-02-10");
++    > 1218 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+            |                                                      ^
+-      1213 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
+-      1214 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1215 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++      1219 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("0");
++      1220 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      1221 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1212:54
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1218:54
+ 
+-  3 failed
+-    [chromium] › acceptance.spec.ts:88:7 › clone source rates › clone source rates scenario 1 ──────
+-    [chromium] › acceptance.spec.ts:591:7 › clone source rates › clone source rates scenario 2 ─────
+-    [chromium] › acceptance.spec.ts:1095:7 › clone source rates › clone source rates scenario 3 ────
+-  1 passed (1.3m)
++  2 failed
++    [chromium] › acceptance.spec.ts:101:7 › default grade › default grade scenario 1 ───────────────
++    [chromium] › acceptance.spec.ts:1056:7 › default grade › default grade scenario 3 ──────────────
++  2 passed (1.6m)
+diff --git a/src/main/frontend/src/app/core/quick-add.ts b/src/main/frontend/src/app/core/quick-add.ts
+index 5e714558..31d1d69c 100644
+--- a/src/main/frontend/src/app/core/quick-add.ts
++++ b/src/main/frontend/src/app/core/quick-add.ts
+@@ -5,7 +5,7 @@ import { ClaimView } from './claims';
+ import { PersonView } from './people';
+ 
+ export interface QuickAddForm {
+-  /** A person's name; when it is not on the sheet the person is added with grade A. */
++  /** A person's name; when it is not on the sheet the person is added with the sheet's default grade. */
+   name: string;
+   amount: string;
+ }
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 58c4174f..3984855d 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -74,6 +74,8 @@ export interface SettingsView {
+   reviewSla: number | null;
+   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled or approved; null when none. */
+   proofKinds: string | null;
++  /** The default grade: given to a person added by the quick-add bar or a blank-graded import line; null when none (A). */
++  defaultGrade: string | null;
+   /** The rounding mode in force (half-up or half-even): claims dated while it is in force round by it; null when none. */
+   rounding: string | null;
+   /** The rounding mode's values by from-date (a value null when none), its starting value (none) first. */
+@@ -132,6 +134,9 @@ export const ENTRY_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
+ /** Proof kinds as the form takes them: receipt or photo, comma separated, or blank for none. */
+ export const PROOF_KIND_LIST = /^((receipt|photo)(\s*,\s*(receipt|photo))*)?$/;
+ 
++/** A default grade as the form takes it: A, B or C, or blank for none (A). */
++export const DEFAULT_GRADE = /^[ABC]?$/;
++
+ /** Grace days as the form takes them: a whole number of days, or blank for off. */
+ export const GRACE_DAYS = /^(\d{1,4})?$/;
+ 
+@@ -264,6 +269,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/review-sla`, { value }));
+   }
+ 
++  /** Set the default grade; a blank value means A. */
++  setDefaultGrade(sheet: string, value: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/default-grade`, { value }));
++  }
++
+   /** Set the proof kinds, comma separated; a blank value means none. */
+   setProofKinds(sheet: string, value: string): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/proof-kinds`, { value }));
+diff --git a/src/main/frontend/src/app/features/quick-add/quick-add.ts b/src/main/frontend/src/app/features/quick-add/quick-add.ts
+index 6b76140c..0d0eb19a 100644
+--- a/src/main/frontend/src/app/features/quick-add/quick-add.ts
++++ b/src/main/frontend/src/app/features/quick-add/quick-add.ts
+@@ -5,7 +5,7 @@ import { QuickAddApi, QuickAddView } from '../../core/quick-add';
+ import { Session } from '../../core/session';
+ 
+ // The quick-add bar: a name and an amount make a DRAFT claim dated the sheet's today with an empty
+-// note, adding the person with grade A first when the name is not on the sheet.
++// note, adding the person with the sheet's default grade first when the name is not on the sheet.
+ @Component({
+   selector: 'app-quick-add',
+   template: `
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 0ba34ced..d62f38df 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1,7 +1,7 @@
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
+ import { FigurePipe } from '../../core/locale';
+ import {
+-  ALERT_THRESHOLD, CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
++  ALERT_THRESHOLD, CAP, DatedKey, DEFAULT_GRADE, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_KIND_LIST, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
+   RoleName, RoleView, SettingsApi,
+ } from '../../core/settings';
+ import { Session } from '../../core/session';
+@@ -276,6 +276,15 @@ import { Session } from '../../core/session';
+           (keydown.delete)="cleared($event, 'proofKinds')"
+           (keydown.backspace)="cleared($event, 'proofKinds')"
+         />
++        <label for="setting-default-grade">Default grade a quick-added or blank-graded imported person is given (A, B or C; empty: A)</label>
++        <input
++          id="setting-default-grade"
++          data-testid="setting-default-grade"
++          [value]="defaultGradeInput()"
++          (input)="defaultGradeInput.set(value($event)); defaultGradeEdited = true; settingsError.set(null)"
++          (keydown.delete)="cleared($event, 'defaultGrade')"
++          (keydown.backspace)="cleared($event, 'defaultGrade')"
++        />
+         <label for="setting-pot">Pot, split among each balanced pool's members (empty: none)</label>
+         <input
+           id="setting-pot"
+@@ -355,6 +364,7 @@ import { Session } from '../../core/session';
+       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
+       <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
+       <p>Proof kinds in force: <span data-testid="setting-proof-kinds-current">{{ session.proofKinds() }}</span></p>
++      <p>Default grade in force: <span data-testid="setting-default-grade-current">{{ defaultGrade() }}</span></p>
+       <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
+       <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</span></p>
+       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
+@@ -445,6 +455,8 @@ export class Settings {
+   protected readonly graceDaysInput = signal('');
+   protected readonly escalateAfter = signal('');
+   protected readonly escalateAfterInput = signal('');
++  protected readonly defaultGrade = signal('');
++  protected readonly defaultGradeInput = signal('');
+   protected readonly reviewSlaInput = signal('');
+   protected readonly proofKindsInput = signal('');
+   protected readonly potInput = signal('');
+@@ -470,6 +482,7 @@ export class Settings {
+   protected entryDateEdited = false;
+   protected graceDaysEdited = false;
+   protected escalateAfterEdited = false;
++  protected defaultGradeEdited = false;
+   protected reviewSlaEdited = false;
+   protected proofKindsEdited = false;
+   protected potEdited = false;
+@@ -521,6 +534,7 @@ export class Settings {
+         this.entryDate.set('');
+         this.graceDays.set('');
+         this.escalateAfter.set('');
++        this.defaultGrade.set('');
+         this.alertThreshold.set('');
+         this.permissions.set(Settings.noPermissions());
+         this.roles.set([]);
+@@ -577,7 +591,7 @@ export class Settings {
+    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
+    * change, so a save sets it empty.
+    */
+-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
++  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
+     if (this.value(event) !== '') return;
+     if (setting === 'cap') {
+       this.capInput.set('');
+@@ -609,6 +623,9 @@ export class Settings {
+     } else if (setting === 'alertThreshold') {
+       this.alertThresholdInput.set('');
+       this.alertThresholdEdited = true;
++    } else if (setting === 'defaultGrade') {
++      this.defaultGradeInput.set('');
++      this.defaultGradeEdited = true;
+     } else if (setting === 'escalateAfter') {
+       this.escalateAfterInput.set('');
+       this.escalateAfterEdited = true;
+@@ -676,6 +693,7 @@ export class Settings {
+     const entryDate = this.entryDateInput().trim();
+     const graceDays = this.graceDaysInput().trim();
+     const escalateAfter = this.escalateAfterInput().trim();
++    const defaultGrade = this.defaultGradeInput().trim();
+     const reviewSla = this.reviewSlaInput().trim();
+     const proofKinds = this.proofKindsInput().trim();
+     const pot = this.potInput().trim();
+@@ -685,7 +703,7 @@ export class Settings {
+     const saveLimit =
+       this.limitEdited ||
+       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
++        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+     const saveNoteThreshold = this.noteThresholdEdited;
+@@ -705,6 +723,7 @@ export class Settings {
+     const saveEntryDate = this.entryDateEdited;
+     const saveGraceDays = this.graceDaysEdited;
+     const saveEscalateAfter = this.escalateAfterEdited;
++    const saveDefaultGrade = this.defaultGradeEdited;
+     const saveReviewSla = this.reviewSlaEdited;
+     const saveProofKinds = this.proofKindsEdited;
+     const savePot = this.potEdited;
+@@ -801,6 +820,10 @@ export class Settings {
+       this.settingsError.set('Type the escalation gap as a whole number of days, or leave it empty for off.');
+       return;
+     }
++    if (saveDefaultGrade && !DEFAULT_GRADE.test(defaultGrade)) {
++      this.settingsError.set('Type the default grade as A, B or C, or leave it empty for A.');
++      return;
++    }
+     if (saveReviewSla && !GRACE_DAYS.test(reviewSla)) {
+       this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
+       return;
+@@ -847,6 +870,7 @@ export class Settings {
+     if (saveEntryDate) this.entryDateEdited = false;
+     if (saveGraceDays) this.graceDaysEdited = false;
+     if (saveEscalateAfter) this.escalateAfterEdited = false;
++    if (saveDefaultGrade) this.defaultGradeEdited = false;
+     if (saveReviewSla) this.reviewSlaEdited = false;
+     if (saveProofKinds) this.proofKindsEdited = false;
+     if (savePot) this.potEdited = false;
+@@ -932,6 +956,11 @@ export class Settings {
+           this.escalateAfter.set(view.escalateAfter?.toString() ?? '');
+           if (!this.escalateAfterEdited) this.escalateAfterInput.set(view.escalateAfter?.toString() ?? '');
+         }
++        if (saveDefaultGrade) {
++          const view = await this.api.setDefaultGrade(sheet, defaultGrade);
++          this.defaultGrade.set(view.defaultGrade ?? '');
++          if (!this.defaultGradeEdited) this.defaultGradeInput.set(view.defaultGrade ?? '');
++        }
+         if (saveReviewSla) {
+           const view = await this.api.setReviewSla(sheet, reviewSla);
+           this.session.reviewSla.set(view.reviewSla?.toString() ?? '');
+@@ -1074,6 +1103,10 @@ export class Settings {
+       this.escalateAfter.set(settings.escalateAfter?.toString() ?? '');
+       this.escalateAfterInput.set(settings.escalateAfter?.toString() ?? '');
+       this.escalateAfterEdited = false;
++      // The default grade starts at the one set, so clearing it is a change.
++      this.defaultGrade.set(settings.defaultGrade ?? '');
++      this.defaultGradeInput.set(settings.defaultGrade ?? '');
++      this.defaultGradeEdited = false;
+       // The review SLA starts at the one set, so clearing it is a change.
+       this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
+       this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');
+diff --git a/src/main/java/net/officefloor/hq/app/person/ImportService.java b/src/main/java/net/officefloor/hq/app/person/ImportService.java
+index 19d500e9..8f68801a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/ImportService.java
++++ b/src/main/java/net/officefloor/hq/app/person/ImportService.java
+@@ -4,6 +4,7 @@ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -13,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
+  * The import box: lines of name,grade,terms,contact each add a person, in order, as the person form
+  * would; a line whose name matches a person on the sheet, by name or alias as names are compared, instead
+  * updates them as the person form would: their grade recorded from the sheet's today, and their terms and
+- * contact set when the line gives them. The terms and the contact may be absent or blank. Every line is
++ * contact set when the line gives them. A blank grade is the sheet's default grade. The terms and the contact may be absent or blank. Every line is
+  * held to the person form's rules, and a name, person or contact repeated within the paste is refused; it
+  * is one change, so when any line is refused nothing is imported and nothing is recorded.
+  */
+@@ -39,10 +40,12 @@ public class ImportService {
+ 
+     private final PersonService people;
+     private final PersonRepository store;
++    private final SheetService sheets;
+ 
+-    public ImportService(PersonService people, PersonRepository store) {
++    public ImportService(PersonService people, PersonRepository store, SheetService sheets) {
+         this.people = people;
+         this.store = store;
++        this.sheets = sheets;
+     }
+ 
+     /** Add or update a person per line of the text, in order; refused as a whole when any line is refused. */
+@@ -75,12 +78,13 @@ public class ImportService {
+         List<Person> added = new ArrayList<>();
+         List<Person> updated = new ArrayList<>();
+         Set<Long> matched = new HashSet<>();
++        String defaultGrade = sheets.defaultGrade(sheetId);
+         int number = 0;
+         for (Line line : lines) {
+             number++;
+             Person existing = store.findBySheetIdAndName(sheetId, line.name()).orElse(null);
+             if (existing == null) {
+-                added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
++                added.add(people.add(sheetId, user, line.name(), line.grade() != null ? line.grade() : defaultGrade, line.terms(), line.contact()));
+                 continue;
+             }
+             if (!matched.add(existing.getId())) {
+@@ -89,7 +93,7 @@ public class ImportService {
+             boolean termsGiven = line.terms() != null;
+             boolean contactGiven = line.contact() != null;
+             updated.add(people.edit(sheetId, user, existing.getId(), existing.getVersion(), existing.getName(),
+-                    line.grade(), null, termsGiven ? line.terms() : existing.getTerms(),
++                    line.grade() != null ? line.grade() : defaultGrade, null, termsGiven ? line.terms() : existing.getTerms(),
+                     contactGiven ? line.contact() : existing.getContact(), termsGiven, contactGiven));
+         }
+         return new Imported(added, updated);
+@@ -111,8 +115,8 @@ public class ImportService {
+             throw refused("Line " + number + ": the name is longer than " + TEXT_MAX + " characters.");
+         }
+         String grade = fields[1].trim();
+-        if (!grade.matches("[ABC]")) {
+-            throw refused("Line " + number + ": the grade must be A, B or C.");
++        if (!grade.isEmpty() && !grade.matches("[ABC]")) {
++            throw refused("Line " + number + ": the grade must be A, B, C or blank.");
+         }
+         Integer terms = null;
+         String days = fields.length > 2 ? fields[2].trim() : "";
+@@ -126,7 +130,7 @@ public class ImportService {
+         if (contact.length() > TEXT_MAX) {
+             throw refused("Line " + number + ": the contact is longer than " + TEXT_MAX + " characters.");
+         }
+-        return new Line(name, grade, terms, contact.isEmpty() ? null : contact);
++        return new Line(name, grade.isEmpty() ? null : grade, terms, contact.isEmpty() ? null : contact);
+     }
+ 
+     private static ResponseStatusException refused(String reason) {
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+index 16e896bd..16af6142 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+@@ -6,20 +6,18 @@ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.person.PersonService;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The quick-add bar: a DRAFT claim of an amount, dated the sheet's entry date while set (else its today) with an empty note, for the
+- * person of a name, who is first added with grade A when the name is not on the sheet. It is one
++ * person of a name, who is first added with the sheet's default grade when the name is not on the sheet. It is one
+  * change: when the claim is refused the person added for it is not kept, and nothing is recorded.
+  */
+ @Service
+ public class QuickAddService {
+ 
+-    /** The grade a person added by the quick-add bar is given. */
+-    static final String GRADE = "A";
+-
+     /** What a quick-add made: the claim, for its person, and whether that person was added for it. */
+     public record Added(Person person, boolean personAdded, Claim claim) {
+     }
+@@ -27,17 +25,20 @@ public class QuickAddService {
+     private final PersonRepository people;
+     private final PersonService personService;
+     private final ClaimService claimService;
++    private final SheetService sheets;
+ 
+-    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService) {
++    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService,
++            SheetService sheets) {
+         this.people = people;
+         this.personService = personService;
+         this.claimService = claimService;
++        this.sheets = sheets;
+     }
+ 
+     @Transactional
+     public Added add(String sheetId, String user, String name, BigDecimal amount) {
+         Person existing = people.findBySheetIdAndName(sheetId, name).orElse(null);
+-        Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE, null, null);
++        Person person = existing != null ? existing : personService.add(sheetId, user, name, sheets.defaultGrade(sheetId), null, null);
+         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null);
+         return new Added(person, existing == null, claim);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index 3be6cba3..8df22cad 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -69,10 +69,10 @@ public class CloneService {
+         jdbc.update("""
+                 INSERT INTO sheet (id, created_at, today, last_claim_number, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, last_unperiod_claim_number, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, cloned_from)
++                    proof_threshold, grace_days, archived, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, cloned_from)
+                 SELECT ?, CURRENT_TIMESTAMP, today, 0, clerk_limit, floor, terms, late_pct,
+                     policy_date, period_numbering_from, 0, terms_a, terms_b, terms_c, cap,
+-                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, ?
++                    proof_threshold, grace_days, FALSE, entry_date, last_settle_batch, pot, parent_id, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, ?
+                 FROM sheet WHERE id = ?""", toSheetId, sheetId, sheetId);
+         copyRows("sheet_setting", "setting_key, from_date, setting_value", toSheetId, sheetId);
+         copyRows("sheet_permission", "action, roles", toSheetId, sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 009cbe07..d271f30d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -138,6 +138,10 @@ public class Sheet {
+     @Column(name = "parent_id")
+     private String parentId;
+ 
++    /** The default grade: given to a person added by the quick-add bar or a blank-graded import line; null for A. Not dated. */
++    @Column(name = "default_grade")
++    private String defaultGrade;
++
+     /**
+      * The id of the sheet this one was cloned from: its rates apply where this sheet and its parents
+      * have none in force; null when not cloned. Not dated.
+@@ -425,6 +429,7 @@ public class Sheet {
+         then.escalateAfter = escalateAfter;
+         then.reviewSla = reviewSla;
+         then.proofKinds = proofKinds;
++        then.defaultGrade = defaultGrade;
+         then.fiscalStartMonth = fiscalStartMonth;
+         then.parentId = parentId;
+         then.clonedFrom = clonedFrom;
+@@ -582,6 +587,20 @@ public class Sheet {
+         this.proofKinds = proofKinds;
+     }
+ 
++    /** The default grade as set; null when blank (A). */
++    public String getDefaultGrade() {
++        return defaultGrade;
++    }
++
++    public void setDefaultGrade(String defaultGrade) {
++        this.defaultGrade = defaultGrade;
++    }
++
++    /** The grade a person added without one is given: the default grade, else A. */
++    public String defaultGradeInForce() {
++        return defaultGrade == null ? "A" : defaultGrade;
++    }
++
+     /** The proof kinds as a list; empty when there are none. */
+     public List<String> proofKindList() {
+         return proofKinds == null ? List.of() : Arrays.asList(proofKinds.split(","));
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 7e9a403b..39c9b72c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -81,7 +81,7 @@ public class SheetController {
+      * threshold with two decimals, null for off, and the rounding mode (half-up or half-even), null for none
+      * (the policy date decides), with its values by from-date, and the review threshold with two decimals,
+      * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none,
+-     * and the proof kinds, comma separated, null for none. */
++     * and the proof kinds, comma separated, null for none, and the default grade, null for none (A). */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
+             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+@@ -89,7 +89,7 @@ public class SheetController {
+             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
+             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
+             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
+-            String proofKinds) {
++            String proofKinds, String defaultGrade) {
+ 
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -108,7 +108,8 @@ public class SheetController {
+                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
+                     sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
+                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
+-                    sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds());
++                    sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
++                    sheet.getDefaultGrade());
+         }
+ 
+         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
+@@ -178,6 +179,16 @@ public class SheetController {
+         }
+     }
+ 
++    /** A default grade as entered: A, B or C, or blank (or null) for none (A). */
++    public record DefaultGradeChange(@Pattern(regexp = "\\s*([ABC])?\\s*") String value) {
++
++        /** The grade entered; null when blank. */
++        String grade() {
++            String text = value == null ? "" : value.trim();
++            return text.isEmpty() ? null : text;
++        }
++    }
++
+     /** A fiscal start month as entered: a whole month number, 1 to 12; it cannot be blank. */
+     public record FiscalStartMonthChange(@NotNull @Pattern(regexp = "\\s*([1-9]|1[0-2])\\s*") String value) {
+ 
+@@ -538,6 +549,15 @@ public class SheetController {
+         return SettingsView.of(service.setProofKinds(id, SignedIn.name(user), change.kinds()));
+     }
+ 
++    /** Change the sheet's default grade; a blank value means A. */
++    @PutMapping("/{id}/settings/default-grade")
++    public SettingsView setDefaultGrade(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid DefaultGradeChange change) {
++        return SettingsView.of(service.setDefaultGrade(id, SignedIn.name(user), change.grade()));
++    }
++
+     /** Change the month the sheet's fiscal year starts in. */
+     @PutMapping("/{id}/settings/fiscal-start-month")
+     public SettingsView setFiscalStartMonth(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 2a3fc268..beae3556 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -306,6 +306,22 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** Change the sheet's default grade (null: A), auditing the change; it changes no one's grade. */
++    @Transactional
++    public Sheet setDefaultGrade(String id, String user, String grade) {
++        Sheet sheet = lock(id);
++        sheet.setDefaultGrade(grade);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=default-grade value="
++                + (grade == null ? "" : grade));
++        return saved;
++    }
++
++    /** The grade a person added without one on the sheet is given: its default grade, else A. */
++    public String defaultGrade(String id) {
++        return load(id).defaultGradeInForce();
++    }
++
+     /** Change the month, 1 to 12, the sheet's fiscal year starts in, auditing the change. */
+     @Transactional
+     public Sheet setFiscalStartMonth(String id, String user, int month) {
+diff --git a/src/main/resources/db/migration/V106__sheet_default_grade.sql b/src/main/resources/db/migration/V106__sheet_default_grade.sql
+new file mode 100644
+index 00000000..2e90b38b
+--- /dev/null
++++ b/src/main/resources/db/migration/V106__sheet_default_grade.sql
+@@ -0,0 +1,2 @@
++-- The grade the quick-add bar and a blank-graded import line give a new person: A, B or C; null for A. Not dated.
++ALTER TABLE sheet ADD COLUMN default_grade VARCHAR(1);
