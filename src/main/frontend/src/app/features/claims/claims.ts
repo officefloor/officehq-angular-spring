@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
-import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, PROOF_KINDS, ProofKind, cents, tagsText, deferred, dueBy, money, overdue, reviewLate, roundsHalfUp } from '../../core/claims';
+import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, PROOF_KINDS, ProofKind, cents, tagsText, deferred, dueBy, money, overdue, pendingLate, reviewLate, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { NO_RATE, RateView, claimDueCents } from '../../core/rates';
@@ -118,6 +118,7 @@ const PAST: Record<ClaimAction, string> = {
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
+          <span>Pending late <span data-testid="claim-pending-late">{{ pendingLateOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssigned ?? '' }}</span></span>
@@ -612,6 +613,11 @@ export class Claims {
   /** A claim's due-by, fixed when it was added. */
   protected dueByOf(claim: ClaimView): string {
     return dueBy(claim);
+  }
+
+  /** Whether a claim is PENDING and its pending day plus the sheet's pending SLA is before the sheet's today. */
+  protected pendingLateOf(claim: ClaimView): boolean {
+    return pendingLate(claim, this.session.pendingSla(), this.session.today() ?? '');
   }
 
   /** Whether a claim is REVIEW and its review day plus the sheet's review SLA is before the sheet's today. */

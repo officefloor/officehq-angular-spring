@@ -3,7 +3,7 @@ import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
 import { Columns, PEOPLE_COLUMNS, PeopleColumn } from '../../core/columns';
 import { downloadCsv } from '../../core/csv';
-import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
+import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, pendingLate, reviewLate, roundsHalfUp, statusAt } from '../../core/claims';
 import { Grade, ImportView, PeopleApi, PersonView, flagOn, gradeOn, leavesLive, termsOn } from '../../core/people';
 import { PeriodView, PeriodsApi, fixed, periodOn } from '../../core/periods';
 import { QuickAddView } from '../../core/quick-add';
@@ -119,7 +119,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       (locked)="periodChanged($event)"
       (rolledOver)="openingsImported()"
     />
-    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
+    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" [pendingLateCount]="pendingLateCount()" />
     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -1162,6 +1162,11 @@ export class People {
       status,
       count: this.claims().filter((c) => c.status === status).length,
     })),
+  );
+
+  /** How many of the sheet's PENDING claims are late by the sheet's pending SLA. */
+  protected readonly pendingLateCount = computed(() =>
+    this.claims().filter((c) => pendingLate(c, this.session.pendingSla(), this.session.today() ?? '')).length,
   );
   /** How many of the sheet's REVIEW claims are late in review by the sheet's review SLA. */
   protected readonly reviewLateCount = computed(() =>

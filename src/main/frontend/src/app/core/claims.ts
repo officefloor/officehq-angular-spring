@@ -236,6 +236,26 @@ export function reviewLate(claim: ClaimView, sla: string, today: string): boolea
   return new Date(Date.parse(day) + Number(sla) * 86_400_000).toISOString().slice(0, 10) < today;
 }
 
+/** The day a PENDING claim last went to PENDING (the sheet's today then); null when it is not PENDING. */
+export function pendingDay(claim: ClaimView): string | null {
+  if (claim.status !== 'PENDING') return null;
+  let day: string | null = null;
+  for (const line of claim.log) {
+    if (line.status === 'PENDING') day = line.on;
+  }
+  return day;
+}
+
+/**
+ * Whether a claim is late pending: it is PENDING and its pending day plus the sheet's pending SLA days
+ * (empty: none, so never late) is before the sheet's today.
+ */
+export function pendingLate(claim: ClaimView, sla: string, today: string): boolean {
+  const day = pendingDay(claim);
+  if (day === null || sla === '' || today === '') return false;
+  return new Date(Date.parse(day) + Number(sla) * 86_400_000).toISOString().slice(0, 10) < today;
+}
+
 /** What a late charge is worked from: the sheet's late percent by from-date and its today. */
 export interface LateTerms {
   /** The late percent's values by from-date (see valueOn). */

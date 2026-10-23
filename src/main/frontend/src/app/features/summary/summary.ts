@@ -100,6 +100,7 @@ export interface VoidReasonSummary {
         </tbody>
       </table>
       <p>Late in review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
+      <p>Late pending: <span data-testid="summary-pending-late-count">{{ pendingLateCount() }}</span></p>
       <table>
         <caption>By void reason</caption>
         <thead>
@@ -127,4 +128,6 @@ export class Summary {
   readonly voidReasons = input.required<VoidReasonSummary[]>();
   /** How many REVIEW claims are late in review. */
   readonly reviewLateCount = input.required<number>();
+  /** How many PENDING claims are late pending. */
+  readonly pendingLateCount = input.required<number>();
 }

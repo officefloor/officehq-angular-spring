@@ -286,6 +286,16 @@ import { Session } from '../../core/session';
           (keydown.delete)="cleared($event, 'reviewSla')"
           (keydown.backspace)="cleared($event, 'reviewSla')"
         />
+        <label for="setting-pending-sla">Pending SLA: a claim pending longer than this many days is late (a whole number; empty: none)</label>
+        <input
+          id="setting-pending-sla"
+          data-testid="setting-pending-sla"
+          inputmode="numeric"
+          [value]="pendingSlaInput()"
+          (input)="pendingSlaInput.set(value($event)); pendingSlaEdited = true; settingsError.set(null)"
+          (keydown.delete)="cleared($event, 'pendingSla')"
+          (keydown.backspace)="cleared($event, 'pendingSla')"
+        />
         <label for="setting-max-open">Maximum open claims per person: opening one more OPEN or PENDING claim is refused (a whole number; empty: none)</label>
         <input
           id="setting-max-open"
@@ -425,6 +435,7 @@ import { Session } from '../../core/session';
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
       <p>Escalate after days in force: <span data-testid="setting-escalate-after-current">{{ escalateAfter() }}</span></p>
       <p>Review SLA days in force: <span data-testid="setting-review-sla-current">{{ session.reviewSla() }}</span></p>
+      <p>Pending SLA days in force: <span data-testid="setting-pending-sla-current">{{ session.pendingSla() }}</span></p>
       <p>Maximum open claims per person in force: <span data-testid="setting-max-open-current">{{ maxOpen() }}</span></p>
       <p>Mid score threshold in force: <span data-testid="setting-score-mid-current">{{ session.scoreMid() }}</span></p>
       <p>High score threshold in force: <span data-testid="setting-score-high-current">{{ session.scoreHigh() }}</span></p>
@@ -527,6 +538,7 @@ export class Settings {
   protected readonly defaultGrade = signal('');
   protected readonly defaultGradeInput = signal('');
   protected readonly reviewSlaInput = signal('');
+  protected readonly pendingSlaInput = signal('');
   protected readonly maxOpen = signal('');
   protected readonly maxOpenInput = signal('');
   protected readonly scoreMidInput = signal('');
@@ -561,6 +573,7 @@ export class Settings {
   protected escalateAfterEdited = false;
   protected defaultGradeEdited = false;
   protected reviewSlaEdited = false;
+  protected pendingSlaEdited = false;
   protected maxOpenEdited = false;
   protected scoreMidEdited = false;
   protected scoreHighEdited = false;
@@ -678,7 +691,7 @@ export class Settings {
    * Delete or Backspace in an empty date field: no input follows, but clearing it again is still a
    * change, so a save sets it empty.
    */
-  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'maxOpen' | 'scoreMid' | 'scoreHigh' | 'scoreLog' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
+  protected cleared(event: Event, setting: 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'defaultGrade' | 'reviewSla' | 'pendingSla' | 'maxOpen' | 'scoreMid' | 'scoreHigh' | 'scoreLog' | 'proofKinds' | 'pot' | 'alertThreshold' | 'parent'): void {
     if (this.value(event) !== '') return;
     if (setting === 'cap') {
       this.capInput.set('');
@@ -719,6 +732,9 @@ export class Settings {
     } else if (setting === 'reviewSla') {
       this.reviewSlaInput.set('');
       this.reviewSlaEdited = true;
+    } else if (setting === 'pendingSla') {
+      this.pendingSlaInput.set('');
+      this.pendingSlaEdited = true;
     } else if (setting === 'maxOpen') {
       this.maxOpenInput.set('');
       this.maxOpenEdited = true;
@@ -805,6 +821,7 @@ export class Settings {
     const escalateAfter = this.escalateAfterInput().trim();
     const defaultGrade = this.defaultGradeInput().trim();
     const reviewSla = this.reviewSlaInput().trim();
+    const pendingSla = this.pendingSlaInput().trim();
     const maxOpen = this.maxOpenInput().trim();
     const scoreMid = this.scoreMidInput().trim();
     const scoreHigh = this.scoreHighInput().trim();
@@ -817,7 +834,7 @@ export class Settings {
     const saveLimit =
       this.limitEdited ||
       (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && this.gradeClerkLimitEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
-        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.maxOpenEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.scoreLogEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+        !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.pendingSlaEdited && !this.maxOpenEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.scoreLogEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -841,6 +858,7 @@ export class Settings {
     const saveEscalateAfter = this.escalateAfterEdited;
     const saveDefaultGrade = this.defaultGradeEdited;
     const saveReviewSla = this.reviewSlaEdited;
+    const savePendingSla = this.pendingSlaEdited;
     const saveMaxOpen = this.maxOpenEdited;
     const saveScoreMid = this.scoreMidEdited;
     const saveScoreHigh = this.scoreHighEdited;
@@ -953,6 +971,10 @@ export class Settings {
       this.settingsError.set('Type the review SLA as a whole number of days, or leave it empty for none.');
       return;
     }
+    if (savePendingSla && !GRACE_DAYS.test(pendingSla)) {
+      this.settingsError.set('Type the pending SLA as a whole number of days, or leave it empty for none.');
+      return;
+    }
     if (saveMaxOpen && !GRACE_DAYS.test(maxOpen)) {
       this.settingsError.set('Type the maximum open claims as a whole number, or leave it empty for none.');
       return;
@@ -1010,6 +1032,7 @@ export class Settings {
     if (saveEscalateAfter) this.escalateAfterEdited = false;
     if (saveDefaultGrade) this.defaultGradeEdited = false;
     if (saveReviewSla) this.reviewSlaEdited = false;
+    if (savePendingSla) this.pendingSlaEdited = false;
     if (saveMaxOpen) this.maxOpenEdited = false;
     if (saveScoreMid) this.scoreMidEdited = false;
     if (saveScoreHigh) this.scoreHighEdited = false;
@@ -1114,6 +1137,11 @@ export class Settings {
           const view = await this.api.setReviewSla(sheet, reviewSla);
           this.session.reviewSla.set(view.reviewSla?.toString() ?? '');
           if (!this.reviewSlaEdited) this.reviewSlaInput.set(view.reviewSla?.toString() ?? '');
+        }
+        if (savePendingSla) {
+          const view = await this.api.setPendingSla(sheet, pendingSla);
+          this.session.pendingSla.set(view.pendingSla?.toString() ?? '');
+          if (!this.pendingSlaEdited) this.pendingSlaInput.set(view.pendingSla?.toString() ?? '');
         }
         if (saveMaxOpen) {
           const view = await this.api.setMaxOpen(sheet, maxOpen);
@@ -1284,6 +1312,10 @@ export class Settings {
       this.session.reviewSla.set(settings.reviewSla?.toString() ?? '');
       this.reviewSlaInput.set(settings.reviewSla?.toString() ?? '');
       this.reviewSlaEdited = false;
+      // The pending SLA starts at the one set, so clearing it is a change.
+      this.session.pendingSla.set(settings.pendingSla?.toString() ?? '');
+      this.pendingSlaInput.set(settings.pendingSla?.toString() ?? '');
+      this.pendingSlaEdited = false;
       // The maximum open claims starts at the one set, so clearing it is a change.
       this.maxOpen.set(settings.maxOpen?.toString() ?? '');
       this.maxOpenInput.set(settings.maxOpen?.toString() ?? '');

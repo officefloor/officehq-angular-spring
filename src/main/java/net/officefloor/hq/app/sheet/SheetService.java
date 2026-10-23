@@ -313,6 +313,17 @@ public class SheetService {
         return saved;
     }
 
+    /** Change the sheet's pending SLA in days (null: none), auditing the change. */
+    @Transactional
+    public Sheet setPendingSla(String id, String user, Integer days) {
+        Sheet sheet = lock(id);
+        sheet.setPendingSla(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pending-sla value="
+                + (saved.getPendingSla() == null ? "" : saved.getPendingSla().toString()));
+        return saved;
+    }
+
     /** Change the sheet's maximum of open claims per person (null: none), auditing the change. */
     @Transactional
     public Sheet setMaxOpen(String id, String user, Integer max) {
