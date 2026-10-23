@@ -30,12 +30,18 @@ import org.springframework.web.server.ResponseStatusException;
  * memberships move to the other, dropped where the other is in the crew already; their plans become the other's. Their statements join the
  * other's: the other's count becomes their own plus theirs, and the other's last statement stays the
  * other's (or, the other having none, becomes theirs). Their holds, watchers and contact are dropped,
- * and they leave the sheet.
+ * and they leave the sheet, kept aside so the merge can be undone.
+ * <p>
+ * The last merge into a person can be undone by the steward who made it, on the same sheet-today: the
+ * merged person is back at the end of the list with the claims that came from them (as they are now)
+ * and their own name and aliases, which the other no longer goes by. Patron, pool, crew, plan and
+ * statement changes stay.
  */
 @Service
 public class MergeService {
 
     private final PersonRepository people;
+    private final PersonMergeRepository merges;
     private final ClaimRepository claims;
     private final StatementService statements;
     private final WatchRepository watches;
@@ -47,10 +53,11 @@ public class MergeService {
     private final Rollups rollups;
     private final Audit audit;
 
-    public MergeService(PersonRepository people, ClaimRepository claims, StatementService statements,
+    public MergeService(PersonRepository people, PersonMergeRepository merges, ClaimRepository claims, StatementService statements,
             WatchRepository watches, PoolMemberRepository poolMembers, PlanRepository plans, CrewService crews, RoleService roles,
             SheetService sheets, Rollups rollups, Audit audit) {
         this.people = people;
+        this.merges = merges;
         this.claims = claims;
         this.statements = statements;
         this.watches = watches;
@@ -139,8 +146,10 @@ public class MergeService {
         statements.handOver(sheetId, from, into);
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
         String fromName = from.getName();
-        people.delete(from);
-        people.flush();
+        from.park(into.getId());
+        people.saveAndFlush(from);
+        merges.save(new PersonMerge(sheetId, from.getId(), into.getId(), user, sheets.today(sheetId),
+                moved.stream().map(Claim::getId).toList()));
         Person saved = people.saveAndFlush(into);
         statements.reread(saved);
 
@@ -149,6 +158,63 @@ public class MergeService {
 
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user
                 + " from=" + fromName + " into=" + saved.getName());
+        rollups.audit(sheetId, user, before);
+        return people.findByIdAndSheetId(intoId, sheetId).orElseThrow();
+    }
+
+    /**
+     * Undo the last merge into a person on the sheet: the person merged into, as the store holds them
+     * after. Refused unless the user is a steward and made that merge on the sheet's today, and when the
+     * person has no merge into them to undo.
+     */
+    @Transactional
+    public Person undo(String sheetId, String user, long intoId) {
+        sheets.lock(sheetId);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward undoes a merge.");
+        }
+        Person into = people.findByIdAndSheetId(intoId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        PersonMerge merge = merges.findFirstBySheetIdAndIntoIdOrderByIdDesc(sheetId, into.getId())
+                .filter(last -> !last.isUndone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "There is no merge into the person to undo."));
+        if (!merge.getMergedBy().equals(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who made a merge undoes it.");
+        }
+        if (!java.util.Objects.equals(merge.getMergedOn(), sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a merge made today can be undone.");
+        }
+        long fromId = merge.getPersonId();
+        String fromName = people.findParkedName(fromId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "There is no merge into the person to undo."));
+        Rollups.Rollup before = rollups.take(sheetId);
+
+        // Their own name and aliases are no longer the other's; no one else on the sheet may go by them.
+        List<String> theirs = new java.util.ArrayList<>(people.findParkedAliases(fromId));
+        theirs.add(fromName);
+        theirs.forEach(into::removeAlias);
+        people.saveAndFlush(into);
+        for (String name : theirs) {
+            if (people.findBySheetIdAndName(sheetId, name).isPresent()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone on the sheet already goes by " + name + ".");
+            }
+        }
+
+        // They are back at the end of the list, with the claims that came from them, as they are now.
+        people.restore(fromId, Person.keyOf(fromName), people.findMaxPositionBySheetId(sheetId) + 1);
+        List<Claim> back = claims.findAllById(merge.getClaimIds()).stream()
+                .filter(claim -> sheetId.equals(claim.getSheetId()) && into.getId().equals(claim.getPersonId()))
+                .toList();
+        for (Claim claim : back) {
+            claim.reassign(fromId);
+        }
+        claims.saveAll(back);
+        merge.undo();
+        merges.save(merge);
+        people.flush();
+
+        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + user
+                + " name=" + fromName + " from=" + into.getName());
         rollups.audit(sheetId, user, before);
         return people.findByIdAndSheetId(intoId, sheetId).orElseThrow();
     }

@@ -86,7 +86,7 @@ public class CloneService {
         copyRows("period", "name, name_key, from_date, to_date", toSheetId, sheetId);
 
         Map<Long, Long> people = new HashMap<>();
-        for (Long id : jdbc.queryForList("SELECT id FROM person WHERE sheet_id = ? ORDER BY list_position, id",
+        for (Long id : jdbc.queryForList("SELECT id FROM person WHERE sheet_id = ? AND merged_into IS NULL ORDER BY list_position, id",
                 Long.class, sheetId)) {
             people.put(id, insert("""
                     INSERT INTO person (sheet_id, name, name_key, grade, list_position, terms, contact, tags, tags_used, retired_from,

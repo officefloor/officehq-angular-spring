@@ -402,6 +402,18 @@ public class PersonController {
         return view(merges.merge(sheetId, SignedIn.name(user), personId, form.intoId()));
     }
 
+    /**
+     * Undo the last merge into a person on the sheet; only the steward who made it, on the same
+     * sheet-today. The person merged into, after it.
+     */
+    @PostMapping("/{personId}/merge-undo")
+    public PersonView mergeUndo(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+        return view(merges.undo(sheetId, SignedIn.name(user), personId));
+    }
+
     /** The sheet a person is transferred to. */
     public record TransferForm(@NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String toSheetId) {
     }

@@ -16,6 +16,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.OptimisticLock;
+import org.hibernate.annotations.SQLRestriction;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -32,10 +33,12 @@ import net.officefloor.hq.app.claim.ClaimStatus;
  * A person on a sheet, with a name and a dated grade (A, B or C): the first grade they were given
  * applies from the beginning of time, and each later one from its own date. The name is kept with surrounding spaces
  * removed and is unique on the sheet ignoring case, by its {@link #keyOf key}. Its version is raised on
- * every save, so an edit made from an older version is refused.
+ * every save, so an edit made from an older version is refused. A person merged into another is kept
+ * aside, out of every sheet's people, until the merge is undone.
  */
 @Entity
 @Table(name = "person")
+@SQLRestriction("merged_into is null")
 public class Person {
 
     @Id
@@ -111,6 +114,10 @@ public class Person {
     /** The user name that may approve or reject the person's PENDING claims as a steward may; null when none. */
     @Column(name = "approver")
     private String approver;
+
+    /** The person this one is merged into, while kept aside; null while on the sheet. */
+    @Column(name = "merged_into")
+    private Long mergedInto;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -547,6 +554,24 @@ public class Person {
     /** Add an alias, kept as names are kept. */
     public void addAlias(String alias) {
         aliases.add(new Alias(alias));
+    }
+
+    /** No longer go by this alias, as it is written; false when the person did not. */
+    public boolean removeAlias(String alias) {
+        return aliases.remove(new Alias(alias));
+    }
+
+    /**
+     * Keep the person aside as merged into another: they leave the sheet's people, with no contact,
+     * patrons or holds, and their name key is freed until the merge is undone (see
+     * {@link PersonRepository#restore}).
+     */
+    public void park(Long intoId) {
+        this.mergedInto = intoId;
+        this.nameKey = "~merged~" + id;
+        this.contact = null;
+        this.patronIds.clear();
+        this.holds.clear();
     }
 
     /**

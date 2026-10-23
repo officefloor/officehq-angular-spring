@@ -893,6 +893,14 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                 >
                   Merge
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-merge-undo"
+                  [attr.aria-label]="'Undo the last merge into ' + p.name"
+                  (click)="mergeUndo(p)"
+                >
+                  Undo merge
+                </button>
                 <label [for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
                 <input
                   type="text"
@@ -1915,6 +1923,31 @@ export class People {
           ? 'Only a steward may merge people.'
           : 'The person could not be merged: neither may be retired.',
       );
+    }
+  }
+
+  /**
+   * Undo the last merge into a person (only the steward who made it, on the same sheet-today): the
+   * merged person is back on the list, and the people and claims show what the store holds after it.
+   */
+  protected async mergeUndo(person: PersonView): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      await this.api.mergeUndo(sheet, person.id);
+      const [people, claims] = await Promise.all([this.api.list(sheet), this.claimsApi.list(sheet)]);
+      if (this.session.sheet() !== sheet) return;
+      this.claims.set(claims);
+      this.people.set(people);
+    } catch (e) {
+      this.personError.set({
+        id: person.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only the steward who made the merge may undo it.'
+            : 'The merge could not be undone: only the last merge into this person, made today, can be.',
+      });
     }
   }
 

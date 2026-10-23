@@ -300,6 +300,14 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<void>(`${this.url(sheet)}/${id}/transfer-undo`, {}));
   }
 
+  /**
+   * Undo the last merge into a person on the sheet (only the steward who made it, on the same
+   * sheet-today): the person merged into, after it.
+   */
+  mergeUndo(sheet: string, id: number): Promise<PersonView> {
+    return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/merge-undo`, {}));
+  }
+
   /** Merge a person into another on the sheet (a steward only): the person merged into, after it. */
   merge(sheet: string, id: number, intoId: number): Promise<PersonView> {
     return firstValueFrom(this.http.post<PersonView>(`${this.url(sheet)}/${id}/merge`, { intoId }));
