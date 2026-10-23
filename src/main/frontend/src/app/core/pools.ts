@@ -37,9 +37,11 @@ export interface PoolView {
 }
 
 /**
- * A period whose to-date is on or before the sheet's today, with what its pools' cuts at the end of it are
- * worked out from: when its to-date is the sheet's today (current) the sheet as it stands, else the pot
- * (null for none), people and pools as they stood at the end of its to-date.
+ * A period whose to-date is on or before the sheet's today, or that is closed or soft-closed, with what its
+ * pools' cuts are worked out from, on the day `to` as the sheet's today: for a closed or soft-closed period
+ * the day it was closed and the pot (null for none), people and pools as they stood at that moment; else
+ * when its to-date is the sheet's today (current) the sheet as it stands, else the pot, people and pools as
+ * they stood at the end of its to-date.
  */
 export interface PeriodPoolsView {
   period: string;
@@ -60,7 +62,7 @@ export class PoolsApi {
     return firstValueFrom(this.http.get<PoolView[]>(this.url(sheet)));
   }
 
-  /** Each period whose to-date is on or before the sheet's today, with its pools as they stood at its end. */
+  /** Each period ended by the sheet's today or fixed by a close, with its pools as they stood then. */
   history(sheet: string): Promise<PeriodPoolsView[]> {
     return firstValueFrom(this.http.get<PeriodPoolsView[]>(`${this.url(sheet)}/history`));
   }

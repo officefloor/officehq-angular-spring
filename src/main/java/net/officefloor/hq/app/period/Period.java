@@ -91,6 +91,13 @@ public class Period {
     @Column(name = "claim_cap")
     private Integer claimCap;
 
+    /**
+     * What the period's pool cuts are worked out from, fixed when it was closed or soft-closed, as JSON
+     * (see {@link net.officefloor.hq.app.history.SheetHistory#cutsNow}); null while open.
+     */
+    @Column(name = "cuts")
+    private String cuts;
+
     protected Period() {
     }
 
@@ -210,8 +217,19 @@ public class Period {
         this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** Reopen the period: its due-total is live again. */
+    /** What the period's pool cuts were fixed from when it was closed, as JSON; null while it is open. */
+    public String getCuts() {
+        return cuts;
+    }
+
+    /** Fix what the period's pool cuts are worked out from, as JSON. */
+    public void fixCuts(String cuts) {
+        this.cuts = cuts;
+    }
+
+    /** Reopen the period: its due-total and pool cuts are live again. */
     public void reopen() {
+        this.cuts = null;
         this.closed = false;
         this.softClosed = false;
         this.closedTotal = null;

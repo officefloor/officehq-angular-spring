@@ -115,6 +115,13 @@ public class SheetHistory {
             List<PoolView> pools) {
     }
 
+    /**
+     * What a closed or soft-closed period's pool cuts are worked out from, fixed when it was closed: the
+     * sheet's today then, its pot (null for none), people and pools as they stood.
+     */
+    record FixedCuts(LocalDate today, String pot, List<PersonView> people, List<PoolView> pools) {
+    }
+
     private final SheetSnapshotRepository snapshots;
     private final SheetRepository sheets;
     private final RateRepository rates;
@@ -196,9 +203,24 @@ public class SheetHistory {
     }
 
     /**
-     * Each period whose to-date is on or before the sheet's today, in from-date order, with what its pools'
-     * cuts at the end of it are worked out from: for a to-date before the sheet's today, the pot, people
-     * and pools kept for the last snapshot on or before it (none when nothing was kept by then).
+     * What a pool's cuts are worked out from as the sheet stands now, with today as the sheet's today, as
+     * JSON: fixed for a period as it is closed or soft-closed.
+     */
+    @Transactional(readOnly = true)
+    public String cutsNow(String sheetId, LocalDate today) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow();
+        return json.writeValueAsString(new FixedCuts(today,
+                sheet.getPot() == null ? null : sheet.getPot().toPlainString(),
+                people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream().map(PersonView::of).toList(),
+                pools.list(sheetId).stream().map(PoolView::of).toList()));
+    }
+
+    /**
+     * Each period whose to-date is on or before the sheet's today, or that is closed or soft-closed, in
+     * from-date order, with what its pools' cuts are worked out from: for a closed or soft-closed period,
+     * the today, pot, people and pools fixed when it was closed, its cuts as they stood then; else for a
+     * to-date before the sheet's today, the pot, people and pools kept for the last snapshot on or before
+     * it (none when nothing was kept by then).
      */
     @Transactional(readOnly = true)
     public List<PeriodPools> periodPools(String sheetId) {
@@ -207,8 +229,13 @@ public class SheetHistory {
             return List.of();
         }
         return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
-                .filter(p -> !p.getToDate().isAfter(today))
+                .filter(p -> !p.getToDate().isAfter(today) || (p.isFixed() && p.getCuts() != null))
                 .map(p -> {
+                    if (p.isFixed() && p.getCuts() != null) {
+                        FixedCuts fixed = json.readValue(p.getCuts(), FixedCuts.class);
+                        return new PeriodPools(p.getName(), fixed.today(), false, fixed.pot(), fixed.people(),
+                                fixed.pools());
+                    }
                     if (p.getToDate().equals(today)) {
                         return new PeriodPools(p.getName(), p.getToDate(), true, null, List.of(), List.of());
                     }

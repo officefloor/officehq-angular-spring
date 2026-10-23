@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
@@ -39,9 +40,11 @@ public class PeriodService {
     private final SheetService sheets;
     private final RoleService roles;
     private final Audit audit;
+    private final SheetHistory history;
 
     public PeriodService(PeriodRepository periods, ClaimRepository claims, PersonRepository people, Dues dues,
-            SheetService sheets, RoleService roles, Audit audit) {
+            SheetService sheets, RoleService roles, Audit audit, SheetHistory history) {
+        this.history = history;
         this.periods = periods;
         this.claims = claims;
         this.people = people;
@@ -227,7 +230,8 @@ public class PeriodService {
      * for it and its own due-total, their sum. A person's is the sum of the due figures,
      * as computed now, of the claims due by in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
      * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those still OPEN or PENDING and dated
-     * within their person's hold or of a person whose retirement date is reached, unless bound by a statement, and those deferred on today. A soft-closed period closes with its figures
+     * within their person's hold or of a person whose retirement date is reached, unless bound by a statement, and those deferred on today. Each pool
+     * member's cut for it is fixed too, as it stands now (see {@link SheetHistory#cutsNow}). A soft-closed period closes with its figures
      * fixed afresh. Refused when the period is already closed, or for a role the sheet's permission matrix does not allow.
      */
     @Transactional
@@ -263,6 +267,7 @@ public class PeriodService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed or soft-closed.");
         }
         period.softClose(totals(sheetId, period, today), carried(sheetId, period, today));
+        period.fixCuts(history.cutsNow(sheetId, today));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString());
@@ -293,6 +298,7 @@ public class PeriodService {
     /** Close an open or soft-closed period, fixing its totals as of today, and audit it with the given trailing fields. */
     private Period fix(String sheetId, String user, Period period, LocalDate today, String trailing) {
         period.close(totals(sheetId, period, today), carried(sheetId, period, today));
+        period.fixCuts(history.cutsNow(sheetId, today));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString() + trailing);
@@ -357,7 +363,7 @@ public class PeriodService {
     }
 
     /**
-     * Reopen a closed or soft-closed period: its due-total is live again, the claims due by in it counting at their
+     * Reopen a closed or soft-closed period: its due-total and pool cuts are live again, the claims due by in it counting at their
      * current figures. Refused for a role the sheet's permission matrix
      * does not allow (anyone but a steward by default), when the period is neither closed nor soft-closed,
      * and while it is locked.

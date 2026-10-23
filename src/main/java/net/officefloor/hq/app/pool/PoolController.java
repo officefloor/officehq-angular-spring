@@ -82,8 +82,9 @@ public class PoolController {
     }
 
     /**
-     * Each period whose to-date is on or before the sheet's today, with the pot, people and pools its cuts
-     * are worked out from as they stood at the end of it.
+     * Each period whose to-date is on or before the sheet's today, or that is closed or soft-closed, with
+     * the pot, people and pools its cuts are worked out from: as fixed at its close, else as they stood at
+     * the end of it.
      */
     @GetMapping("/history")
     public List<SheetHistory.PeriodPools> history(

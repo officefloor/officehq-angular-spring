@@ -279,7 +279,8 @@ export class Pools {
    * Each period whose to-date is on or before the sheet's today, by name, with each member's cut as it
    * stood at the end of it as shown, by pool id then member key: worked out from the pools, people and pot
    * as they were then with its to-date as the sheet's today; a period ending on the sheet's today shows the
-   * cuts as they stand.
+   * cuts as they stand. A closed or soft-closed period shows the cuts fixed as they stood when it was
+   * closed, whenever that was, until it is reopened.
    */
   protected readonly history = computed(() => {
     const lines = this.lines();
