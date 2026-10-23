@@ -17,6 +17,8 @@ import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolController.PoolView;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateController.RateView;
 import net.officefloor.hq.app.rate.RateRepository;
@@ -94,13 +96,23 @@ public class SheetHistory {
 
     /**
      * What the screen is told about the sheet as it stood at the end of a date: its people, claims
-     * (newest first), rates and periods, and whether it was archived.
+     * (newest first), rates, periods and pools, and whether it was archived (its pools null in views kept
+     * before pools were).
      */
     public record Views(boolean archived, List<PersonView> people, List<ClaimView> claims, List<RateView> rates,
-            List<PeriodView> periods) {
+            List<PeriodView> periods, List<PoolView> pools) {
 
         /** The sheet before anything was kept for it. */
-        static final Views EMPTY = new Views(false, List.of(), List.of(), List.of(), List.of());
+        static final Views EMPTY = new Views(false, List.of(), List.of(), List.of(), List.of(), List.of());
+    }
+
+    /**
+     * What a pool's cuts at the end of a period are worked out from: the period, whether its to-date is
+     * the sheet's today (the sheet as it stands then, not told here), and else the sheet's pot (null for
+     * none), people and pools as they stood at the end of its to-date.
+     */
+    public record PeriodPools(String period, LocalDate to, boolean current, String pot, List<PersonView> people,
+            List<PoolView> pools) {
     }
 
     private final SheetSnapshotRepository snapshots;
@@ -109,10 +121,13 @@ public class SheetHistory {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final PeriodRepository periods;
+    private final PoolService pools;
     private final JsonMapper json;
 
     public SheetHistory(SheetSnapshotRepository snapshots, SheetRepository sheets, RateRepository rates,
-            PersonRepository people, ClaimRepository claims, PeriodRepository periods, JsonMapper json) {
+            PersonRepository people, ClaimRepository claims, PeriodRepository periods, PoolService pools,
+            JsonMapper json) {
+        this.pools = pools;
         this.snapshots = snapshots;
         this.sheets = sheets;
         this.rates = rates;
@@ -138,7 +153,8 @@ public class SheetHistory {
                 sheetClaims.stream().map(SheetHistory::kept).toList(), new PotState(sheet.getPot()));
         Views views = new Views(sheet.isArchived(), sheetPeople.stream().map(PersonView::of).toList(),
                 sheetClaims.stream().map(ClaimView::of).toList(), sheetRates.stream().map(RateView::of).toList(),
-                periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList());
+                periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().map(PeriodView::of).toList(),
+                pools.list(sheetId).stream().map(PoolView::of).toList());
         snapshots.save(new SheetSnapshot(sheetId, leaving.today(), json.writeValueAsString(state),
                 json.writeValueAsString(views)));
     }
@@ -177,6 +193,39 @@ public class SheetHistory {
                 .orElseGet(() -> now.asOf(asOf, List.of(), null));
         then.setArchived(views(now.getId(), asOf).orElse(Views.EMPTY).archived());
         return then;
+    }
+
+    /**
+     * Each period whose to-date is on or before the sheet's today, in from-date order, with what its pools'
+     * cuts at the end of it are worked out from: for a to-date before the sheet's today, the pot, people
+     * and pools kept for the last snapshot on or before it (none when nothing was kept by then).
+     */
+    @Transactional(readOnly = true)
+    public List<PeriodPools> periodPools(String sheetId) {
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        if (today == null) {
+            return List.of();
+        }
+        return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> !p.getToDate().isAfter(today))
+                .map(p -> {
+                    if (p.getToDate().equals(today)) {
+                        return new PeriodPools(p.getName(), p.getToDate(), true, null, List.of(), List.of());
+                    }
+                    return snapshots.findFirstBySheetIdAndAsOfLessThanEqualOrderByIdDesc(sheetId, p.getToDate())
+                            .map(snapshot -> {
+                                State state = json.readValue(snapshot.getState(), State.class);
+                                Views views = snapshot.getViews() == null ? Views.EMPTY
+                                        : json.readValue(snapshot.getViews(), Views.class);
+                                BigDecimal pot = state.pot() == null ? null : state.pot().value();
+                                return new PeriodPools(p.getName(), p.getToDate(), false,
+                                        pot == null ? null : pot.toPlainString(), views.people(),
+                                        views.pools() == null ? List.of() : views.pools());
+                            })
+                            .orElseGet(() -> new PeriodPools(p.getName(), p.getToDate(), false, null, List.of(),
+                                    List.of()));
+                })
+                .toList();
     }
 
     /** Whether an as-of date (null: none) is before the sheet's today. */

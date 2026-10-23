@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedIn;
+import net.officefloor.hq.app.history.SheetHistory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -34,7 +35,7 @@ public class PoolController {
      */
     public record PoolView(long id, String name, Long crewId, List<MemberView> members) {
 
-        static PoolView of(PoolService.PoolWithMembers pool) {
+        public static PoolView of(PoolService.PoolWithMembers pool) {
             return new PoolView(pool.pool().getId(), pool.pool().getName(), pool.pool().getCrewId(),
                     pool.members().stream().map(MemberView::of).toList());
         }
@@ -66,9 +67,11 @@ public class PoolController {
     }
 
     private final PoolService service;
+    private final SheetHistory history;
 
-    public PoolController(PoolService service) {
+    public PoolController(PoolService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
     /** The sheet's pools in the order they were added. */
@@ -76,6 +79,16 @@ public class PoolController {
     public List<PoolView> list(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
         return service.list(sheetId).stream().map(PoolView::of).toList();
+    }
+
+    /**
+     * Each period whose to-date is on or before the sheet's today, with the pot, people and pools its cuts
+     * are worked out from as they stood at the end of it.
+     */
+    @GetMapping("/history")
+    public List<SheetHistory.PeriodPools> history(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+        return history.periodPools(sheetId);
     }
 
     /** Add a pool to the sheet. */

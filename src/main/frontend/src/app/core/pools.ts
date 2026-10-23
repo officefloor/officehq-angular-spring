@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { PersonView } from './people';
 
 /**
  * A pool's member: a person on the sheet or another pool (the other null), its name, its share percent with
@@ -35,6 +36,20 @@ export interface PoolView {
   members: PoolMemberView[];
 }
 
+/**
+ * A period whose to-date is on or before the sheet's today, with what its pools' cuts at the end of it are
+ * worked out from: when its to-date is the sheet's today (current) the sheet as it stands, else the pot
+ * (null for none), people and pools as they stood at the end of its to-date.
+ */
+export interface PeriodPoolsView {
+  period: string;
+  to: string;
+  current: boolean;
+  pot: string | null;
+  people: PersonView[];
+  pools: PoolView[];
+}
+
 // The sheet's pools, read from and written to the store.
 @Injectable({ providedIn: 'root' })
 export class PoolsApi {
@@ -43,6 +58,11 @@ export class PoolsApi {
   /** The sheet's pools in the order they were added. */
   list(sheet: string): Promise<PoolView[]> {
     return firstValueFrom(this.http.get<PoolView[]>(this.url(sheet)));
+  }
+
+  /** Each period whose to-date is on or before the sheet's today, with its pools as they stood at its end. */
+  history(sheet: string): Promise<PeriodPoolsView[]> {
+    return firstValueFrom(this.http.get<PeriodPoolsView[]>(`${this.url(sheet)}/history`));
   }
 
   /** Add a pool; refused when its name, trimmed, is blank or already a pool's or a crew's. */
