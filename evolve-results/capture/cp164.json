@@ -1,0 +1,76 @@
+{
+  "checkpoint": 164,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp164_correction-limit",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    34,
+    35,
+    51,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+    "cp30_corrections.spec.ts::corrections",
+    "cp34_bulk-open.spec.ts::bulk open scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "request": {
+    "spec": "A correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "433e02d25ff6a89c56a6430b1a039cad70d39cb5",
+  "reset_sha": "",
+  "preagent_sha": "fce5cb2f0b29c3dee7e772b3a4a0904016df145f",
+  "prev_sha": "fce5cb2f0b29c3dee7e772b3a4a0904016df145f",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5258695999999999,
+    "input_tokens": 34,
+    "output_tokens": 5572,
+    "cache_read_tokens": 567708,
+    "cache_creation_tokens": 37594,
+    "num_turns": 17,
+    "duration_ms": 295460,
+    "duration_api_ms": 60222,
+    "model": "claude-opus-5-5",
+    "session_id": "459bf490-8aaf-4bd9-aad6-39e5b426fc8e",
+    "stop_reason": "success",
+    "result_text": "The correction limit is in, and the main `correction limit` test passes. The other three tests in the spec (scenarios 1\u20133) still fail, but they also fail with my check turned off, and the steps they fail on never add a correction.\n\n**What changed:** everything is in `src/main/java/net/officefloor/hq/app/claim/ClaimService.java`, in the existing correction check (`refuseUnlessCorrects`).\n- A correction must still name a SETTLED claim of the same person. Now it is also refused if it is bigger than what is left of that claim: the claim's amount minus the corrections already made against it.\n- VOID and DELETED corrections are left out of that sum. DRAFT, OPEN, PENDING and SETTLED ones count.\n- A refusal returns 409 (Conflict) with a message like \"A correction may not exceed what remains of FY2026-1: 0.00.\" The add-claim form already shows a 409 as its error, so I didn't change the front end, database or audit records. A refused add writes nothing.\n- The same check runs when you edit a claim, reassign one, or restore a DELETED correction. A claim being edited, moved or restored isn't counted against its own limit.\n\n**The other three failures:** to check they aren't mine, I turned the new check off and ran the suite again. All three failed at exactly the same points, and the main test then failed at the `-20.01` add, as it should without the limit. Then I put the code back. The failures:\n- **Scenario 1:** generating plans returns 7 plans, not the 5 expected (line 151).\n- **Scenario 2:** opening the claim editor after a soft-close is refused (line 810).\n- **Scenario 3:** the audit file has one more line than expected; the last line written is `PERSON_HELD \u2026 name=Cam` (line 1399).\n\nThese look like gaps in other features rather than in the correction limit, so I left them alone. Say if you want me to look into them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5258695999999999,
+        "num_turns": 17,
+        "duration_ms": 295460,
+        "duration_api_ms": 60222,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp164.agent.jsonl",
+  "agent_diff_file": "cp164.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
