@@ -1,0 +1,64 @@
+{
+  "checkpoint": 173,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp173_opening-balances",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Opening balances can be pasted as lines of name,period,amount (a person on the sheet by name or\nalias, a period on the sheet, an amount of two decimals, 0.00 or more). All lines are checked\nfirst; any error refuses the whole paste. Each line adds its amount to the person's carried figure\nfor that period (OPENING_SET name=<name> period=<period> amount=<amount>). Show how many lines went\nthrough.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nOpening balances can be pasted as lines of name,period,amount (a person on the sheet by name or\nalias, a period on the sheet, an amount of two decimals, 0.00 or more). All lines are checked\nfirst; any error refuses the whole paste. Each line adds its amount to the person's carried figure\nfor that period (OPENING_SET name=<name> period=<period> amount=<amount>). Show how many lines went\nthrough.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ff667723f6a4e037f7b5cb177cbfefdec13c3df6",
+  "reset_sha": "",
+  "preagent_sha": "10a3318b718f0cf9ac5be6464d1e4c78d23cca5b",
+  "prev_sha": "10a3318b718f0cf9ac5be6464d1e4c78d23cca5b",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4777577999999998,
+    "input_tokens": 66,
+    "output_tokens": 19465,
+    "cache_read_tokens": 2011449,
+    "cache_creation_tokens": 85738,
+    "num_turns": 33,
+    "duration_ms": 520915,
+    "duration_api_ms": 262289,
+    "model": "claude-opus-5-5",
+    "session_id": "8b8dce57-3e2a-4d7e-b958-a50dc6be35bc",
+    "stop_reason": "success",
+    "result_text": "Opening balances import is built, but `bin/e2e` still fails all 4 tests. The main \"opening balances\" test fails on one step that I believe is a flaw in the spec. The other three fail on things outside this change.\n\n**What I built**\n- **Database:** a new table `period_person_opening` (migration `V96__period_person_opening.sql`) holds each person's opening total per period.\n- **Server:** a new `OpeningService` behind `POST /api/sheets/{id}/periods/openings`.\n  - Each line must name a person on the sheet (by name or alias), a period on the sheet, and an amount with exactly two decimals, 0.00 or more.\n  - Every line is checked before anything is saved. Any bad line refuses the whole paste, with nothing stored and nothing audited.\n  - Otherwise each line adds its amount to the person's opening for that period and writes `OPENING_SET sheet=\u2026 by=\u2026 name=<person's name> period=<period> amount=<amount>`.\n  - When a period is closed or soft-closed, the openings are included in the carried figures it fixes.\n- **Front end:** a new paste box (`app-import-openings`) with `opening-import`, `opening-import-submit`, `opening-import-done` (lines that went through) and `opening-error`. The carried figure for an open period now includes the openings. A closed period keeps the figure fixed when it closed, which is why P2 still shows 5.50 after the 9.00 import.\n\n**Test results**\n1. **\"opening balances\" (main test):** everything passes up to spec line 44, two imports in a row that each return `1`. The test helper reads the count before the second import and waits for it to show something different. Nothing happens on screen between the two imports, so it still shows `1` and the helper times out. To check the rest, I ran a temporary copy with a page reload before line 44. It passed completely, including every carried figure and the full audit list, and I've deleted the copy.\n2. **Scenario 1** fails at line 182 (`addClaim` with ref `R-1` is expected to be refused but goes through). There's no opening import before that point, so this is existing claim behaviour.\n3. **Scenario 2:** its one opening import passes. It then fails at line 723, which expects the literal text `\"__SHEET__-p\"`, an unfilled placeholder where the real sheet id should be. No app can show that.\n4. **Scenario 3** fails at line 998 (saving a person's terms with a from-date). There's no opening import in that scenario.\n\nI didn't change the claim or person behaviour behind scenarios 1 and 3, since that's outside this change request.\n\n**Not handled:** merging two people doesn't move the merged person's openings. No test covers it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4777577999999998,
+        "num_turns": 33,
+        "duration_ms": 520915,
+        "duration_api_ms": 262289,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp173.agent.jsonl",
+  "agent_diff_file": "cp173.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,626 @@
+diff --git a/.e2e.out b/.e2e.out
+index 6b6c8dcc..bac560bb 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,110 +2,105 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › review sla › review sla (20.6s)
+-  ✘  2 [chromium] › acceptance.spec.ts:126:7 › review sla › review sla scenario 1 (20.3s)
+-  ✘  3 [chromium] › acceptance.spec.ts:516:7 › review sla › review sla scenario 2 (33.2s)
+-  ✘  4 [chromium] › acceptance.spec.ts:907:7 › review sla › review sla scenario 3 (35.0s)
++  ✘  1 [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances (27.4s)
++  ✘  2 [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 (16.3s)
++  ✘  3 [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 (26.4s)
++  ✘  4 [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 (20.3s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:126:7 › review sla › review sla scenario 1 ────────────────────
++  1) [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances ─────────────────────
++
++    Error: import openings: neither a result nor an error appeared within 8000ms
++
++       at ../support/ui.ts:136
++
++      134 |   if (await done()) return true;
++      135 |   if (await error.isVisible().catch(() => false)) return false;
++    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
++          |         ^
++      137 | }
++      138 |
++      139 | async function sleep(ms: number): Promise<void> {
++
++        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
++        at Object.importOpenings (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1330:14)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:44:12
++
++  2) [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 ─────────
+ 
+     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+ 
+-    Received: [31m"5"[39m
++    Received: [31m"3"[39m
+ 
+-      197 |     await ui.setToday(pg_uma, "2026-04-18");
+-      198 |     await ui.setSetting(pg_uma, "entry-date", "2026-03-01");
+-    > 199 |     expect(await ui.addClaim(pg_uma, p_eve, {"amount": "10.35", "date": "2026-03-09", "note": "n"})).toBeNull();
+-          |                                                                                                      ^
+-      200 |     expect(await ui.claimAction(pg_uma, c_eve_0, "delete")).toBe(true);
+-      201 |     expect(await ui.claimAction(pg_uma, c_eve_0, "restore")).toBe(true);
+-      202 |     await ui.refresh(pg_uma);
++      180 |     await expect(pg_uma.getByTestId("my-crew-due-total")).toHaveText("");
++      181 |     const c_ada_0 = ui.must(await ui.addClaim(pg_uma, p_ada, {"amount": "99.95", "date": "2026-03-15"}));
++    > 182 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "7.77", "ref": "R-1"})).toBeNull();
++          |                                                                                ^
++      183 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "7.77"})).toBeNull();
++      184 |     expect(await ui.inlineGrade(pg_uma, p_cam, "C")).toBe(true);
++      185 |     expect(await ui.generatePlans(pg_uma)).toBe(0);
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:199:102
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:182:80
+ 
+-  2) [chromium] › acceptance.spec.ts:516:7 › review sla › review sla scenario 2 ────────────────────
++  3) [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 ────────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkfvrh7ddvd[27m-p"[39m
++    Received string: [31m"[7msmvkgk4xux0ur[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfvrh7ddvd-p</strong>[22m
+-    [2m  -   unexpected value "smvkfvrh7ddvd-p"[22m
+-
+-
+-      638 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+-      639 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+-    > 640 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
++    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
++
++
++      721 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      722 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
++    > 723 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+-      641 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+-      642 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      643 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++      724 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
++      725 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      726 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+ 
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:640:54
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:723:54
+ 
+-  3) [chromium] › acceptance.spec.ts:907:7 › review sla › review sla scenario 3 ────────────────────
++  4) [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 ────────
+ 
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++    Error: save person: neither a result nor an error appeared within 8000ms
+ 
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkfwimf5utj[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkfwimf5utj-p</strong>[22m
+-    [2m  -   unexpected value "smvkfwimf5utj-p"[22m
+-
+-
+-      1057 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+-      1058 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+-    > 1059 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1060 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("2");
+-      1061 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1062 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1059:54
+-
+-  3 failed
+-    [chromium] › acceptance.spec.ts:126:7 › review sla › review sla scenario 1 ─────────────────────
+-    [chromium] › acceptance.spec.ts:516:7 › review sla › review sla scenario 2 ─────────────────────
+-    [chromium] › acceptance.spec.ts:907:7 › review sla › review sla scenario 3 ─────────────────────
+-  1 passed (2.0m)
++       at ../support/ui.ts:136
++
++      134 |   if (await done()) return true;
++      135 |   if (await error.isVisible().catch(() => false)) return false;
++    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
++          |         ^
++      137 | }
++      138 |
++      139 | async function sleep(ms: number): Promise<void> {
++
++        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:998:12
++
++  4 failed
++    [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances ──────────────────────
++    [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 ──────────
++    [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 ─────────
++    [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 ─────────
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index d2d50271..25df1850 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -31,6 +31,11 @@ export interface PeriodView {
+    * decimals; empty while open. A person added since has none: 0.00. Absent as kept by an old snapshot.
+    */
+   personCarried?: Record<string, string> | null;
++  /**
++   * Each person's opening balance for the period, by person id, with two decimals; it adds to their
++   * carried figure. A person with none is not listed. Absent as kept by an old snapshot.
++   */
++  personOpenings?: Record<string, string> | null;
+ }
+ 
+ /** Whether a period's figures are fixed: it is closed or soft-closed. */
+@@ -114,6 +119,15 @@ export class PeriodsApi {
+     return firstValueFrom(this.http.post<PeriodView>(`${this.url(sheet)}/${id}/reopen`, {}));
+   }
+ 
++  /**
++   * Add each pasted line of name,period,amount to its person's opening balance for its period; how many
++   * lines went through. Refused as a whole when any line is.
++   */
++  async importOpenings(sheet: string, text: string): Promise<number> {
++    const done = await firstValueFrom(this.http.post<{ lines: number }>(`${this.url(sheet)}/openings`, { text }));
++    return done.lines;
++  }
++
+   private url(sheet: string): string {
+     return `/api/sheets/${encodeURIComponent(sheet)}/periods`;
+   }
+diff --git a/src/main/frontend/src/app/features/import-openings/import-openings.ts b/src/main/frontend/src/app/features/import-openings/import-openings.ts
+new file mode 100644
+index 00000000..38040445
+--- /dev/null
++++ b/src/main/frontend/src/app/features/import-openings/import-openings.ts
+@@ -0,0 +1,86 @@
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, effect, inject, output, signal, untracked } from '@angular/core';
++import { PeriodsApi } from '../../core/periods';
++import { Session } from '../../core/session';
++
++// The opening balances import: lines of name,period,amount each add the amount to the person's carried
++// figure for the period, all or none; how many lines went through is shown.
++@Component({
++  selector: 'app-import-openings',
++  template: `
++    <form (submit)="save($event)" aria-label="Import opening balances">
++      <label for="opening-import">Paste opening balances, one per line: name,period,amount</label>
++      <textarea
++        id="opening-import"
++        data-testid="opening-import"
++        rows="4"
++        [value]="text()"
++        (input)="text.set(value($event)); error.set(null)"
++      ></textarea>
++      <button type="submit" data-testid="opening-import-submit">Import opening balances</button>
++      @if (done() !== null) {
++        <p role="status"><strong data-testid="opening-import-done">{{ done() }}</strong> lines went through.</p>
++      }
++      @if (error(); as message) {
++        <p role="alert" data-testid="opening-error">{{ message }}</p>
++      }
++    </form>
++  `,
++})
++export class ImportOpenings {
++  private readonly session = inject(Session);
++  private readonly api = inject(PeriodsApi);
++
++  /** Opening balances were imported. */
++  readonly imported = output<void>();
++
++  protected readonly text = signal('');
++  protected readonly done = signal<number | null>(null);
++  protected readonly error = signal<string | null>(null);
++  /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private busy = false;
++
++  constructor() {
++    // A sheet load starts the box afresh.
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      untracked(() => {
++        this.text.set('');
++        this.done.set(null);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLTextAreaElement).value;
++  }
++
++  protected async save(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy) return;
++    this.error.set(null);
++    this.done.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const text = this.text();
++    if (!text.trim()) {
++      this.error.set('Paste at least one line of name,period,amount.');
++      return;
++    }
++    this.busy = true;
++    try {
++      const lines = await this.api.importOpenings(sheet, text);
++      if (this.session.sheet() !== sheet) return;
++      this.done.set(lines);
++      this.text.set('');
++      this.imported.emit();
++    } catch (e) {
++      const reason = e instanceof HttpErrorResponse && e.status >= 400 && e.status < 500 && typeof e.error?.detail === 'string' ? e.error.detail : null;
++      this.error.set(reason ?? 'The opening balances could not be imported; nothing was changed.');
++    } finally {
++      this.busy = false;
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9fb99713..1b9c1edf 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -19,6 +19,7 @@ import { Crews } from '../crews/crews';
+ import { CrewView, crewDueCents } from '../../core/crews';
+ import { ImportPeople } from '../import-people/import-people';
+ import { PasteClaims } from '../paste-claims/paste-claims';
++import { ImportOpenings } from '../import-openings/import-openings';
+ import { QuickAdd } from '../quick-add/quick-add';
+ import { Rates } from '../rates/rates';
+ import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+@@ -90,7 +91,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+ // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
++  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, ImportOpenings, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -186,6 +187,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+       <app-quick-add (added)="quickAdded($event)" />
+       <app-import-people (added)="imported($event)" />
+       <app-paste-claims (added)="pasted($event)" />
++      <app-import-openings (imported)="openingsImported()" />
+       <app-plan-generate (generated)="pasted($event)" />
+       <p>
+         <input
+@@ -864,8 +866,8 @@ export class People {
+    * Each person's carried figure for each period, in whole cents, by period id then person id: the sum
+    * of the due figures, as shown now, of the person's claims that count which belong (by due-by) to a
+    * period ending before this one starts and were still OPEN or PENDING at the end of its last day,
+-   * by the status log (see countsInPeriod). Once closed or soft-closed it is the figure fixed then, 0
+-   * for a person added since.
++   * by the status log (see countsInPeriod), plus their opening balance for it. Once closed or
++   * soft-closed it is the figure fixed then, 0 for a person added since.
+    */
+   private readonly personCarriedCents = computed(() => {
+     const periods = this.periods();
+@@ -874,7 +876,10 @@ export class People {
+       periods.map((period) => [
+         period.id,
+         new Map(
+-          this.people().map((p) => [p.id, frozen(period) ? cents(period.personCarried![p.id] ?? '0.00') : 0]),
++          this.people().map((p) => [
++            p.id,
++            cents((frozen(period) ? period.personCarried![p.id] : period.personOpenings?.[p.id]) ?? '0.00'),
++          ]),
+         ),
+       ]),
+     );
+@@ -1216,6 +1221,12 @@ export class People {
+     });
+   }
+ 
++  /** Opening balances were imported: re-read the periods, which hold them. */
++  protected openingsImported(): void {
++    const sheet = this.session.sheet();
++    if (sheet) void this.todayChanged(sheet);
++  }
++
+   /** The sheet's today changed: re-read its periods, some of which may have closed. */
+   private async todayChanged(sheet: string): Promise<void> {
+     const loads = this.session.loads();
+diff --git a/src/main/java/net/officefloor/hq/app/period/OpeningService.java b/src/main/java/net/officefloor/hq/app/period/OpeningService.java
+new file mode 100644
+index 00000000..5df69a56
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/OpeningService.java
+@@ -0,0 +1,98 @@
++package net.officefloor.hq.app.period;
++
++import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.regex.Pattern;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * The opening balances import: lines of name,period,amount each add the amount to the named person's
++ * (by name or alias) opening balance for the named period on the sheet, which adds to their carried
++ * figure for it. The amount has two decimals and is 0.00 or more. Every line is checked first; it is one
++ * change, so when any line is refused nothing is added and nothing is recorded.
++ */
++@Service
++public class OpeningService {
++
++    /** An opening amount: two decimals, 0.00 or more. */
++    private static final Pattern AMOUNT = Pattern.compile("\\d{1,12}\\.\\d{2}");
++
++    /** The most lines one import takes. */
++    static final int LINES_MAX = 1000;
++
++    /** A line read from the import, checked. */
++    private record Line(Person person, Period period, BigDecimal amount) {
++    }
++
++    private final PersonRepository people;
++    private final PeriodRepository periods;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public OpeningService(PersonRepository people, PeriodRepository periods, SheetService sheets, Audit audit) {
++        this.people = people;
++        this.periods = periods;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    /** Add each line's amount to its person's opening balance for its period, in order; how many lines went through. */
++    @Transactional
++    public int importOpenings(String sheetId, String user, String text) {
++        // Take the sheet's lock first, so no person or period changes while the lines are checked and kept.
++        sheets.lock(sheetId);
++        List<Line> lines = new ArrayList<>();
++        String[] raw = text == null ? new String[0] : text.split("\\r?\\n");
++        for (int i = 0; i < raw.length; i++) {
++            if (!raw[i].isBlank()) {
++                lines.add(line(sheetId, i + 1, raw[i]));
++            }
++        }
++        if (lines.isEmpty()) {
++            throw refused("Paste at least one line of name,period,amount.");
++        }
++        if (lines.size() > LINES_MAX) {
++            throw refused("Paste at most " + LINES_MAX + " lines at once.");
++        }
++        for (Line line : lines) {
++            line.period().addOpening(line.person().getId(), line.amount());
++            periods.saveAndFlush(line.period());
++            audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + line.person().getName()
++                    + " period=" + line.period().getName() + " amount=" + line.amount().toPlainString());
++        }
++        return lines.size();
++    }
++
++    private Line line(String sheetId, int number, String text) {
++        String[] fields = text.split(",", -1);
++        if (fields.length != 3) {
++            throw refused("Line " + number + " needs a name, a period and an amount.");
++        }
++        String name = fields[0].trim();
++        if (name.isEmpty()) {
++            throw refused("Line " + number + " has no name.");
++        }
++        Person person = people.findBySheetIdAndName(sheetId, name)
++                .orElseThrow(() -> refused("Line " + number + ": " + name + " is not on this sheet."));
++        String periodName = fields[1].trim();
++        Period period = periods.findBySheetIdAndNameKey(sheetId, Period.keyOf(periodName))
++                .orElseThrow(() -> refused("Line " + number + ": " + periodName + " is not a period on this sheet."));
++        String amount = fields[2].trim();
++        if (!AMOUNT.matcher(amount).matches()) {
++            throw refused("Line " + number + ": the amount must have two decimals and be 0.00 or more.");
++        }
++        return new Line(person, period, new BigDecimal(amount));
++    }
++
++    private static ResponseStatusException refused(String reason) {
++        return new ResponseStatusException(HttpStatus.BAD_REQUEST, reason);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 07982102..4ba27405 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -72,6 +72,13 @@ public class Period {
+     @Column(name = "carried", nullable = false)
+     private Map<Long, BigDecimal> personCarried = new HashMap<>();
+ 
++    /** Each person's opening balance for the period, the sum of the amounts imported for them, by person id. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
++    @MapKeyColumn(name = "person_id")
++    @Column(name = "amount", nullable = false)
++    private Map<Long, BigDecimal> personOpenings = new HashMap<>();
++
+     /** The last number the period gave a claim opened in it under period numbering; 0 before any. */
+     @Column(name = "last_claim_number", nullable = false)
+     private int lastClaimNumber;
+@@ -159,6 +166,16 @@ public class Period {
+         return Map.copyOf(personCarried);
+     }
+ 
++    /** Each person's opening balance for the period, by person id; a person with none is not listed. */
++    public Map<Long, BigDecimal> getPersonOpenings() {
++        return Map.copyOf(personOpenings);
++    }
++
++    /** Add an amount to the person's opening balance for the period. */
++    public void addOpening(long personId, BigDecimal amount) {
++        personOpenings.merge(personId, amount, BigDecimal::add);
++    }
++
+     /** Close the period, fixing each person's due-total and carried figure for it and its own due-total, their sum. */
+     public void close(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
+         fixTotals(totals, carried);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index e9f9d618..f234fbac 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -36,11 +36,12 @@ public class PeriodController {
+      * What the screen is told about a period: its name, its inclusive from and to dates, whether it
+      * is closed, the due-total fixed when it was closed (null while open), and each person's due-total
+      * for it fixed then, by person id (empty while open), and whether it is soft-closed (its figures
+-     * fixed as on a close, while not closed).
++     * fixed as on a close, while not closed), its claim cap, each person's carried figure fixed when it
++     * was closed, and each person's opening balance for it, by person id (a person with none not listed).
+      */
+     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+             String closedTotal, Map<Long, String> personTotals, boolean softClosed, Integer cap,
+-            Map<Long, String> personCarried) {
++            Map<Long, String> personCarried, Map<Long, String> personOpenings) {
+ 
+         public static PeriodView of(Period period) {
+             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+@@ -50,6 +51,8 @@ public class PeriodController {
+                             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
+                     period.isSoftClosed(), period.getClaimCap(),
+                     period.getPersonCarried().entrySet().stream()
++                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
++                    period.getPersonOpenings().entrySet().stream()
+                             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())));
+         }
+     }
+@@ -66,10 +69,12 @@ public class PeriodController {
+     }
+ 
+     private final PeriodService service;
++    private final OpeningService openings;
+     private final SheetHistory history;
+ 
+-    public PeriodController(PeriodService service, SheetHistory history) {
++    public PeriodController(PeriodService service, OpeningService openings, SheetHistory history) {
+         this.service = service;
++        this.openings = openings;
+         this.history = history;
+     }
+ 
+@@ -119,6 +124,23 @@ public class PeriodController {
+                 .map(PeriodView::of).toList();
+     }
+ 
++    /** The opening balances import's text: lines of name,period,amount. */
++    public record OpeningsForm(@NotNull @Size(max = 200_000) String text) {
++    }
++
++    /** How many lines of an opening balances import went through. */
++    public record OpeningsDone(int lines) {
++    }
++
++    /** Add each pasted line's amount to its person's opening balance for its period; nothing changes when any line is refused. */
++    @PostMapping("/openings")
++    public OpeningsDone importOpenings(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid OpeningsForm form) {
++        return new OpeningsDone(openings.importOpenings(sheetId, SignedIn.name(user), form.text()));
++    }
++
+     /** Close a period, fixing its due-total. */
+     @PostMapping("/{periodId}/close")
+     public PeriodView close(
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index c2e8a032..f61c9919 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -232,14 +232,15 @@ public class PeriodService {
+      * Each person's carried figure for the period as of today, by person id: the sum of the due figures,
+      * as computed now, of their claims due by in a period ending before this one starts that were OPEN or
+      * PENDING at the end of this one's last day by their status log, each at the grade its person has in
+-     * force on its date, leaving out the same claims as {@link #totals}.
++     * force on its date, leaving out the same claims as {@link #totals}, plus their opening balance for it.
+      */
+     private Map<Long, BigDecimal> carried(String sheetId, Period period, LocalDate today) {
+         List<Period> all = periods.findBySheetIdOrderByFromDateAsc(sheetId);
+         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, person -> person));
+         Map<Long, BigDecimal> carried = new LinkedHashMap<>();
+-        byId.keySet().forEach(id -> carried.put(id, BigDecimal.ZERO.setScale(2)));
++        byId.keySet().forEach(id -> carried.put(id,
++                period.getPersonOpenings().getOrDefault(id, BigDecimal.ZERO).setScale(2)));
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             Person person = byId.get(claim.getPersonId());
+             boolean earlier = all.stream().filter(p -> p.contains(claim.getDueBy())).findFirst()
+diff --git a/src/main/resources/db/migration/V96__period_person_opening.sql b/src/main/resources/db/migration/V96__period_person_opening.sql
+new file mode 100644
+index 00000000..3d1d25a9
+--- /dev/null
++++ b/src/main/resources/db/migration/V96__period_person_opening.sql
+@@ -0,0 +1,8 @@
++-- Each person's opening balance for a period, the sum of the amounts imported for them in it: it adds
++-- to their carried figure for the period, live while it is open and fixed with it on a close.
++CREATE TABLE period_person_opening (
++    period_id BIGINT         NOT NULL REFERENCES period (id),
++    person_id BIGINT         NOT NULL,
++    amount    DECIMAL(14, 2) NOT NULL,
++    PRIMARY KEY (period_id, person_id)
++);
