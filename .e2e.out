@@ -2,11 +2,46 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › crews › crews (15.4s)
-  ✓  2 [chromium] › acceptance.spec.ts:83:7 › crews › crews scenario 1 (17.5s)
-  ✓  3 [chromium] › acceptance.spec.ts:396:7 › crews › crews scenario 2 (18.5s)
-  ✓  4 [chromium] › acceptance.spec.ts:921:7 › crews › crews scenario 3 (18.1s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › crew lead total › crew lead total (10.2s)
+  ✓  2 [chromium] › acceptance.spec.ts:137:7 › crew lead total › crew lead total scenario 1 (16.0s)
+  ✘  3 [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 (7.3s)
+  ✘  4 [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 (15.3s)
 
-  Slow test file: [chromium] › acceptance.spec.ts (1.2m)
-  Consider splitting slow test files to speed up parallel execution
-  4 passed (1.2m)
+
+  1) [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 ──────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"10"[39m
+
+      717 |     const pg_vic = await ui.userPage(browser, "vic", sheet);
+      718 |     expect(await ui.periodAction(pg_vic, "P2", "close")).toBe(true);
+    > 719 |     expect(await ui.addClaim(pg_vic, p_ben, {"amount": "12.50", "ref": "inv 7"})).toBeNull();
+          |                                                                                   ^
+      720 |     expect(await ui.setRate(pg_vic, {"grade": "B", "pct": "7.50"})).toBe(true);
+      721 |     await ui.refresh(pg_vic);
+      722 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:719:83
+
+  2) [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 ─────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+
+    Received: [31m"14"[39m
+
+      1230 |     expect(await ui.addPatron(pg_uma, p_ada, "Ben")).toBe(true);
+      1231 |     expect(await ui.addLine(pg_uma, c_ada_1, {"label": "y", "qty": "3", "unit": "4.00"})).toBe(false);
+    > 1232 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "20.00", "note": "n"})).toBeNull();
+           |                                                                                ^
+      1233 |     await ui.showRetired(pg_uma, true);
+      1234 |     expect(await ui.unretire(pg_uma, p_ben)).toBe(true);
+      1235 |     expect(await ui.addAlias(pg_uma, p_ben, "")).toBe(false);
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1232:80
+
+  2 failed
+    [chromium] › acceptance.spec.ts:690:7 › crew lead total › crew lead total scenario 2 ───────────
+    [chromium] › acceptance.spec.ts:1132:7 › crew lead total › crew lead total scenario 3 ──────────
+  2 passed (52.0s)
+ 1356982

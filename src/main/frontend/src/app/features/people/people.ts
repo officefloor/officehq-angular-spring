@@ -16,6 +16,7 @@ import { Periods } from '../periods/periods';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Pools } from '../pools/pools';
 import { Crews } from '../crews/crews';
+import { CrewView, crewDueCents } from '../../core/crews';
 import { ImportPeople } from '../import-people/import-people';
 import { PasteClaims } from '../paste-claims/paste-claims';
 import { QuickAdd } from '../quick-add/quick-add';
@@ -98,6 +99,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       [overdueTotal]="overdueTotal()"
       [myDueTotal]="me() ? dueTotalOf(me()!) : ''"
       [myOverdueTotal]="me() ? overdueTotalOf(me()!) : ''"
+      [myCrewDueTotal]="myCrewDueTotal()"
     />
     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
@@ -760,7 +762,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       </table>
     </section>
     <app-pools [people]="people()" [today]="today()" />
-    <app-crews [people]="people()" [dueTotals]="crewDueTotals()" />
+    <app-crews [people]="people()" [dueTotals]="crewDueTotals()" [(crews)]="crews" />
   `,
 })
 export class People {
@@ -948,6 +950,16 @@ export class People {
   protected readonly crewDueTotals = computed(
     () => new Map(this.people().map((p) => [p.id, this.dueTotalCents(p)] as [number, number | null])),
   );
+  /** The sheet's crews, as the crews section reads them from the store. */
+  protected readonly crews = signal<CrewView[]>([]);
+  /** The due-totals of the crews the signed-in user's person leads, added up; empty when they lead none. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    const led = me ? this.crews().filter((c) => c.leadId === me.id) : [];
+    if (led.length === 0) return '';
+    const dues = this.crewDueTotals();
+    return money(led.reduce((sum, c) => sum + crewDueCents(c, dues), 0));
+  });
   /** Everyone's due-total added up with no trimming, skipping those shown as n/a. */
   protected readonly classicDueTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),

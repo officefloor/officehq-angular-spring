@@ -17,6 +17,14 @@ export interface CrewView {
   members: CrewMemberView[];
 }
 
+/**
+ * A crew's due-total in whole cents: its lead's and members' due-totals, as shown, added up, skipping
+ * those shown as n/a (null) in the given due-totals by person id.
+ */
+export function crewDueCents(crew: CrewView, dues: Map<number, number | null>): number {
+  return [crew.leadId, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
+}
+
 // The sheet's crews, read from and written to the store.
 @Injectable({ providedIn: 'root' })
 export class CrewsApi {

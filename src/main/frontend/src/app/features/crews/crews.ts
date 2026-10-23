@@ -1,7 +1,7 @@
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, model, signal, untracked } from '@angular/core';
 import { FigurePipe } from '../../core/locale';
 import { money } from '../../core/claims';
-import { CrewView, CrewsApi } from '../../core/crews';
+import { CrewView, CrewsApi, crewDueCents } from '../../core/crews';
 import { PersonView } from '../../core/people';
 import { Session } from '../../core/session';
 
@@ -86,7 +86,8 @@ export class Crews {
   /** Each person's due-total in whole cents as shown, by person id; null when shown as n/a. */
   readonly dueTotals = input.required<Map<number, number | null>>();
 
-  protected readonly crews = signal<CrewView[]>([]);
+  /** The sheet's crews as read from the store, shared with the screen around. */
+  readonly crews = model<CrewView[]>([]);
   protected readonly name = signal('');
   /** The lead chosen on the form: a person id, or empty. */
   protected readonly lead = signal('');
@@ -100,9 +101,7 @@ export class Crews {
     const dues = this.dueTotals();
     return this.crews().map((crew) => ({
       crew,
-      dueTotal: money(
-        [crew.leadId, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0),
-      ),
+      dueTotal: money(crewDueCents(crew, dues)),
     }));
   });
   /** A submit is waiting for its answer: a second submit meanwhile is ignored. */
