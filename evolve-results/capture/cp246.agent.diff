@@ -1,0 +1,201 @@
+diff --git a/.e2e.out b/.e2e.out
+index b7b206a6..fc759283 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,69 +2,112 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › rate withdraw › rate withdraw (15.0s)
+-  ✓  2 [chromium] › acceptance.spec.ts:98:7 › rate withdraw › rate withdraw scenario 1 (31.1s)
+-  ✘  3 [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 (20.7s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 (26.1s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › claim counts per person › claim counts per person (8.3s)
++  ✘  2 [chromium] › acceptance.spec.ts:65:7 › claim counts per person › claim counts per person scenario 1 (25.4s)
++  ✘  3 [chromium] › acceptance.spec.ts:711:7 › claim counts per person › claim counts per person scenario 2 (12.7s)
++  ✘  4 [chromium] › acceptance.spec.ts:1336:7 › claim counts per person › claim counts per person scenario 3 (26.2s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ──────────────
++  1) [chromium] › acceptance.spec.ts:65:7 › claim counts per person › claim counts per person scenario 1 
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+-    Locator: getByTestId('claim-row-6').getByTestId('claim-status')
+-    Expected string: [32m"DRAFT"[39m
+-    Received string: [31m"OPEN"[39m
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvl4xr2kn0nz[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('claim-row-6').getByTestId('claim-status')[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-    [2m  -   locator resolved to <span data-testid="claim-status">OPEN</span>[22m
+-    [2m  -   unexpected value "OPEN"[22m
+-
+-
+-      669 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_3).getByTestId("claim-stated")).toHaveText("no");
+-      670 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-due")).toHaveText("1.00");
+-    > 671 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-status")).toHaveText("DRAFT");
+-          |                                                                                          ^
+-      672 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_2).getByTestId("claim-stated")).toHaveText("no");
+-      673 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_1).getByTestId("claim-due")).toHaveText("1.00");
+-      674 |     await expect(pg_uma.getByTestId("claim-row-" + c_fay_1).getByTestId("claim-status")).toHaveText("DRAFT");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:671:90
+-
+-  2) [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ─────────────
+-
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+-
+-    Received: [31m"14"[39m
+-
+-      1300 |     await expect(pg_vic.getByTestId("watched-due-total")).toHaveText("0.00");
+-      1301 |     expect(await ui.setRate(pg_vic, {"grade": "C", "pct": "7.50"})).toBe(true);
+-    > 1302 |     expect(await ui.split(pg_vic, p_ben, c_ben_0, "0.01")).toBeNull();
+-           |                                                            ^
+-      1303 |     expect(await ui.importOpenings(pg_vic, "Cam,P1,1.00")).toBe(1);
+-      1304 |     expect(await ui.claimAction(pg_vic, c_ben_1, "open")).toBe(false);
+-      1305 |     await ui.setAsOf(pg_vic, "2026-03-01");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1302:60
+-
+-  2 failed
+-    [chromium] › acceptance.spec.ts:541:7 › rate withdraw › rate withdraw scenario 2 ───────────────
+-    [chromium] › acceptance.spec.ts:1174:7 › rate withdraw › rate withdraw scenario 3 ──────────────
+-  2 passed (1.7m)
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4xr2kn0nz-p</strong>[22m
++    [2m  -   unexpected value "smvl4xr2kn0nz-p"[22m
++
++
++      242 |     await expect(pg_wes.getByTestId("sheet-archived")).toHaveText("no");
++      243 |     await expect(pg_wes.getByTestId("sheet-asof")).toHaveText("2026-02-25");
++    > 244 |     await expect(pg_wes.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++          |                                                      ^
++      245 |     await expect(pg_wes.getByTestId("consolidated-people-count")).toHaveText("0");
++      246 |     await expect(pg_wes.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      247 |     await expect(pg_wes.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:244:54
++
++  2) [chromium] › acceptance.spec.ts:711:7 › claim counts per person › claim counts per person scenario 2 
++
++    Error: quick add: neither a result nor an error appeared within 8000ms
++
++       at ../support/ui.ts:136
++
++      134 |   if (await done()) return true;
++      135 |   if (await error.isVisible().catch(() => false)) return false;
++    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
++          |         ^
++      137 | }
++      138 |
++      139 | async function sleep(ms: number): Promise<void> {
++
++        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
++        at Object.quickAdd (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1071:14)
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:741:29
++
++  3) [chromium] › acceptance.spec.ts:1336:7 › claim counts per person › claim counts per person scenario 3 
++
++    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
++
++    Locator: getByTestId('sheet-parent')
++    Expected string: [32m"[7m__SHEET__[27m-p"[39m
++    Received string: [31m"[7msmvl4ylr8dn1s[27m-p"[39m
++    Call log:
++      [2m- expect.toHaveText with timeout 5000ms[22m
++    [2m  - waiting for getByTestId('sheet-parent')[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvl4ylr8dn1s-p</strong>[22m
++    [2m  -   unexpected value "smvl4ylr8dn1s-p"[22m
++
++
++      1448 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
++      1449 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
++    > 1450 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++           |                                                      ^
++      1451 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("1");
++      1452 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
++      1453 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
++
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1450:54
++
++  3 failed
++    [chromium] › acceptance.spec.ts:65:7 › claim counts per person › claim counts per person scenario 1 
++    [chromium] › acceptance.spec.ts:711:7 › claim counts per person › claim counts per person scenario 2 
++    [chromium] › acceptance.spec.ts:1336:7 › claim counts per person › claim counts per person scenario 3 
++  1 passed (1.3m)
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0adc65a3..7e033eb2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -582,6 +582,8 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+               <td>
+                 <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
+                 <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
++                <span>open claims <span data-testid="person-claims-OPEN-count">{{ statusCountOf(p.id, 'OPEN') }}</span></span>
++                <span>settled claims <span data-testid="person-claims-SETTLED-count">{{ statusCountOf(p.id, 'SETTLED') }}</span></span>
+                 <span>score <span data-testid="person-score">{{ scoreOf(p) }}</span></span>
+                 <span>band <span data-testid="person-band">{{ bandOf(p) }}</span></span>
+               </td>
+@@ -1541,6 +1543,11 @@ export class People {
+     return this.byPerson().get(personId) ?? [];
+   }
+ 
++  /** How many of a person's claims have a status now. */
++  protected statusCountOf(personId: number, status: ClaimView['status']): number {
++    return this.claimsOf(personId).filter((c) => c.status === status).length;
++  }
++
+   /** A person's claims that count in the live totals (see countsLive). */
+   private countingOf(personId: number): ClaimView[] {
+     const person = this.people().find((p) => p.id === personId);
