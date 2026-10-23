@@ -1,0 +1,455 @@
+diff --git a/.e2e.out b/.e2e.out
+index bac560bb..265a2a97 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,105 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✘  1 [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances (27.4s)
+-  ✘  2 [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 (16.3s)
+-  ✘  3 [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 (26.4s)
+-  ✘  4 [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 (20.3s)
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › late charge waiver › late charge waiver (12.8s)
++  ✓  2 [chromium] › acceptance.spec.ts:105:7 › late charge waiver › late charge waiver scenario 1 (35.4s)
++  ✘  3 [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 (29.3s)
++  ✓  4 [chromium] › acceptance.spec.ts:951:7 › late charge waiver › late charge waiver scenario 3 (33.1s)
+ 
+ 
+-  1) [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances ─────────────────────
+-
+-    Error: import openings: neither a result nor an error appeared within 8000ms
+-
+-       at ../support/ui.ts:136
+-
+-      134 |   if (await done()) return true;
+-      135 |   if (await error.isVisible().catch(() => false)) return false;
+-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+-          |         ^
+-      137 | }
+-      138 |
+-      139 | async function sleep(ms: number): Promise<void> {
+-
+-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
+-        at Object.importOpenings (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:1330:14)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:44:12
+-
+-  2) [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 ─────────
+-
+-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeNull[2m()[22m
+-
+-    Received: [31m"3"[39m
+-
+-      180 |     await expect(pg_uma.getByTestId("my-crew-due-total")).toHaveText("");
+-      181 |     const c_ada_0 = ui.must(await ui.addClaim(pg_uma, p_ada, {"amount": "99.95", "date": "2026-03-15"}));
+-    > 182 |     expect(await ui.addClaim(pg_uma, p_ada, {"amount": "7.77", "ref": "R-1"})).toBeNull();
+-          |                                                                                ^
+-      183 |     expect(await ui.addClaim(pg_uma, p_cam, {"amount": "7.77"})).toBeNull();
+-      184 |     expect(await ui.inlineGrade(pg_uma, p_cam, "C")).toBe(true);
+-      185 |     expect(await ui.generatePlans(pg_uma)).toBe(0);
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:182:80
+-
+-  3) [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 ────────
++  1) [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 ────
+ 
+     Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+ 
+     Locator: getByTestId('sheet-parent')
+     Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkgk4xux0ur[27m-p"[39m
++    Received string: [31m"[7msmvkguf5q5xk5[27m-p"[39m
+     Call log:
+       [2m- expect.toHaveText with timeout 5000ms[22m
+     [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkgk4xux0ur-p</strong>[22m
+-    [2m  -   unexpected value "smvkgk4xux0ur-p"[22m
+-
+-
+-      721 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
+-      722 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
+-    > 723 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkguf5q5xk5-p</strong>[22m
++    [2m  -   unexpected value "smvkguf5q5xk5-p"[22m
++
++
++      711 |     await expect(pg_uma.getByTestId("sheet-archived")).toHaveText("no");
++      712 |     await expect(pg_uma.getByTestId("sheet-asof")).toHaveText("");
++    > 713 |     await expect(pg_uma.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+           |                                                      ^
+-      724 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
+-      725 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      726 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:723:54
+-
+-  4) [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 ────────
+-
+-    Error: save person: neither a result nor an error appeared within 8000ms
+-
+-       at ../support/ui.ts:136
+-
+-      134 |   if (await done()) return true;
+-      135 |   if (await error.isVisible().catch(() => false)) return false;
+-    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+-          |         ^
+-      137 | }
+-      138 |
+-      139 | async function sleep(ms: number): Promise<void> {
++      714 |     await expect(pg_uma.getByTestId("consolidated-people-count")).toHaveText("1");
++      715 |     await expect(pg_uma.getByTestId("consolidated-due-total")).toHaveText("39.98");
++      716 |     await expect(pg_uma.getByTestId("consolidated-overdue-total")).toHaveText("39.98");
+ 
+-        at until (/home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/support/ui.ts:136:9)
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:998:12
++        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:713:54
+ 
+-  4 failed
+-    [chromium] › acceptance.spec.ts:6:7 › opening balances › opening balances ──────────────────────
+-    [chromium] › acceptance.spec.ts:84:7 › opening balances › opening balances scenario 1 ──────────
+-    [chromium] › acceptance.spec.ts:614:7 › opening balances › opening balances scenario 2 ─────────
+-    [chromium] › acceptance.spec.ts:968:7 › opening balances › opening balances scenario 3 ─────────
++  1 failed
++    [chromium] › acceptance.spec.ts:599:7 › late charge waiver › late charge waiver scenario 2 ─────
++  3 passed (1.9m)
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index acf2b2ad..525d9b43 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -87,6 +87,8 @@ export interface ClaimView {
+    * after it was saved); null (newer than every rate) when not yet stored, or absent as kept by an old snapshot.
+    */
+   added?: number | null;
++  /** Whether a steward waived the claim's late charge; false (or absent, as kept by an old snapshot) when not. */
++  waived?: boolean;
+ }
+ 
+ /** A line of a claim: its label, quantity and unit amount (two decimals). */
+@@ -398,6 +400,11 @@ export class ClaimsApi {
+     return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/${id}/timeline`));
+   }
+ 
++  /** Waive an OPEN or PENDING claim's late charge; only a steward, and refused when already waived. */
++  waive(sheet: string, id: number): Promise<ClaimView> {
++    return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/waive`, {}));
++  }
++
+   /** Remind an OPEN or PENDING claim; refused when it was already reminded on the sheet's today. */
+   remind(sheet: string, id: number): Promise<ClaimView> {
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/remind`, {}));
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 1c3e245c..14a10d4e 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -148,7 +148,8 @@ export function due(amountCents: number, pct: string | null): string {
+  * like the claim, added up. The floor is applied last; the one
+  * given is the one in force on the claim's date. Live figures round half up when `halfUp` (see
+  * roundsHalfUp), else half to even. The charge and floor are never bound by a statement. A correction
+- * has no floor and no late charge. Null when there is no figure.
++ * has no floor and no late charge, and a claim whose late charge was waived no late charge. Null when
++ * there is no figure.
+  */
+ export function claimDueCents(
+   claim: ClaimView,
+@@ -168,7 +169,7 @@ export function claimDueCents(
+     figure = pct === null ? null : dueCents(cents(claim.amount), pct, 1, halfUp);
+   }
+   if (figure === null || isCorrection(claim)) return figure;
+-  const charge = lateBoundaries(claim, late)
++  const charge = claim.waived ? 0 : lateBoundaries(claim, late)
+     .reduce((sum, on) => sum + dueCents(figure + sum, valueOn(late.history, on, '0.00'), 1, halfUp), 0);
+   return Math.max(figure + charge, floorCents);
+ }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index d1c58355..c5ac3d55 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -129,6 +129,7 @@ const PAST: Record<ClaimAction, string> = {
+           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
++          <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+             @for (line of c.log; track $index) {
+@@ -280,6 +281,14 @@ const PAST: Record<ClaimAction, string> = {
+           >
+             Remind
+           </button>
++          <button
++            type="button"
++            data-testid="claim-waive"
++            [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date"
++            (click)="waive(c)"
++          >
++            Waive late charge
++          </button>
+           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+           <input
+             [id]="'claim-defer-date-' + c.id"
+@@ -952,6 +961,25 @@ export class Claims {
+     }
+   }
+ 
++  /** Waive a claim's late charge; refused with an error on its row unless a steward waives an OPEN or PENDING claim not yet waived. */
++  protected async waive(claim: ClaimView): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    try {
++      this.saved.emit(await this.api.waive(sheet, claim.id));
++    } catch {
++      this.claimError.set({
++        id: claim.id,
++        message: claim.waived
++          ? "The claim's late charge is already waived."
++          : claim.status === 'OPEN' || claim.status === 'PENDING'
++            ? "The claim's late charge could not be waived; only a steward waives it."
++            : `A ${claim.status} claim's late charge cannot be waived; only an OPEN or PENDING one's can.`,
++      });
++    }
++  }
++
+   /** Show the claim's timeline on its row, read afresh from the audit file; an error on its row when it cannot be read. */
+   protected async showTimeline(claim: ClaimView): Promise<void> {
+     this.claimError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 8dfc59b0..6124a599 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -131,6 +131,10 @@ public class Claim {
+     @Column(name = "deferred_until")
+     private LocalDate deferredUntil;
+ 
++    /** Whether a steward waived the claim's late charge; false when added. */
++    @Column(name = "waived", nullable = false)
++    private boolean waived;
++
+     /** The number of the claim this one was split from; null unless it was split off another. */
+     @Column(name = "split_from")
+     private String splitFrom;
+@@ -457,6 +461,15 @@ public class Claim {
+         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+     }
+ 
++    public boolean isWaived() {
++        return waived;
++    }
++
++    /** Waive the claim's late charge; the caller checks the waiver is allowed. */
++    public void waive() {
++        this.waived = true;
++    }
++
+     public String getSplitFrom() {
+         return splitFrom;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 76906527..fbdb1c89 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -37,13 +37,13 @@ public class ClaimController {
+      * editor locks it (null when none does), and the last day it was reminded (null when never), and its
+      * external reference (null when it has none), and its tags, sorted, and every tag it has ever carried, sorted,
+      * and the reason it was voided with (null when none), and its comments, oldest first, and the user who last edited it (null when never), and the number of the bulk settle batch that settled
+-     * it (null when none did), and its lines, in the order they were added.
++     * it (null when none did), and its lines, in the order they were added, and whether its late charge was waived.
+      */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, LocalDate dueBy, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects, List<LogLineView> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
+             String ref, List<String> tags, List<String> tagsUsed, String voidReason, List<CommentView> comments,
+-            String editedBy, Integer settleBatch, List<LineView> lines, Long added) {
++            String editedBy, Integer settleBatch, List<LineView> lines, Long added, boolean waived) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -55,7 +55,8 @@ public class ClaimController {
+                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
+                     claim.getRef(), claim.getTags(), claim.getTagsUsed(), claim.getVoidReason(),
+                     claim.getComments().stream().map(CommentView::of).toList(), claim.getEditedBy(),
+-                    claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded());
++                    claim.getSettleBatch(), claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
++                    claim.isWaived());
+         }
+     }
+ 
+@@ -419,6 +420,15 @@ public class ClaimController {
+         return ClaimView.of(service.remind(sheetId, SignedIn.name(user), claimId));
+     }
+ 
++    /** Waive an OPEN or PENDING claim's late charge; only a steward. */
++    @PostMapping("/claims/{claimId}/waive")
++    public ClaimView waive(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
++        return ClaimView.of(service.waive(sheetId, SignedIn.name(user), claimId));
++    }
++
+     /** Defer an OPEN claim until a date after the sheet's today. */
+     @PostMapping("/claims/{claimId}/defer")
+     public ClaimView defer(
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5880f700..4f9efb17 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -537,6 +537,32 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Waive an OPEN or PENDING claim's late charge: from then on it bears none, whatever its overdue
++     * state. Only a steward waives; refused when the claim is not OPEN or PENDING, or is already waived.
++     */
++    @Transactional
++    public Claim waive(String sheetId, String user, long claimId) {
++        sheets.lock(sheetId);
++        Rollups.Rollup before = rollups.take(sheetId);
++        Claim claim = claim(sheetId, claimId);
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward waives a claim's late charge.");
++        }
++        if (!claim.getStatus().isOpen()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim's late charge cannot be waived; only an OPEN or PENDING one's can.");
++        }
++        if (claim.isWaived()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge is already waived.");
++        }
++        claim.waive();
++        Claim saved = claims.saveAndFlush(claim);
++        audited("CLAIM_WAIVED", sheetId, user, person(sheetId, saved.getPersonId()), saved);
++        rollups.audit(sheetId, user, before);
++        return saved;
++    }
++
+     /**
+      * Approve a PENDING claim: it becomes SETTLED, its due fixed at this moment at the figure a statement bound it to, else its live figure, with
+      * the late charge it has then. Only a steward approves, and not the user who opened or last edited the claim.
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index a6b5b9b3..380e3552 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -145,23 +145,27 @@ public class Dues {
+ 
+     /**
+      * The due a SETTLED claim is re-settled at: what it would show today as an OPEN claim bound by no
+-     * statement, its live figure with the late charge it would have on the sheet's today on top; null
+-     * when it has no figure.
++     * statement, its live figure with the late charge it would have on the sheet's today on top (none
++     * when its late charge was waived); null when it has no figure.
+      */
+     public BigDecimal resettling(Claim claim, String grade) {
+         Basis basis = live(claim.getSheetId());
+         BigDecimal figure = live(claim, grade, basis);
+-        return figure == null || claim.isCorrection() ? figure : floored(claim, lateOn(claim, grade, figure, basis), basis);
++        if (figure == null || claim.isCorrection()) {
++            return figure;
++        }
++        return floored(claim, claim.isWaived() ? figure : lateOn(claim, grade, figure, basis), basis);
+     }
+ 
+     /**
+      * A figure with the claim's late charge on top while an OPEN or PENDING claim is past its due-by
+      * (fixed when it was added) on the sheet's today (see {@link #lateOn}), rounded by the claim's date
+      * against the policy date. The charge is never bound: it always follows the sheet's today.
+-     * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue).
++     * A correction has no late charge, nor has a claim deferred on the sheet's today (it is not overdue),
++     * nor a claim whose late charge was waived.
+      */
+     private BigDecimal withLate(Claim claim, String grade, BigDecimal figure, Basis basis) {
+-        if (figure == null || claim.isCorrection() || !claim.getStatus().isOpen() || claim.getSettledDue() != null) {
++        if (figure == null || claim.isCorrection() || claim.isWaived() || !claim.getStatus().isOpen() || claim.getSettledDue() != null) {
+             return figure;
+         }
+         if (basis.sheet() != null && claim.isDeferredOn(basis.today())) {
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+index 9dd1bd96..c39fd324 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetHistory.java
+@@ -81,7 +81,7 @@ public class SheetHistory {
+ 
+     record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
+             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
+-            LocalDate deferredUntil, Long added) {
++            LocalDate deferredUntil, Long added, Boolean waived) {
+     }
+ 
+     /**
+@@ -261,6 +261,9 @@ public class SheetHistory {
+             }
+             claim.defer(c.deferredUntil());
+             claim.keepAdded(c.added());
++            if (Boolean.TRUE.equals(c.waived())) {
++                claim.waive();
++            }
+             claims.put(c.id(), claim);
+         }
+         Dues.Basis basis = new Dues.Basis(sheet, rates, inherited, correction -> claims.values().stream()
+@@ -301,6 +304,7 @@ public class SheetHistory {
+ 
+     private static ClaimState kept(Claim c) {
+         return new ClaimState(c.getId(), c.getPersonId(), c.getAmount(), c.getDate(), c.getDueBy(), c.getStatus(),
+-                c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded());
++                c.getNumber(), c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getAdded(),
++                c.isWaived());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+index ff9efd4d..1eef7d7a 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/CloneService.java
+@@ -146,10 +146,10 @@ public class CloneService {
+             long to = insert("""
+                     INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status, settled_due, opened_by,
+                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, split_from,
+-                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq)
++                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived)
+                     SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by,
+                         edited_by, settle_batch, corrects, due_by, terms, due_from, deferred_until, proofs, split_from,
+-                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq
++                        late_entry, reminded_on, escalated, ref, ref_key, tags, tags_used, void_reason, added_seq, waived
+                     FROM claim WHERE id = ?""", toSheetId, people.get(row.getLong(2)), from);
+             copyChildren("claim_log", "claim_id", "status, by_user, on_date, due", to, from);
+             copyChildren("claim_comment", "claim_id", "by_user, on_date, text", to, from);
+diff --git a/src/main/resources/db/migration/V97__claim_waived.sql b/src/main/resources/db/migration/V97__claim_waived.sql
+new file mode 100644
+index 00000000..dd915244
+--- /dev/null
++++ b/src/main/resources/db/migration/V97__claim_waived.sql
+@@ -0,0 +1,2 @@
++-- Whether a steward waived the claim's late charge: a waived claim bears no late charge from then on.
++ALTER TABLE claim ADD COLUMN waived BOOLEAN NOT NULL DEFAULT FALSE;
