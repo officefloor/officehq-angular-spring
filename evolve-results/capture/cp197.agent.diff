@@ -1,0 +1,192 @@
+diff --git a/src/main/frontend/src/app/core/audit.ts b/src/main/frontend/src/app/core/audit.ts
+index 1719a68c..db402adc 100644
+--- a/src/main/frontend/src/app/core/audit.ts
++++ b/src/main/frontend/src/app/core/audit.ts
+@@ -14,4 +14,11 @@ export class AuditApi {
+       this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit`, { params }),
+     );
+   }
++
++  /** The sheet's activity: one line `<user> <EVENT> <count>` per user and event, by user then event. */
++  activity(sheet: string): Promise<string[]> {
++    return firstValueFrom(
++      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit/activity`),
++    );
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/audit/activity.ts b/src/main/frontend/src/app/features/audit/activity.ts
+new file mode 100644
+index 00000000..e360c0a4
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/activity.ts
+@@ -0,0 +1,59 @@
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { AuditApi } from '../../core/audit';
++import { Session } from '../../core/session';
++
++// The sheet's activity: for every user and every event in the sheet's audit lines, one line
++// `<user> <EVENT> <count>`, sorted by user then event. It reads the file; it records nothing.
++@Component({
++  selector: 'app-activity',
++  template: `
++    <section aria-labelledby="activity-heading">
++      <h2 id="activity-heading">Activity</h2>
++      <button type="button" data-testid="activity-show" (click)="show()">Show activity</button>
++      @if (error(); as message) {
++        <p role="alert" data-testid="activity-error">{{ message }}</p>
++      }
++      <ol aria-label="Activity lines">
++        @for (line of lines(); track $index) {
++          <li data-testid="activity-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class Activity {
++  private readonly session = inject(Session);
++  private readonly api = inject(AuditApi);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  /** Counts the shows asked for, so only the latest one's answer is shown. */
++  private shows = 0;
++
++  constructor() {
++    // A sheet load clears what was shown for the sheet before.
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      untracked(() => {
++        this.shows++;
++        this.lines.set([]);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const show = ++this.shows;
++    this.lines.set([]);
++    try {
++      const lines = await this.api.activity(sheet);
++      if (show === this.shows) this.lines.set(lines);
++    } catch {
++      if (show === this.shows) this.error.set('The activity could not be read.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 53508894..75faa171 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -10,12 +10,13 @@ import { Notes } from '../notes/notes';
+ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ import { TemplatesList } from '../templates/templates';
+ import { AuditViewer } from '../audit/audit';
++import { Activity } from '../audit/activity';
+ import { TreeSearch } from '../tree-search/tree-search';
+ 
+ // The one screen: sign in by typing a name, then load a sheet by id and work on its people.
+ @Component({
+   selector: 'app-home',
+-  imports: [People, Settings, Delegation, Holidays, Notes, VoidReasonsList, TemplatesList, AuditViewer, TreeSearch],
++  imports: [People, Settings, Delegation, Holidays, Notes, VoidReasonsList, TemplatesList, AuditViewer, Activity, TreeSearch],
+   template: `
+     @if (session.user(); as user) {
+       <section aria-label="Session">
+@@ -104,6 +105,7 @@ import { TreeSearch } from '../tree-search/tree-search';
+           <app-people />
+           <app-tree-search />
+           <app-audit-viewer />
++          <app-activity />
+         }
+         <p data-testid="home-empty">Nothing here yet.</p>
+       </section>
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 117607d6..0bbfff4c 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -168,6 +168,38 @@ public class Audit {
+         return false;
+     }
+ 
++    /**
++     * The sheet's activity: for every user and every event in the sheet's lines, one line
++     * &lt;user&gt; &lt;EVENT&gt; &lt;count&gt;, sorted by user then event.
++     */
++    public List<String> activityOf(String sheetId) {
++        java.util.Map<String, java.util.Map<String, Integer>> counts = new java.util.TreeMap<>();
++        for (String line : linesAbout(sheetId, null)) {
++            int space = line.indexOf(' ');
++            String event = space < 0 ? line : line.substring(0, space);
++            String user = fieldValue(line, "by");
++            if (event.isEmpty() || user == null) {
++                continue;
++            }
++            counts.computeIfAbsent(user, (u) -> new java.util.TreeMap<>()).merge(event, 1, Integer::sum);
++        }
++        List<String> activity = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, count) -> activity.add(user + " " + event + " " + count)));
++        return activity;
++    }
++
++    /** The value of the line's first field, as the token after " field=", or null when it has none. */
++    private static String fieldValue(String line, String field) {
++        String token = " " + field + "=";
++        int at = line.indexOf(token);
++        if (at < 0) {
++            return null;
++        }
++        int start = at + token.length();
++        int end = line.indexOf(' ', start);
++        return line.substring(start, end < 0 ? line.length() : end);
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/AuditController.java b/src/main/java/net/officefloor/hq/app/AuditController.java
+index ad716453..cd57c668 100644
+--- a/src/main/java/net/officefloor/hq/app/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/AuditController.java
+@@ -64,4 +64,11 @@ public class AuditController {
+         shown.addAll(audit.linesAbout(person.get().getOriginSheetId(), keys));
+         return shown;
+     }
++
++    /** The sheet's activity: one line &lt;user&gt; &lt;EVENT&gt; &lt;count&gt; per user and event, sorted by user then event. */
++    @GetMapping("/activity")
++    public List<String> activity(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        return audit.activityOf(sheetId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 6fe155e4..ef02996b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -397,17 +397,13 @@ public class PersonController {
+     }
+ 
+     /**
+-     * The ids of the people on the sheet the signed-in user watches; none while the sheet is shown as
+-     * of a date, as watches are not kept in the sheet's history.
++     * The ids of the people on the sheet the signed-in user watches, as they stand now (also while the
++     * sheet is shown as of a date, as watches are not kept in the sheet's history).
+      */
+     @GetMapping("/watched")
+     public List<Long> watched(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+-            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+-            @RequestHeader(value = AsOfGuard.HEADER, required = false) String asOf) {
+-        if (AsOfGuard.date(asOf) != null) {
+-            return List.of();
+-        }
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user) {
+         return watches.watched(sheetId, SignedIn.name(user));
+     }
+ 
