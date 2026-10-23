@@ -1,0 +1,176 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 25020ff9..60f2ef93 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -367,6 +367,14 @@ export class ClaimsApi {
+    * Defer an OPEN claim until a date; refused (409) when the claim is not OPEN, the date is not after
+    * the sheet's today, or the claim is dated inside a closed period.
+    */
++  /**
++   * The claim's timeline: the audit lines about it, newest first, as the file holds them — those
++   * carrying its number, or for a claim with no number those naming its person, amount and date.
++   */
++  timeline(sheet: string, id: number): Promise<string[]> {
++    return firstValueFrom(this.http.get<string[]>(`${this.url(sheet)}/claims/${id}/timeline`));
++  }
++
+   /** Remind an OPEN or PENDING claim; refused when it was already reminded on the sheet's today. */
+   remind(sheet: string, id: number): Promise<ClaimView> {
+     return firstValueFrom(this.http.post<ClaimView>(`${this.url(sheet)}/claims/${id}/remind`, {}));
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2695c970..efaac15c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -134,6 +134,19 @@ const PAST: Record<ClaimAction, string> = {
+               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.on }} due={{ line.due }}</li>
+             }
+           </ol>
++          <button
++            type="button"
++            data-testid="claim-timeline"
++            [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date"
++            (click)="showTimeline(c)"
++          >
++            Timeline
++          </button>
++          <ol [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
++            @for (line of timelines()[c.id] ?? []; track $index) {
++              <li data-testid="claim-timeline-line">{{ line }}</li>
++            }
++          </ol>
+           <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+             @for (comment of c.comments ?? []; track $index) {
+               <li data-testid="claim-comments-line">{{ comment.by }} on {{ comment.on }}: {{ comment.text }}</li>
+@@ -425,10 +438,23 @@ export class Claims {
+   protected readonly inlineAmounts = signal<Record<number, string>>({});
+   /** The reason typed on each claim's row for rejecting it, by claim id. */
+   protected readonly rejectReasons = signal<Record<number, string>>({});
++  /** The timeline shown on each claim's row, newest first, by claim id; cleared by every sheet load. */
++  protected readonly timelines = signal<Record<number, string[]>>({});
++  /** Counts the timelines asked for, so only the latest one's answer is shown. */
++  private timelineShows = 0;
+   /** The reason chosen from the sheet's list on each claim's row for voiding it, by claim id. */
+   protected readonly voidReasonsChosen = signal<Record<number, string>>({});
+ 
+   constructor() {
++    // A sheet load clears the timelines shown for the sheet before.
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      untracked(() => {
++        this.timelineShows++;
++        this.timelines.set({});
++      });
++    });
+     // Put back the editor left open on this person's form (or, failing that, the one whose lock this
+     // user holds) once their claims are shown.
+     effect(() => {
+@@ -920,6 +946,25 @@ export class Claims {
+     }
+   }
+ 
++  /** Show the claim's timeline on its row, read afresh from the audit file; an error on its row when it cannot be read. */
++  protected async showTimeline(claim: ClaimView): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const show = ++this.timelineShows;
++    this.timelines.update((shown) => {
++      const rest = { ...shown };
++      delete rest[claim.id];
++      return rest;
++    });
++    try {
++      const lines = await this.api.timeline(sheet, claim.id);
++      if (show === this.timelineShows) this.timelines.update((shown) => ({ ...shown, [claim.id]: lines }));
++    } catch {
++      if (show === this.timelineShows) this.claimError.set({ id: claim.id, message: 'The timeline of the claim could not be read.' });
++    }
++  }
++
+   /** Choose the person to reassign a claim to; it clears any error left on the claim's row. */
+   protected setReassignTo(id: number, personId: string): void {
+     this.reassignTo.update((chosen) => ({ ...chosen, [id]: Number(personId) }));
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index bdbf4247..117607d6 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -128,6 +128,36 @@ public class Audit {
+         return shown;
+     }
+ 
++    /**
++     * A claim's timeline: the sheet's lines exactly as the file holds them, newest first. With a number
++     * (not null), the lines carrying number=&lt;it&gt;; without, the lines carrying no number that name
++     * the person (compared as names are compared), the amount and the date together.
++     */
++    public List<String> linesOfClaim(String sheetId, String number, String person, String amount, String date) {
++        if (number != null) {
++            return linesAbout(sheetId, null).stream().filter((line) -> hasField(line, "number", number)).toList();
++        }
++        Set<String> keys = Set.of(Person.keyOf(person));
++        return linesAbout(sheetId, keys).stream()
++                .filter((line) -> !line.contains(" number=") && hasField(line, "amount", amount)
++                        && hasField(line, "date", date))
++                .toList();
++    }
++
++    /** Whether the line carries the field with exactly the value, as a whole space-separated token. */
++    private static boolean hasField(String line, String field, String value) {
++        String token = " " + field + "=" + value;
++        int at = line.indexOf(token);
++        while (at >= 0) {
++            int end = at + token.length();
++            if (end == line.length() || line.charAt(end) == ' ') {
++                return true;
++            }
++            at = line.indexOf(token, at + 1);
++        }
++        return false;
++    }
++
+     private static boolean isAbout(String line, Set<String> keys) {
+         Matcher field = PERSON_FIELD.matcher(line);
+         while (field.find()) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 384acbe3..76906527 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -198,6 +198,14 @@ public class ClaimController {
+                 .orElseGet(() -> service.list(sheetId).stream().map(ClaimView::of).toList());
+     }
+ 
++    /** A claim's timeline: the audit lines about it, newest first, as the file holds them. */
++    @GetMapping("/claims/{claimId}/timeline")
++    public List<String> timeline(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long claimId) {
++        return service.timeline(sheetId, claimId);
++    }
++
+     /** Add a claim for a person. */
+     @PostMapping("/people/{personId}/claims")
+     public ClaimView add(
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 58db6586..edcbe035 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -862,6 +862,18 @@ public class ClaimService {
+         }
+     }
+ 
++    /**
++     * The claim's timeline: the audit lines about it, newest first, as the file holds them — those
++     * carrying its number, or for a claim with no number those naming its person, amount and date.
++     */
++    @Transactional(readOnly = true)
++    public List<String> timeline(String sheetId, long claimId) {
++        Claim claim = claim(sheetId, claimId);
++        Person person = person(sheetId, claim.getPersonId());
++        return audit.linesOfClaim(sheetId, claim.getNumber(), person.getName(),
++                claim.getAmount().toPlainString(), claim.getDate().toString());
++    }
++
+     private Claim claim(String sheetId, long claimId) {
+         return claims.findByIdAndSheetId(claimId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));

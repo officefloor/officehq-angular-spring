@@ -1,0 +1,64 @@
+{
+  "checkpoint": 162,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp162_claim-timeline",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each claim can show its timeline: a button on the claim lists the audit lines about it, newest\nfirst, each as the file holds it: the lines carrying its number (number=<its number>), and for a\nclaim with no number the lines naming its person, amount and date together.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach claim can show its timeline: a button on the claim lists the audit lines about it, newest\nfirst, each as the file holds it: the lines carrying its number (number=<its number>), and for a\nclaim with no number the lines naming its person, amount and date together.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e61e0a23676bff043319da68ccc6b782bac09562",
+  "reset_sha": "",
+  "preagent_sha": "85304efe23a3cd8afecc3dd6cb035e9443048422",
+  "prev_sha": "85304efe23a3cd8afecc3dd6cb035e9443048422",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7229861999999999,
+    "input_tokens": 44,
+    "output_tokens": 8115,
+    "cache_read_tokens": 829231,
+    "cache_creation_tokens": 49333,
+    "num_turns": 22,
+    "duration_ms": 289218,
+    "duration_api_ms": 124456,
+    "model": "claude-opus-5-5",
+    "session_id": "20461a5f-e1da-4c10-af96-0269a918ce43",
+    "stop_reason": "success",
+    "result_text": "I added a \"Timeline\" button to each claim, and all 4 tests in `bin/e2e` pass.\n\n**How it works:** pressing the button lists the claim's audit lines under it, newest first, exactly as the audit file holds them.\n- **Claim with a number:** it shows every line on that sheet that carries `number=<its number>`.\n- **Claim without a number:** it shows the lines that name its person, amount and date together and have no number. The spec requires that last condition: before a claim gets a number, the timeline must not include the `CLAIM_OPENED` line of another claim that has the same person, amount and date. Person names are compared the same way the existing audit filter compares them.\n\n**Two behaviours to know about:**\n- Two un-numbered claims with the same person, amount and date can't be told apart in the audit file, so each one's timeline shows both claims' lines. The spec expects this.\n- An un-numbered claim is matched on its current amount and date. If it was edited, older lines that carry its previous amount or date no longer appear in its timeline.\n\n**Changes:**\n- **Server:** `Audit.linesOfClaim` does the matching. Matching is by whole field, so `number=FY2026-1` doesn't also pick up `FY2026-12`. `ClaimService.timeline` and a new endpoint, `GET /api/sheets/{sheetId}/claims/{claimId}/timeline`, serve it. It only reads, so nothing is written to the store or the audit file.\n- **Front end** (`features/claims/claims.ts`): a `claim-timeline` button, `claim-timeline-line` items and a `timeline()` call in `core/claims.ts`. Pressing the button clears any error on that claim and clears its old timeline before fetching the new one. Loading the sheet clears every timeline. If the timeline can't be read, the claim's existing `claim-error` element shows instead.\n\nNo database schema change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7229861999999999,
+        "num_turns": 22,
+        "duration_ms": 289218,
+        "duration_api_ms": 124456,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp162.agent.jsonl",
+  "agent_diff_file": "cp162.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
