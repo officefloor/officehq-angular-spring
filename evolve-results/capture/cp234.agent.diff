@@ -1,0 +1,152 @@
+diff --git a/src/main/frontend/src/app/core/tree-search.ts b/src/main/frontend/src/app/core/tree-search.ts
+index 36647743..e83bea67 100644
+--- a/src/main/frontend/src/app/core/tree-search.ts
++++ b/src/main/frontend/src/app/core/tree-search.ts
+@@ -10,7 +10,7 @@ export interface FoundView {
+   dueTotal: string;
+ }
+ 
+-// The people of a sheet's whole tree whose name or an alias contains a text, read from the store.
++// The people of a sheet's whole tree, all or those whose name or an alias contains a text, read from the store.
+ @Injectable({ providedIn: 'root' })
+ export class TreeSearchApi {
+   private readonly http = inject(HttpClient);
+@@ -20,4 +20,9 @@ export class TreeSearchApi {
+       this.http.get<FoundView[]>(`/api/sheets/${encodeURIComponent(sheet)}/search`, { params: { text } }),
+     );
+   }
++
++  /** Every person of the sheet's whole tree: this sheet's first in list order, then the other sheets' by sheet id. */
++  everyone(sheet: string): Promise<FoundView[]> {
++    return firstValueFrom(this.http.get<FoundView[]>(`/api/sheets/${encodeURIComponent(sheet)}/tree-people`));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+index 41217e0b..986a2440 100644
+--- a/src/main/frontend/src/app/features/tree-search/tree-search.ts
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -1,6 +1,7 @@
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
+ import { FoundView, TreeSearchApi } from '../../core/tree-search';
+ import { Session } from '../../core/session';
++import { downloadCsv } from '../../core/csv';
+ 
+ // Search the sheet's whole tree for people whose name or an alias contains the typed text, case
+ // ignored: this sheet's people first in list order, then the other sheets' by sheet id.
+@@ -16,6 +17,10 @@ import { Session } from '../../core/session';
+           <p role="alert" data-testid="search-error">{{ message }}</p>
+         }
+       </form>
++      <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people as CSV</button>
++      @if (exportError(); as message) {
++        <p role="alert" data-testid="export-tree-error">{{ message }}</p>
++      }
+       @if (found(); as lines) {
+         <p>Found <strong data-testid="search-count">{{ lines.length }}</strong></p>
+         <ul>
+@@ -34,6 +39,7 @@ export class TreeSearch {
+   protected readonly text = signal('');
+   protected readonly found = signal<FoundView[] | null>(null);
+   protected readonly error = signal<string | null>(null);
++  protected readonly exportError = signal<string | null>(null);
+   /** Counts searches, so only the answer to the latest one is shown. */
+   private searches = 0;
+ 
+@@ -46,6 +52,7 @@ export class TreeSearch {
+         this.searches++;
+         this.found.set(null);
+         this.error.set(null);
++        this.exportError.set(null);
+       });
+     });
+   }
+@@ -68,4 +75,26 @@ export class TreeSearch {
+       if (read === this.searches) this.error.set('The search could not be made.');
+     }
+   }
++
++  /**
++   * Download the people of the whole tree as a CSV file: a header line, then one line per person, this
++   * sheet's first in list order, then the other sheets' by sheet id, with the grade and due-total as
++   * their own sheet shows them. Each line ends with a line feed.
++   */
++  protected async exportTree(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.exportError.set(null);
++    await this.session.settled();
++    try {
++      const people = await this.api.everyone(sheet);
++      downloadCsv(
++        [['sheet', 'name', 'grade', 'due-total'], ...people.map((p) => [p.sheetId, p.name, p.grade, p.dueTotal])],
++        'tree',
++        sheet,
++      );
++    } catch {
++      this.exportError.set('The tree could not be exported.');
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java
+index d4d99328..1a11fe82 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearch.java
+@@ -5,6 +5,7 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.function.Predicate;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -36,6 +37,16 @@ public class TreeSearch {
+     @Transactional(readOnly = true)
+     public List<Found> search(String sheetId, String text) {
+         String key = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
++        return walk(sheetId, person -> matches(person, key));
++    }
++
++    /** All the people of the tree: this sheet's first in list order, then the other sheets' by sheet id. */
++    @Transactional(readOnly = true)
++    public List<Found> everyone(String sheetId) {
++        return walk(sheetId, person -> true);
++    }
++
++    private List<Found> walk(String sheetId, Predicate<Person> wanted) {
+         List<String> others = new ArrayList<>(sheets.tree(sheetId));
+         others.remove(sheetId);
+         others.sort(null);
+@@ -47,7 +58,7 @@ public class TreeSearch {
+             Rollups.Rollup rollup = rollups.take(id);
+             LocalDate today = sheets.today(id);
+             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+-                if (matches(person, key)) {
++                if (wanted.test(person)) {
+                     Rollups.Figures figures = rollup.people().get(person.getId());
+                     found.add(new Found(id, person.getName(), person.gradeOn(today), figures == null ? null : figures.dueTotal()));
+                 }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+index 93a472f4..5244d282 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+@@ -32,8 +32,18 @@ public class TreeSearchController {
+     public List<FoundView> search(
+             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestParam(defaultValue = "") @Size(max = 200) String text) {
+-        return search.search(id, text).stream()
+-                .map(found -> new FoundView(found.sheetId(), found.name(), found.grade(), Rollups.shown(found.dueTotal())))
++        return shown(search.search(id, text));
++    }
++
++    /** All the people over the sheet's whole tree: this sheet's first in list order, then the other sheets' by sheet id. */
++    @GetMapping("/{id}/tree-people")
++    public List<FoundView> treePeople(@PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id) {
++        return shown(search.everyone(id));
++    }
++
++    private static List<FoundView> shown(List<TreeSearch.Found> found) {
++        return found.stream()
++                .map(f -> new FoundView(f.sheetId(), f.name(), f.grade(), Rollups.shown(f.dueTotal())))
+                 .toList();
+     }
+ }

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 234,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp234_tree-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e4fd3a0fcd5c688c6eb71ed8fef237dfd6cba29d",
+  "reset_sha": "",
+  "preagent_sha": "e08e20ca09ed7d8f01070ac3ad9453610c71b308",
+  "prev_sha": "e08e20ca09ed7d8f01070ac3ad9453610c71b308",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5684906,
+    "input_tokens": 38,
+    "output_tokens": 7878,
+    "cache_read_tokens": 624013,
+    "cache_creation_tokens": 35747,
+    "num_turns": 20,
+    "duration_ms": 246444,
+    "duration_api_ms": 79774,
+    "model": "claude-opus-5-5",
+    "session_id": "541fe2f6-262a-4842-a710-e4d899eb9db3",
+    "stop_reason": "success",
+    "result_text": "I've added the tree export button, but `bin/e2e` still fails: **all 4 tests fail**. As far as I can tell, none of the failures come from wrong export output. They come from the spec itself or from other features.\n\n**What I changed:**\n- **Server:** I added `GET /api/sheets/{id}/tree-people`. It returns everyone in the sheet's tree: this sheet first in list order, then the other sheets by sheet id. Each person comes with their grade and due-total as their own sheet shows them, so it's `n/a` when there's no rate. It reuses the tree walk in `rollup/TreeSearch.java`, which the search now shares.\n- **Front end:** The tree-search panel has a new `export-tree` button. It downloads `tree-<sheet>.csv` with the header `sheet,name,grade,due-total` and one line per person. If the export fails it shows an `export-tree-error` message.\n\n**Test results:**\n- **\"tree export\" (the main test):** the file is right apart from the sheet ids. The test expects the literal text `__SHEET__` where the real sheet id should be. That looks like a placeholder the test generator never filled in. With an id like `smvl0tgdfhbzb`, the app produced:\n  ```\n  sheet,name,grade,due-total\n  smvl0tgdfhbzb,Ada,A,2.00\n  smvl0tgdfhbzb,Ben,B,n/a\n  smvl0tgdfhbzb-c1,Cy,A,1.00\n  smvl0tgdfhbzb-c1,Di,B,4.00\n  ```\n  The test expects exactly this with `__SHEET__` in place of `smvl0tgdfhbzb`. The second export, from the child sheet, gets the same mismatch, so neither assertion can pass while the placeholder is there.\n- **Scenarios 1\u20133:** none of these ever press the export button. They fail on other features:\n  - Scenario 1 fails at line 125: a claim row never appears. It also checks for `__SHEET__-p` at line 182, which hits the same placeholder problem.\n  - Scenario 2 fails at line 867: a due-total shows 1.00 where 2.00 is expected.\n  - Scenario 3 fails at line 1617: names come back without the trailing spaces the test expects.\n\nI didn't go after those failures. They're outside this change, and you said not to edit the spec. The main test should pass once `__SHEET__` is replaced with the real sheet id in the spec.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5684906,
+        "num_turns": 20,
+        "duration_ms": 246444,
+        "duration_api_ms": 79774,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp234.agent.jsonl",
+  "agent_diff_file": "cp234.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
