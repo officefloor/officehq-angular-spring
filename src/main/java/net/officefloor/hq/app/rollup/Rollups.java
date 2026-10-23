@@ -61,11 +61,21 @@ public class Rollups {
 
     /** The sheet's figures as they stand now in the current transaction. */
     public Rollup take(String sheetId) {
-        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        Map<Long, Person> sheetPeople = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
+        return take(sheets.findById(sheetId).orElse(null), dues.live(sheetId), sheetPeople,
+                claims.findBySheetIdOrderByIdDesc(sheetId));
+    }
+
+    /**
+     * A sheet's figures read from what is given, held in no store or not: the sheet (null when not found;
+     * its today is the day they are read on), the basis their dues are read against, its people by id in
+     * list order, and its claims.
+     */
+    public Rollup take(Sheet sheet, Dues.Basis basis, Map<Long, Person> sheetPeople, Iterable<Claim> sheetClaims) {
         LocalDate today = sheet == null ? null : sheet.getToday();
-        Dues.Basis basis = dues.live(sheetId);
         Map<Long, List<Claim>> byPerson = new LinkedHashMap<>();
-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+        for (Claim claim : sheetClaims) {
             if (claim.getStatus().counts()) {
                 byPerson.computeIfAbsent(claim.getPersonId(), id -> new ArrayList<>()).add(claim);
             }
@@ -74,8 +84,9 @@ public class Rollups {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
-            List<Claim> counting = byPerson.getOrDefault(person.getId(), List.of()).stream()
+        for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
+            Person person = entry.getValue();
+            List<Claim> counting = byPerson.getOrDefault(entry.getKey(), List.of()).stream()
                     .filter(claim -> person.countsLive(claim.getStatus(), claim.getDate(), claim.isStated(), claim.isDeferredOn(today), today))
                     .toList();
             BigDecimal claimed = zero();
@@ -107,7 +118,7 @@ public class Rollups {
             if (sheet != null) {
                 due = sheet.capped(due);
             }
-            figures.put(person.getId(), new Figures(person.getName(), claimed, due, overdue));
+            figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue));
             claimedTotal = claimedTotal.add(claimed);
             if (due != null) {
                 dueFigures.add(due);

@@ -4,7 +4,8 @@ import { ConsolidatedApi, ConsolidatedView } from '../../core/consolidated';
 import { Session } from '../../core/session';
 
 // The sheet's figures consolidated over it and all its descendants: the number of people, and each
-// sheet's due-total and overdue-total, as that sheet shows them, added up. Re-read on every sheet load
+// sheet's due-total and overdue-total, as that sheet shows them (as of the as-of date while one is set),
+// added up. Re-read on every sheet load
 // and whenever the sheet's own figures move.
 @Component({
   selector: 'app-consolidated',
@@ -40,9 +41,10 @@ export class Consolidated {
         if (sheet) void this.reload(sheet);
       });
     });
-    // A move in the sheet's own today or figures re-reads them.
+    // A move in the sheet's own today, its as-of date or its figures re-reads them.
     effect(() => {
       this.session.today();
+      this.session.asOf();
       this.peopleCount();
       this.dueTotal();
       this.overdueTotal();

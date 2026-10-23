@@ -844,12 +844,19 @@ export class People {
    * Each person's carried figure for each period, in whole cents, by period id then person id: the sum
    * of the due figures, as shown now, of the person's claims that count which belong (by due-by) to a
    * period ending before this one starts and were still OPEN or PENDING at the end of its last day,
-   * by the status log (see countsInPeriod).
+   * by the status log (see countsInPeriod). Once closed or soft-closed it is the figure fixed then, 0
+   * for a person added since.
    */
   private readonly personCarriedCents = computed(() => {
     const periods = this.periods();
+    const frozen = (period: PeriodView) => fixed(period) && !!period.personCarried;
     const figures = new Map<number, Map<number, number>>(
-      periods.map((period) => [period.id, new Map(this.people().map((p) => [p.id, 0]))]),
+      periods.map((period) => [
+        period.id,
+        new Map(
+          this.people().map((p) => [p.id, frozen(period) ? cents(period.personCarried![p.id] ?? '0.00') : 0]),
+        ),
+      ]),
     );
     const byId = new Map(this.people().map((p) => [p.id, p]));
     for (const c of this.claims()) {
@@ -857,7 +864,7 @@ export class People {
       const person = byId.get(c.personId);
       if (!own || !person) continue;
       for (const period of periods) {
-        if (own.to >= period.from) continue;
+        if (own.to >= period.from || frozen(period)) continue;
         const then = statusAt(c, period.to);
         if ((then !== 'OPEN' && then !== 'PENDING') || !countsInPeriod(c, person, this.today(), period)) continue;
         const row = figures.get(period.id)!;

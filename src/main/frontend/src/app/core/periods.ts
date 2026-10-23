@@ -26,6 +26,11 @@ export interface PeriodView {
   softClosed: boolean;
   /** The most OPEN or PENDING claims due by in the period a person may have; null for no cap. */
   cap: number | null;
+  /**
+   * Each person's carried figure for the period fixed when it was closed, by person id, with two
+   * decimals; empty while open. A person added since has none: 0.00. Absent as kept by an old snapshot.
+   */
+  personCarried?: Record<string, string> | null;
 }
 
 /** Whether a period's figures are fixed: it is closed or soft-closed. */

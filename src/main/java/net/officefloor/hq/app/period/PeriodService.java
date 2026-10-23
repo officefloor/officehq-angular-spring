@@ -128,7 +128,8 @@ public class PeriodService {
     }
 
     /**
-     * Close a period, fixing at this moment each person's due-total for it and its own, their sum. A person's is the sum of the due figures,
+     * Close a period, fixing at this moment each person's due-total and carried figure (see {@link #carried})
+     * for it and its own due-total, their sum. A person's is the sum of the due figures,
      * as computed now, of the claims due by in it that were OPEN, PENDING or SETTLED at the end of its last day by their status log, each at
      * the grade its person has in force on its date (a claim with no figure adds nothing), leaving out those still OPEN or PENDING and dated
      * within their person's hold or of a person whose retirement date is reached, unless bound by a statement, and those deferred on today. A soft-closed period closes with its figures
@@ -166,7 +167,7 @@ public class PeriodService {
         if (period.isFixed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed or soft-closed.");
         }
-        period.softClose(totals(sheetId, period, today));
+        period.softClose(totals(sheetId, period, today), carried(sheetId, period, today));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString());
@@ -196,7 +197,7 @@ public class PeriodService {
 
     /** Close an open or soft-closed period, fixing its totals as of today, and audit it with the given trailing fields. */
     private Period fix(String sheetId, String user, Period period, LocalDate today, String trailing) {
-        period.close(totals(sheetId, period, today));
+        period.close(totals(sheetId, period, today), carried(sheetId, period, today));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString() + trailing);
@@ -225,6 +226,38 @@ public class PeriodService {
             }
         }
         return totals;
+    }
+
+    /**
+     * Each person's carried figure for the period as of today, by person id: the sum of the due figures,
+     * as computed now, of their claims due by in a period ending before this one starts that were OPEN or
+     * PENDING at the end of this one's last day by their status log, each at the grade its person has in
+     * force on its date, leaving out the same claims as {@link #totals}.
+     */
+    private Map<Long, BigDecimal> carried(String sheetId, Period period, LocalDate today) {
+        List<Period> all = periods.findBySheetIdOrderByFromDateAsc(sheetId);
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, person -> person));
+        Map<Long, BigDecimal> carried = new LinkedHashMap<>();
+        byId.keySet().forEach(id -> carried.put(id, BigDecimal.ZERO.setScale(2)));
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            boolean earlier = all.stream().filter(p -> p.contains(claim.getDueBy())).findFirst()
+                    .map(own -> own.getToDate().isBefore(period.getFromDate())).orElse(false);
+            if (person == null || !earlier) {
+                continue;
+            }
+            ClaimStatus then = claim.statusAt(period.getToDate());
+            if (then == null || !then.isOpen() || claim.isDeferredOn(today)
+                    || (claim.getStatus().isOpen() && !claim.isStated() && person.leavesLive(claim.getDate(), today))) {
+                continue;
+            }
+            BigDecimal figure = dues.due(claim, person.gradeOn(claim.getDate()));
+            if (figure != null) {
+                carried.merge(person.getId(), figure, BigDecimal::add);
+            }
+        }
+        return carried;
     }
 
     /**

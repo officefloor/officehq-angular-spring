@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 
 /**
  * A sheet's figures over it and all its descendants (the sheets naming it as their parent, theirs, and
- * so on), each sheet's as that sheet shows them now.
+ * so on), each sheet's as that sheet shows them now, or as it stood at the end of the as-of date while one
+ * is set, with that date as its today.
  */
 export interface ConsolidatedView {
   peopleCount: number;

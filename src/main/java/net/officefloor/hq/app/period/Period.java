@@ -20,7 +20,8 @@ import java.util.Map;
 /**
  * A period on a sheet: a name, unique on the sheet ignoring case by its {@link #keyOf key}, and a
  * from and to date, both inclusive. No two periods on a sheet overlap. A closed period keeps the
- * due-total it had when it was closed, and each person's due-total for it then, until it is reopened.
+ * due-total it had when it was closed, and each person's due-total and carried figure for it then, until
+ * it is reopened.
  * A soft-closed period fixes them the same way, but claims due by in it can still change; it can be
  * closed (fixing them afresh) or reopened.
  */
@@ -63,6 +64,13 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "total", nullable = false)
     private Map<Long, BigDecimal> personTotals = new HashMap<>();
+
+    /** Each person's carried figure for the period fixed when it was closed, by person id; empty while open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "carried", nullable = false)
+    private Map<Long, BigDecimal> personCarried = new HashMap<>();
 
     /** The last number the period gave a claim opened in it under period numbering; 0 before any. */
     @Column(name = "last_claim_number", nullable = false)
@@ -146,22 +154,29 @@ public class Period {
         return Map.copyOf(personTotals);
     }
 
-    /** Close the period, fixing each person's due-total for it and its own, their sum. */
-    public void close(Map<Long, BigDecimal> totals) {
-        fixTotals(totals);
+    /** Each person's carried figure fixed when the period was closed, by person id; empty while it is open. */
+    public Map<Long, BigDecimal> getPersonCarried() {
+        return Map.copyOf(personCarried);
+    }
+
+    /** Close the period, fixing each person's due-total and carried figure for it and its own due-total, their sum. */
+    public void close(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
+        fixTotals(totals, carried);
         this.closed = true;
         this.softClosed = false;
     }
 
     /** Soft-close the period, fixing its figures as a close does while its claims stay open to change. */
-    public void softClose(Map<Long, BigDecimal> totals) {
-        fixTotals(totals);
+    public void softClose(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
+        fixTotals(totals, carried);
         this.softClosed = true;
     }
 
-    private void fixTotals(Map<Long, BigDecimal> totals) {
+    private void fixTotals(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
         this.personTotals.clear();
         this.personTotals.putAll(totals);
+        this.personCarried.clear();
+        this.personCarried.putAll(carried);
         this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
@@ -171,6 +186,7 @@ public class Period {
         this.softClosed = false;
         this.closedTotal = null;
         this.personTotals.clear();
+        this.personCarried.clear();
     }
 
     /** Whether the date falls inside this period (inclusive). */

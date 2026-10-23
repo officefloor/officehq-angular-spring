@@ -39,7 +39,8 @@ public class PeriodController {
      * fixed as on a close, while not closed).
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal, Map<Long, String> personTotals, boolean softClosed, Integer cap) {
+            String closedTotal, Map<Long, String> personTotals, boolean softClosed, Integer cap,
+            Map<Long, String> personCarried) {
 
         public static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
@@ -47,7 +48,9 @@ public class PeriodController {
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
                     period.getPersonTotals().entrySet().stream()
                             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())),
-                    period.isSoftClosed(), period.getClaimCap());
+                    period.isSoftClosed(), period.getClaimCap(),
+                    period.getPersonCarried().entrySet().stream()
+                            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toPlainString())));
         }
     }
 

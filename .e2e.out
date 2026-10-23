@@ -2,12 +2,52 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
 
 Running 4 tests using 1 worker
 
-  -  1 [chromium] › zz-scratch.spec.ts:6:8 › carried figures › carried figures
-  ✓  2 [chromium] › zz-scratch.spec.ts:168:7 › carried figures › carried figures scenario 1 (1.3m)
-  ✓  3 [chromium] › zz-scratch.spec.ts:537:7 › carried figures › carried figures scenario 2 (13.2s)
-  ✓  4 [chromium] › zz-scratch.spec.ts:993:7 › carried figures › carried figures scenario 3 (20.1s)
+  ✓  1 [chromium] › acceptance.spec.ts:6:7 › frozen carried and as of tree › frozen carried and as of tree (40.9s)
+  ✓  2 [chromium] › acceptance.spec.ts:156:7 › frozen carried and as of tree › frozen carried and as of tree scenario 1 (20.5s)
+  ✘  3 [chromium] › acceptance.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 (27.6s)
+  ✓  4 [chromium] › acceptance.spec.ts:965:7 › frozen carried and as of tree › frozen carried and as of tree scenario 3 (19.3s)
 
-  Slow test file: [chromium] › zz-scratch.spec.ts (1.8m)
-  Consider splitting slow test files to speed up parallel execution
-  1 skipped
+
+  1) [chromium] › acceptance.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-parent')
+    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+    Received string: [31m"[7msmvkcvhgy052x[27m-p"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('sheet-parent')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkcvhgy052x-p</strong>[22m
+    [2m  -   unexpected value "smvkcvhgy052x-p"[22m
+
+
+      728 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+      729 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-05");
+    > 730 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+          |                                                      ^
+      731 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+      732 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+      733 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:730:54
+
+  1 failed
+    [chromium] › acceptance.spec.ts:628:7 › frozen carried and as of tree › frozen carried and as of tree scenario 2 
   3 passed (1.8m)
