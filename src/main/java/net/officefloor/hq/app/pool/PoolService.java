@@ -16,6 +16,7 @@ import net.officefloor.hq.app.crew.CrewMemberRepository;
 import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -50,9 +51,14 @@ public class PoolService {
     private final CrewMemberRepository crewMembers;
     private final SheetService sheets;
     private final Audit audit;
+    private final PoolCuts cuts;
+    private final Rollups rollups;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, Audit audit) {
+            CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, Audit audit,
+            PoolCuts cuts, Rollups rollups) {
+        this.cuts = cuts;
+        this.rollups = rollups;
         this.pools = pools;
         this.members = members;
         this.people = people;
@@ -68,46 +74,7 @@ public class PoolService {
      */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId) {
-        List<Pool> stored = pools.findBySheetIdOrderByIdAsc(sheetId);
-        List<Pool> all = new ArrayList<>(stored.stream().filter(p -> p.getCrewId() == null).toList());
-        all.addAll(stored.stream().filter(p -> p.getCrewId() != null).toList());
-        Map<Long, String> names = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
-                .collect(Collectors.toMap(Person::getId, Person::getName));
-        Map<Long, String> poolNames = all.stream().collect(Collectors.toMap(Pool::getId, Pool::getName));
-        Map<Long, List<Member>> byPool = members.findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList())
-                .stream().map(m -> new Member(m, m.getMemberPoolId() != null ? poolNames.get(m.getMemberPoolId())
-                        : names.get(m.getPersonId())))
-                .collect(Collectors.groupingBy(m -> m.member().getPoolId()));
-        Map<Long, List<Member>> byCrew = crewPoolMembers(sheetId, all, names);
-        return all.stream().map(p -> new PoolWithMembers(p, p.getCrewId() != null
-                ? byCrew.getOrDefault(p.getId(), List.of()) : byPool.getOrDefault(p.getId(), List.of()))).toList();
-    }
-
-    /**
-     * Each crew's pool's members by pool id: the lead, then the members in the order they were added, at
-     * 100.00 split equally, each rounded half to even, the remainder on the lead. Not stored.
-     */
-    private Map<Long, List<Member>> crewPoolMembers(String sheetId, List<Pool> all, Map<Long, String> names) {
-        Map<Long, Crew> byId = crews.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .collect(Collectors.toMap(Crew::getId, Function.identity()));
-        Map<Long, List<CrewMember>> crewMembersOf = crewMembers.findByCrewIdInOrderByIdAsc(byId.keySet()).stream()
-                .collect(Collectors.groupingBy(CrewMember::getCrewId));
-        Map<Long, List<Member>> result = new HashMap<>();
-        for (Pool pool : all) {
-            Crew crew = pool.getCrewId() == null ? null : byId.get(pool.getCrewId());
-            if (crew == null) continue;
-            List<Long> ids = new ArrayList<>(List.of(crew.getLeadId()));
-            crewMembersOf.getOrDefault(crew.getId(), List.of()).forEach(m -> ids.add(m.getPersonId()));
-            BigDecimal each = MAX_SHARE.divide(BigDecimal.valueOf(ids.size()), 2, RoundingMode.HALF_EVEN);
-            BigDecimal lead = MAX_SHARE.subtract(each.multiply(BigDecimal.valueOf(ids.size() - 1)));
-            List<Member> shares = new ArrayList<>();
-            for (int i = 0; i < ids.size(); i++) {
-                shares.add(new Member(new PoolMember(pool.getId(), ids.get(i), i == 0 ? lead : each),
-                        names.get(ids.get(i))));
-            }
-            result.put(pool.getId(), shares);
-        }
-        return result;
+        return cuts.list(sheetId);
     }
 
     /** Refused when the pool is a crew's: its members are the crew's. */
@@ -160,9 +127,11 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is already in the pool.");
         }
         BigDecimal scaled = share.setScale(2, RoundingMode.UNNECESSARY);
+        Rollups.Rollup before = rollups.take(sheetId);
         members.saveAndFlush(new PoolMember(poolId, personId, scaled).during(from, to));
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + person.getName() + " share=" + scaled.toPlainString() + dates(from, to));
+        rollups.audit(sheetId, user, before);
         return list(sheetId).stream().filter(p -> p.pool().getId().equals(poolId)).findFirst().orElseThrow();
     }
 
@@ -204,9 +173,11 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A chain of pools is at most three deep.");
         }
         BigDecimal scaled = share.setScale(2, RoundingMode.UNNECESSARY);
+        Rollups.Rollup before = rollups.take(sheetId);
         members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, scaled).during(from, to));
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + member.getName() + " share=" + scaled.toPlainString() + dates(from, to));
+        rollups.audit(sheetId, user, before);
         return list(sheetId).stream().filter(p -> p.pool().getId().equals(poolId)).findFirst().orElseThrow();
     }
 

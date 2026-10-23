@@ -18,6 +18,7 @@ import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolCuts;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -52,9 +53,11 @@ public class Consolidation {
     private final Dues dues;
     private final PersonRepository people;
     private final ClaimRepository claims;
+    private final PoolCuts cuts;
 
     public Consolidation(SheetRepository sheets, Rollups rollups, SheetHistory history, Dues dues,
-            PersonRepository people, ClaimRepository claims) {
+            PersonRepository people, ClaimRepository claims, PoolCuts cuts) {
+        this.cuts = cuts;
         this.sheets = sheets;
         this.rollups = rollups;
         this.history = history;
@@ -169,8 +172,8 @@ public class Consolidation {
         LinkedHashMap<Long, Person> sheetPeople = new LinkedHashMap<>();
         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
-        return new Taken(sheet, rollups.take(sheet, dues.live(sheetId), sheetPeople, sheetClaims), sheetPeople,
-                sheetClaims);
+        return new Taken(sheet, rollups.take(sheet, dues.live(sheetId), sheetPeople, sheetClaims,
+                cuts.personCuts(sheet, sheetPeople.values())), sheetPeople, sheetClaims);
     }
 
     /**

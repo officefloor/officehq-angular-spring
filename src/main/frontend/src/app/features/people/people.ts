@@ -1598,15 +1598,15 @@ export class People {
   }
 
   /**
-   * A person's due-total in whole cents, at most the sheet's cap: the sum of the due figures of their OPEN and SETTLED claims
+   * A person's due-total in whole cents, at most the sheet's cap less their cut total (not below 0): the sum of the due figures of their OPEN and SETTLED claims
    * (0 with none; see countsLive). Null (n/a) when the grade they have in force on the sheet's today has no
    * rate, unless a claim has a figure (a fixed one, or one at the grade in force on its own date): then it
    * is the sum of the figures there are.
    */
   private dueTotalCents(person: PersonView): number | null {
     const sum = this.dueSumCents(person);
-    const cap = this.capCents();
-    return sum !== null && cap !== null && sum > cap ? cap : sum;
+    const room = this.capRoomCents(person);
+    return sum !== null && room !== null && sum > room ? room : sum;
   }
 
   /** A person's settled-total: the due of their counting SETTLED claims at their frozen figures. */
@@ -1674,11 +1674,20 @@ export class People {
     return money(this.personCarriedCents().get(period.id)?.get(person.id) ?? 0);
   }
 
-  /** A person's excess: by how much the sum of their figures is above the cap, else 0.00 (n/a is not capped). */
+  /**
+   * A person's excess: by how much the sum of their figures is above the cap less their cut total (not below
+   * 0.00), else 0.00 (n/a is not capped).
+   */
   protected excessOf(person: PersonView): string {
     const sum = this.dueSumCents(person);
+    const room = this.capRoomCents(person);
+    return money(sum !== null && room !== null && sum > room ? sum - room : 0);
+  }
+
+  /** What the cap leaves a person's due-total once it covers their cut total, not below 0, in whole cents; null: no cap. */
+  private capRoomCents(person: PersonView): number | null {
     const cap = this.capCents();
-    return money(sum !== null && cap !== null && sum > cap ? sum - cap : 0);
+    return cap === null ? null : Math.max(0, cap - (this.cutCents().get(person.id) ?? 0));
   }
 
   /**

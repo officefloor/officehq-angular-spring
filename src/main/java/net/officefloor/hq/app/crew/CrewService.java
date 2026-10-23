@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.Rollups;
 import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
@@ -37,9 +38,12 @@ public class CrewService {
     private final PoolMemberRepository poolMembers;
     private final SheetService sheets;
     private final Audit audit;
+    private final Rollups rollups;
 
     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
-            PoolRepository pools, PoolMemberRepository poolMembers, SheetService sheets, Audit audit) {
+            PoolRepository pools, PoolMemberRepository poolMembers, SheetService sheets, Audit audit,
+            Rollups rollups) {
+        this.rollups = rollups;
         this.crews = crews;
         this.members = members;
         this.people = people;
@@ -81,10 +85,12 @@ public class CrewService {
         if (pools.existsBySheetIdAndName(sheetId, trimmed)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "There is already a pool by that name.");
         }
+        Rollups.Rollup before = rollups.take(sheetId);
         Crew saved = crews.saveAndFlush(new Crew(sheetId, trimmed, lead.getId()));
         pools.saveAndFlush(Pool.ofCrew(sheetId, trimmed, saved.getId()));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + trimmed
                 + " lead=" + lead.getName());
+        rollups.audit(sheetId, user, before);
         return new CrewWithMembers(saved, lead.getName(), List.of());
     }
 
@@ -102,9 +108,11 @@ public class CrewService {
         if (members.existsByCrewIdAndPersonId(crewId, personId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is already in the crew.");
         }
+        Rollups.Rollup before = rollups.take(sheetId);
         members.saveAndFlush(new CrewMember(crewId, personId));
         audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
                 + " name=" + person.getName());
+        rollups.audit(sheetId, user, before);
         return list(sheetId).stream().filter(c -> c.crew().getId().equals(crewId)).findFirst().orElseThrow();
     }
 

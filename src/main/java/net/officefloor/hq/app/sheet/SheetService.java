@@ -394,14 +394,16 @@ public class SheetService {
         return saved;
     }
 
-    /** Change the sheet's pot (null: none), auditing the change. */
+    /** Change the sheet's pot (null: none), auditing the change and the figures it moves through the cuts. */
     @Transactional
     public Sheet setPot(String id, String user, BigDecimal pot) {
         Sheet sheet = lock(id);
+        Rollups.Rollup before = rollups.take(id);
         sheet.setPot(pot == null ? null : pot.setScale(2, RoundingMode.UNNECESSARY));
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
                 + (saved.getPot() == null ? "" : saved.getPot().toPlainString()));
+        rollups.audit(id, user, before);
         return saved;
     }
 

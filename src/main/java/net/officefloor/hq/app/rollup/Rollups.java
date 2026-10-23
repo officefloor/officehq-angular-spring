@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolCuts;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -65,9 +66,11 @@ public class Rollups {
     private final SheetRepository sheets;
     private final Dues dues;
     private final Audit audit;
+    private final PoolCuts cuts;
 
     public Rollups(PersonRepository people, ClaimRepository claims, SheetRepository sheets,
-            Dues dues, Audit audit) {
+            Dues dues, Audit audit, PoolCuts cuts) {
+        this.cuts = cuts;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
@@ -79,16 +82,26 @@ public class Rollups {
     public Rollup take(String sheetId) {
         Map<Long, Person> sheetPeople = new LinkedHashMap<>();
         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(person -> sheetPeople.put(person.getId(), person));
-        return take(sheets.findById(sheetId).orElse(null), dues.live(sheetId), sheetPeople,
-                claims.findBySheetIdOrderByIdDesc(sheetId));
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        return take(sheet, dues.live(sheetId), sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
+                cuts.personCuts(sheet, sheetPeople.values()));
+    }
+
+    /**
+     * A sheet's figures read from what is given, as {@link #take(Sheet, Dues.Basis, Map, Iterable, Map)}
+     * with no one's cuts.
+     */
+    public Rollup take(Sheet sheet, Dues.Basis basis, Map<Long, Person> sheetPeople, Iterable<Claim> sheetClaims) {
+        return take(sheet, basis, sheetPeople, sheetClaims, Map.of());
     }
 
     /**
      * A sheet's figures read from what is given, held in no store or not: the sheet (null when not found;
      * its today is the day they are read on), the basis their dues are read against, its people by id in
-     * list order, and its claims.
+     * list order, its claims, and each person's cut total by id (none: no cut), which the cap covers too.
      */
-    public Rollup take(Sheet sheet, Dues.Basis basis, Map<Long, Person> sheetPeople, Iterable<Claim> sheetClaims) {
+    public Rollup take(Sheet sheet, Dues.Basis basis, Map<Long, Person> sheetPeople, Iterable<Claim> sheetClaims,
+            Map<Long, BigDecimal> personCuts) {
         LocalDate today = sheet == null ? null : sheet.getToday();
         Map<Long, List<Claim>> byPerson = new LinkedHashMap<>();
         for (Claim claim : sheetClaims) {
@@ -174,9 +187,9 @@ public class Rollups {
             if (!rated && !figured) {
                 due = null;
             }
-            // A due-total is at most the sheet's cap.
+            // A due-total is at most the sheet's cap less their cut total, not below 0.00.
             if (sheet != null) {
-                due = sheet.capped(due);
+                due = sheet.capped(due, personCuts.getOrDefault(entry.getKey(), zero()));
             }
             figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue, settled, personOverdue));
             claimedTotal = claimedTotal.add(claimed);

@@ -260,6 +260,19 @@ public class Sheet {
         return sum != null && cap != null && sum.compareTo(cap) > 0 ? cap : sum;
     }
 
+    /**
+     * A sum of figures held to the cap in force today less a cut total: the cap covers the sum and the cut
+     * total, so the sum is at most the cap less the cut total, not below 0.00; null (n/a) stays null.
+     */
+    public BigDecimal capped(BigDecimal sum, BigDecimal cut) {
+        BigDecimal cap = getCap();
+        if (sum == null || cap == null) {
+            return sum;
+        }
+        BigDecimal room = cap.subtract(cut).max(BigDecimal.ZERO.setScale(2));
+        return sum.compareTo(room) > 0 ? room : sum;
+    }
+
     /** The proof threshold in force on the sheet's today, with two decimals; null when there is none. */
     public BigDecimal getProofThreshold() {
         return proofThresholdOn(today);
