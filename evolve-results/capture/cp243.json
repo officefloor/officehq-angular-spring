@@ -1,0 +1,64 @@
+{
+  "checkpoint": 243,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp243_person-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button on each person's row downloads their row as a CSV file: a header line cell,value then one\nline per cell for person-name, person-grade, person-claimed, person-due-total, person-statement-count,\nperson-overdue-total, person-hold, person-retired, person-aliases and person-score, in that order,\neach with the value as the row shows it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button on each person's row downloads their row as a CSV file: a header line cell,value then one\nline per cell for person-name, person-grade, person-claimed, person-due-total, person-statement-count,\nperson-overdue-total, person-hold, person-retired, person-aliases and person-score, in that order,\neach with the value as the row shows it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e2299e51c59b90bc79fba0d8bad5cd7e67c21296",
+  "reset_sha": "",
+  "preagent_sha": "be69de86f172921574b4e7967f1316d17d62c45a",
+  "prev_sha": "be69de86f172921574b4e7967f1316d17d62c45a",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5543134000000001,
+    "input_tokens": 42,
+    "output_tokens": 5726,
+    "cache_read_tokens": 716767,
+    "cache_creation_tokens": 37034,
+    "num_turns": 22,
+    "duration_ms": 562838,
+    "duration_api_ms": 103423,
+    "model": "claude-opus-5-5",
+    "session_id": "44d9b7cf-1d68-4031-96ee-b7e2e5d1f979",
+    "stop_reason": "success",
+    "result_text": "I added an \"Export row\" button to each person's row that downloads it as a CSV file. Two of the four tests in the spec pass, including the main export test; scenarios 2 and 3 still fail. Both fail on assertions about other features that I don't think any app could pass, so I've stopped rather than change the spec.\n\n**The change** is all in `src/main/frontend/src/app/features/people/people.ts`, with no server or database changes:\n- The button carries `data-testid=\"person-export\"` and sits next to \"Export statement\".\n- A new `exportPerson()` method writes `cell,value` and then the ten cells in the order you asked for. It computes each value the same way the row's template does (`shownName`, `gradeOf`, `claimed`, and so on) and uses the existing `downloadCsv` helper. That helper puts quotes around values that need them, so `Lee, Jo (B)` comes out as `\"Lee, Jo (B)\"`.\n- Figures are not converted to the user's locale (no German `1.234,56`), the same as the other exports. The app notes that exports stay in plain form.\n\n**The two failures are both in the spec:**\n- **Scenario 2, line 1116:** it expects `sheet-parent` to show `\"__SHEET__-p\"`, the same at line 1266. That looks like a placeholder that was never swapped for the test's real sheet id, so it will never match the id the app shows.\n- **Scenario 3, line 1560:** it expects `snapshotCompare` to return `\"Cam  \"`, `\"Ben  \"`, `\"Ada  \"` with two trailing spaces. The helper in `e2e/support/ui.ts` trims every line before returning it, so those spaces are always removed.\n\nBoth scenarios stop at those lines, so I couldn't see whether their later export checks pass. They'll need the spec fixed, which I'm not allowed to edit.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5543134000000001,
+        "num_turns": 22,
+        "duration_ms": 562838,
+        "duration_api_ms": 103423,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp243.agent.jsonl",
+  "agent_diff_file": "cp243.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,62 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 287f33c3..6144563a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -783,6 +783,14 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
+                 >
+                   Export statement
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-export"
++                  [attr.aria-label]="'Export the row for ' + p.name + ' as CSV'"
++                  (click)="exportPerson(p)"
++                >
++                  Export row
++                </button>
+                 <button
+                   type="button"
+                   data-testid="person-unstate"
+@@ -2386,6 +2394,29 @@ export class People {
+     this.download(lines, 'statement');
+   }
+ 
++  /**
++   * Download a person's row as a CSV file: a header line, then one line per cell, in a fixed order,
++   * with the value as the row shows it. Each line ends with a line feed.
++   */
++  protected async exportPerson(person: PersonView): Promise<void> {
++    await this.session.settled();
++    this.personError.set(null);
++    const lines = [
++      ['cell', 'value'],
++      ['person-name', this.shownName(person)],
++      ['person-grade', this.gradeOf(person)],
++      ['person-claimed', this.claimed(person.id)],
++      ['person-due-total', this.dueTotalOf(person)],
++      ['person-statement-count', String(person.statementCount)],
++      ['person-overdue-total', this.overdueTotalOf(person)],
++      ['person-hold', person.held ? 'yes' : 'no'],
++      ['person-retired', person.retiredFrom === null ? 'no' : 'yes'],
++      ['person-aliases', this.aliasesOf(person)],
++      ['person-score', this.scoreOf(person)],
++    ];
++    this.download(lines, 'person');
++  }
++
+   private download(lines: string[][], name: string): void {
+     downloadCsv(lines, name, this.session.sheet());
+   }
+diff --git a/test-results/.last-run.json b/test-results/.last-run.json
+index 7d6c208b..5fca3f84 100644
+--- a/test-results/.last-run.json
++++ b/test-results/.last-run.json
+@@ -1,6 +1,4 @@
+ {
+   "status": "failed",
+-  "failedTests": [
+-    "ba33424f1197f444cce3-2023c7b0738572186e89"
+-  ]
++  "failedTests": []
+ }
+\ No newline at end of file
