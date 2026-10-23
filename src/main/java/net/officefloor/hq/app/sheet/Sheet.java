@@ -135,6 +135,10 @@ public class Sheet {
     @Column(name = "score_high")
     private Integer scoreHigh;
 
+    /** Whether the score log is on: changing the sheet's today then audits each person's score. Not dated. */
+    @Column(name = "score_log")
+    private boolean scoreLog;
+
     /** The proof kinds: comma separated, a claim above the proof threshold needs a proof of each to be settled or approved; null for none. Not dated. */
     @Column(name = "proof_kinds")
     private String proofKinds;
@@ -458,6 +462,7 @@ public class Sheet {
         then.reviewSla = reviewSla;
         then.scoreMid = scoreMid;
         then.scoreHigh = scoreHigh;
+        then.scoreLog = scoreLog;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -624,6 +629,15 @@ public class Sheet {
 
     public void setScoreHigh(Integer scoreHigh) {
         this.scoreHigh = scoreHigh;
+    }
+
+    /** Whether the score log is on. */
+    public boolean isScoreLog() {
+        return scoreLog;
+    }
+
+    public void setScoreLog(boolean scoreLog) {
+        this.scoreLog = scoreLog;
     }
 
     /** The proof kinds as set, comma separated; null when blank (none). */

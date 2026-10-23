@@ -81,6 +81,8 @@ export interface SettingsView {
   scoreMid: number | null;
   /** The high score threshold: a person scoring at or above it is HIGH (while the mid one is set too); null when none. */
   scoreHigh: number | null;
+  /** The score log switch: on, or empty (off). */
+  scoreLog: string;
   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled or approved; null when none. */
   proofKinds: string | null;
   /** The default grade: given to a person added by the quick-add bar or a blank-graded import line; null when none (A). */
@@ -151,6 +153,9 @@ export const GRACE_DAYS = /^(\d{1,4})?$/;
 
 /** A score threshold as the form takes it: a whole number, possibly negative, or blank for none. */
 export const SCORE = /^(-?\d{1,6})?$/;
+
+/** A switch as typed: on, or empty for off. */
+export const SWITCH = /^(on)?$/;
 
 /** A pot as the form takes it: up to two decimals, or blank for none. */
 export const POT = /^(\d{1,12}(\.\d{1,2})?)?$/;
@@ -294,6 +299,10 @@ export class SettingsApi {
   /** Set the high score threshold; a blank value means none. */
   setScoreHigh(sheet: string, value: string): Promise<SettingsView> {
     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/score-high`, { value }));
+  }
+
+  setScoreLog(sheet: string, value: string): Promise<SettingsView> {
+    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/score-log`, { value }));
   }
 
   /** Set the default grade; a blank value means A. */

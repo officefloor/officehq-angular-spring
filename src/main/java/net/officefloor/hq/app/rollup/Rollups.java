@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -9,6 +10,7 @@ import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -29,9 +31,20 @@ public class Rollups {
 
     /**
      * A person's figures: what they have claimed, their due-total (null when n/a) and their
-     * overdue-total (the due of their counting overdue claims).
+     * overdue-total (the due of their counting overdue claims), with their settled-total (the due of
+     * their counting SETTLED claims) and how many of their counting claims are overdue, which make their score.
      */
-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+            BigDecimal settledTotal, int overdueCount) {
+
+        /**
+         * Their score as the screen shows it: their settled-total over 100, less 5 for each overdue
+         * claim, rounded half to even to a whole number.
+         */
+        public long score() {
+            return settledTotal.subtract(BigDecimal.valueOf(500L * overdueCount))
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_EVEN).longValueExact();
+        }
 
         boolean sameAs(Figures other) {
             return other != null && same(claimed, other.claimed) && same(dueTotal, other.dueTotal)
@@ -104,12 +117,15 @@ public class Rollups {
                     .toList();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
+            BigDecimal settled = zero();
+            int personOverdue = 0;
             boolean figured = false;
             for (Claim claim : counting) {
                 String grade = person.gradeOn(claim.getDate());
                 boolean late = overdue(claim, sheet, grade);
                 if (late) {
                     overdueCount++;
+                    personOverdue++;
                 }
                 BigDecimal figure = dues.due(claim, grade, basis);
                 if (figure != null) {
@@ -117,6 +133,9 @@ public class Rollups {
                     figured = true;
                     if (late) {
                         overdue = overdue.add(figure);
+                    }
+                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                        settled = settled.add(figure);
                     }
                 }
             }
@@ -130,7 +149,7 @@ public class Rollups {
             if (sheet != null) {
                 due = sheet.capped(due);
             }
-            figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue));
+            figures.put(entry.getKey(), new Figures(person.getName(), claimed, due, overdue, settled, personOverdue));
             claimedTotal = claimedTotal.add(claimed);
             if (due != null) {
                 dueFigures.add(due);

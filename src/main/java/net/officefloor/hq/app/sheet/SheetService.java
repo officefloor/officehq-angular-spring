@@ -77,7 +77,7 @@ public class SheetService {
 
     /**
      * Change the sheet's today, auditing the figures that moves. When it moves, each person's due-total
-     * as it stood on the day being left is audited first, in list order, and kept as one of their snapshot lines, and the sheet as it stood at
+     * as it stood on the day being left is audited first, in list order (after their scores, while the score log is on), and kept as one of their snapshot lines, and the sheet as it stood at
      * the end of that day is kept (see {@link TodayLeaving}). The periods it puts past their grace
      * days are closed (see {@link TodayChanged}) before those figures are audited.
      */
@@ -87,6 +87,10 @@ public class SheetService {
         Rollups.Rollup before = rollups.take(id);
         if (!today.equals(sheet.getToday())) {
             LocalDate leaving = sheet.getToday();
+            if (sheet.isScoreLog()) {
+                before.people().forEach((personId, figures) -> audit.recordOnCommit("SCORE sheet=" + id + " by=" + user
+                        + " name=" + figures.name() + " score=" + figures.score()));
+            }
             before.people().forEach((personId, figures) -> {
                 people.findById(personId).ifPresent(person -> person.snapshot(leaving, figures.dueTotal()));
                 audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
@@ -309,6 +313,17 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-mid value="
                 + (saved.getScoreMid() == null ? "" : saved.getScoreMid().toString()));
+        return saved;
+    }
+
+    /** Switch the sheet's score log on or off, auditing the change. */
+    @Transactional
+    public Sheet setScoreLog(String id, String user, boolean on) {
+        Sheet sheet = lock(id);
+        sheet.setScoreLog(on);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-log value="
+                + (saved.isScoreLog() ? "on" : ""));
         return saved;
     }
 

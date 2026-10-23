@@ -84,7 +84,7 @@ public class SheetController {
      * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none,
      * and the proof kinds, comma separated, null for none, and the default grade, null for none (A), and
      * each grade's clerk limit with two decimals, null for none (the sheet's applies), and the mid and high
-     * score thresholds, null for none. */
+     * score thresholds, null for none, and the score log switch, on or blank (off). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
@@ -93,7 +93,7 @@ public class SheetController {
             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits, Integer scoreMid,
-            Integer scoreHigh) {
+            Integer scoreHigh, String scoreLog) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
@@ -113,7 +113,8 @@ public class SheetController {
                     sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
-                    sheet.getDefaultGrade(), gradeClerkLimits(sheet), sheet.getScoreMid(), sheet.getScoreHigh());
+                    sheet.getDefaultGrade(), gradeClerkLimits(sheet), sheet.getScoreMid(), sheet.getScoreHigh(),
+                    sheet.isScoreLog() ? "on" : "");
         }
 
         /** Each grade's clerk limit in force with two decimals; null when it has none (the sheet's applies). */
@@ -229,6 +230,15 @@ public class SheetController {
         Integer score() {
             String text = value == null ? "" : value.trim();
             return text.isEmpty() ? null : Integer.valueOf(text);
+        }
+    }
+
+    /** A switch as entered: on, or blank (or null) for off. */
+    public record SwitchChange(@Pattern(regexp = "\\s*(on)?\\s*") String value) {
+
+        /** Whether it is on. */
+        boolean on() {
+            return value != null && !value.isBlank();
         }
     }
 
@@ -592,6 +602,15 @@ public class SheetController {
             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ScoreChange change) {
         return SettingsView.of(service.setScoreHigh(id, SignedIn.name(user), change.score()));
+    }
+
+    /** Switch the sheet's score log on, or off with a blank value. */
+    @PutMapping("/{id}/settings/score-log")
+    public SettingsView setScoreLog(
+            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid SwitchChange change) {
+        return SettingsView.of(service.setScoreLog(id, SignedIn.name(user), change.on()));
     }
 
     /** Change the sheet's proof kinds; a blank value means none. */
