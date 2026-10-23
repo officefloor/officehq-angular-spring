@@ -1,0 +1,587 @@
+diff --git a/.e2e.out b/.e2e.out
+index 59b8cfac..85e5f6fc 100644
+--- a/.e2e.out
++++ b/.e2e.out
+@@ -2,94 +2,11 @@ Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/daniel/ui-work/runs/20261022
+ 
+ Running 4 tests using 1 worker
+ 
+-  ✓  1 [chromium] › acceptance.spec.ts:6:7 › bulk void › bulk void (16.8s)
+-  ✓  2 [chromium] › acceptance.spec.ts:130:7 › bulk void › bulk void scenario 1 (42.0s)
+-  ✘  3 [chromium] › acceptance.spec.ts:916:7 › bulk void › bulk void scenario 2 (32.3s)
+-  ✘  4 [chromium] › acceptance.spec.ts:1326:7 › bulk void › bulk void scenario 3 (41.8s)
+-
+-
+-  1) [chromium] › acceptance.spec.ts:916:7 › bulk void › bulk void scenario 2 ──────────────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkmcnr9lryp[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmcnr9lryp-p</strong>[22m
+-    [2m  -   unexpected value "smvkmcnr9lryp-p"[22m
+-
+-
+-      1029 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      1030 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("");
+-    > 1031 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1032 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("2");
+-      1033 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1034 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1031:54
+-
+-  2) [chromium] › acceptance.spec.ts:1326:7 › bulk void › bulk void scenario 3 ─────────────────────
+-
+-    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+-
+-    Locator: getByTestId('sheet-parent')
+-    Expected string: [32m"[7m__SHEET__[27m-p"[39m
+-    Received string: [31m"[7msmvkmdeswbrjr[27m-p"[39m
+-    Call log:
+-      [2m- expect.toHaveText with timeout 5000ms[22m
+-    [2m  - waiting for getByTestId('sheet-parent')[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-    [2m  -   locator resolved to <strong data-testid="sheet-parent">smvkmdeswbrjr-p</strong>[22m
+-    [2m  -   unexpected value "smvkmdeswbrjr-p"[22m
+-
+-
+-      1450 |     await expect(pg_vic.getByTestId("sheet-archived")).toHaveText("no");
+-      1451 |     await expect(pg_vic.getByTestId("sheet-asof")).toHaveText("2026-03-05");
+-    > 1452 |     await expect(pg_vic.getByTestId("sheet-parent")).toHaveText("__SHEET__-p");
+-           |                                                      ^
+-      1453 |     await expect(pg_vic.getByTestId("consolidated-people-count")).toHaveText("0");
+-      1454 |     await expect(pg_vic.getByTestId("consolidated-due-total")).toHaveText("0.00");
+-      1455 |     await expect(pg_vic.getByTestId("consolidated-overdue-total")).toHaveText("0.00");
+-
+-        at /home/daniel/ui-work/runs/202610221-as/sandbox/officehq-angular-spring/e2e/specs/acceptance.spec.ts:1452:54
+-
+-  2 failed
+-    [chromium] › acceptance.spec.ts:916:7 › bulk void › bulk void scenario 2 ───────────────────────
+-    [chromium] › acceptance.spec.ts:1326:7 › bulk void › bulk void scenario 3 ──────────────────────
+-  2 passed (2.3m)
+- 1627437
+\ No newline at end of file
++  ✓  1 [chromium] › acceptance.spec.ts:6:7 › clerk limit per grade › clerk limit per grade (26.8s)
++  ✓  2 [chromium] › acceptance.spec.ts:107:7 › clerk limit per grade › clerk limit per grade scenario 1 (41.5s)
++  ✓  3 [chromium] › acceptance.spec.ts:648:7 › clerk limit per grade › clerk limit per grade scenario 2 (30.4s)
++  ✓  4 [chromium] › acceptance.spec.ts:1145:7 › clerk limit per grade › clerk limit per grade scenario 3 (26.2s)
++
++  Slow test file: [chromium] › acceptance.spec.ts (2.1m)
++  Consider splitting slow test files to speed up parallel execution
++  4 passed (2.1m)
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 3984855d..f9beceb2 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -13,7 +13,7 @@ export interface RoleView {
+ }
+ 
+ /** The settings that carry a figure: each is saved from a from-date and shown as in force on the sheet's today. */
+-export type DatedKey = 'clerk-limit' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'proof-threshold-A' | 'proof-threshold-B' | 'proof-threshold-C' | 'note-threshold' | 'review-threshold' | 'rounding';
++export type DatedKey = 'clerk-limit' | 'clerk-limit-A' | 'clerk-limit-B' | 'clerk-limit-C' | 'cap' | 'floor' | 'terms' | 'terms-A' | 'terms-B' | 'terms-C' | 'grace-A' | 'grace-B' | 'grace-C' | 'late-pct' | 'proof-threshold' | 'proof-threshold-A' | 'proof-threshold-B' | 'proof-threshold-C' | 'note-threshold' | 'review-threshold' | 'rounding';
+ 
+ /** A from-date as a dated setting takes it: yyyy-mm-dd, or blank for the sheet's today. */
+ export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
+@@ -22,6 +22,8 @@ export const SETTING_FROM = /^(\d{4}-\d{2}-\d{2})?$/;
+ export interface SettingsView {
+   /** The clerk limit with two decimals, e.g. "1.50"; null when there is no limit. */
+   clerkLimit: string | null;
++  /** Each grade's clerk limit with two decimals: its claims use it in place of the sheet's; null when none. */
++  gradeClerkLimits: Record<Grade, string | null>;
+   /** The floor with two decimals, e.g. "1.00": a claim's live due is at least it. */
+   floor: string;
+   /** The terms in days: a claim is due by its date plus them. */
+@@ -174,6 +176,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/cap`, { value, from }));
+   }
+ 
++  /** Set a grade's clerk limit from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */
++  setGradeClerkLimit(sheet: string, grade: Grade, value: string, from: string): Promise<SettingsView> {
++    return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/clerk-limit-${grade}`, { value, from }));
++  }
++
+   /** Set a grade's proof threshold from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */
+   setGradeProofThreshold(sheet: string, grade: Grade, value: string, from: string): Promise<SettingsView> {
+     return firstValueFrom(this.http.put<SettingsView>(`${this.url(sheet)}/settings/proof-threshold-${grade}`, { value, from }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7338fe3e..0b08165e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1166,7 +1166,7 @@ export class People {
+   protected readonly terms = signal('');
+   /** The date the terms entered are in force from; blank for the beginning of time. */
+   protected readonly termsFrom = signal('');
+-  /** The terms an edit just saved from the beginning of time, shown on its row until the person is re-read. */
++  /** The terms an edit just saved, shown on its row until the person is re-read. */
+   private readonly savedTerms = new WeakMap<PersonView, number | null>();
+   /** The person's contact as typed: blank for none. */
+   protected readonly contact = signal('');
+@@ -1393,7 +1393,7 @@ export class People {
+ 
+   /**
+    * The own terms a person's row shows: those in force on the sheet's today, or those an edit just saved
+-   * from the beginning of time until the person is re-read.
++   * (from whatever date) until the person is re-read.
+    */
+   protected termsShown(person: PersonView): number | null {
+     return this.savedTerms.has(person) ? (this.savedTerms.get(person) ?? null) : termsOn(person, this.today());
+@@ -2355,7 +2355,7 @@ export class People {
+         const terms = form.termsGiven || termsFrom !== null
+           ? form.terms : (this.people().find((p) => p.id === id)?.terms ?? null);
+         const saved = await this.api.edit(sheet, id, { ...form, terms, termsFrom, gradeFrom, version: this.version() });
+-        if (form.termsGiven && termsFrom === null) this.savedTerms.set(saved, terms);
++        if (form.termsGiven) this.savedTerms.set(saved, terms);
+         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+       }
+       this.reset();
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index d62f38df..5f6f1923 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -31,6 +31,25 @@ import { Session } from '../../core/session';
+           [value]="fromInput()['clerk-limit']"
+           (input)="fromTyped('clerk-limit', value($event))"
+         />
++        @for (g of grades; track g) {
++          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (empty: the sheet's)</label>
++          <input
++            [id]="'setting-clerk-limit-' + g"
++            [attr.data-testid]="'setting-clerk-limit-' + g"
++            inputmode="decimal"
++            [value]="gradeClerkLimitInput()[g]"
++            (input)="gradeClerkLimitTyped(g, value($event))"
++            (keydown.delete)="gradeClerkLimitCleared($event, g)"
++            (keydown.backspace)="gradeClerkLimitCleared($event, g)"
++          />
++          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} from (yyyy-mm-dd; empty: the sheet's today)</label>
++          <input
++            [id]="'setting-clerk-limit-' + g + '-from'"
++            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
++            [value]="fromInput()[limitKey(g)]"
++            (input)="fromTyped(limitKey(g), value($event))"
++          />
++        }
+         <label for="setting-cap">Cap (empty: no cap)</label>
+         <input
+           id="setting-cap"
+@@ -337,6 +356,10 @@ import { Session } from '../../core/session';
+         }
+       </form>
+       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</span></p>
++      @for (g of grades; track g) {
++        <p>Clerk limit for grade {{ g }} in force:
++          <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (gradeClerkLimit()[g] ?? '') | figure }}</span></p>
++      }
+       <p>Cap in force: <span data-testid="setting-cap-current">{{ session.cap() | figure }}</span></p>
+       <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ (proofThreshold() ?? '') | figure }}</span></p>
+       @for (g of grades; track g) {
+@@ -422,6 +445,9 @@ export class Settings {
+   protected readonly clerkLimit = signal<string | null>(null);
+   protected readonly roles = signal<RoleView[]>([]);
+   protected readonly limit = signal('');
++  /** Each grade's clerk limit in force; null when it has none (the sheet's applies). */
++  protected readonly gradeClerkLimit = signal<Record<Grade, string | null>>({ A: null, B: null, C: null });
++  protected readonly gradeClerkLimitInput = signal<Record<Grade, string>>({ A: '', B: '', C: '' });
+   protected readonly capInput = signal('');
+   protected readonly proofThreshold = signal<string | null>(null);
+   protected readonly proofThresholdInput = signal('');
+@@ -466,6 +492,7 @@ export class Settings {
+   protected readonly fiscalStartMonthInput = signal('');
+   /** Which settings were typed into since the last save: a save changes only those. */
+   protected limitEdited = false;
++  protected gradeClerkLimitEdited = new Set<Grade>();
+   protected capEdited = false;
+   protected proofThresholdEdited = false;
+   protected noteThresholdEdited = false;
+@@ -509,7 +536,7 @@ export class Settings {
+   private saving: Promise<void> = Promise.resolve();
+ 
+   private static noFroms(): Record<DatedKey, string> {
+-    return { 'clerk-limit': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '', 'review-threshold': '', rounding: '' };
++    return { 'clerk-limit': '', 'clerk-limit-A': '', 'clerk-limit-B': '', 'clerk-limit-C': '', cap: '', floor: '', terms: '', 'terms-A': '', 'terms-B': '', 'terms-C': '', 'grace-A': '', 'grace-B': '', 'grace-C': '', 'late-pct': '', 'proof-threshold': '', 'proof-threshold-A': '', 'proof-threshold-B': '', 'proof-threshold-C': '', 'note-threshold': '', 'review-threshold': '', rounding: '' };
+   }
+ 
+   private static noPermissions(): Record<PermissionAction, string> {
+@@ -523,6 +550,7 @@ export class Settings {
+       const loads = this.session.loads();
+       untracked(() => {
+         this.clerkLimit.set(null);
++        this.gradeClerkLimit.set({ A: null, B: null, C: null });
+         this.proofThreshold.set(null);
+         this.noteThreshold.set(null);
+         this.reviewThreshold.set(null);
+@@ -569,6 +597,7 @@ export class Settings {
+     else if (key === 'floor') this.floorEdited = true;
+     else if (key === 'terms') this.termsEdited = true;
+     else if (key === 'late-pct') this.latePctEdited = true;
++    else if (key.startsWith('clerk-limit-')) this.gradeClerkLimitEdited.add(key.slice('clerk-limit-'.length) as Grade);
+     else if (key.startsWith('proof-threshold-')) this.gradeProofThresholdEdited.add(key.slice('proof-threshold-'.length) as Grade);
+     else if (key.startsWith('grace-')) this.gradeGraceEdited.add(key.slice('grace-'.length) as Grade);
+     else this.gradeTermsEdited.add(key.slice('terms-'.length) as Grade);
+@@ -583,6 +612,10 @@ export class Settings {
+     return `grace-${grade}`;
+   }
+ 
++  protected limitKey(grade: Grade): DatedKey {
++    return `clerk-limit-${grade}`;
++  }
++
+   protected proofKey(grade: Grade): DatedKey {
+     return `proof-threshold-${grade}`;
+   }
+@@ -657,6 +690,17 @@ export class Settings {
+     this.settingsError.set(null);
+   }
+ 
++  protected gradeClerkLimitTyped(grade: Grade, value: string): void {
++    this.gradeClerkLimitInput.update((all) => ({ ...all, [grade]: value }));
++    this.gradeClerkLimitEdited.add(grade);
++    this.settingsError.set(null);
++  }
++
++  /** Delete or Backspace in an empty grade clerk limit: clearing it again is still a change, so a save sets it empty. */
++  protected gradeClerkLimitCleared(event: Event, grade: Grade): void {
++    if (this.value(event) === '') this.gradeClerkLimitTyped(grade, '');
++  }
++
+   protected gradeProofThresholdTyped(grade: Grade, value: string): void {
+     this.gradeProofThresholdInput.update((all) => ({ ...all, [grade]: value }));
+     this.gradeProofThresholdEdited.add(grade);
+@@ -702,7 +746,7 @@ export class Settings {
+     const fiscalStartMonth = this.fiscalStartMonthInput().trim();
+     const saveLimit =
+       this.limitEdited ||
+-      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
++      (!this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && this.gradeClerkLimitEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited &&
+         !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.defaultGradeEdited && !this.reviewSlaEdited && !this.proofKindsEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.fiscalStartMonthEdited && this.permissionsEdited.size === 0);
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+@@ -715,6 +759,8 @@ export class Settings {
+       .map((g) => ({ grade: g, value: this.gradeTermsInput()[g].trim() }));
+     const saveGradeGrace = GRADES.filter((g) => this.gradeGraceEdited.has(g))
+       .map((g) => ({ grade: g, value: this.gradeGraceInput()[g].trim() }));
++    const saveGradeClerkLimits = GRADES.filter((g) => this.gradeClerkLimitEdited.has(g))
++      .map((g) => ({ grade: g, value: this.gradeClerkLimitInput()[g].trim() }));
+     const saveGradeProofThresholds = GRADES.filter((g) => this.gradeProofThresholdEdited.has(g))
+       .map((g) => ({ grade: g, value: this.gradeProofThresholdInput()[g].trim() }));
+     const saveLatePct = this.latePctEdited;
+@@ -736,6 +782,7 @@ export class Settings {
+     const from = (key: DatedKey) => froms[key].trim();
+     const savedKeys: DatedKey[] = [
+       ...(saveLimit ? (['clerk-limit'] as const) : []),
++      ...saveGradeClerkLimits.map((t) => this.limitKey(t.grade)),
+       ...(saveCap ? (['cap'] as const) : []),
+       ...(saveProofThreshold ? (['proof-threshold'] as const) : []),
+       ...saveGradeProofThresholds.map((t) => this.proofKey(t.grade)),
+@@ -756,6 +803,10 @@ export class Settings {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it empty for no limit.');
+       return;
+     }
++    if (saveGradeClerkLimits.some((t) => !LIMIT.test(t.value))) {
++      this.settingsError.set('Type a grade\'s clerk limit of 0.00 or more, with up to two decimals, or leave it empty for the sheet\'s.');
++      return;
++    }
+     if (saveCap && !CAP.test(cap)) {
+       this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it empty for no cap.');
+       return;
+@@ -854,6 +905,7 @@ export class Settings {
+     }
+     // What was typed is taken now: anything typed meanwhile is saved by the next submit.
+     if (saveLimit) this.limitEdited = false;
++    for (const t of saveGradeClerkLimits) this.gradeClerkLimitEdited.delete(t.grade);
+     if (saveCap) this.capEdited = false;
+     if (saveProofThreshold) this.proofThresholdEdited = false;
+     for (const t of saveGradeProofThresholds) this.gradeProofThresholdEdited.delete(t.grade);
+@@ -888,6 +940,13 @@ export class Settings {
+         if (saveLimit) {
+           this.inForce(await this.api.setClerkLimit(sheet, limit, from('clerk-limit')));
+         }
++        for (const t of saveGradeClerkLimits) {
++          const view = await this.api.setGradeClerkLimit(sheet, t.grade, t.value, from(this.limitKey(t.grade)));
++          this.inForce(view);
++          if (!this.gradeClerkLimitEdited.has(t.grade)) {
++            this.gradeClerkLimitInput.update((all) => ({ ...all, [t.grade]: view.gradeClerkLimits[t.grade] ?? '' }));
++          }
++        }
+         if (saveCap) {
+           const view = await this.api.setCap(sheet, cap, from('cap'));
+           this.inForce(view);
+@@ -1040,6 +1099,7 @@ export class Settings {
+   /** Show the dated settings as in force on the sheet's today, and the floor's and late percent's values by from-date. */
+   private inForce(view: SettingsView): void {
+     this.clerkLimit.set(view.clerkLimit);
++    this.gradeClerkLimit.set({ A: view.gradeClerkLimits['A'], B: view.gradeClerkLimits['B'], C: view.gradeClerkLimits['C'] });
+     this.session.cap.set(view.cap ?? '');
+     this.proofThreshold.set(view.proofThreshold);
+     this.gradeProofThreshold.set({ A: view.gradeProofThresholds['A'], B: view.gradeProofThresholds['B'], C: view.gradeProofThresholds['C'] });
+@@ -1071,6 +1131,9 @@ export class Settings {
+       // The cap's input starts at the cap in force, so clearing it is a change.
+       this.capInput.set(settings.cap ?? '');
+       this.capEdited = false;
++      // So do each grade's clerk limits.
++      this.gradeClerkLimitInput.set({ A: settings.gradeClerkLimits['A'] ?? '', B: settings.gradeClerkLimits['B'] ?? '', C: settings.gradeClerkLimits['C'] ?? '' });
++      this.gradeClerkLimitEdited.clear();
+       // So does the proof threshold's.
+       this.proofThresholdInput.set(settings.proofThreshold ?? '');
+       this.proofThresholdEdited = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 459dea50..c26aa749 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -512,11 +512,8 @@ public class ClaimController {
+             @PathVariable long claimId,
+             @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid SplitForm form) {
+-        String name = SignedIn.name(user);
+-        service.refuseSettling(sheetId, name, claimId);
+-        ClaimService.Split split = service.split(sheetId, name, claimId, new BigDecimal(form.amount()));
+-        Claim settled = service.move(sheetId, name, split.split().getId(), ClaimStatus.SETTLED);
+-        return new SplitView(ClaimView.of(split.original()), ClaimView.of(settled));
++        ClaimService.Split split = service.settlePart(sheetId, SignedIn.name(user), claimId, new BigDecimal(form.amount()));
++        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+     }
+ 
+     /** Re-date an OPEN or PENDING claim; only a steward. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 146aacaf..e87351fc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -131,6 +131,7 @@ public class ClaimService {
+         Sheet sheet = sheets.lock(sheetId);
+         int terms = terms(sheet, person, sheet.getToday());
+         LocalDate dueBy = holidays.dueBy(sheetId, dated, terms);
++        periods.refuseIfClosed(sheetId, dueBy);
+         refuseIfRetired(person, dated);
+         refuseUnlessCorrects(sheetId, personId, amount, corrects, null);
+         String referred = reference(ref);
+@@ -355,7 +356,7 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED) {
+             refuseUnproved(sheetId, claim, person.gradeOn(claim.getDate()), settledDue);
+         }
+-        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settledDue)) {
++        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, person.gradeOn(today), settledDue)) {
+             next = ClaimStatus.PENDING;
+             settledDue = null;
+         }
+@@ -696,8 +697,8 @@ public class ClaimService {
+      * next number in the sequence it is numbered in (its old one never used again; a DRAFT gets none), and loses any figure a statement bound it to, its due live again until its new person's
+      * next statement. Only a role the sheet's permission matrix allows (a steward by
+      * default) reassigns. Refused when the claim is SETTLED or VOID, when it is
+-     * due by inside a closed period, when the new person is its own, is retired before its date, or (for
+-     * a correction) has no SETTLED claim of the number it corrects.
++     * due by inside a closed period, when the new person is its own or is retired before its date, or (for
++     * a correction, which still corrects the claim it named) when its person has no SETTLED claim of that number.
+      */
+     @Transactional
+     public Claim reassign(String sheetId, String user, long claimId, long personId) {
+@@ -728,7 +729,7 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already " + to.getName() + "'s.");
+         }
+         refuseIfRetired(to, claim.getDate());
+-        refuseUnlessCorrects(sheetId, personId, claim.getAmount(), claim.getCorrects(), claim.getId());
++        refuseUnlessCorrects(sheetId, from.getId(), claim.getAmount(), claim.getCorrects(), claim.getId());
+         claim.reassign(to.getId());
+         claim.unbind();
+         if (claim.getNumber() != null) {
+@@ -821,6 +822,19 @@ public class ClaimService {
+         return new Split(original, split);
+     }
+ 
++    /**
++     * Part-settle an OPEN claim in one transaction: refused when settling it would be refused (see
++     * {@link #refuseSettling}); else the amount is split off it and the new claim settled. A refusal
++     * at any step writes nothing: the split is rolled back with it.
++     */
++    @Transactional
++    public Split settlePart(String sheetId, String user, long claimId, BigDecimal amount) {
++        refuseSettling(sheetId, user, claimId);
++        Split split = split(sheetId, user, claimId, amount);
++        Claim settled = move(sheetId, user, split.split().getId(), ClaimStatus.SETTLED);
++        return new Split(split.original(), settled);
++    }
++
+     /**
+      * Refuse when settling an OPEN claim would be refused: the user's role may not settle, the claim
+      * is not OPEN, is due by inside a closed period, is deferred on the sheet's today, was opened or
+@@ -930,9 +944,12 @@ public class ClaimService {
+         return threshold != null && due != null && due.compareTo(threshold) > 0;
+     }
+ 
+-    /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit. */
+-    private boolean overClerkLimit(String sheetId, String user, BigDecimal due) {
+-        BigDecimal limit = sheets.clerkLimit(sheetId);
++    /**
++     * Whether a clerk is settling a claim whose due is above the clerk limit in force on the sheet's
++     * today: its person's grade's when one is set, else the sheet's.
++     */
++    private boolean overClerkLimit(String sheetId, String user, String grade, BigDecimal due) {
++        BigDecimal limit = sheets.clerkLimit(sheetId, grade);
+         if (limit == null || due == null || due.compareTo(limit) <= 0) {
+             return false;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index d271f30d..dbee7e99 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -218,6 +218,20 @@ public class Sheet {
+         return decimal(valueOn(CLERK_LIMIT, today, plain(clerkLimit)));
+     }
+ 
++    /** A grade's clerk limit in force on the sheet's today, with two decimals; null when it has none (the sheet's applies). */
++    public BigDecimal getGradeClerkLimit(String grade) {
++        return decimal(valueOn(gradeClerkLimitKey(grade), today, null));
++    }
++
++    /**
++     * The clerk limit for a grade's claims: the grade's own in force on the sheet's today when it has
++     * one, else the sheet's; null when there is none.
++     */
++    public BigDecimal clerkLimitFor(String grade) {
++        BigDecimal own = grade == null ? null : getGradeClerkLimit(grade);
++        return own != null ? own : getClerkLimit();
++    }
++
+     /** The cap in force on the sheet's today, with two decimals; null when there is none. */
+     public BigDecimal getCap() {
+         return decimal(valueOn(CAP, today, plain(cap)));
+@@ -368,6 +382,11 @@ public class Sheet {
+         return GRACE + "-" + grade;
+     }
+ 
++    /** The key a grade's clerk limit is recorded under. */
++    public static String gradeClerkLimitKey(String grade) {
++        return CLERK_LIMIT + "-" + grade;
++    }
++
+     /** The key a grade's proof threshold is recorded under. */
+     public static String gradeProofThresholdKey(String grade) {
+         return PROOF_THRESHOLD + "-" + grade;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 39c9b72c..c4de876b 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -81,7 +81,8 @@ public class SheetController {
+      * threshold with two decimals, null for off, and the rounding mode (half-up or half-even), null for none
+      * (the policy date decides), with its values by from-date, and the review threshold with two decimals,
+      * null for none, and the escalation gap in days, null for off, and the review SLA in days, null for none,
+-     * and the proof kinds, comma separated, null for none, and the default grade, null for none (A). */
++     * and the proof kinds, comma separated, null for none, and the default grade, null for none (A), and
++     * each grade's clerk limit with two decimals, null for none (the sheet's applies). */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Integer graceDays, Integer termsA, Integer termsB, Integer termsC, String cap,
+             List<DatedValue> floorHistory, List<DatedValue> latePctHistory, String proofThreshold,
+@@ -89,7 +90,7 @@ public class SheetController {
+             Integer graceC, Map<String, List<DatedValue>> graceHistory, Map<String, String> gradeProofThresholds,
+             String pot, String parent, int fiscalStartMonth, String alertThreshold, String rounding,
+             List<DatedValue> roundingHistory, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
+-            String proofKinds, String defaultGrade) {
++            String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimits) {
+ 
+         static SettingsView of(Sheet sheet) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+@@ -109,7 +110,17 @@ public class SheetController {
+                     sheet.getRounding(), DatedValue.of(sheet.roundingHistory()),
+                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
+                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
+-                    sheet.getDefaultGrade());
++                    sheet.getDefaultGrade(), gradeClerkLimits(sheet));
++        }
++
++        /** Each grade's clerk limit in force with two decimals; null when it has none (the sheet's applies). */
++        private static Map<String, String> gradeClerkLimits(Sheet sheet) {
++            Map<String, String> all = new TreeMap<>();
++            for (String grade : GRADES) {
++                BigDecimal limit = sheet.getGradeClerkLimit(grade);
++                all.put(grade, limit == null ? null : limit.toPlainString());
++            }
++            return all;
+         }
+ 
+         /** Each grade's proof threshold in force with two decimals; null when it has none (the sheet's applies). */
+@@ -370,6 +381,18 @@ public class SheetController {
+                 value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
+     }
+ 
++    /** Record a grade's clerk limit from a date (blank: the sheet's today); a blank value means none (the sheet's applies). */
++    @PutMapping("/{id}/settings/clerk-limit-{grade}")
++    public SettingsView setGradeClerkLimit(
++            @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader(SignedIn.HEADER) @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid SettingChange change) {
++        String value = change.value() == null ? "" : change.value().trim();
++        return SettingsView.of(service.setGradeClerkLimit(id, SignedIn.name(user), grade,
++                value.isEmpty() ? null : new BigDecimal(value), change.fromDate()));
++    }
++
+     /** Record the sheet's cap from a date (blank: the sheet's today); a blank value means no cap. */
+     @PutMapping("/{id}/settings/cap")
+     public SettingsView setCap(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index beae3556..26f01153 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -120,10 +120,10 @@ public class SheetService {
+         return saved;
+     }
+ 
+-    /** The sheet's clerk limit; null when there is none. */
++    /** The clerk limit for a grade's claims: the grade's own in force when set, else the sheet's; null when there is none. */
+     @Transactional(readOnly = true)
+-    public BigDecimal clerkLimit(String id) {
+-        return load(id).getClerkLimit();
++    public BigDecimal clerkLimit(String id, String grade) {
++        return load(id).clerkLimitFor(grade);
+     }
+ 
+     /** Record the sheet's clerk limit (null: no limit) from a date (null: the sheet's today), auditing the change. */
+@@ -132,6 +132,12 @@ public class SheetService {
+         return setDated(id, user, Sheet.CLERK_LIMIT, money(limit), from, false);
+     }
+ 
++    /** Record a grade's clerk limit (null: none, the sheet's applies) from a date, auditing the change. */
++    @Transactional
++    public Sheet setGradeClerkLimit(String id, String user, String grade, BigDecimal limit, LocalDate from) {
++        return setDated(id, user, Sheet.gradeClerkLimitKey(grade), money(limit), from, false);
++    }
++
+     /** Record the sheet's cap (null: no cap) from a date, auditing the change and the figures it moves. */
+     @Transactional
+     public Sheet setCap(String id, String user, BigDecimal cap, LocalDate from) {
