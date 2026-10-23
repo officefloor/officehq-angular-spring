@@ -15,6 +15,7 @@ import { Consolidated } from '../consolidated/consolidated';
 import { Periods } from '../periods/periods';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Pools } from '../pools/pools';
+import { Crews } from '../crews/crews';
 import { ImportPeople } from '../import-people/import-people';
 import { PasteClaims } from '../paste-claims/paste-claims';
 import { QuickAdd } from '../quick-add/quick-add';
@@ -88,7 +89,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, QuickAdd, Rates, Summary, ClassicSummary],
+  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -759,6 +760,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       </table>
     </section>
     <app-pools [people]="people()" [today]="today()" />
+    <app-crews [people]="people()" [dueTotals]="crewDueTotals()" />
   `,
 })
 export class People {
@@ -942,6 +944,10 @@ export class People {
     }
     return this.periods().map((p) => ({ name: p.name, dueTotal: money(totals.get(p.id) ?? 0) }));
   });
+  /** Each person's due-total in whole cents as shown, by person id; null when shown as n/a. */
+  protected readonly crewDueTotals = computed(
+    () => new Map(this.people().map((p) => [p.id, this.dueTotalCents(p)] as [number, number | null])),
+  );
   /** Everyone's due-total added up with no trimming, skipping those shown as n/a. */
   protected readonly classicDueTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),

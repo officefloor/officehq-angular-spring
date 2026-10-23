@@ -10,6 +10,7 @@ import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.Role;
@@ -43,6 +44,7 @@ public class TransferService {
     private final StatementService statements;
     private final WatchRepository watches;
     private final PoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final RoleService roles;
     private final SheetService sheets;
     private final PeriodService periods;
@@ -50,13 +52,14 @@ public class TransferService {
     private final Audit audit;
 
     public TransferService(PersonRepository people, ClaimRepository claims, StatementService statements,
-            WatchRepository watches, PoolMemberRepository poolMembers, RoleService roles, SheetService sheets,
+            WatchRepository watches, PoolMemberRepository poolMembers, CrewService crews, RoleService roles, SheetService sheets,
             PeriodService periods, Rollups rollups, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.statements = statements;
         this.watches = watches;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.roles = roles;
         this.sheets = sheets;
         this.periods = periods;
@@ -109,6 +112,8 @@ public class TransferService {
             }
         }
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
+        // Their crew memberships go, and so do the crews they lead.
+        crews.leave(person);
         watches.deleteAll(watches.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, person.getId()));
 
         if (into == null) {

@@ -120,6 +120,19 @@ public class CloneService {
                     row.getBigDecimal(4), row.getDate(5), row.getDate(6));
         }, sheetId);
 
+        Map<Long, Long> crews = new HashMap<>();
+        jdbc.query("SELECT id, lead_id FROM crew WHERE sheet_id = ? ORDER BY id", row -> {
+            long id = row.getLong(1);
+            crews.put(id, insert("INSERT INTO crew (sheet_id, name, lead_id) SELECT ?, name, ? FROM crew WHERE id = ?",
+                    toSheetId, people.get(row.getLong(2)), id));
+        }, sheetId);
+        jdbc.query("""
+                SELECT m.crew_id, m.person_id
+                FROM crew_member m JOIN crew c ON c.id = m.crew_id WHERE c.sheet_id = ? ORDER BY m.id""", row -> {
+            jdbc.update("INSERT INTO crew_member (crew_id, person_id) VALUES (?, ?)", crews.get(row.getLong(1)),
+                    people.get(row.getLong(2)));
+        }, sheetId);
+
         // Claims are added in the order they are listed, so the clone lists them the same; none is
         // bound by a statement there, and none is held by an editor.
         Map<Long, Long> cloned = new HashMap<>();

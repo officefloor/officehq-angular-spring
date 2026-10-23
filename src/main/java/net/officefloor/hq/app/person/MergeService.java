@@ -5,6 +5,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.plan.Plan;
 import net.officefloor.hq.app.plan.PlanRepository;
 import net.officefloor.hq.app.pool.PoolMember;
@@ -25,7 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
  * order they were added. Their name and aliases become aliases of the other; their
  * patrons are added to the other's (not the other themselves, no repeats); anyone naming them as a
  * patron names the other instead (no repeats); their pool memberships move to the other, shares added
- * where the other is already a member; their plans become the other's. Their statements join the
+ * where the other is already a member; the crews they lead are led by the other and their crew
+ * memberships move to the other, dropped where the other is in the crew already; their plans become the other's. Their statements join the
  * other's: the other's count becomes their own plus theirs, and the other's last statement stays the
  * other's (or, the other having none, becomes theirs). Their holds, watchers and contact are dropped,
  * and they leave the sheet.
@@ -39,20 +41,22 @@ public class MergeService {
     private final WatchRepository watches;
     private final PoolMemberRepository poolMembers;
     private final PlanRepository plans;
+    private final CrewService crews;
     private final RoleService roles;
     private final SheetService sheets;
     private final Rollups rollups;
     private final Audit audit;
 
     public MergeService(PersonRepository people, ClaimRepository claims, StatementService statements,
-            WatchRepository watches, PoolMemberRepository poolMembers, PlanRepository plans, RoleService roles, SheetService sheets,
-            Rollups rollups, Audit audit) {
+            WatchRepository watches, PoolMemberRepository poolMembers, PlanRepository plans, CrewService crews, RoleService roles,
+            SheetService sheets, Rollups rollups, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.statements = statements;
         this.watches = watches;
         this.poolMembers = poolMembers;
         this.plans = plans;
+        this.crews = crews;
         this.roles = roles;
         this.sheets = sheets;
         this.rollups = rollups;
@@ -120,6 +124,9 @@ public class MergeService {
                 poolMembers.save(member);
             }
         }
+
+        // The crews they lead are the other's to lead; their crew memberships move to the other.
+        crews.merge(from, into);
 
         // Their plans become the other's.
         for (Plan plan : plans.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId())) {
