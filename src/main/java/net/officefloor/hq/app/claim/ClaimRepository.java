@@ -34,6 +34,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The claim on the sheet with a reference key. */
     Optional<Claim> findBySheetIdAndRefKey(String sheetId, String refKey);
 
+    /** How many of the sheet's claims have a status. */
+    long countBySheetIdAndStatus(String sheetId, ClaimStatus status);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** Release every editor's lock on the sheet's claims. */

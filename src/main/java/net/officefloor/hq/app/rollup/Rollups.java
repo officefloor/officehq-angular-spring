@@ -39,9 +39,12 @@ public class Rollups {
         }
     }
 
-    /** The sheet's figures: each person's by id, in list order, and the sheet's totals. */
+    /**
+     * The sheet's figures: each person's by id, in list order, the sheet's totals, and how many of its
+     * counting claims are overdue.
+     */
     public record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
-            BigDecimal overdueTotal) {
+            BigDecimal overdueTotal, int overdueCount) {
     }
 
     private final PersonRepository people;
@@ -84,6 +87,7 @@ public class Rollups {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
+        int overdueCount = 0;
         for (Map.Entry<Long, Person> entry : sheetPeople.entrySet()) {
             Person person = entry.getValue();
             List<Claim> counting = byPerson.getOrDefault(entry.getKey(), List.of()).stream()
@@ -99,11 +103,15 @@ public class Rollups {
                     claimed = claimed.add(claim.getAmount());
                 }
                 String grade = person.gradeOn(claim.getDate());
+                boolean late = overdue(claim, sheet, grade);
+                if (late) {
+                    overdueCount++;
+                }
                 BigDecimal figure = dues.due(claim, grade, basis);
                 if (figure != null) {
                     due = due.add(figure);
                     figured = true;
-                    if (overdue(claim, sheet, grade)) {
+                    if (late) {
                         overdue = overdue.add(figure);
                     }
                 }
@@ -125,7 +133,7 @@ public class Rollups {
             }
             overdueFigures.add(overdue);
         }
-        return new Rollup(figures, claimedTotal, trimmed(dueFigures), trimmed(overdueFigures));
+        return new Rollup(figures, claimedTotal, trimmed(dueFigures), trimmed(overdueFigures), overdueCount);
     }
 
     /**

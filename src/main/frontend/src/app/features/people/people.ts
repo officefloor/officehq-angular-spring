@@ -12,6 +12,7 @@ import { Session, graceOn, valueOn } from '../../core/session';
 import { Claims } from '../claims/claims';
 import { Header } from '../header/header';
 import { Consolidated } from '../consolidated/consolidated';
+import { Dashboard } from '../dashboard/dashboard';
 import { Periods } from '../periods/periods';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Pools } from '../pools/pools';
@@ -91,7 +92,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, ImportOpenings, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
+  imports: [FigurePipe, Claims, Consolidated, Dashboard, Header, ImportPeople, ImportOpenings, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, Crews, QuickAdd, Rates, Summary, ClassicSummary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -103,6 +104,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
       [myCrewDueTotal]="myCrewDueTotal()"
     />
     <app-consolidated [peopleCount]="people().length" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+    <app-dashboard [statuses]="statusSummary()" [overdueTotal]="overdueTotal()" />
     <app-rates [rates]="rates()" [inherited]="inherited()" [today]="today()" (saved)="rateSaved($event)" (imported)="rates.set($event)" />
     <app-periods
       [periods]="periods()"

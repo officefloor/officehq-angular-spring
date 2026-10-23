@@ -191,7 +191,7 @@ public class CloneService {
         audit.recordOnCommit("SHEET_CLONE_MADE sheet=" + sheetId + " by=" + user + " to=" + toSheetId);
         audit.recordOnCommit("SHEET_CLONED sheet=" + toSheetId + " by=" + user + " from=" + sheetId);
         // Every person's figures and the totals are new on the clone.
-        rollups.audit(toSheetId, user, new Rollups.Rollup(Map.of(), null, null, null));
+        rollups.audit(toSheetId, user, new Rollups.Rollup(Map.of(), null, null, null, 0));
     }
 
     /** Copy a sheet's rows of a table to the clone, with the columns named. */
