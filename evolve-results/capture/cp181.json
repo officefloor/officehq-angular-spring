@@ -1,0 +1,64 @@
+{
+  "checkpoint": 181,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp181_sheet-notes",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused\nwith an error beside the entry). Show the notes newest first as <sheet's today when added>\n<user>: <text>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused\nwith an error beside the entry). Show the notes newest first as <sheet's today when added>\n<user>: <text>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c9712dbb6d9e8f1a937898cda6b1d6031d726174",
+  "reset_sha": "",
+  "preagent_sha": "ab948e81bd5157357aa3eb7c619ba5c20337cb4c",
+  "prev_sha": "ab948e81bd5157357aa3eb7c619ba5c20337cb4c",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7948264,
+    "input_tokens": 44,
+    "output_tokens": 10936,
+    "cache_read_tokens": 847492,
+    "cache_creation_tokens": 50804,
+    "num_turns": 23,
+    "duration_ms": 422813,
+    "duration_api_ms": 123171,
+    "model": "claude-opus-5-5",
+    "session_id": "54e89f41-0024-4fbe-86f5-52688506fce9",
+    "stop_reason": "success",
+    "result_text": "I added sheet notes, and the main `sheet notes` test passes. The other three tests in the spec (`scenario 1`, `2` and `3`) still fail when I run `bin/e2e`, every time. All three fail at claim and audit steps that don't involve notes, so they would fail the same way without my change.\n\n**What I built**\n- **Storage:** a new table for notes (migration `V102__sheet_note.sql`). Each note keeps its sheet, the sheet's today when it was added, who added it, and the text.\n- **Server:** a new `note` package with endpoints to list and add notes at `/api/sheets/{id}/notes`. Notes come back newest first. A blank note is refused, and an added one writes `NOTE_ADDED sheet=\u2026 by=\u2026 text=\u2026` to the audit file only once it's saved.\n- **Who can add:** the app's existing request guards already block viewers and archived sheets, and add `for=<steward>` when someone is acting under a delegation. So the test's expected `text=third for=vic` line comes out with no extra code.\n- **Screen:** a Notes section on the home screen with `note-text`, `note-add` and `note-error`. Each note shows as `note-line` in the form `2026-03-11 uma: third`. The error clears as soon as you type, and the list is re-read every time the sheet is loaded.\n\n**Why the other three tests fail**\n- **Scenario 1** (`acceptance.spec.ts:125`): the audit view shows 34 lines where the test expects 33. The extra one is `LATE_ENTRY \u2026 amount=12.50 date=2026-03-15`. The claim logic writes it on purpose because that claim is dated inside period P1, which has been soft-closed. The test's list of expected lines leaves it out.\n- **Scenario 2** (`:579`) and **scenario 3** (`:1037`): the test expects certain claim adds to be refused (both claims dated `2026-03-09`), but the app accepts them.\n\nI didn't change the claim or late-entry rules, because the request only asked for notes and changing them would alter behaviour the rest of the app relies on. If those scenarios are meant to pass too, the existing claim logic needs to change. Do you want me to look into that as a separate change?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7948264,
+        "num_turns": 23,
+        "duration_ms": 422813,
+        "duration_api_ms": 123171,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp181.agent.jsonl",
+  "agent_diff_file": "cp181.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
