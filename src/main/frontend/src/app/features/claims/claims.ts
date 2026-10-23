@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { AMOUNT, CLAIM_NUMBER, ClaimAction, ClaimEditors, ClaimView, ClaimsApi, LineForm, cents, tagsText, deferred, dueBy, money, overdue, roundsHalfUp } from '../../core/claims';
 import { GradeView, gradeOn } from '../../core/people';
@@ -27,6 +28,7 @@ const PAST: Record<ClaimAction, string> = {
 
 @Component({
   selector: 'app-claims',
+  imports: [FigurePipe],
   template: `
     <form (submit)="save($event)" [attr.aria-label]="(editing() === null ? 'Add a claim for ' : 'Edit a claim of ') + personName()">
       <label [for]="'claim-form-amount-' + personId()">Amount</label>
@@ -107,12 +109,12 @@ const PAST: Record<ClaimAction, string> = {
             (change)="selectedChange.emit({ id: c.id, on: checked($event) })"
           />
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
-          <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Tags <span data-testid="claim-tags">{{ tagsOf(c) }}</span></span>
-          <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>

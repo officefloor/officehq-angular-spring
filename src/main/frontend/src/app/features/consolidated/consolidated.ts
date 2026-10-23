@@ -1,4 +1,5 @@
 import { Component, effect, inject, input, signal, untracked } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 import { ConsolidatedApi, ConsolidatedView } from '../../core/consolidated';
 import { Session } from '../../core/session';
 
@@ -7,11 +8,12 @@ import { Session } from '../../core/session';
 // and whenever the sheet's own figures move.
 @Component({
   selector: 'app-consolidated',
+  imports: [FigurePipe],
   template: `
     <section aria-label="Consolidated figures">
       <p>Consolidated people <strong data-testid="consolidated-people-count">{{ figures()?.peopleCount }}</strong></p>
-      <p>Consolidated due <strong data-testid="consolidated-due-total">{{ figures()?.dueTotal }}</strong></p>
-      <p>Consolidated overdue <strong data-testid="consolidated-overdue-total">{{ figures()?.overdueTotal }}</strong></p>
+      <p>Consolidated due <strong data-testid="consolidated-due-total">{{ (figures()?.dueTotal) | figure }}</strong></p>
+      <p>Consolidated overdue <strong data-testid="consolidated-overdue-total">{{ (figures()?.overdueTotal) | figure }}</strong></p>
     </section>
   `,
 })

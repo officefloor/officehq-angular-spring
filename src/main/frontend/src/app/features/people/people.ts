@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, linkedSignal, signal, untracked, viewChild } from '@angular/core';
 import { downloadCsv } from '../../core/csv';
 import { ClaimView, ClaimsApi, cents, counts, deferred, isOpen, money, overdue, roundsHalfUp, statusAt } from '../../core/claims';
@@ -86,7 +87,7 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
 // figures), and the sheet's claimed-total and due-total. The sheet's rates are set here too.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, QuickAdd, Rates, Summary, ClassicSummary],
+  imports: [FigurePipe, Claims, Consolidated, Header, ImportPeople, PasteClaims, Periods, PersonPlans, PlanGenerate, Pools, QuickAdd, Rates, Summary, ClassicSummary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -196,24 +197,24 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
       </p>
-      <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+      <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong> claims,
-        due <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
-      <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>,
-        open in total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
-      <p>Cut in total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
+        due <strong data-testid="rollup-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+      <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong>,
+        open in total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
+      <p>Cut in total <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
       @if (tagTotals().length > 0) {
         <ul aria-label="Due by tag">
           @for (t of tagTotals(); track t.tag) {
-            <li>{{ t.tag }} <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</strong></li>
+            <li>{{ t.tag }} <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal | figure }}</strong></li>
           }
         </ul>
       }
       @if (monthTotals().length > 0) {
         <ul aria-label="Due by month">
           @for (m of monthTotals(); track m.month) {
-            <li>{{ m.month }} <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</strong></li>
+            <li>{{ m.month }} <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal | figure }}</strong></li>
           }
         </ul>
       }
@@ -399,36 +400,36 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-tags">{{ (p.tags ?? []).join(', ') }}</td>
-              <td data-testid="person-claimed">{{ claimed(p.id) }}</td>
-              <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td data-testid="person-claimed">{{ claimed(p.id) | figure }}</td>
+              <td data-testid="person-due-total">{{ dueTotalOf(p) | figure }}</td>
               <td>
-                <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) }}</span></span>
-                <span>open <span data-testid="person-open-total">{{ openTotalOf(p) }}</span></span>
+                <span>settled <span data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</span></span>
+                <span>open <span data-testid="person-open-total">{{ openTotalOf(p) | figure }}</span></span>
               </td>
               <td>
                 <ul>
                   @for (period of periods(); track period.id) {
                     <li>
                       {{ period.name }}
-                      <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ periodTotalOf(period, p) }}</span>
+                      <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ periodTotalOf(period, p) | figure }}</span>
                     </li>
                   }
                 </ul>
               </td>
-              <td data-testid="person-excess">{{ excessOf(p) }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</span>
-                <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</span></span>
+                <span>due <span data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</span></span>
               </td>
               <td>
                 @let aged = agedOf(p);
-                <span>0&ndash;30 <span data-testid="person-aged-0-30">{{ aged[0] }}</span></span>
-                <span>31&ndash;60 <span data-testid="person-aged-31-60">{{ aged[1] }}</span></span>
-                <span>61+ <span data-testid="person-aged-61">{{ aged[2] }}</span></span>
+                <span>0&ndash;30 <span data-testid="person-aged-0-30">{{ aged[0] | figure }}</span></span>
+                <span>31&ndash;60 <span data-testid="person-aged-31-60">{{ aged[1] | figure }}</span></span>
+                <span>61+ <span data-testid="person-aged-61">{{ aged[2] | figure }}</span></span>
               </td>
               <td>
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
-                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
+                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) | figure }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
               </td>
               <td>
@@ -491,8 +492,8 @@ function activeOn(claims: ClaimView[], person: PersonView, today: string): boole
                   <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                 }
               </td>
-              <td data-testid="person-backing">{{ backingOf(p) }}</td>
-              <td data-testid="person-cut-total">{{ cutTotalOf(p) }}</td>
+              <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
+              <td data-testid="person-cut-total">{{ cutTotalOf(p) | figure }}</td>
               <td>
                 <app-person-plans [personId]="p.id" [personName]="p.name" />
               </td>

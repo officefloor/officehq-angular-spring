@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { LOCALES, Locale } from '../../core/locale';
 import { Session } from '../../core/session';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
@@ -17,6 +18,23 @@ import { TreeSearch } from '../tree-search/tree-search';
     @if (session.user(); as user) {
       <section aria-label="Session">
         <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+        <form (submit)="saveLocale($event)">
+          <label for="user-locale">Locale</label>
+          <select
+            id="user-locale"
+            data-testid="user-locale"
+            (change)="localeInput.set(value($event)); localeError.set(null)"
+          >
+            @for (l of locales; track l) {
+              <option [value]="l" [selected]="l === (localeInput() || locale.current())">{{ l }}</option>
+            }
+          </select>
+          <button type="submit" data-testid="user-locale-save">Save locale</button>
+          @if (localeError(); as error) {
+            <p role="alert" data-testid="user-locale-error">{{ error }}</p>
+          }
+        </form>
+        <p>Locale <strong data-testid="user-locale-current">{{ locale.current() }}</strong></p>
         <form (submit)="load($event)">
           <label for="sheet-id-input">Sheet id</label>
           <input
@@ -105,6 +123,11 @@ import { TreeSearch } from '../tree-search/tree-search';
 })
 export class Home {
   protected readonly session = inject(Session);
+  protected readonly locale = inject(Locale);
+  protected readonly locales = LOCALES;
+  /** The locale chosen in the select and not yet saved; empty when the select shows the saved one. */
+  protected readonly localeInput = signal('');
+  protected readonly localeError = signal<string | null>(null);
   protected readonly nameInput = signal('');
   protected readonly sheetInput = signal('');
   protected readonly todayInput = signal('');
@@ -134,6 +157,28 @@ export class Home {
     }
     this.signinError.set(null);
     this.session.signIn(name);
+    void this.loadLocale();
+  }
+
+  /** Re-read the signed-in user's locale from the store. */
+  private async loadLocale(): Promise<void> {
+    try {
+      await this.locale.load();
+    } catch {
+      this.localeError.set('Your locale could not be read.');
+    }
+  }
+
+  protected async saveLocale(event: Event): Promise<void> {
+    event.preventDefault();
+    this.localeError.set(null);
+    const chosen = this.localeInput() || this.locale.current();
+    try {
+      await this.locale.save(chosen);
+      this.localeInput.set('');
+    } catch {
+      this.localeError.set(`The locale could not be changed to ${chosen}.`);
+    }
   }
 
   protected async load(event: Event): Promise<void> {
@@ -146,7 +191,7 @@ export class Home {
     }
     this.clonedTo.set('');
     try {
-      await this.session.loadSheet(id);
+      await Promise.all([this.session.loadSheet(id), this.loadLocale()]);
     } catch {
       this.sheetError.set(`Sheet "${id}" could not be loaded.`);
     }

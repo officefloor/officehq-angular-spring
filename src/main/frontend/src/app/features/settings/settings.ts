@@ -1,4 +1,5 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 import {
   ALERT_THRESHOLD, CAP, DatedKey, ENTRY_DATE, FLOOR, PERMISSION, PERMISSION_ACTIONS, PermissionAction, GRADES, GRADE_GRACE, GRADE_TERMS, Grade, LATE_PCT, LIMIT, FISCAL_START_MONTH, GRACE_DAYS, NOTE_THRESHOLD, PARENT, POT, PERIOD_NUMBERING_FROM, POLICY_DATE, PROOF_THRESHOLD, ROLES, ROUNDING, SETTING_FROM, SettingsView, TERMS,
   RoleName, RoleView, SettingsApi,
@@ -10,6 +11,7 @@ import { Session } from '../../core/session';
 // sheet's today unless one is typed) and shown as in force on the sheet's today.
 @Component({
   selector: 'app-settings',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
@@ -296,17 +298,17 @@ import { Session } from '../../core/session';
           <p role="alert" data-testid="settings-error">{{ message }}</p>
         }
       </form>
-      <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
-      <p>Cap in force: <span data-testid="setting-cap-current">{{ session.cap() }}</span></p>
-      <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
+      <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ (clerkLimit() ?? '') | figure }}</span></p>
+      <p>Cap in force: <span data-testid="setting-cap-current">{{ session.cap() | figure }}</span></p>
+      <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ (proofThreshold() ?? '') | figure }}</span></p>
       @for (g of grades; track g) {
         <p>Proof threshold for grade {{ g }} in force:
-          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThreshold()[g] ?? '' }}</span></p>
+          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ (gradeProofThreshold()[g] ?? '') | figure }}</span></p>
       }
-      <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
-      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span></p>
+      <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ (noteThreshold() ?? '') | figure }}</span></p>
+      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ (reviewThreshold() ?? '') | figure }}</span></p>
       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
-      <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
+      <p>Floor in force: <span data-testid="setting-floor-current">{{ session.floor() | figure }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       @for (g of grades; track g) {
         <p>Terms for grade {{ g }} in force:
@@ -316,13 +318,13 @@ import { Session } from '../../core/session';
         <p>Grace days for grade {{ g }} in force:
           <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</span></p>
       }
-      <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
+      <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ session.latePct() | figure }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ session.policyDate() }}</span></p>
       <p>Period numbering from in force: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() }}</span></p>
       <p>Entry date in force: <span data-testid="setting-entry-date-current">{{ entryDate() }}</span></p>
       <p>Grace days in force: <span data-testid="setting-grace-days-current">{{ graceDays() }}</span></p>
-      <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() }}</span></p>
-      <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() }}</span></p>
+      <p>Pot in force: <span data-testid="setting-pot-current">{{ session.pot() | figure }}</span></p>
+      <p>Alert threshold in force: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</span></p>
       <p>Fiscal year starts in month: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
       <p>Parent sheet in force: <span data-testid="setting-parent-current">{{ session.parent() }}</span></p>
       @for (a of permissionActions; track a) {

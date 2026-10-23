@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { GRADES, Grade } from '../../core/people';
 import { FROM_DATE, NO_RATE, PERCENT, RatePreview, RateView, RatesApi, rateOn } from '../../core/rates';
@@ -9,6 +10,7 @@ import { Session } from '../../core/session';
 // a to-date (or with no end).
 @Component({
   selector: 'app-rates',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
@@ -97,7 +99,7 @@ import { Session } from '../../core/session';
         @if (preview(); as p) {
           <p aria-live="polite">
             Claims that would change: <span data-testid="rate-preview-count">{{ p.count }}</span>;
-            difference in due: <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+            difference in due: <span data-testid="rate-preview-diff">{{ p.diff | figure }}</span>
           </p>
         }
       </form>
@@ -114,7 +116,7 @@ import { Session } from '../../core/session';
           @for (g of grades; track g) {
             <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) ?? noRate }}</td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ (currentOf(g) ?? noRate) | figure }}</td>
             </tr>
           }
         </tbody>
@@ -136,7 +138,7 @@ import { Session } from '../../core/session';
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
-              <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.versions ?? 1 }}</td>
             </tr>
           }

@@ -57,7 +57,7 @@ public class RateController {
      * A rate as entered on the form: a percent of 0.00 or more with up to two decimals, and the date
      * it applies from (none: from the beginning of time) and through (none: no end).
      */
-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from,
+    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct, LocalDate from,
             LocalDate to) {
     }
 
@@ -143,7 +143,7 @@ public class RateController {
     public PreviewView preview(
             @PathVariable @NotBlank @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
-            @RequestParam @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct) {
+            @RequestParam @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct) {
         RateService.Preview preview = service.preview(sheetId, grade, new BigDecimal(pct));
         return new PreviewView(preview.count(), preview.diff().toPlainString());
     }

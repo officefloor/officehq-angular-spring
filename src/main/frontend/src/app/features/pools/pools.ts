@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 import { cents, money } from '../../core/claims';
 import { downloadCsv } from '../../core/csv';
 import { PersonView, heldOn, retiredOn } from '../../core/people';
@@ -86,6 +87,7 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
 // pot for a pool that is a member of none, its cut in the pool above for one that is.
 @Component({
   selector: 'app-pools',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="pools-heading">
       <h2 id="pools-heading">Pools</h2>
@@ -108,7 +110,7 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
           <li [attr.data-testid]="'pool-row-' + line.pool.name">
             <h3>{{ line.pool.name }}</h3>
             <p>
-              Total share <span data-testid="pool-total-share">{{ line.total }}</span>,
+              Total share <span data-testid="pool-total-share">{{ line.total | figure }}</span>,
               balanced <span data-testid="pool-balanced">{{ line.balanced ? 'yes' : 'no' }}</span>
             </p>
             <ul [attr.aria-label]="'Members of ' + line.pool.name">
@@ -117,8 +119,8 @@ function isPersonIn(m: PoolMemberView, ids: Set<number>): boolean {
                   [attr.data-testid]="'pool-member-' + line.pool.name + '-' + (m.poolId !== null ? 'pool-' + m.name : m.personId)"
                 >
                   <span data-testid="pool-member-name">{{ m.poolId !== null ? 'pool:' + m.name : m.name }}</span>
-                  <span data-testid="pool-share">{{ m.share }}</span>
-                  <span data-testid="pool-cut">{{ line.cuts.get(key(m)) ?? '' }}</span>
+                  <span data-testid="pool-share">{{ m.share | figure }}</span>
+                  <span data-testid="pool-cut">{{ (line.cuts.get(key(m)) ?? '') | figure }}</span>
                 </li>
               }
             </ul>

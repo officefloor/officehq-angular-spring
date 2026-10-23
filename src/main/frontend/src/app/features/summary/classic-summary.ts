@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 
 /** A period's line in the classic summary: its due-total counting each claim by its status now. */
 export interface ClassicPeriodSummary {
@@ -11,6 +12,7 @@ export interface ClassicPeriodSummary {
 // with no trimming.
 @Component({
   selector: 'app-classic-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="classic-summary-heading">
       <h2 id="classic-summary-heading">Classic summary</h2>
@@ -26,12 +28,12 @@ export interface ClassicPeriodSummary {
           @for (p of periods(); track p.name) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
             </tr>
           }
         </tbody>
       </table>
-      <p>Due-total: <span data-testid="classic-due-total">{{ dueTotal() }}</span></p>
+      <p>Due-total: <span data-testid="classic-due-total">{{ dueTotal() | figure }}</span></p>
     </section>
   `,
 })

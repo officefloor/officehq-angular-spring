@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FISCAL_YEAR, PERIOD_CAP, PERIOD_DATE, PeriodView, PeriodsApi, fiscalYearOf } from '../../core/periods';
 import { Session } from '../../core/session';
@@ -14,6 +15,7 @@ import { Session } from '../../core/session';
 // from-date falls in. A period may cap the OPEN or PENDING claims due by in it each person may have.
 @Component({
   selector: 'app-periods',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -109,10 +111,10 @@ import { Session } from '../../core/session';
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ (dueTotals().get(p.id) ?? '0.00') | figure }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fiscalYearOf(p.from, session.fiscalStartMonth()) }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+              <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td>
                 @if (!p.closed) {
                   <button

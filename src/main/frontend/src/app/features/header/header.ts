@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 import { StatusSummary } from '../summary/summary';
 
 // The sheet's header: its counters, each repeating a figure shown elsewhere on the screen — the people
@@ -6,6 +7,7 @@ import { StatusSummary } from '../summary/summary';
 // due-total and overdue-total; and the signed-in user's own figures, when a person goes by their name.
 @Component({
   selector: 'app-header',
+  imports: [FigurePipe],
   template: `
     <header aria-label="Sheet counters">
       <p>People <strong data-testid="header-people-count">{{ peopleCount() }}</strong></p>
@@ -14,10 +16,10 @@ import { StatusSummary } from '../summary/summary';
           {{ s.status }} <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong>
         }
       </p>
-      <p>Due <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
-      <p>Overdue <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
-      <p>My due <strong data-testid="my-due-total">{{ myDueTotal() }}</strong></p>
-      <p>My overdue <strong data-testid="my-overdue-total">{{ myOverdueTotal() }}</strong></p>
+      <p>Due <strong data-testid="header-due-total">{{ dueTotal() | figure }}</strong></p>
+      <p>Overdue <strong data-testid="header-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+      <p>My due <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong></p>
+      <p>My overdue <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
     </header>
   `,
 })

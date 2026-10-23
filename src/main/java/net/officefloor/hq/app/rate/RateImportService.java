@@ -23,7 +23,7 @@ public class RateImportService {
     static final int LINES_MAX = 1000;
 
     /** A percent as the rate form takes it: 0.00 or more, with up to two decimals. */
-    private static final java.util.regex.Pattern PERCENT = java.util.regex.Pattern.compile("\\d{1,3}(\\.\\d{1,2})?");
+    private static final java.util.regex.Pattern PERCENT = java.util.regex.Pattern.compile("\\d{1,5}(\\.\\d{1,2})?");
 
     /** A line read from the paste, checked against the form's rules. */
     private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {

@@ -111,7 +111,7 @@ export function sameSlot(a: RateView, b: RateView): boolean {
 }
 
 /** A percent as a rate takes it: 0.00 or more, with up to two decimals. */
-export const PERCENT = /^\d{1,3}(\.\d{1,2})?$/;
+export const PERCENT = /^\d{1,5}(\.\d{1,2})?$/;
 
 /** Shown in place of a due when the grade has no rate. */
 export const NO_RATE = 'n/a';

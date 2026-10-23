@@ -1,4 +1,5 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 import { AMOUNT } from '../../core/claims';
 import { Session } from '../../core/session';
 import { Templates } from '../../core/templates';
@@ -8,6 +9,7 @@ import { Templates } from '../../core/templates';
 // DRAFT claim from one.
 @Component({
   selector: 'app-templates',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="templates-heading">
       <h2 id="templates-heading">Claim templates</h2>
@@ -31,7 +33,7 @@ import { Templates } from '../../core/templates';
           @for (t of templates.list(); track t.id) {
             <tr [attr.data-testid]="'template-row-' + t.name">
               <td data-testid="template-name">{{ t.name }}</td>
-              <td data-testid="template-amount">{{ t.amount }}</td>
+              <td data-testid="template-amount">{{ t.amount | figure }}</td>
               <td data-testid="template-note">{{ t.note }}</td>
             </tr>
           }

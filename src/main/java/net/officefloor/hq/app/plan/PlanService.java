@@ -10,6 +10,8 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,15 +31,17 @@ public class PlanService {
     private final PersonRepository people;
     private final SheetService sheets;
     private final ClaimService claims;
+    private final RoleService roles;
     private final TransactionTemplate eachClaim;
     private final Audit audit;
 
     public PlanService(PlanRepository plans, PersonRepository people, SheetService sheets, ClaimService claims,
-            PlatformTransactionManager transactions, Audit audit) {
+            RoleService roles, PlatformTransactionManager transactions, Audit audit) {
         this.plans = plans;
         this.people = people;
         this.sheets = sheets;
         this.claims = claims;
+        this.roles = roles;
         this.eachClaim = new TransactionTemplate(transactions);
         this.audit = audit;
     }
@@ -95,11 +99,15 @@ public class PlanService {
      * For every plan on the sheet, in the order they were added, make a DRAFT claim with the plan's amount
      * and an empty note for each plan date up to its end and the sheet's today that has none yet, dated
      * that day. Each claim is added by the claim form's rules, on its own: a date the form refuses is
-     * skipped, and tried again on the next generate.
+     * skipped, and tried again on the next generate. A viewer's generate makes nothing: every claim it
+     * would make is refused.
      */
     public Generated generate(String sheetId, String user) {
         LocalDate today = sheets.today(sheetId);
         List<Claim> made = new ArrayList<>();
+        if (Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return new Generated(made, list(sheetId));
+        }
         for (Plan plan : list(sheetId)) {
             for (LocalDate date : plan.datesUpTo(today)) {
                 if (plan.hasMade(date)) {
