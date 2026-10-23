@@ -1,0 +1,64 @@
+{
+  "checkpoint": 165,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "f5135b9c92cb4cfeca16832b00795b9ff15ab700"
+  },
+  "checkpoint_id": "cp165_escalate",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains an escalation gap (settings, a number of days, blank means off, not dated;\nSETTING_CHANGED key=escalate-after value=<days>). Reminding a claim whose previous reminder was at\nleast that many days before the sheet's today escalates it: ESCALATE naming the claim is written\nafter the REMIND line, once per claim ever.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains an escalation gap (settings, a number of days, blank means off, not dated;\nSETTING_CHANGED key=escalate-after value=<days>). Reminding a claim whose previous reminder was at\nleast that many days before the sheet's today escalates it: ESCALATE naming the claim is written\nafter the REMIND line, once per claim ever.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "21b83bd16cdf66ade401073f4700fcb3eb632a55",
+  "reset_sha": "",
+  "preagent_sha": "f219863adc1f051267cc022bd265ae3e7d115f89",
+  "prev_sha": "f219863adc1f051267cc022bd265ae3e7d115f89",
+  "base_sha": "f5135b9c92cb4cfeca16832b00795b9ff15ab700",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9587080000000003,
+    "input_tokens": 102,
+    "output_tokens": 26704,
+    "cache_read_tokens": 3334820,
+    "cache_creation_tokens": 94657,
+    "num_turns": 52,
+    "duration_ms": 603565,
+    "duration_api_ms": 272055,
+    "model": "claude-opus-5-5",
+    "session_id": "0aca11d3-4472-440c-9efd-972a4809e148",
+    "stop_reason": "success",
+    "result_text": "I've added the escalation gap and the `escalate` test passes, but the suite isn't fully green: 3 of 4 tests pass. \"Escalate scenario 2\" fails on a merge/statement check that has nothing to do with reminders.\n\n**What the change does**\n- **Setting:** the settings form now has an \"escalate after\" field. It takes a whole number of days; blank means off, and it isn't dated. Saving it writes `SETTING_CHANGED \u2026 key=escalate-after value=<days>`.\n- **Escalation:** when a claim is reminded, the app checks the date of its previous reminder. If that was at least the gap before the sheet's today, the claim escalates and an `ESCALATE \u2026` line is written right after the `REMIND` line. It's the same claim line the `REMIND` record uses.\n- **Once per claim:** each claim now stores whether it has escalated, so a later reminder never escalates it again. Cloning a sheet keeps both the setting and that flag.\n- **Database:** a new migration, `V91__escalate_after.sql`, adds the sheet's gap and the claim's escalated flag.\n- **Code touched:** `Sheet`, `SheetService` and `SheetController` on the sheet side; `Claim` and `ClaimService.remind` for the escalation; `CloneService` for cloning. On the front end, `core/settings.ts` and `features/settings/settings.ts`.\n\n**The failing test** (`acceptance.spec.ts:793`)\nAfter Ada is merged into Cam, the test expects Cam's statement count to be 2 but only one statement line to show. The app shows two lines, both \"2026-04-05 0.00\", because Ada's statement moves to Cam along with Ada's claims.\n\nI replayed the scenario step by step against the running app. The second line appears as soon as the merge happens and stays after reloading. No reminder or escalation runs anywhere in that scenario. The merge code says on purpose that the merged person's statements join the other's, so the test and the existing merge behaviour disagree.\n\nI didn't change merge to suit this one assertion, because that would change an existing feature without a request behind it. If you want merged statements kept out of the lines, the place to change is `StatementService.handOver`. Tell me and I'll make that change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9587080000000003,
+        "num_turns": 52,
+        "duration_ms": 603565,
+        "duration_api_ms": 272055,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp165.agent.jsonl",
+  "agent_diff_file": "cp165.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
